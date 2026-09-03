@@ -230,7 +230,9 @@ lists the checksum, exclusions, and blockers. The v1 template structurally exclu
 ownership, all memories, Runs, evolution,
 decisions, artifacts, approvals, Node identity, host binding, credentials, sessions, and authority.
 Free text is scanned for credential-like values, bearer tokens, private keys, and local paths.
-A blocked export returns `422`.
+Every exported verified skill must also have all of its skill dependencies inside the same verified
+set. An excluded or unknown dependency produces an `excluded-skill-dependency` finding rather than
+being silently omitted. A blocked export returns `422`.
 
 Unsigned export uses `application/vnd.openbot.employee+json`. When the optional Owner publisher
 keyring is configured, export uses `application/vnd.openbot.employee.dsse+json` and a DSSE/Ed25519

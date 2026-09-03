@@ -286,7 +286,8 @@ export type EmployeeProfileSection =
 export type EmployeeExportFindingCode =
   | "credential-like-content"
   | "private-key-content"
-  | "local-path-content";
+  | "local-path-content"
+  | "excluded-skill-dependency";
 
 /** A blocking finding discovered before portable employee data leaves the Server. */
 export interface EmployeeExportFinding {

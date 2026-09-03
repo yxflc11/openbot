@@ -96,6 +96,25 @@ describe("employee template package", () => {
     ]);
   });
 
+  it("blocks export when a verified skill depends on a skill outside the verified package", () => {
+    const profile = createProfile();
+    const verifiedSkill = profile.skills.find((skill) => skill.slug === "browse-web");
+    if (verifiedSkill === undefined) throw new Error("Expected verified skill fixture.");
+    verifiedSkill.dependencyIds = ["candidate-skill-id", "missing-skill-id"];
+
+    const result = buildEmployeeTemplate(profile, { generatedAt: timestamp, packageId });
+
+    expect(result.preview.blocked).toBe(true);
+    expect(result.preview.findings).toEqual([
+      {
+        code: "excluded-skill-dependency",
+        location: "skills[0].dependencySlugs",
+        message: 'Verified skill "browse-web" depends on a skill that is not verified for export.',
+      },
+    ]);
+    expect(result.document.payload.skills[0]?.dependencySlugs).toEqual([]);
+  });
+
   it("invalidates the checksum when portable content changes", () => {
     const { document } = buildEmployeeTemplate(createProfile(), {
       generatedAt: timestamp,

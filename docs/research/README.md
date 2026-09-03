@@ -47,3 +47,5 @@ Agent Skills and OpenClaw review boundary so descriptions and dependencies are v
 imported skill remains disabled.
 The [Employee export content preview](employee-export-content-preview.md) applies the corresponding
 sender-side rule: the exact profile and selected skill metadata are visible before download.
+The [Portable Employee skill dependency closure](portable-employee-skill-dependency-closure.md)
+then prevents that package from silently dropping a dependency outside the verified export set.

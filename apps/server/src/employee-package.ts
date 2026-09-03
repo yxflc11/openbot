@@ -123,7 +123,10 @@ export function buildEmployeeTemplate(
   });
 
   const checksum = employeeTemplatePayloadChecksum(payload);
-  const findings = scanPortableFields(payload);
+  const findings = [
+    ...exportDependencyClosureFindings(exportedSkills, exportedSkillSlugs),
+    ...scanPortableFields(payload),
+  ];
   const workHistoryCount =
     profile.evolution.length +
     profile.records.runs.length +
@@ -546,6 +549,23 @@ export function inspectEmployeeTemplate(
     issues,
     blocked: issues.length > 0,
   };
+}
+
+function exportDependencyClosureFindings(
+  exportedSkills: EmployeeProfile["skills"],
+  exportedSkillSlugs: ReadonlyMap<string, string>,
+): EmployeeExportFinding[] {
+  return exportedSkills.flatMap((skill, index) =>
+    skill.dependencyIds.some((dependencyId) => !exportedSkillSlugs.has(dependencyId))
+      ? [
+          {
+            code: "excluded-skill-dependency" as const,
+            location: `skills[${index}].dependencySlugs`,
+            message: `Verified skill "${skill.slug}" depends on a skill that is not verified for export.`,
+          },
+        ]
+      : [],
+  );
 }
 
 function scanPortableFields(payload: EmployeeTemplatePayload): EmployeeExportFinding[] {

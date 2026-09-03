@@ -577,7 +577,7 @@ export function createApp(dependencies: AppDependencies) {
     });
     if (employeeTemplate.preview.blocked) {
       throw new StoreValidationError(
-        "Employee template export is blocked until sensitive-looking content is removed.",
+        "Employee template export is blocked until the reported findings are resolved.",
       );
     }
     context.header(

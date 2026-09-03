@@ -168,7 +168,10 @@ skill with its description, version, requested capabilities, and dependencies. B
 the receiving quarantine view shows the Employee name, role,
 optional biography, skills, requested capabilities, publisher trust, compatible hosts, and
 zero-authority boundary. The biography is untrusted descriptive text and grants nothing. This path
-does not implement authenticated ownership transfer or optional-memory selection.
+does not implement authenticated ownership transfer or optional-memory selection. If a verified
+skill depends on a skill outside the verified export set, the sending Server blocks download rather
+than silently removing that edge from the portable graph. `dependencySlugs` remains an OpenBot v1
+extension because the Agent Skills specification does not yet define skill-to-skill dependencies.
 
 An employee package carries knowledge and configuration. It never carries authority to a computer.
 The receiving owner must explicitly bind it to a Worker Host and grant a local policy profile.
@@ -215,6 +218,8 @@ Implemented on the `feat/cross-platform-employees` development line:
 - an authenticated, same-builder export preview and checksum-protected JSON template containing
   only role, descriptive biography, appearance, execution preference, and verified skills; the
   sender can inspect the exact profile and selected skill metadata before download;
+- dependency-closed verified skill exports; a missing, candidate, suspended, or revoked dependency
+  blocks download instead of being silently removed from the portable graph;
 - structural exclusion of identity, authority, memory, and work history, plus blocking checks for
   credential-like text, private keys, and user-specific local paths;
 - a 2 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill
