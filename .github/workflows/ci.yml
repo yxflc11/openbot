@@ -22,3 +22,33 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17.11-bookworm
+        env:
+          POSTGRES_DB: openbot_test
+          POSTGRES_USER: openbot
+          POSTGRES_PASSWORD: openbot-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U openbot -d openbot_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - run: npm ci
+      - run: npm run db:verify
+        env:
+          OPENBOT_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_test

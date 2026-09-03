@@ -16,9 +16,10 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "npm run docs:check && npm run research:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "check": "npm run docs:check && npm run research:check && npm run migrations:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "db:up": "docker compose --env-file .env -f deploy/server/compose.yaml up -d postgres",
     "db:stop": "docker compose --env-file .env -f deploy/server/compose.yaml stop postgres",
+    "db:verify": "npm run build --workspace @openbot/db && node scripts/verify-database.mjs",
     "dev": "turbo run dev --parallel",
     "dev:server": "npm run dev --workspace @openbot/server",
     "dev:web": "npm run dev --workspace @openbot/web",
@@ -27,6 +28,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
+    "migrations:check": "node --test scripts/check-migrations.test.mjs && node scripts/check-migrations.mjs",
     "research:check": "node --test scripts/check-pr-research.test.mjs && node scripts/check-pr-research.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"

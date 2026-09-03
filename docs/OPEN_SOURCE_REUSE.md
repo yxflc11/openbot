@@ -74,6 +74,7 @@ expansion until its upstream and license review is recorded.
 | Untrusted PNG validation candidates | [`image-js/fast-png` 8.0.0](https://github.com/image-js/fast-png/tree/v8.0.0) and [`sharp` 0.35.0](https://github.com/lovell/sharp/tree/v0.35.0) | MIT; Apache-2.0 | Defer full decode-and-normalize validation. `fast-png` does not expose an input-pixel resource limit; `sharp` does, but its native package must pass the Server's Linux x64/arm64 packaging matrix first. The current signature check is explicitly not a well-formedness claim. |
 | Node protocol input validation | [Zod 4.5.4 `e8e206fa`](https://github.com/colinhacks/zod/tree/e8e206fa33ac5fe7ce20a2beb12d57b1cb3df653), [OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035), and [MCP TypeScript SDK `5119ee7f`](https://github.com/modelcontextprotocol/typescript-sdk/tree/5119ee7fd7790e335a3fb60ef36f85334e2a6326) | MIT; documentation CC BY-SA 4.0; MIT | Reuse the existing pinned Zod dependency for strict envelopes and field bounds, and apply OWASP's allowlist/range guidance. OpenBot keeps only the protocol-specific bounded approval-evidence walk; MCP was reviewed as prior art but does not share the Node authority contract. No upstream source was copied. |
 | Bounded Server shutdown | [Node.js HTTP docs `2645dc73`](https://github.com/nodejs/node/blob/2645dc73720b1b4f27c49f395d3c66025ce126cc/doc/api/http.md), [`@hono/node-server` `73c03adf`](https://github.com/honojs/node-server/tree/73c03adfb01928fcd5f5b20faebd5d692f83fc93), [Fastify lifecycle docs `af079bd4`](https://github.com/fastify/fastify/blob/af079bd4c60c3cbebedc7640517d7288468fb5eb/docs/Reference/Server.md), and [`@godaddy/terminus` `aea2f6de`](https://github.com/godaddy/terminus/tree/aea2f6de06dbc9f631dd4ac8a21b91c052add3ce) | MIT | Reuse the native Node close/idle/force lifecycle already returned by Hono. Keep only OpenBot's missing dispatcher-tail drain locally; do not add Terminus because it cannot observe Server-owned Run commits. No upstream source was copied. |
+| PostgreSQL migration integrity | [Drizzle ORM 0.45.2 `e7dfa145`](https://github.com/drizzle-team/drizzle-orm/tree/e7dfa14519f363229ccc3ead7b1b2f2051937efb), [Postgres.js 3.4.9](https://github.com/porsager/postgres/tree/v3.4.9), [PostgreSQL 17 `ec3f6a6a`](https://github.com/postgres/postgres/tree/ec3f6a6a7dd82a8ce455a0710ef75172f9f318d1), and [Docker Official Image `2603e26e`](https://github.com/docker-library/postgres/tree/2603e26e245e558218728ee14e0a42dcb020dc7f) | Apache-2.0; Unlicense; PostgreSQL License; MIT plus PostgreSQL components | Keep Drizzle's migrator with its required dedicated `max: 1` Postgres.js client. Add only a database advisory lock and exact-prefix hash/timestamp validation to close documented high-water and concurrent-start gaps. Pin PostgreSQL 17.11 bookworm for amd64/arm64 and test against a real CI service. No upstream source was copied. |
 | Login rate-limit candidates | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) and [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | Deferred. Neither package can establish a trustworthy remote identity without an authenticated proxy contract. The current small limiter is documented as deployment-scoped; a later adapter must normalize IPv4/IPv6, use shared storage, and fail closed. |
 | Office visualization | Public Tencent Marvis product imagery supplied by the project owner | No reusable source-code license identified | Visual inspiration only. No Marvis code or assets are incorporated; the office remains a deferred optional plugin. |
 
@@ -90,7 +91,8 @@ named boundary until the missing review is completed.
 | Node protocol, capability routing, liveness, and configuration | Reviewed | MCP/OCI conformance, `ws`, Kubernetes/Nomad liveness, SPIFFE/Tailscale identity, and strict Zod input decisions are recorded. Per-Node identity remains planned. |
 | Provider SDK and current Docker browser adapter | Reviewed | CopilotKit/OpenBot `agent-computer`, Cua, MCP conformance, OCI evidence, and platform claim levels are recorded. Native Provider claims remain limited to their evidence. |
 | GitHub contribution and CI surface | Reviewed | Issue forms and RFC/KEP evidence are adapted locally. Existing checkout/setup actions are pinned to reviewed commits with credentials persistence disabled. |
-| PostgreSQL store and migration lifecycle | Partial | Application-specific transactions have tests, but migration rollback, backup/restore, and schema-tool replacement require a focused upstream review before expansion. |
+| PostgreSQL store and migration lifecycle | Reviewed | Drizzle/Postgres.js/PostgreSQL behavior is pinned. The journal and database history fail closed on drift; a real PostgreSQL CI job covers concurrent first migration and repeat startup. |
+| PostgreSQL and artifact backup/restore | Partial | Native `pg_dump`/`pg_restore` and a paired artifact snapshot are the selected boundary and a bilingual runbook exists. Scheduling, encryption, retention, off-host adapters, and a repeatable full restore harness remain blocked on focused upstream review. |
 | Multi-Server scheduling and event distribution | Partial | The single-process boundary is explicit; a shared queue/event-system comparison is required before adding another Server replica. |
 | Office visualization plugin | Deferred | Only public product imagery was supplied; no reusable code license was identified, and this release does not expand the plugin. |
 
@@ -139,6 +141,9 @@ named boundary until the missing review is completed.
 - Server shutdown now stops new dispatch, drains accepted Node messages and active HTTP requests,
   closes upgraded Node sockets explicitly, and closes PostgreSQL last. Idle connections close
   immediately; remaining HTTP connections have a tested 10-second grace period.
+- PostgreSQL startup now uses Drizzle's required one-connection migration client under a stable
+  advisory lock. Repository and database histories are verified as exact prefixes before and after
+  migration, and CI exercises concurrent first startup against PostgreSQL 17.
 
 ## Known gaps from the audit
 
@@ -154,8 +159,8 @@ named boundary until the missing review is completed.
   repeatable real-device CI before a platform is marked supported or certified.
 - `npm audit --omit=dev` reports zero production vulnerabilities. The full audit reports four
   moderate findings in the development-only `drizzle-kit -> @esbuild-kit/esm-loader -> esbuild`
-  path. OpenBot does not expose Drizzle Studio, and will not apply npm's breaking forced downgrade;
-  the migration tooling must be upgraded or replaced after an upstream review.
+  path. OpenBot does not expose Drizzle Studio and will not apply npm's breaking forced downgrade;
+  a compatible patched upstream release must be reviewed before upgrading the pinned toolchain.
 - Accessibility still needs real screen-reader, forced-colors, zoom/reflow, and custom-overlay
   evidence before OpenBot can make a conformance claim.
 - Login throttling is not yet a trusted per-device or distributed boundary. Proxy identity,

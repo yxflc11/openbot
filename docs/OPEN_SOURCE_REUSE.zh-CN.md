@@ -57,6 +57,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | 不可信 PNG 校验候选 | [`image-js/fast-png` 8.0.0](https://github.com/image-js/fast-png/tree/v8.0.0) 与 [`sharp` 0.35.0](https://github.com/lovell/sharp/tree/v0.35.0) | MIT；Apache-2.0 | 完整解码和归一化暂缓。`fast-png` 没有输入像素资源上限；`sharp` 有上限，但原生包必须先通过 Server 的 Linux x64/arm64 打包矩阵。当前签名检查明确不代表 PNG 完整有效。 |
 | Node 协议输入校验 | [Zod 4.5.4 `e8e206fa`](https://github.com/colinhacks/zod/tree/e8e206fa33ac5fe7ce20a2beb12d57b1cb3df653)、[OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035) 与 [MCP TypeScript SDK `5119ee7f`](https://github.com/modelcontextprotocol/typescript-sdk/tree/5119ee7fd7790e335a3fb60ef36f85334e2a6326) | MIT；文档 CC BY-SA 4.0；MIT | 复用现有固定版本的 Zod 实现严格消息与字段边界，并采用 OWASP 的白名单和范围原则。OpenBot 只保留协议特有的有界审批证据遍历；MCP 仅作协议校验先例，不共享 Node 权威语义。没有复制上游源码。 |
 | Server 有界停机 | [Node.js HTTP 文档 `2645dc73`](https://github.com/nodejs/node/blob/2645dc73720b1b4f27c49f395d3c66025ce126cc/doc/api/http.md)、[`@hono/node-server` `73c03adf`](https://github.com/honojs/node-server/tree/73c03adfb01928fcd5f5b20faebd5d692f83fc93)、[Fastify 生命周期文档 `af079bd4`](https://github.com/fastify/fastify/blob/af079bd4c60c3cbebedc7640517d7288468fb5eb/docs/Reference/Server.md) 与 [`@godaddy/terminus` `aea2f6de`](https://github.com/godaddy/terminus/tree/aea2f6de06dbc9f631dd4ac8a21b91c052add3ce) | MIT | 复用 Hono 已返回的 Node 原生 close/空闲连接/强制关闭生命周期；本地只补 OpenBot 调度尾任务排空。Terminus 无法观察 Server 权威 Run 提交，因此不新增依赖。没有复制上游源码。 |
+| PostgreSQL migration 完整性 | [Drizzle ORM 0.45.2 `e7dfa145`](https://github.com/drizzle-team/drizzle-orm/tree/e7dfa14519f363229ccc3ead7b1b2f2051937efb)、[Postgres.js 3.4.9](https://github.com/porsager/postgres/tree/v3.4.9)、[PostgreSQL 17 `ec3f6a6a`](https://github.com/postgres/postgres/tree/ec3f6a6a7dd82a8ce455a0710ef75172f9f318d1) 与 [Docker Official Image `2603e26e`](https://github.com/docker-library/postgres/tree/2603e26e245e558218728ee14e0a42dcb020dc7f) | Apache-2.0；Unlicense；PostgreSQL License；MIT 加 PostgreSQL 组件 | 保留 Drizzle migrator，并按上游要求使用独立 `max: 1` Postgres.js 客户端；本地只增加数据库 advisory lock 与精确前缀哈希/时间戳校验，弥补已公开的高水位和并发启动缺口。固定 PostgreSQL 17.11 bookworm，在真实 CI 服务中测试。没有复制上游源码。 |
 | 登录限速候选 | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) 与 [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | 延期采用。没有经过认证的代理契约时，两者都不能建立可信远程身份。当前小型限速器明确仅属部署级保护；未来适配器必须处理 IPv4/IPv6、共享存储和 fail-closed。 |
 | 办公室可视化 | 项目所有者提供的腾讯 Marvis 产品图片 | 未找到可复用源码许可证 | 只作视觉启发，不引入 Marvis 代码或资源；办公室继续作为延期插件。 |
 
@@ -72,7 +73,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | Node 协议、能力路由、存活和配置 | 已审查 | 已记录 MCP/OCI conformance、`ws`、Kubernetes/Nomad、SPIFFE/Tailscale 和严格 Zod 输入；单 Node 身份仍待实现。 |
 | Provider SDK 与当前 Docker 浏览器适配器 | 已审查 | 已记录 CopilotKit/OpenBot `agent-computer`、Cua、MCP conformance、OCI 和平台声明等级；原生 Provider 只能按证据宣称。 |
 | GitHub 贡献与 CI | 已审查 | 复用 Issue Form 和 RFC/KEP 证据结构；现有 checkout/setup Action 已固定到审查过的 commit，并关闭 checkout 凭证持久化。 |
-| PostgreSQL store 与 migration 生命周期 | 部分 | 应用事务已有测试，但继续扩展前要专项调研 migration 回滚、备份恢复和 schema 工具替换。 |
+| PostgreSQL store 与 migration 生命周期 | 已审查 | 已固定 Drizzle/Postgres.js/PostgreSQL 行为；journal 与数据库历史出现漂移时 fail closed，真实 PostgreSQL CI 覆盖首次并发 migration 和重复启动。 |
+| PostgreSQL 与 Artifact 备份/恢复 | 部分 | 已选择原生 `pg_dump`/`pg_restore` 配合 Artifact 快照，并提供双语运维说明；定时、加密、保留、异地适配器和可重复完整恢复工具仍需专项上游审查。 |
 | 多 Server 调度与事件分发 | 部分 | 已明确当前只支持单进程；增加第二个 Server 前必须先比较共享队列和事件系统。 |
 | 办公室可视化插件 | 延期 | 只有公开产品图，没有找到可复用源码许可证，本版本不继续扩展。 |
 
@@ -108,6 +110,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - 现有 CI 中的 GitHub Action 已固定到完整 commit，checkout 不再保留仓库凭证。
 - Server 停机现在会停止新调度、排空已接收的 Node 消息和进行中的 HTTP 请求、单独关闭已升级的
   Node socket，最后再关闭 PostgreSQL。空闲连接立即关闭，其余 HTTP 连接拥有经过测试的 10 秒宽限期。
+- PostgreSQL 启动现在使用 Drizzle 要求的单连接 migration client 和稳定 advisory lock；仓库与
+  数据库历史会在 migration 前后按精确前缀验证，CI 在 PostgreSQL 17 上测试首次并发启动。
 
 ## 尚未解决
 
@@ -119,7 +123,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
   Supported 或 Certified。
 - `npm audit --omit=dev` 当前为零个生产依赖漏洞；完整审计在仅开发使用的
   `drizzle-kit -> @esbuild-kit/esm-loader -> esbuild` 链路报告四个 moderate 问题。OpenBot 不开放
-  Drizzle Studio，也不会采用 npm 建议的破坏性强制降级；迁移工具必须先做上游审查再升级或替换。
+  Drizzle Studio，也不会采用 npm 建议的破坏性强制降级；只有兼容的上游修复版本通过审查后才升级。
 - OpenBot 在宣称无障碍合规前，仍需真实屏幕阅读器、强制颜色、缩放/回流和自定义 Overlay
   证据。
 - 登录限速尚不是可信的每设备或分布式边界；代理身份、IPv4/IPv6 规范化、共享存储和锁定通知

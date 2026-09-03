@@ -56,7 +56,7 @@ and back. The table deliberately separates working code from planned capabilitie
 
 | Area | Available now | Next step |
 | --- | --- | --- |
-| Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
+| Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, automated recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
 | Employee profile | Seven-view profile, safe template export, quarantined import inspection, Owner-reviewed skill metadata, and a tested DSSE signing/verification primitive | Publisher-key lifecycle, signed export/import routes, executable Agent Skills bundles, memory controls, reviewed activation, cloning, and transfer |
@@ -118,6 +118,7 @@ and add the Bot to that channel.
 
 By default, the local Node honestly advertises no execution capability. Messages are still stored
 as queued Runs until a compatible provider is configured. Stop PostgreSQL with `npm run db:stop`.
+Read [Database operations](docs/DATABASE.md) before upgrading, backing up, or restoring a deployment.
 
 ### Enable the read-only browser slice
 
