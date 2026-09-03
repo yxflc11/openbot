@@ -39,3 +39,5 @@ Server 的完整说明性资料和所选技能元数据。
 不在已验证导出集合中的依赖。
 [员工导出审核绑定](employee-export-review-binding.md)最后采用 HTTP 强校验器，让下载只能返回
 Owner 刚刚检查过的同一份包实例。
+[跨平台员工导出文件名](cross-platform-employee-export-filenames.md)审查随后采用 RFC 6266 和一个
+聚焦、持续维护的设备名判断器，确保建议下载名在 Windows、macOS 与 Linux 上安全可用。

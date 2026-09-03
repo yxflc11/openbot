@@ -82,6 +82,34 @@ describe("employee template package", () => {
     ]);
   });
 
+  it.each([
+    ["CON", "con-employee.openbot-employee.json"],
+    ["nul", "nul-employee.openbot-employee.json"],
+    ["COM1", "com1-employee.openbot-employee.json"],
+    ["LPT9", "lpt9-employee.openbot-employee.json"],
+    ["研究员", "employee.openbot-employee.json"],
+  ])("creates a portable filename for Employee name %s", (name, expectedFileName) => {
+    const profile = createProfile();
+    profile.employee.name = name;
+
+    const result = buildEmployeeTemplate(profile, { generatedAt: timestamp, packageId });
+
+    expect(result.preview.fileName).toBe(expectedFileName);
+  });
+
+  it("removes path, header, and executable-suffix input from the advisory filename", () => {
+    const profile = createProfile();
+    profile.employee.name = '../Release\r\nX-File: "run.exe"';
+
+    const result = buildEmployeeTemplate(profile, { generatedAt: timestamp, packageId });
+    const fileStem = result.preview.fileName.slice(0, -".openbot-employee.json".length);
+
+    expect(result.preview.fileName).toMatch(/^[a-z0-9-]+\.openbot-employee\.json$/);
+    expect(result.preview.fileName.length).toBeLessThanOrEqual(70);
+    expect(fileStem).not.toMatch(/[\\/\r\n".;]/);
+    expect(result.preview.fileName).not.toContain(".exe");
+  });
+
   it("scans the portable profile biography before export", () => {
     const profile = createProfile();
     profile.details.description = "Use api_key=super-secret-value for this workflow";

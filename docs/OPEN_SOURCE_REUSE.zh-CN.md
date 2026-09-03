@@ -106,6 +106,10 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - Server 已有覆盖实际导入字节的 DSSE/Ed25519 签名验签链路，并增加实验性的加密文件密钥库、
   离线轮换/撤销、外部公钥显式信任、签名导出和验签后隔离预览。系统钥匙串、KMS、公开身份与
   信任分发仍是独立适配器。
+- 员工导出文件名遵循 RFC 6266 的建议名称安全规则，并用精确固定、MIT 许可的
+  `filename-reserved-regex` 4.0.0 判断 Windows 设备名。由于其发布包遗漏了声明的类型文件，项目
+  同时精确固定 MIT 许可的 DefinitelyTyped 3.0.0 声明来恢复严格检查；现有 OpenBot ASCII slug
+  和固定 JSON 后缀仍是权威格式。
 - 协议 `0.9.0` 在每个 Run offer 中发送精确能力主版本；Server 与工作主机都会拒绝缺失或
   不兼容版本，旧能力别名不能静默降级契约。
 - Provider 声明会在 Node 启动前检查；没有 `execute` 的包不会上报为可执行能力。

@@ -252,6 +252,10 @@ Server 使用当前权威档案和发布者状态、以及同一个包身份重�
 Web Client 在创建浏览器下载前，还会要求响应 `ETag` 一致，并用原生 Web Crypto 对收到的 `Blob`
 重新计算 SHA-256；任何不一致都不会产生文件。
 
+建议下载文件名使用有界的小写 ASCII slug 和固定 JSON 后缀。员工名中的路径、控制、引号和扩展名
+输入会被移除；`CON`、`NUL`、`COM1`、`LPT1` 等 Windows 设备名会被消歧。这样同一个确定性回退名
+可在 Windows、macOS 与 Linux 使用，同时员工包内部仍保留完整显示名。
+
 代码内已经有 DSSE/Ed25519 签名与验证原语，并使用固定版本的 `@sigstore/core` 生成标准预认证
 编码。它签署 `application/vnd.openbot.employee.v1+json` 的精确字节，且只信任 Server 显式配置、
 真正通过验签的公钥；信封 `keyid` 只用于查找，不能授予信任。实验性的文件密钥库用加密 PKCS#8

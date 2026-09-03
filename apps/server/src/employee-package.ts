@@ -17,6 +17,7 @@ import type {
   ExecutionNode,
 } from "@openbot/domain";
 import { dsse } from "@sigstore/core";
+import { windowsReservedNameRegex } from "filename-reserved-regex";
 import {
   dsseEnvelopeSchema,
   employeeTemplateDssePayloadType,
@@ -672,8 +673,10 @@ function portableFileStem(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return stem || "employee";
+    .slice(0, 48)
+    .replace(/-+$/g, "");
+  if (stem.length === 0) return "employee";
+  return windowsReservedNameRegex().test(stem) ? `${stem}-employee` : stem;
 }
 
 function asEd25519PrivateKey(key: KeyLike): KeyObject {

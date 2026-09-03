@@ -255,6 +255,11 @@ preview, error, and download responses are `Cache-Control: no-store`. Before cre
 download, the Web Client also requires the matching response `ETag` and recomputes SHA-256 over the
 received `Blob`; a mismatch produces no file.
 
+The advisory download filename is a bounded lowercase ASCII slug with a fixed JSON suffix. Path,
+control, quoting, and extension input from the Employee name is removed; Windows device names such
+as `CON`, `NUL`, `COM1`, and `LPT1` are disambiguated. This keeps one deterministic fallback valid
+across Windows, macOS, and Linux while the package retains the Employee's full display name.
+
 Unsigned export uses `application/vnd.openbot.employee+json`. When the optional Owner publisher
 keyring is configured, export uses `application/vnd.openbot.employee.dsse+json` and a DSSE/Ed25519
 signature over the exact package bytes. A package key id is only a lookup hint; trust comes from an

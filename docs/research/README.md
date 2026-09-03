@@ -51,3 +51,6 @@ The [Portable Employee skill dependency closure](portable-employee-skill-depende
 then prevents that package from silently dropping a dependency outside the verified export set.
 The [Employee export review binding](employee-export-review-binding.md) finally applies HTTP strong
 validators so download can serve only the exact package instance the Owner just inspected.
+The [Cross-platform Employee export filename](cross-platform-employee-export-filenames.md) review
+then applies RFC 6266 and a focused maintained device-name predicate so the advisory download name
+remains safe and usable across Windows, macOS, and Linux.

@@ -131,6 +131,11 @@ named boundary until the missing review is completed.
   plus an experimental encrypted filesystem keyring, offline rotation/revocation, explicit external
   public-key trust, signed export, and verified quarantine preview. Native keyrings, KMS, public
   identity, and trust distribution remain separate adapters.
+- Employee export filenames follow RFC 6266's advisory-name safety guidance and use the exact-pinned
+  MIT `filename-reserved-regex` 4.0.0 predicate for Windows device names. Because that published
+  tarball omits its declared type file, the exact-pinned MIT DefinitelyTyped 3.0.0 declaration
+  restores strict checking; the existing OpenBot ASCII slug and fixed JSON suffix remain
+  authoritative.
 - Protocol `0.9.0` sends exact capability-major requirements in each Run offer. Both Server and
   Worker Host reject missing or incompatible versions; legacy aliases cannot silently downgrade the
   contract.
