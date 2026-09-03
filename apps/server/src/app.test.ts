@@ -7,6 +7,7 @@ import type {
   Message,
 } from "@openbot/domain";
 import { describe, expect, it } from "vitest";
+import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { StoreNotFoundError, type ControlPlaneStore } from "./control-plane-store.js";
 import { createApp } from "./app.js";
 
@@ -130,6 +131,56 @@ describe("server app", () => {
     );
     expect(response.status).toBe(404);
   });
+
+  it("opens a channel event stream and publishes persisted messages", async () => {
+    const store = createTestStore();
+    const channel = await store.createChannel({
+      name: "实时频道",
+      description: "多设备同步",
+      botIds: [],
+    });
+    const realtime = new ChannelRealtimeHub();
+    const published: Message[] = [];
+    const unsubscribe = realtime.subscribe(channel.id, (event) => {
+      if (event.type === "message.created") published.push(event.message);
+    });
+    const app = createApp({ listNodes: () => [], realtime, store });
+    const controller = new AbortController();
+    const response = await app.request(`/api/v1/channels/${channel.id}/events`, {
+      signal: controller.signal,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    const firstChunk = await reader?.read();
+    expect(new TextDecoder().decode(firstChunk?.value)).toContain("event: channel.ready");
+
+    const created = await app.request(`/api/v1/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "同步给其他设备" }),
+    });
+    expect(created.status).toBe(201);
+    expect(published).toMatchObject([{ channelId: channel.id, content: "同步给其他设备" }]);
+    const messageChunk = await reader?.read();
+    const messageEvent = new TextDecoder().decode(messageChunk?.value);
+    expect(messageEvent).toContain("event: message.created");
+    expect(messageEvent).toContain("同步给其他设备");
+
+    await reader?.cancel();
+    controller.abort();
+    unsubscribe();
+  });
+
+  it("rejects an event stream for an unknown channel", async () => {
+    const app = createApp({ listNodes: () => [], store: createTestStore() });
+    const response = await app.request(
+      "/api/v1/channels/00000000-0000-4000-8000-000000000099/events",
+    );
+    expect(response.status).toBe(404);
+  });
 });
 
 function createTestStore(): ControlPlaneStore {
@@ -140,6 +191,9 @@ function createTestStore(): ControlPlaneStore {
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
 
   return {
+    async channelExists(channelId: string) {
+      return channels.some((channel) => channel.id === channelId);
+    },
     async listBots() {
       return bots;
     },

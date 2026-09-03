@@ -1,4 +1,9 @@
-import type { BootstrapSummary, ExecutionNode, WorkspaceSnapshot } from "@openbot/domain";
+import type {
+  BootstrapSummary,
+  ChannelRealtimeEvent,
+  ExecutionNode,
+  WorkspaceSnapshot,
+} from "@openbot/domain";
 import {
   createBotInputSchema,
   createChannelInputSchema,
@@ -8,7 +13,9 @@ import {
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
+import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
   StoreConflictError,
   StoreNotFoundError,
@@ -18,11 +25,13 @@ import {
 
 export interface AppDependencies {
   listNodes: () => ExecutionNode[];
+  realtime?: ChannelRealtimeHub;
   store: ControlPlaneStore;
 }
 
 export function createApp(dependencies: AppDependencies) {
   const app = new Hono();
+  const realtime = dependencies.realtime ?? new ChannelRealtimeHub();
 
   app.use(logger());
   app.use(
@@ -101,9 +110,70 @@ export function createApp(dependencies: AppDependencies) {
     }),
   );
 
+  app.get("/api/v1/channels/:channelId/events", async (context) => {
+    const channelId = context.req.param("channelId");
+    if (!(await dependencies.store.channelExists(channelId))) {
+      throw new StoreNotFoundError("Channel not found.");
+    }
+
+    return streamSSE(context, async (stream) => {
+      const queued: ChannelRealtimeEvent[] = [];
+      let wake: (() => void) | undefined;
+      let closed = false;
+      const unsubscribe = realtime.subscribe(channelId, (event) => {
+        queued.push(event);
+        wake?.();
+        wake = undefined;
+      });
+      stream.onAbort(() => {
+        closed = true;
+        wake?.();
+        wake = undefined;
+        unsubscribe();
+      });
+
+      await stream.writeSSE({
+        event: "channel.ready",
+        retry: 2000,
+        data: JSON.stringify({
+          type: "channel.ready",
+          channelId,
+          occurredAt: new Date().toISOString(),
+        } satisfies ChannelRealtimeEvent),
+      });
+
+      try {
+        while (!closed && !stream.aborted) {
+          if (queued.length === 0) {
+            const timedOut = await waitForEventOrTimeout((resume) => {
+              wake = resume;
+            });
+            wake = undefined;
+            if (timedOut && !closed && !stream.aborted) {
+              await stream.writeSSE({ event: "heartbeat", data: new Date().toISOString() });
+            }
+          }
+
+          let event = queued.shift();
+          while (event !== undefined && !closed && !stream.aborted) {
+            await stream.writeSSE({
+              event: event.type,
+              ...(event.type === "message.created" ? { id: event.message.id } : {}),
+              data: JSON.stringify(event),
+            });
+            event = queued.shift();
+          }
+        }
+      } finally {
+        unsubscribe();
+      }
+    });
+  });
+
   app.post("/api/v1/channels/:channelId/messages", async (context) => {
     const input = await parseRequest(context.req.raw, createMessageInputSchema);
     const message = await dependencies.store.createMessage(context.req.param("channelId"), input);
+    realtime.publish({ type: "message.created", channelId: message.channelId, message });
     return context.json({ message }, 201);
   });
 
@@ -137,6 +207,24 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   return app;
+}
+
+const channelHeartbeatMs = 15_000;
+
+function waitForEventOrTimeout(setWake: (wake: () => void) => void): Promise<boolean> {
+  return new Promise((resolve) => {
+    let completed = false;
+    const timer = setTimeout(() => {
+      completed = true;
+      resolve(true);
+    }, channelHeartbeatMs);
+    setWake(() => {
+      if (completed) return;
+      clearTimeout(timer);
+      completed = true;
+      resolve(false);
+    });
+  });
 }
 
 class RequestValidationError extends Error {

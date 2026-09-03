@@ -1,6 +1,11 @@
 import type { Bot, Channel, Message } from "@openbot/domain";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { createMessage, listMessages } from "../api";
+import {
+  createMessage,
+  listMessages,
+  type RealtimeConnectionState,
+  subscribeToChannelEvents,
+} from "../api";
 import { BotIcon, HashIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -22,22 +27,42 @@ export function ChannelWorkspace({
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [messageError, setMessageError] = useState<string>();
   const [sending, setSending] = useState(false);
+  const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
   const messageList = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    setMessagesLoading(true);
-    setMessageError(undefined);
-    void listMessages(channel.id, controller.signal)
-      .then((items) => setMessages(items))
-      .catch((cause: unknown) => {
+    let initialSync = true;
+    const syncMessages = async () => {
+      try {
+        const items = await listMessages(channel.id, controller.signal);
+        setMessages((current) => mergeMessages(items, current));
+        setMessageError(undefined);
+      } catch (cause: unknown) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
         setMessageError(cause instanceof Error ? cause.message : "无法读取本地消息。");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setMessagesLoading(false);
-      });
-    return () => controller.abort();
+      } finally {
+        if (!controller.signal.aborted && initialSync) {
+          initialSync = false;
+          setMessagesLoading(false);
+        }
+      }
+    };
+    const unsubscribe = subscribeToChannelEvents(channel.id, {
+      onMessage(message) {
+        setMessages((current) => mergeMessages(current, [message]));
+      },
+      onReady() {
+        void syncMessages();
+      },
+      onState: setRealtimeState,
+    });
+    setMessagesLoading(true);
+    setMessageError(undefined);
+    return () => {
+      controller.abort();
+      unsubscribe();
+    };
   }, [channel.id]);
 
   useEffect(() => {
@@ -65,7 +90,7 @@ export function ChannelWorkspace({
     setMessageError(undefined);
     try {
       const message = await createMessage(channel.id, { content });
-      setMessages((current) => [...current, message]);
+      setMessages((current) => mergeMessages(current, [message]));
       setMessageText("");
     } catch (cause) {
       setMessageError(cause instanceof Error ? cause.message : "消息未能保存。");
@@ -140,7 +165,13 @@ export function ChannelWorkspace({
             <h2>频道消息</h2>
             <p>消息保存在你自己的 PostgreSQL 中。</p>
           </div>
-          <span>{messages.length} 条</span>
+          <div className="realtime-summary">
+            <span>最近 {messages.length} 条</span>
+            <span className={`realtime-state ${realtimeState}`}>
+              <i />
+              {realtimeLabel(realtimeState)}
+            </span>
+          </div>
         </div>
 
         <div className="message-list" ref={messageList} aria-live="polite">
@@ -203,4 +234,21 @@ function formatMessageTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function mergeMessages(primary: Message[], secondary: Message[]): Message[] {
+  const byId = new Map<string, Message>();
+  for (const message of [...primary, ...secondary]) byId.set(message.id, message);
+  return Array.from(byId.values())
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .slice(-200);
+}
+
+function realtimeLabel(state: RealtimeConnectionState) {
+  const labels: Record<RealtimeConnectionState, string> = {
+    connecting: "连接中",
+    live: "实时",
+    retrying: "重连中",
+  };
+  return labels[state];
 }

@@ -1,6 +1,7 @@
 import type {
   Bot,
   Channel,
+  ChannelRealtimeEvent,
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
@@ -73,6 +74,81 @@ export async function createMessage(
   return result.message;
 }
 
+export type RealtimeConnectionState = "connecting" | "live" | "retrying";
+
+export function subscribeToChannelEvents(
+  channelId: string,
+  handlers: {
+    onMessage(message: Message): void;
+    onReady(): void;
+    onState(state: RealtimeConnectionState): void;
+  },
+): () => void {
+  const reconnectDelayMs = 2000;
+  const staleAfterMs = 35_000;
+  let source: EventSource | undefined;
+  let reconnectTimer: number | undefined;
+  let closed = false;
+  let lastActivityAt = Date.now();
+
+  const markLive = () => {
+    lastActivityAt = Date.now();
+    handlers.onState("live");
+  };
+  const onReady = () => {
+    markLive();
+    handlers.onReady();
+  };
+  const onMessage = (event: Event) => {
+    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
+    try {
+      const payload: unknown = JSON.parse(event.data);
+      if (isMessageCreatedEvent(payload, channelId)) {
+        markLive();
+        handlers.onMessage(payload.message);
+      }
+    } catch {
+      // Ignore malformed frames and keep the stream available for the next valid event.
+    }
+  };
+  const scheduleReconnect = () => {
+    if (closed || reconnectTimer !== undefined) return;
+    source?.close();
+    source = undefined;
+    handlers.onState("retrying");
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = undefined;
+      connect();
+    }, reconnectDelayMs);
+  };
+  const connect = () => {
+    if (closed) return;
+    const nextSource = new EventSource(`/api/v1/channels/${channelId}/events`);
+    source = nextSource;
+    lastActivityAt = Date.now();
+    nextSource.onopen = markLive;
+    nextSource.onerror = () => {
+      if (source === nextSource) scheduleReconnect();
+    };
+    nextSource.addEventListener("channel.ready", onReady);
+    nextSource.addEventListener("heartbeat", markLive);
+    nextSource.addEventListener("message.created", onMessage);
+  };
+
+  handlers.onState("connecting");
+  connect();
+  const watchdog = window.setInterval(() => {
+    if (Date.now() - lastActivityAt > staleAfterMs) scheduleReconnect();
+  }, 5000);
+
+  return () => {
+    closed = true;
+    source?.close();
+    window.clearInterval(watchdog);
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+  };
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
@@ -83,4 +159,26 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     );
   }
   return (await response.json()) as T;
+}
+
+function isMessageCreatedEvent(
+  value: unknown,
+  channelId: string,
+): value is Extract<ChannelRealtimeEvent, { type: "message.created" }> {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("type" in value) || value.type !== "message.created") return false;
+  if (!("channelId" in value) || value.channelId !== channelId) return false;
+  if (!("message" in value) || typeof value.message !== "object" || value.message === null) {
+    return false;
+  }
+  return (
+    "id" in value.message &&
+    typeof value.message.id === "string" &&
+    "channelId" in value.message &&
+    value.message.channelId === channelId &&
+    "content" in value.message &&
+    typeof value.message.content === "string" &&
+    "createdAt" in value.message &&
+    typeof value.message.createdAt === "string"
+  );
 }

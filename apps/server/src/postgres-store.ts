@@ -27,6 +27,15 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     this.#db = database;
   }
 
+  async channelExists(channelId: string): Promise<boolean> {
+    const rows = await this.#db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async listChannels(): Promise<Channel[]> {
     const rows = await this.#db
       .select({
@@ -256,12 +265,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   }
 
   async #requireChannel(channelId: string): Promise<void> {
-    const rows = await this.#db
-      .select({ id: channels.id })
-      .from(channels)
-      .where(eq(channels.id, channelId))
-      .limit(1);
-    if (rows.length === 0) {
+    if (!(await this.channelExists(channelId))) {
       throw new StoreNotFoundError("Channel not found.");
     }
   }

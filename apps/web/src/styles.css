@@ -737,9 +737,35 @@ select:focus-visible {
   justify-content: space-between;
   gap: 16px;
 }
-.conversation-heading > span {
+.realtime-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   color: #8b929a;
   font-size: 11px;
+}
+.realtime-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.realtime-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a1a7ae;
+}
+.realtime-state.live {
+  color: var(--green);
+}
+.realtime-state.live i {
+  background: var(--green);
+}
+.realtime-state.retrying {
+  color: var(--orange);
+}
+.realtime-state.retrying i {
+  background: var(--orange);
 }
 .message-list {
   min-height: 260px;

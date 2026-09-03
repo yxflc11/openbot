@@ -4,7 +4,7 @@
 
 OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
 
-当前状态：**M0 第二切片推进中：PostgreSQL 持久化、频道/Bot 管理、Node 状态、Marvis 式办公室和本地频道消息已跑通。**
+当前状态：**M0 第三切片推进中：PostgreSQL 持久化、频道/Bot 管理、Node 状态、Marvis 式办公室、本地频道消息和多设备实时同步已跑通。**
 
 ## 产品公式
 
@@ -178,7 +178,7 @@ npm run check
 npm audit
 ```
 
-此时可运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息和节点登记；任务派发、审批和远程接管仍将按 M1–M2 逐步接入。
+此时可运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步和节点登记；任务派发、审批和远程接管仍将按 M1–M2 逐步接入。
 
 ## 文档
 
@@ -193,6 +193,8 @@ npm audit
 - [ADR-0002：本地频道与 Server/Node 架构](docs/decisions/0002-local-channel-server-node.md)
 - [ADR-0003：Marvis 办公室与 Grok Bot 频道](docs/decisions/0003-marvis-office-grok-channels.md)
 - [ADR-0004：基础阶段采用单一 monorepo](docs/decisions/0004-monorepo-foundation.md)
+- [ADR-0005：PostgreSQL 控制面](docs/decisions/0005-postgres-control-plane.md)
+- [ADR-0006：频道实时传输采用 REST + SSE](docs/decisions/0006-channel-realtime-sse.md)
 - [声明式配置草案](examples/openbot.example.yaml)
 
 ## 开源注意事项

@@ -14,6 +14,7 @@ export interface PersistedCounts {
 }
 
 export interface ControlPlaneStore {
+  channelExists(channelId: string): Promise<boolean>;
   listChannels(): Promise<Channel[]>;
   listBots(): Promise<Bot[]>;
   listMessages(channelId: string): Promise<Message[]>;

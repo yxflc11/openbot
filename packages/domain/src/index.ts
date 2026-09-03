@@ -67,6 +67,18 @@ export interface Message {
   createdAt: string;
 }
 
+export type ChannelRealtimeEvent =
+  | {
+      type: "channel.ready";
+      channelId: EntityId;
+      occurredAt: string;
+    }
+  | {
+      type: "message.created";
+      channelId: EntityId;
+      message: Message;
+    };
+
 export interface BootstrapSummary {
   project: "openbot";
   phase: "foundation" | "m0";

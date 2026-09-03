@@ -189,6 +189,8 @@ sequenceDiagram
 
 办公室、频道和移动端由同一份 Server 事件投影，不解析聊天文本猜状态：
 
+M0 已通过频道级 SSE 投影 `MESSAGE_CREATED`，REST 继续承担写命令；Web 会合并历史快照与实时消息，并显示连接、实时或重连状态。Run、审批、Node 和画面事件将在各自数据模型落地后接入同一模式。
+
 | 事件 | UI 投影 |
 | --- | --- |
 | `CHANNEL_CREATED` | 左栏频道 |
