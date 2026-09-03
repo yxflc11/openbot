@@ -62,10 +62,11 @@
 
 ## 高级：每 Node 独立注册
 
-- **结果：**共享 Node Token 被每台工作主机可单独吊销的凭证替代。
+- **结果：**把当前可单独吊销的 bearer credential 升级为可轮换、具有持有证明的工作主机身份。
 - **路径：**`apps/server`、`apps/node`、`packages/protocol` 和部署文档。
 - **先调研：**SPIFFE/SPIRE、mTLS 引导、短期证书轮换与设备注册威胁模型。
-- **验收：**单次注册、持有证明、轮换、吊销、防重放、Server 审计，并且 Node 不开放公网端口。
+- **验收：**保留单次登记与吊销；增加不可导出密钥支持、挑战应答、轮换、防重放测试、Server
+  审计，并且 Node 不开放公网端口。
 - **不包含：**员工身份或操作系统账户创建。
 
 ## 平台：Windows、macOS 或 Linux 原生 Provider

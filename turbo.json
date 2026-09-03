@@ -1,6 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalPassThroughEnv": ["GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "OPENBOT_DATABASE_URL"],
+  "globalPassThroughEnv": [
+    "GITHUB_EVENT_NAME",
+    "GITHUB_EVENT_PATH",
+    "OPENBOT_ALLOWED_ORIGINS",
+    "OPENBOT_DATABASE_URL",
+    "OPENBOT_NODE_ID",
+    "OPENBOT_NODE_SERVER_URL",
+    "OPENBOT_OWNER_PASSWORD"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

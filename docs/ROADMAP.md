@@ -54,7 +54,7 @@ diff 审核，以及签名后的导入审核与激活设计。
 - Linux x64/arm64 生产 Server 镜像，可运行在 Linux、NAS、云、macOS 或 Windows 容器主机。
 - 结构化 Worker Host 身份、版本化 capability 和确定性能力路由。
 - Windows、macOS、Linux Node daemon 的共同生命周期和兼容测试。
-- 独立 Node enrollment、证书轮换、吊销和防重放。
+- 已完成一次性 Node enrollment 与单节点吊销；继续完成持有证明、证书轮换、系统密钥库和防重放。
 
 ### 过线测试
 
@@ -155,6 +155,6 @@ Provider 请使用专门 Issue 表单，不要用能力声明代替真实设备�
 5. `Security: implement Owner publisher-key storage, rotation, revocation, and signed HTTP export`
 6. `Import: add explicit Owner review receipts before activation`
 7. `Memory: add retention, redaction, deletion, and selective export controls`
-8. `Node identity: replace shared enrollment token with per-Node credentials`
+8. `Node identity: add proof-of-possession, rotation, native keyrings, and replay protection`
 9. `Approval: issue single-use capability leases bound to target fingerprints`
 10. `Web: add accessible internationalization for Employee portability flows`

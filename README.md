@@ -60,7 +60,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
 | Employee profile | Seven-view profile, safe template export, quarantined import inspection, Owner-reviewed skill metadata, and a tested DSSE signing/verification primitive | Publisher-key lifecycle, signed export/import routes, executable Agent Skills bundles, memory controls, reviewed activation, cloning, and transfer |
-| Node protocol | Outbound WebSocket registration, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and real-device conformance reports |
+| Node protocol | Outbound WebSocket registration, one-time enrollment, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Proof-of-possession identity, mTLS, rotation, replay protection, native keyring adapters, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
 | Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
@@ -71,7 +71,9 @@ and back. The table deliberately separates working code from planned capabilitie
 - It does not perform unattended form submissions or arbitrary desktop actions.
 - It does not yet issue cryptographic, single-use capability leases after approval.
 - It does not provide continuous remote desktop control.
-- It does not yet have production-grade Node identity, mTLS, or credential rotation.
+- Node enrollment is individually revocable, but the current credential is still a bearer secret
+  stored in an Owner-only file. It is not yet proof-of-possession identity, mTLS, or native-keyring
+  storage and must stay behind WSS and a trusted private network.
 - It does not yet propose or execute learned skills autonomously, edit memory, activate imported
   employee packages, clone employees, or transfer ownership.
 - The current employee template is checksum-protected but unsigned. It carries no memory or host
@@ -98,23 +100,33 @@ cd openbot
 cp .env.example .env
 ```
 
-Edit `.env` and replace at least these development placeholders with independent random secrets:
+Edit `.env` and replace the Owner password placeholder:
 
 ```dotenv
 OPENBOT_OWNER_PASSWORD=<a-random-password-with-at-least-12-characters>
-OPENBOT_NODE_TOKEN=<a-random-node-enrollment-token>
 ```
 
-Then start PostgreSQL and all application workspaces:
+Install dependencies, start PostgreSQL, then run the Server and Web app:
 
 ```bash
 npm install
 npm run db:up
-npm run dev
+npm run dev:server
+# In another terminal:
+npm run dev:web
 ```
 
-Open <http://localhost:5173>, sign in with `OPENBOT_OWNER_PASSWORD`, create a Bot, create a channel,
-and add the Bot to that channel.
+Create a short-lived, one-time token for this Node while the Server is running:
+
+```bash
+npm run node:enrollment-token -- local-development-node
+```
+
+Copy the printed `OPENBOT_NODE_ENROLLMENT_TOKEN` into `.env`, run `npm run dev:node`, and remove the
+token from `.env` after the first successful start. The Node stores its new credential in
+`./data/node/identity.json` with Owner-only permissions and reuses it on later starts. Open
+<http://localhost:5173>, sign in with `OPENBOT_OWNER_PASSWORD`, create a Bot and channel, then add
+the Bot to that channel. See [Node enrollment](docs/NODE_ENROLLMENT.md) before pairing a remote host.
 
 By default, the local Node honestly advertises no execution capability. Messages are still stored
 as queued Runs until a compatible provider is configured. Stop PostgreSQL with `npm run db:stop`.

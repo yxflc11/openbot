@@ -14,12 +14,14 @@ const nodeIdSchema = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/, "Use a stable machine identifier.");
 const nodeEnrollmentTokenSchema = z
   .string()
-  .min(32)
-  .max(4096)
-  .refine(
-    (value) => value !== "replace-with-an-enrollment-token",
-    "Replace the example Node enrollment token before starting OpenBot.",
-  );
+  .min(48)
+  .max(256)
+  .regex(/^obenr_[A-Za-z0-9_-]+$/, "Use an OpenBot Node enrollment token.");
+const nodeCredentialSchema = z
+  .string()
+  .min(47)
+  .max(256)
+  .regex(/^obn_[A-Za-z0-9_-]+$/, "Use an OpenBot Node credential.");
 const nodeServerUrlSchema = z
   .string()
   .url()
@@ -42,7 +44,6 @@ export const serverEnvSchema = z
     OPENBOT_HOST: z.string().default("127.0.0.1"),
     OPENBOT_PORT: portSchema.default(3001),
     OPENBOT_DATABASE_URL: z.string().default("postgres://openbot:openbot@localhost:5432/openbot"),
-    OPENBOT_NODE_TOKEN: nodeEnrollmentTokenSchema,
     OPENBOT_OWNER_NAME: z.string().trim().min(1).max(80).default("Owner"),
     OPENBOT_OWNER_PASSWORD: z
       .string()
@@ -101,7 +102,9 @@ export const nodeEnvSchema = z
   .object({
     OPENBOT_NODE_ID: nodeIdSchema,
     OPENBOT_NODE_SERVER_URL: nodeServerUrlSchema.default("ws://localhost:3001/ws/nodes"),
-    OPENBOT_NODE_TOKEN: nodeEnrollmentTokenSchema,
+    OPENBOT_NODE_ENROLLMENT_TOKEN: nodeEnrollmentTokenSchema.optional(),
+    OPENBOT_NODE_CREDENTIAL: nodeCredentialSchema.optional(),
+    OPENBOT_NODE_CREDENTIAL_PATH: z.string().trim().min(1).optional(),
     OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
     OPENBOT_NODE_WORK_DIRECTORY: z.string().default("./data/node"),
     OPENBOT_DOCKER_COMPUTER_URL: z.string().url().optional(),

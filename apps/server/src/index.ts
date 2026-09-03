@@ -6,8 +6,10 @@ import { createApp } from "./app.js";
 import { FileArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { closeHttpServer } from "./http-shutdown.js";
+import { NodeIdentityService } from "./node-identity.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
+import { PostgresNodeIdentityStore } from "./postgres-node-identity-store.js";
 import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
 import { RunDispatcher } from "./run-dispatcher.js";
@@ -18,7 +20,8 @@ const env = serverEnvSchema.parse(process.env);
 const HTTP_SHUTDOWN_GRACE_MS = 10_000;
 const database = createDatabase(env.OPENBOT_DATABASE_URL);
 await database.migrate();
-const nodeRegistry = new NodeRegistry(env.OPENBOT_NODE_TOKEN);
+const nodeIdentity = new NodeIdentityService(new PostgresNodeIdentityStore(database.db));
+const nodeRegistry = new NodeRegistry(nodeIdentity);
 const realtime = new ChannelRealtimeHub();
 const workspaceRealtime = new WorkspaceRealtimeHub();
 const unsubscribeNodeEvents = [
@@ -54,7 +57,9 @@ const app = createApp({
   artifactStorage,
   auth,
   dispatchRun: (run) => dispatcher.enqueue(run),
+  disconnectNode: (nodeId) => nodeRegistry.disconnect(nodeId),
   listNodes: () => nodeRegistry.list(),
+  nodeIdentity,
   realtime,
   resolveApproval: (resolution) => dispatcher.resolveApproval(resolution),
   runFrames,

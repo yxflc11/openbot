@@ -18,9 +18,11 @@
     "@openbot/provider-docker": "0.0.0",
     "@openbot/provider-lume": "0.0.0",
     "@openbot/provider-sdk": "0.0.0",
+    "write-file-atomic": "^8.0.0",
     "ws": "8.21.3"
   },
   "devDependencies": {
+    "@types/write-file-atomic": "^4.0.3",
     "@types/ws": "8.18.1",
     "tsx": "4.23.13"
   }

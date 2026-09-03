@@ -52,7 +52,7 @@ native desktop. Each native Provider has a separate support level and threat mod
 
 ## Structured host identity
 
-Protocol `0.8.0` already declares:
+Protocol `0.9.0` already declares:
 
 - operating system and version;
 - CPU architecture;
@@ -63,11 +63,11 @@ Protocol `0.8.0` already declares:
 Provider package versions, screen/input transports, supported policy profiles, health details, and
 update channels remain planned. The handshake is an execution claim, not an authorization grant.
 
-The current development channel bounds enrollment and messages, verifies ping/pong liveness, and
-keeps Run assignments Server-owned. It still uses one deployment-wide token, so a host possessing
-that secret can claim another Node ID. Production identity, one-time enrollment, rotation,
-revocation, and replay protection remain planned; see
-[ADR-0017](decisions/0017-node-channel-authority-and-liveness.md).
+The current channel bounds enrollment and messages, verifies ping/pong liveness, and keeps Run
+assignments Server-owned. A short-lived one-time token creates one individually revocable Node
+credential; the Server stores only digests. The credential is still a copyable bearer value, so
+proof of possession, native keyring storage, mTLS, rotation, and replay protection remain planned;
+see [ADR-0023](decisions/0023-one-time-node-enrollment.md).
 
 Bot configuration should select a capability policy, not an OS enum. It may optionally pin an
 employee to a specific host, but the model cannot change that pin or select another host.

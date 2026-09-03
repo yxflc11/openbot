@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   check,
   index,
@@ -9,7 +10,6 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -213,6 +213,66 @@ export const nodes = pgTable(
   },
   (table) => [
     check("nodes_max_concurrent_runs_valid", sql`${table.maxConcurrentRuns} BETWEEN 1 AND 16`),
+  ],
+);
+
+export const nodeEnrollmentTokens = pgTable(
+  "node_enrollment_tokens",
+  {
+    id: text("id").primaryKey(),
+    nodeId: text("node_id").notNull(),
+    tokenDigest: text("token_digest").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("node_enrollment_tokens_digest_idx").on(table.tokenDigest),
+    uniqueIndex("node_enrollment_tokens_one_active_per_node_idx")
+      .on(table.nodeId)
+      .where(sql`${table.consumedAt} IS NULL`),
+    index("node_enrollment_tokens_expiry_idx")
+      .on(table.expiresAt)
+      .where(sql`${table.consumedAt} IS NULL`),
+    check("node_enrollment_tokens_digest_valid", sql`length(${table.tokenDigest}) = 64`),
+    check("node_enrollment_tokens_node_id_not_blank", sql`length(btrim(${table.nodeId})) > 0`),
+  ],
+);
+
+export const nodeCredentials = pgTable(
+  "node_credentials",
+  {
+    nodeId: text("node_id").primaryKey(),
+    credentialDigest: text("credential_digest").notNull(),
+    enrolledAt: timestamp("enrolled_at", { withTimezone: true }).notNull(),
+    lastAuthenticatedAt: timestamp("last_authenticated_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("node_credentials_digest_idx").on(table.credentialDigest),
+    index("node_credentials_active_idx").on(table.nodeId).where(sql`${table.revokedAt} IS NULL`),
+    check("node_credentials_digest_valid", sql`length(${table.credentialDigest}) = 64`),
+    check("node_credentials_node_id_not_blank", sql`length(btrim(${table.nodeId})) > 0`),
+  ],
+);
+
+export const nodeIdentityEvents = pgTable(
+  "node_identity_events",
+  {
+    id: text("id").primaryKey(),
+    nodeId: text("node_id").notNull(),
+    type: text("type").notNull(),
+    details: jsonb("details").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("node_identity_events_node_time_idx").on(table.nodeId, table.createdAt),
+    check(
+      "node_identity_events_type_valid",
+      sql`${table.type} IN ('enrollment_created', 'enrolled', 'revoked')`,
+    ),
+    check("node_identity_events_node_id_not_blank", sql`length(btrim(${table.nodeId})) > 0`),
   ],
 );
 

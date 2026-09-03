@@ -1,16 +1,20 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { nodeEnvSchema } from "@openbot/config";
-import type { ComputerProvider } from "@openbot/provider-sdk";
 import {
   nodeMessageSchema,
   protocolVersion,
   type RunOffer,
   type ServerMessage,
 } from "@openbot/protocol";
+import type { ComputerProvider } from "@openbot/provider-sdk";
 import { describe, expect, it } from "vitest";
 import { type WebSocket, WebSocketServer } from "ws";
 import { OpenBotNodeClient, runOfferRejectionReason } from "./client.js";
+import type { NodeCredentialStore } from "./credential-store.js";
+
+const nodeCredential = `obn_${"a".repeat(43)}`;
+const enrollmentToken = `obenr_${"b".repeat(43)}`;
 
 const offer: RunOffer = {
   type: "run.offer",
@@ -112,7 +116,7 @@ describe("node run offers", () => {
       nodeEnvSchema.parse({
         OPENBOT_NODE_ID: "test-node",
         OPENBOT_NODE_SERVER_URL: `ws://127.0.0.1:${address.port}`,
-        OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
+        OPENBOT_NODE_CREDENTIAL: nodeCredential,
       }),
       [provider],
     );
@@ -195,6 +199,82 @@ describe("node run offers", () => {
         "approval.request",
         "run.completed",
       ]);
+    } finally {
+      client.stop();
+      for (const socket of gateway.clients) socket.terminate();
+      await new Promise<void>((resolve) => gateway.close(() => resolve()));
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("exchanges a one-time token and persists the credential before connecting", async () => {
+    let enrollmentBody: unknown;
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      enrollmentBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      response.writeHead(201, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          format: "openbot.node-identity/v1",
+          nodeId: "fresh-node",
+          credential: nodeCredential,
+          enrolledAt: "2026-09-04T00:00:00.000Z",
+        }),
+      );
+    });
+    const gateway = new WebSocketServer({ server });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    let savedCredential: string | undefined;
+    const credentialStore: NodeCredentialStore = {
+      async load() {
+        return undefined;
+      },
+      async save(identity) {
+        savedCredential = identity.credential;
+      },
+    };
+    let resolveHello: (() => void) | undefined;
+    const helloReceived = new Promise<void>((resolve) => {
+      resolveHello = resolve;
+    });
+    gateway.on("connection", (socket) => {
+      socket.once("message", (raw) => {
+        const parsed = nodeMessageSchema.parse(JSON.parse(raw.toString()));
+        expect(parsed).toMatchObject({
+          type: "node.hello",
+          nodeId: "fresh-node",
+          credential: nodeCredential,
+        });
+        expect(savedCredential).toBe(nodeCredential);
+        send(socket, {
+          type: "server.ack",
+          protocolVersion,
+          accepted: true,
+          receivedAt: new Date().toISOString(),
+        });
+        resolveHello?.();
+      });
+    });
+    const client = new OpenBotNodeClient(
+      nodeEnvSchema.parse({
+        OPENBOT_NODE_ID: "fresh-node",
+        OPENBOT_NODE_SERVER_URL: `ws://127.0.0.1:${address.port}/ws/nodes`,
+        OPENBOT_NODE_ENROLLMENT_TOKEN: enrollmentToken,
+      }),
+      [],
+      credentialStore,
+    );
+
+    try {
+      client.start();
+      await withTimeout(helloReceived);
+      expect(enrollmentBody).toEqual({ nodeId: "fresh-node", token: enrollmentToken });
     } finally {
       client.stop();
       for (const socket of gateway.clients) socket.terminate();

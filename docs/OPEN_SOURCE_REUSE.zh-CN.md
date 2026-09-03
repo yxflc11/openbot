@@ -52,8 +52,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | 浏览器控制面安全 | [Hono `e2740d5a`](https://github.com/honojs/hono/tree/e2740d5a1bd0b4254e517e3af8b60789284bc7bd) 与 [OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035) | MIT；文档 CC BY-SA 4.0 | 复用 Hono 4.13.5 的 `secureHeaders`；采用 OWASP 的 Secure/HttpOnly/SameSite、精确 Origin、TLS 与 `__Host-` 指引。远程错误配置现在启动即失败。未复制上游源码或文字。 |
 | 实时过载恢复 | [Hono streaming `e2740d5a`](https://github.com/honojs/hono/blob/e2740d5a1bd0b4254e517e3af8b60789284bc7bd/src/utils/stream.ts) | MIT | 保留 Hono 感知背压的 writer，只补 OpenBot 缺失的订阅策略：128 事件上限、溢出断开、权威快照恢复。未复制上游源码。 |
 | Node 通道权威与存活 | [`ws` 8.21.3 `c791e707`](https://github.com/websockets/ws/tree/c791e707eab3c13dd9a261d2479c3cc4a49a6fed)、[Kubernetes Node heartbeat KEP `e849163a`](https://github.com/kubernetes/enhancements/blob/e849163ac4a0a5241ba626bd9a99820bf1dcd279/keps/sig-node/589-efficient-node-heartbeats/README.md) 与 [Nomad `482b49bf`](https://github.com/hashicorp/nomad/tree/482b49bf1aec006f089bcfc7e632d8f6ac303e5e) | MIT；Apache-2.0；MPL-2.0 | 复用 `ws` 消息上限和 ping/pong，把存活报告与 Server 权威任务分配分开。限制消息与登记时间、拒绝重复 hello，并清退失联 socket。没有复制上游源码。 |
-| 未来单 Node 工作负载身份 | [SPIFFE `99470b9a`](https://github.com/spiffe/spiffe/tree/99470b9abc825f14aa364dfa2c3b53b02ba5db5b) 与 [Tailscale `92ec1026`](https://github.com/tailscale/tailscale/tree/92ec102673bf46d72bab64b0a278b93c01a47f34) | Apache-2.0；BSD-3-Clause | 已调研持钥证明、轮换与吊销；在 OpenBot 定义持久化一次性登记和管理员恢复路径前暂缓，不能把共享开发令牌包装成生产身份。 |
-| Artifact 原子文件写入 | [`npm/write-file-atomic` 8.0.0](https://github.com/npm/write-file-atomic/tree/v8.0.0) | ISC | 直接使用发布依赖完成 fsync、原子 rename、同目标串行化和失败临时文件清理，不再本地维护这些机制。最终文件仍为 `0600`；没有复制上游源码。 |
+| Node 启动身份 | [SPIFFE `99470b9a`](https://github.com/spiffe/spiffe/tree/99470b9abc825f14aa364dfa2c3b53b02ba5db5b)、[SPIRE 1.15.2](https://github.com/spiffe/spire/tree/v1.15.2)、[Tailscale `92ec1026`](https://github.com/tailscale/tailscale/tree/92ec102673bf46d72bab64b0a278b93c01a47f34)、[Headscale 0.29.3](https://github.com/juanfont/headscale/tree/v0.29.3)、[Kubernetes 1.36.2](https://github.com/kubernetes/kubernetes/tree/v1.36.2) 与 [Smallstep Certificates 0.30.2](https://github.com/smallstep/certificates/tree/v0.30.2) | Apache-2.0；BSD-3-Clause | 采用短时单次启动、Server 只存摘要、独立 Node 状态、吊销和只显示一次。HTTP/文件机制复用 Hono 与 `write-file-atomic`；本地只实现 OpenBot 的 PostgreSQL 事务、协议和审计差集。持有证明、PKI、轮换、系统密钥库和防重放另行审查。没有复制上游源码。 |
+| 敏感文件原子写入 | [`npm/write-file-atomic` 8.0.0](https://github.com/npm/write-file-atomic/tree/v8.0.0) | ISC | 直接使用发布依赖完成 fsync、原子 rename、同目标串行化和失败临时文件清理，不再本地维护这些机制。Artifact 与 Node 凭证文件均保持经测试的 `0600` 权限；没有复制上游源码。 |
 | 不可信 PNG 校验候选 | [`image-js/fast-png` 8.0.0](https://github.com/image-js/fast-png/tree/v8.0.0) 与 [`sharp` 0.35.0](https://github.com/lovell/sharp/tree/v0.35.0) | MIT；Apache-2.0 | 完整解码和归一化暂缓。`fast-png` 没有输入像素资源上限；`sharp` 有上限，但原生包必须先通过 Server 的 Linux x64/arm64 打包矩阵。当前签名检查明确不代表 PNG 完整有效。 |
 | Node 协议输入校验 | [Zod 4.5.4 `e8e206fa`](https://github.com/colinhacks/zod/tree/e8e206fa33ac5fe7ce20a2beb12d57b1cb3df653)、[OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035) 与 [MCP TypeScript SDK `5119ee7f`](https://github.com/modelcontextprotocol/typescript-sdk/tree/5119ee7fd7790e335a3fb60ef36f85334e2a6326) | MIT；文档 CC BY-SA 4.0；MIT | 复用现有固定版本的 Zod 实现严格消息与字段边界，并采用 OWASP 的白名单和范围原则。OpenBot 只保留协议特有的有界审批证据遍历；MCP 仅作协议校验先例，不共享 Node 权威语义。没有复制上游源码。 |
 | Server 有界停机 | [Node.js HTTP 文档 `2645dc73`](https://github.com/nodejs/node/blob/2645dc73720b1b4f27c49f395d3c66025ce126cc/doc/api/http.md)、[`@hono/node-server` `73c03adf`](https://github.com/honojs/node-server/tree/73c03adfb01928fcd5f5b20faebd5d692f83fc93)、[Fastify 生命周期文档 `af079bd4`](https://github.com/fastify/fastify/blob/af079bd4c60c3cbebedc7640517d7288468fb5eb/docs/Reference/Server.md) 与 [`@godaddy/terminus` `aea2f6de`](https://github.com/godaddy/terminus/tree/aea2f6de06dbc9f631dd4ac8a21b91c052add3ce) | MIT | 复用 Hono 已返回的 Node 原生 close/空闲连接/强制关闭生命周期；本地只补 OpenBot 调度尾任务排空。Terminus 无法观察 Server 权威 Run 提交，因此不新增依赖。没有复制上游源码。 |
@@ -70,7 +70,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | --- | --- | --- |
 | 员工领域、个人页、进化、技能、记忆和员工包原语 | 已审查 | 已记录 Hermes、Agent Skills、OpenClaw、DSSE、Sigstore、in-toto、WAI-ARIA 与 React Spectrum；README 和员工规范明确标注进化来源。 |
 | Server 浏览器会话、Origin、实时投影、文件产物和进程停机 | 已审查 | 已记录 Hono/OWASP、Hono streaming、Node/Hono 停机、`write-file-atomic` 与 PNG 解码候选。已接受的调度工作会在 PostgreSQL 关闭前排空；分布式登录身份和完整 PNG 归一化仍是公开缺口。 |
-| Node 协议、能力路由、存活和配置 | 已审查 | 已记录 MCP/OCI conformance、`ws`、Kubernetes/Nomad、SPIFFE/Tailscale 和严格 Zod 输入；单 Node 身份仍待实现。 |
+| Node 协议、能力路由、存活、配置和启动身份 | 已审查 | 已记录 MCP/OCI conformance、`ws`、Kubernetes/Nomad、SPIFFE/SPIRE、Tailscale/Headscale、Kubernetes/Smallstep、Hono 限制、原子存储和严格 Zod 输入。单 Node 登记与吊销已完成；持有证明仍待实现。 |
 | Provider SDK 与当前 Docker 浏览器适配器 | 已审查 | 已记录 CopilotKit/OpenBot `agent-computer`、Cua、MCP conformance、OCI 和平台声明等级；原生 Provider 只能按证据宣称。 |
 | GitHub 贡献与 CI | 已审查 | 复用 Issue Form 和 RFC/KEP 证据结构；现有 checkout/setup Action 已固定到审查过的 commit，并关闭 checkout 凭证持久化。 |
 | PostgreSQL store 与 migration 生命周期 | 已审查 | 已固定 Drizzle/Postgres.js/PostgreSQL 行为；journal 与数据库历史出现漂移时 fail closed，真实 PostgreSQL CI 覆盖首次并发 migration 和重复启动。 |
@@ -88,7 +88,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - 员工导入继续执行校验和、严格 schema、只读和隔离规则。
 - Server 已有经过测试的 DSSE/Ed25519 签名与验证原语，签名覆盖之后实际解析的员工包原始字节；
   Owner 密钥生命周期与信任策略完成前不会对外启用。
-- 协议 `0.8.0` 在每个 Run offer 中发送精确能力主版本；Server 与工作主机都会拒绝缺失或
+- 协议 `0.9.0` 在每个 Run offer 中发送精确能力主版本；Server 与工作主机都会拒绝缺失或
   不兼容版本，旧能力别名不能静默降级契约。
 - Provider 声明会在 Node 启动前检查；没有 `execute` 的包不会上报为可执行能力。
 - Windows、macOS 和 Linux 具名路由场景明确区分模拟契约覆盖与真实设备支持，详见
@@ -103,8 +103,10 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
   失败关闭；心跳不能再改写 Server 权威 Run 分配。
 - 文件 Artifact 现在复用 `write-file-atomic` 完成 fsync、rename 和失败临时文件清理，最终权限经
   测试保持为 `0600`。
-- Node 协议 `0.8.0` 会拒绝未知消息字段、错误或超长身份信息、重复能力、无界审批证据、过短或
-  示例登记秘密，以及远程明文 WebSocket 配置。
+- Node 协议 `0.9.0` 会拒绝未知消息字段、错误或超长身份信息、重复能力、无界审批证据、格式错误
+  的登记凭证，以及远程明文 WebSocket 配置。
+- Owner 可以为准确 Node id 创建短时单次令牌。真实 PostgreSQL 并发测试证明只有一次兑换成功；
+  Server 只保存摘要、支持单节点吊销并断开已吊销在线 Node，Node 在建立 WebSocket 前原子保存凭证。
 - 仓库指令、功能调研模板、未来 ADR 检查和带测试的 PR 正文门禁，要求行为变化在合入前提供
   固定上游、许可证、复用选择、本地差集和源码引入证据。
 - 现有 CI 中的 GitHub Action 已固定到完整 commit，checkout 不再保留仓库凭证。
@@ -122,14 +124,13 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - Provider 仍需独立场景 runner、隔离执行测试和可重复真实设备 CI，平台才可标记为
   Supported 或 Certified。
 - `npm audit --omit=dev` 当前为零个生产依赖漏洞；完整审计在仅开发使用的
-  `drizzle-kit -> @esbuild-kit/esm-loader -> esbuild` 链路报告四个 moderate 问题。OpenBot 不开放
   Drizzle Studio，也不会采用 npm 建议的破坏性强制降级；只有兼容的上游修复版本通过审查后才升级。
 - OpenBot 在宣称无障碍合规前，仍需真实屏幕阅读器、强制颜色、缩放/回流和自定义 Overlay
   证据。
 - 登录限速尚不是可信的每设备或分布式边界；代理身份、IPv4/IPv6 规范化、共享存储和锁定通知
   语义仍未完成。
-- Node 登记仍使用部署级共享秘密；一次性登记、每 Node 持钥身份证明、轮换、吊销、防重放和持久化
-  对账仍待完成。
+- Node 启动仍使用保存在 Owner-only 文件中的可复制 bearer credential。不可导出的持有证明密钥、
+  系统密钥库、轮换、mTLS、防重放和持久化对账仍待完成。
 - PNG Artifact 已限制大小并检查签名，但还没有解码归一化；未来解码器必须限制像素/通道并通过
   发布架构矩阵。当前本地 Artifact 根目录仍是管理员可信边界，不能与不可信写入者共享。
 

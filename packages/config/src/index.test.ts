@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { nodeEnvSchema, serverEnvSchema } from "./index.js";
 
 const required = {
-  OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
   OPENBOT_OWNER_PASSWORD: "owner-password-for-tests",
 };
+const nodeCredential = `obn_${"a".repeat(43)}`;
+const enrollmentToken = `obenr_${"b".repeat(43)}`;
 
 describe("server environment", () => {
   it("normalizes local authentication settings", () => {
@@ -76,14 +77,14 @@ describe("node environment", () => {
     expect(
       nodeEnvSchema.parse({
         OPENBOT_NODE_ID: "linux-node",
-        OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
+        OPENBOT_NODE_CREDENTIAL: nodeCredential,
         OPENBOT_NODE_MAX_CONCURRENT_RUNS: "2",
       }).OPENBOT_NODE_MAX_CONCURRENT_RUNS,
     ).toBe(2);
     expect(
       nodeEnvSchema.safeParse({
         OPENBOT_NODE_ID: "linux-node",
-        OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
+        OPENBOT_NODE_CREDENTIAL: nodeCredential,
         OPENBOT_NODE_MAX_CONCURRENT_RUNS: "17",
       }).success,
     ).toBe(false);
@@ -92,7 +93,7 @@ describe("node environment", () => {
   it("enables the Docker computer only with a complete credential pair", () => {
     const base = {
       OPENBOT_NODE_ID: "linux-node",
-      OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
+      OPENBOT_NODE_CREDENTIAL: nodeCredential,
     };
     expect(
       nodeEnvSchema.safeParse({
@@ -110,16 +111,15 @@ describe("node environment", () => {
     ).toBe(true);
   });
 
-  it("requires a bounded Node id, a real enrollment secret, and WSS off loopback", () => {
+  it("requires bounded Node identity inputs and WSS off loopback", () => {
     const valid = {
       OPENBOT_NODE_ID: "linux-node:primary",
-      OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
+      OPENBOT_NODE_ENROLLMENT_TOKEN: enrollmentToken,
     };
     expect(nodeEnvSchema.safeParse(valid).success).toBe(true);
     expect(nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_ID: "node id" }).success).toBe(false);
     expect(
-      nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_TOKEN: "replace-with-an-enrollment-token" })
-        .success,
+      nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_ENROLLMENT_TOKEN: "too-short" }).success,
     ).toBe(false);
     expect(
       nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_SERVER_URL: "http://localhost:3001" })

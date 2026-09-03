@@ -53,7 +53,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
 | 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查、由 Owner 审核的技能元数据，以及经过测试的 DSSE 签名/验证原语 | 发布者密钥生命周期、签名导出/导入接口、可执行 Agent Skills 包、记忆控制、审核后激活、复制和转移 |
-| Node 协议 | 出站 WebSocket 登记、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和真实设备一致性报告 |
+| Node 协议 | 出站 WebSocket 登记、一次性 enrollment、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 持有证明身份、mTLS、轮换、防重放、系统密钥库适配和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
 | Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 跨平台浏览器、Windows、macOS、Linux 桌面、受管理 Android 和隔离编码 Provider |
@@ -64,7 +64,8 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - 不执行无人值守的表单提交或任意桌面动作。
 - 审批后还不会签发加密的单次 capability lease。
 - 尚不提供连续远程桌面控制。
-- 尚未具备生产级 Node 身份、mTLS 或凭证轮换。
+- Node 已能独立登记与吊销，但当前凭证仍是保存在 Owner-only 文件里的 bearer secret；它还不是
+  持有证明身份、mTLS 或系统密钥库存储，只能通过 WSS 与可信私网使用。
 - 尚不能自主提案或执行已学技能、编辑记忆、激活导入员工包、复制员工或转移所有权。
 - 当前员工模板只有校验和、尚未签名；它不携带记忆和主机权限，未来导入时仍必须隔离审核。
 - 代码已经具备 DSSE/Ed25519 签名和验证原语，但在 Owner 密钥创建、保存、轮换、撤销与信任策略
@@ -88,23 +89,33 @@ cd openbot
 cp .env.example .env
 ```
 
-编辑 `.env`，至少用互不相同的随机密钥替换下面两个开发占位值：
+编辑 `.env`，替换 Owner 密码占位值：
 
 ```dotenv
 OPENBOT_OWNER_PASSWORD=<至少-12-个字符的随机密码>
-OPENBOT_NODE_TOKEN=<随机-Node-登记令牌>
 ```
 
-然后启动 PostgreSQL 和所有应用工作区：
+安装依赖、启动 PostgreSQL，然后分别启动 Server 与 Web：
 
 ```bash
 npm install
 npm run db:up
-npm run dev
+npm run dev:server
+# 另开一个终端：
+npm run dev:web
 ```
 
-打开 <http://localhost:5173>，使用 `OPENBOT_OWNER_PASSWORD` 登录，创建 Bot、频道，并将 Bot
-加入频道。
+Server 运行后，为这台 Node 创建一个短时、单次登记令牌：
+
+```bash
+npm run node:enrollment-token -- local-development-node
+```
+
+把输出的 `OPENBOT_NODE_ENROLLMENT_TOKEN` 放进 `.env`，运行 `npm run dev:node`；首次成功启动
+后立刻从 `.env` 删除该令牌。Node 会用 Owner-only 权限把新凭证保存在
+`./data/node/identity.json`，以后启动直接复用。打开 <http://localhost:5173>，使用
+`OPENBOT_OWNER_PASSWORD` 登录，创建 Bot、频道并将 Bot 加入频道。远程主机配对前请阅读
+[Node 登记](docs/NODE_ENROLLMENT.zh-CN.md)。
 
 本地 Node 默认会诚实地上报“没有执行能力”。在配置兼容 Provider 前，消息仍会保存为排队中的
 Run。运行 `npm run db:stop` 可以停止 PostgreSQL。

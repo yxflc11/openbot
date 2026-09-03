@@ -4,13 +4,15 @@ import {
   createChannelInputSchema,
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
+  createNodeEnrollmentTokenInputSchema,
   dsseEnvelopeSchema,
   employeeTemplateDssePayloadType,
   employeeTemplatePackageSchema,
   loginInputSchema,
+  nodeEnrollmentResultSchema,
   nodeMessageSchema,
-  providerConformanceReportSchema,
   protocolVersion,
+  providerConformanceReportSchema,
   runEventSchema,
   runOfferSchema,
   serverMessageSchema,
@@ -18,7 +20,7 @@ import {
   updateEmployeeSkillStateInputSchema,
 } from "./index.js";
 
-const enrollmentToken = "test-node-enrollment-token-00000001";
+const nodeCredential = `obn_${"a".repeat(43)}`;
 
 describe("node protocol", () => {
   it("accepts a versioned hello message", () => {
@@ -43,7 +45,7 @@ describe("node protocol", () => {
         },
       ],
       maxConcurrentRuns: 1,
-      token: enrollmentToken,
+      credential: nodeCredential,
       sentAt: new Date().toISOString(),
     });
 
@@ -68,7 +70,7 @@ describe("node protocol", () => {
         { id: "desktop.superuser", version: 0, providerId: "unsafe", constraints: {} },
       ],
       maxConcurrentRuns: 1,
-      token: enrollmentToken,
+      credential: nodeCredential,
       sentAt: new Date().toISOString(),
     });
 
@@ -84,7 +86,7 @@ describe("node protocol", () => {
       platform: "linux",
       capabilities: ["root-access"],
       maxConcurrentRuns: 1,
-      token: enrollmentToken,
+      credential: nodeCredential,
       sentAt: new Date().toISOString(),
     });
 
@@ -100,7 +102,7 @@ describe("node protocol", () => {
       platform: "linux",
       capabilities: ["browser"],
       maxConcurrentRuns: 1,
-      token: enrollmentToken,
+      credential: nodeCredential,
       sentAt: new Date().toISOString(),
     };
 
@@ -112,7 +114,28 @@ describe("node protocol", () => {
     expect(
       nodeMessageSchema.safeParse({ ...hello, capabilities: ["browser", "browser"] }).success,
     ).toBe(false);
-    expect(nodeMessageSchema.safeParse({ ...hello, token: "too-short" }).success).toBe(false);
+    expect(nodeMessageSchema.safeParse({ ...hello, credential: "too-short" }).success).toBe(false);
+  });
+
+  it("bounds one-time Node enrollment inputs and issued credentials", () => {
+    expect(createNodeEnrollmentTokenInputSchema.parse({ nodeId: "linux-node" })).toEqual({
+      nodeId: "linux-node",
+      expiresInSeconds: 600,
+    });
+    expect(
+      createNodeEnrollmentTokenInputSchema.safeParse({
+        nodeId: "linux-node",
+        expiresInSeconds: 3601,
+      }).success,
+    ).toBe(false);
+    expect(
+      nodeEnrollmentResultSchema.safeParse({
+        format: "openbot.node-identity/v1",
+        nodeId: "linux-node",
+        credential: nodeCredential,
+        enrolledAt: new Date().toISOString(),
+      }).success,
+    ).toBe(true);
   });
 
   it("bounds approval before-state evidence", () => {

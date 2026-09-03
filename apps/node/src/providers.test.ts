@@ -14,7 +14,7 @@ import {
 const baseEnv = {
   OPENBOT_NODE_ID: "test-node",
   OPENBOT_NODE_SERVER_URL: "ws://127.0.0.1:3001/ws/nodes",
-  OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
+  OPENBOT_NODE_CREDENTIAL: `obn_${"a".repeat(43)}`,
 };
 
 describe("configured Node providers", () => {

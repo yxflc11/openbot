@@ -1,22 +1,16 @@
-import { createServer } from "node:http";
 import { once } from "node:events";
-import { protocolVersion, serverMessageSchema, type ServerMessage } from "@openbot/protocol";
+import { createServer } from "node:http";
+import { protocolVersion, type ServerMessage, serverMessageSchema } from "@openbot/protocol";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { isEnrollmentTokenValid, NodeRegistry, type NodeRunMessage } from "./node-registry.js";
+import { NodeRegistry, type NodeRunMessage } from "./node-registry.js";
 
-const enrollmentToken = "test-node-enrollment-token-00000001";
+const nodeCredential = `obn_${"a".repeat(43)}`;
 
 describe("node enrollment", () => {
-  it("accepts only an exact token match", () => {
-    expect(isEnrollmentTokenValid(enrollmentToken, enrollmentToken)).toBe(true);
-    expect(isEnrollmentTokenValid("wrong-token", enrollmentToken)).toBe(false);
-    expect(isEnrollmentTokenValid("short", enrollmentToken)).toBe(false);
-  });
-
   it("carries assignment and execution lifecycle over the outbound Node socket", async () => {
     const server = createServer();
-    const registry = new NodeRegistry(enrollmentToken, { offerTimeoutMs: 500 });
+    const registry = new NodeRegistry(nodeIdentity(), { offerTimeoutMs: 500 });
     registry.attach(server);
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -104,7 +98,7 @@ describe("node enrollment", () => {
             { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
           ],
           maxConcurrentRuns: 1,
-          token: enrollmentToken,
+          credential: nodeCredential,
           sentAt: new Date().toISOString(),
         }),
       );
@@ -173,7 +167,7 @@ describe("node enrollment", () => {
 
   it("allows a socket to enroll exactly once", async () => {
     const server = createServer();
-    const registry = new NodeRegistry(enrollmentToken, {
+    const registry = new NodeRegistry(nodeIdentity(), {
       enrollmentTimeoutMs: 500,
       livenessIntervalMs: 1_000,
     });
@@ -203,9 +197,64 @@ describe("node enrollment", () => {
     }
   });
 
+  it("rejects an invalid per-Node credential", async () => {
+    const server = createServer();
+    const registry = new NodeRegistry({ authenticate: async () => false });
+    registry.attach(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
+    try {
+      await once(client, "open");
+      const closed = once(client, "close");
+      client.send(JSON.stringify(nodeHello("untrusted-node")));
+      const [code, reason] = await withTimeout(closed);
+      expect(code).toBe(1008);
+      expect(reason.toString()).toBe("invalid-credential");
+      expect(registry.list()).toEqual([]);
+    } finally {
+      client.terminate();
+      registry.close();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("disconnects a live Node immediately after revocation", async () => {
+    const server = createServer();
+    const registry = new NodeRegistry(nodeIdentity());
+    registry.attach(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
+    try {
+      await once(client, "open");
+      client.send(JSON.stringify(nodeHello("revoked-node")));
+      await waitFor(() => registry.list().length === 1);
+      const closed = once(client, "close");
+      expect(registry.disconnect("revoked-node")).toBe(true);
+      const [code, reason] = await withTimeout(closed);
+      expect(code).toBe(1008);
+      expect(reason.toString()).toBe("credential-revoked");
+      expect(registry.list()).toEqual([]);
+      expect(registry.disconnect("revoked-node")).toBe(false);
+    } finally {
+      client.terminate();
+      registry.close();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
   it("terminates sockets that do not enroll before the deadline", async () => {
     const server = createServer();
-    const registry = new NodeRegistry(enrollmentToken, {
+    const registry = new NodeRegistry(nodeIdentity(), {
       enrollmentTimeoutMs: 20,
       livenessIntervalMs: 1_000,
     });
@@ -230,7 +279,7 @@ describe("node enrollment", () => {
 
   it("terminates an enrolled socket that stops answering ping frames", async () => {
     const server = createServer();
-    const registry = new NodeRegistry(enrollmentToken, {
+    const registry = new NodeRegistry(nodeIdentity(), {
       enrollmentTimeoutMs: 500,
       livenessIntervalMs: 20,
     });
@@ -260,7 +309,7 @@ describe("node enrollment", () => {
 
   it("rejects messages above the configured Node protocol envelope", async () => {
     const server = createServer();
-    const registry = new NodeRegistry(enrollmentToken, {
+    const registry = new NodeRegistry(nodeIdentity(), {
       enrollmentTimeoutMs: 500,
       livenessIntervalMs: 1_000,
       maxPayloadBytes: 128,
@@ -306,8 +355,16 @@ function nodeHello(nodeId: string) {
       { id: "screen.capture" as const, version: 1, providerId: "docker", constraints: {} },
     ],
     maxConcurrentRuns: 1,
-    token: enrollmentToken,
+    credential: nodeCredential,
     sentAt: new Date().toISOString(),
+  };
+}
+
+function nodeIdentity() {
+  return {
+    async authenticate(_nodeId: string, credential: string) {
+      return credential === nodeCredential;
+    },
   };
 }
 

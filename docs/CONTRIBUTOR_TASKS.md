@@ -74,14 +74,15 @@ claim at the lowest level proven by tests.
 - **Out of scope:** publisher trust automation, cloning an existing local identity, or ownership
   transfer.
 
-## Advanced: per-Node enrollment
+## Advanced: proof-of-possession Node identity
 
-- **Outcome:** replace the shared Node token with individually revocable Worker Host credentials.
+- **Outcome:** replace the current individually revocable bearer credential with a rotatable,
+  proof-of-possession Worker Host identity.
 - **Start in:** `apps/server`, `apps/node`, `packages/protocol`, deployment docs.
 - **Research first:** SPIFFE/SPIRE, mTLS bootstrap patterns, short-lived certificate rotation, and
   device enrollment threat models.
-- **Acceptance:** one-time enrollment; proof of possession; rotation; revocation; replay tests;
-  Server audit; no inbound public Node port.
+- **Acceptance:** preserve one-time enrollment and revocation; add non-exportable-key support,
+  challenge/response, rotation, replay tests, Server audit, and no inbound public Node port.
 - **Out of scope:** employee identity or OS account provisioning.
 
 ## Platform: native Windows, macOS, or Linux Provider

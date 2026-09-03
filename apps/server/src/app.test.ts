@@ -27,6 +27,7 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import { verifyEmployeeTemplateChecksum } from "./employee-package.js";
+import { NodeIdentityService, type NodeIdentityStore } from "./node-identity.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { RunFrameStore } from "./run-frame-store.js";
 import type {
@@ -117,6 +118,66 @@ describe("server app", () => {
       headers: { Cookie: cookie?.split(";", 1)[0] ?? "" },
     });
     expect(await active.json()).toMatchObject({ authenticated: true });
+  });
+
+  it("issues, exchanges, and revokes a per-Node credential", async () => {
+    const nodeIdentity = new NodeIdentityService(createMemoryNodeIdentityStore());
+    const disconnectNode = vi.fn(() => true);
+    const app = createTestApp({
+      disconnectNode,
+      nodeIdentity,
+      store: createTestStore(),
+    });
+
+    const anonymousIssue = await app.request("/api/v1/nodes/enrollment-tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({ nodeId: "linux-node" }),
+    });
+    expect(anonymousIssue.status).toBe(401);
+
+    const cookie = await login(app);
+    const issued = await app.request("/api/v1/nodes/enrollment-tokens", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ nodeId: "linux-node", expiresInSeconds: 600 }),
+    });
+    expect(issued.status).toBe(201);
+    const enrollment = (await issued.json()) as { token: string };
+    expect(enrollment.token).toMatch(/^obenr_/);
+
+    const exchange = await app.request("/api/v1/nodes/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: "linux-node", token: enrollment.token }),
+    });
+    expect(exchange.status).toBe(201);
+    expect(await exchange.json()).toMatchObject({
+      format: "openbot.node-identity/v1",
+      nodeId: "linux-node",
+      credential: expect.stringMatching(/^obn_/),
+    });
+
+    const replay = await app.request("/api/v1/nodes/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: "linux-node", token: enrollment.token }),
+    });
+    expect(replay.status).toBe(401);
+
+    const oversized = await app.request("/api/v1/nodes/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: "linux-node", token: `obenr_${"x".repeat(9_000)}` }),
+    });
+    expect(oversized.status).toBe(413);
+
+    const revoked = await app.request("/api/v1/nodes/linux-node/revoke", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+    });
+    expect(revoked.status).toBe(204);
+    expect(disconnectNode).toHaveBeenCalledWith("linux-node");
   });
 
   it("rejects mutations without a trusted Origin", async () => {
@@ -968,6 +1029,8 @@ describe("server app", () => {
 function createTestApp({
   store,
   dispatchRun,
+  disconnectNode,
+  nodeIdentity,
   resolveApproval,
   listNodes = () => [],
   realtime,
@@ -978,6 +1041,8 @@ function createTestApp({
 }: {
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
+  disconnectNode?: (nodeId: string) => boolean;
+  nodeIdentity?: NodeIdentityService;
   resolveApproval?: Parameters<typeof createApp>[0]["resolveApproval"];
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
@@ -995,15 +1060,59 @@ function createTestApp({
     allowedOrigins: [testOrigin],
     auth,
     ...(dispatchRun === undefined ? {} : { dispatchRun }),
+    ...(disconnectNode === undefined ? {} : { disconnectNode }),
     ...(resolveApproval === undefined ? {} : { resolveApproval }),
     ...(artifactStorage === undefined ? {} : { artifactStorage }),
     listNodes,
+    ...(nodeIdentity === undefined ? {} : { nodeIdentity }),
     ...(realtime === undefined ? {} : { realtime }),
     ...(runFrames === undefined ? {} : { runFrames }),
     ...(workspaceRealtime === undefined ? {} : { workspaceRealtime }),
     secureCookies,
     store,
   });
+}
+
+function createMemoryNodeIdentityStore(): NodeIdentityStore {
+  const enrollments = new Map<
+    string,
+    { nodeId: string; tokenDigest: string; expiresAt: Date; consumedAt?: Date }
+  >();
+  const credentials = new Map<string, { digest: string; revokedAt?: Date }>();
+  return {
+    async replaceEnrollmentToken(record) {
+      for (const enrollment of enrollments.values()) {
+        if (enrollment.nodeId === record.nodeId && enrollment.consumedAt === undefined) {
+          enrollment.consumedAt = record.createdAt;
+        }
+      }
+      enrollments.set(record.tokenDigest, { ...record });
+    },
+    async exchangeEnrollmentToken(record) {
+      const enrollment = enrollments.get(record.tokenDigest);
+      if (
+        enrollment === undefined ||
+        enrollment.nodeId !== record.nodeId ||
+        enrollment.consumedAt !== undefined ||
+        enrollment.expiresAt <= record.enrolledAt
+      ) {
+        return false;
+      }
+      enrollment.consumedAt = record.enrolledAt;
+      credentials.set(record.nodeId, { digest: record.credentialDigest });
+      return true;
+    },
+    async authenticateCredential(nodeId, credentialDigest) {
+      const credential = credentials.get(nodeId);
+      return credential?.revokedAt === undefined && credential?.digest === credentialDigest;
+    },
+    async revokeCredential(nodeId, now) {
+      const credential = credentials.get(nodeId);
+      if (credential === undefined || credential.revokedAt !== undefined) return false;
+      credential.revokedAt = now;
+      return true;
+    },
+  };
 }
 
 async function login(app: ReturnType<typeof createApp>): Promise<string> {

@@ -1,5 +1,5 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
-import type { IncomingMessage, Server as HttpServer } from "node:http";
+import { randomUUID } from "node:crypto";
+import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { ExecutionNode } from "@openbot/domain";
 import {
@@ -30,6 +30,10 @@ export interface NodeRegistryOptions {
   enrollmentTimeoutMs?: number;
   livenessIntervalMs?: number;
   maxPayloadBytes?: number;
+}
+
+export interface NodeCredentialVerifier {
+  authenticate(nodeId: string, credential: string): Promise<boolean>;
 }
 
 const DEFAULT_NODE_ENROLLMENT_TIMEOUT_MS = 10_000;
@@ -72,7 +76,7 @@ type NodeRunHandler = (node: ExecutionNode, message: NodeRunMessage) => void;
 
 export class NodeRegistry {
   readonly #nodes = new Map<string, ConnectedNode>();
-  readonly #enrollmentToken: string;
+  readonly #identity: NodeCredentialVerifier;
   readonly #offerTimeoutMs: number;
   readonly #enrollmentTimeoutMs: number;
   readonly #livenessIntervalMs: number;
@@ -86,13 +90,11 @@ export class NodeRegistry {
   #gateway: WebSocketServer | undefined;
   #livenessTimer: NodeJS.Timeout | undefined;
 
-  constructor(enrollmentToken: string, options: NodeRegistryOptions = {}) {
-    this.#enrollmentToken = enrollmentToken;
+  constructor(identity: NodeCredentialVerifier, options: NodeRegistryOptions = {}) {
+    this.#identity = identity;
     this.#offerTimeoutMs = options.offerTimeoutMs ?? 10_000;
-    this.#enrollmentTimeoutMs =
-      options.enrollmentTimeoutMs ?? DEFAULT_NODE_ENROLLMENT_TIMEOUT_MS;
-    this.#livenessIntervalMs =
-      options.livenessIntervalMs ?? DEFAULT_NODE_LIVENESS_INTERVAL_MS;
+    this.#enrollmentTimeoutMs = options.enrollmentTimeoutMs ?? DEFAULT_NODE_ENROLLMENT_TIMEOUT_MS;
+    this.#livenessIntervalMs = options.livenessIntervalMs ?? DEFAULT_NODE_LIVENESS_INTERVAL_MS;
     this.#maxPayloadBytes = options.maxPayloadBytes ?? DEFAULT_NODE_MAX_PAYLOAD_BYTES;
   }
 
@@ -330,6 +332,7 @@ export class NodeRegistry {
 
     gateway.on("connection", (socket) => {
       let enrolledNodeId: string | undefined;
+      let authenticationPending = false;
       this.#socketLiveness.set(socket, true);
       const enrollmentTimer = setTimeout(() => {
         if (enrolledNodeId === undefined) socket.terminate();
@@ -339,7 +342,7 @@ export class NodeRegistry {
       socket.on("pong", () => this.#socketLiveness.set(socket, true));
       socket.on("error", () => socket.terminate());
 
-      socket.on("message", (raw: RawData) => {
+      socket.on("message", async (raw: RawData) => {
         const parsed = nodeMessageSchema.safeParse(parseJson(raw.toString()));
 
         if (!parsed.success) {
@@ -352,14 +355,28 @@ export class NodeRegistry {
         const now = new Date().toISOString();
 
         if (message.type === "node.hello") {
-          if (enrolledNodeId !== undefined) {
-            sendAck(socket, false, "A connection may enroll only once.");
+          if (enrolledNodeId !== undefined || authenticationPending) {
+            sendAck(socket, false, "A connection may authenticate only once.");
             socket.close(1008, "already-enrolled");
             return;
           }
-          if (!isEnrollmentTokenValid(message.token, this.#enrollmentToken)) {
-            sendAck(socket, false, "Invalid enrollment token.");
-            socket.close(1008, "invalid-token");
+          authenticationPending = true;
+          let authenticated = false;
+          try {
+            authenticated = await this.#identity.authenticate(message.nodeId, message.credential);
+          } catch {
+            authenticationPending = false;
+            sendAck(socket, false, "Node authentication is temporarily unavailable.");
+            socket.close(1011, "authentication-unavailable");
+            return;
+          }
+          authenticationPending = false;
+          if (!authenticated) {
+            sendAck(socket, false, "Invalid Node credential.");
+            socket.close(1008, "invalid-credential");
+            return;
+          }
+          if (socket.readyState !== WebSocket.OPEN) {
             return;
           }
 
@@ -468,6 +485,14 @@ export class NodeRegistry {
     this.#nodes.clear();
   }
 
+  disconnect(nodeId: string, reason = "Node identity was revoked."): boolean {
+    const node = this.#nodes.get(nodeId);
+    if (node === undefined) return false;
+    this.#disconnectNode(node, reason);
+    node.socket.close(1008, "credential-revoked");
+    return true;
+  }
+
   #disconnectNode(node: ConnectedNode, reason: string, emitUnavailable = true): void {
     if (this.#nodes.get(node.id)?.socket === node.socket) this.#nodes.delete(node.id);
     for (const pending of Array.from(this.#pendingOffers.values())) {
@@ -493,15 +518,6 @@ export class NodeRegistry {
     const { socket: _socket, ...snapshot } = node;
     for (const handler of this.#runHandlers) handler(snapshot, message);
   }
-}
-
-export function isEnrollmentTokenValid(candidate: string, expected: string): boolean {
-  const candidateBuffer = Buffer.from(candidate);
-  const expectedBuffer = Buffer.from(expected);
-  return (
-    candidateBuffer.length === expectedBuffer.length &&
-    timingSafeEqual(candidateBuffer, expectedBuffer)
-  );
 }
 
 function parseJson(value: string): unknown {

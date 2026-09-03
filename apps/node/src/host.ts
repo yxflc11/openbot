@@ -30,7 +30,7 @@ export function detectWorkerHost(
     architecture: normalizeArchitecture(source.architecture),
     deviceClass:
       detectedPlatform === "windows" || detectedPlatform === "macos" ? "desktop" : "server",
-    // A deployment-level shared token cannot prove stronger isolation or host ownership yet.
+    // Enrollment authenticates this Node process, not its OS isolation or physical ownership.
     isolation: "unknown",
     trustTier: "development",
   };

@@ -13,7 +13,7 @@ The checks and JSON schema are OpenBot-specific; no upstream implementation code
 
 ## What is checked today
 
-Protocol `0.8.0` carries both temporary legacy capability aliases and an authoritative versioned
+Protocol `0.9.0` carries both temporary legacy capability aliases and an authoritative versioned
 manifest. Every Run offer contains exact capability-major requirements. Server routing and the
 Worker Host independently verify the same requirements.
 

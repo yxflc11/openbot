@@ -16,7 +16,7 @@ describe("Worker Host identity", () => {
     expect(normalizeArchitecture("ia32")).toBe("unknown");
   });
 
-  it("reports honest development trust until per-Node enrollment exists", () => {
+  it("does not infer host trust from per-Node enrollment", () => {
     expect(
       detectWorkerHost({ platform: "win32", architecture: "arm64", osVersion: "10.0.26100" }),
     ).toEqual({

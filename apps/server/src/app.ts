@@ -13,12 +13,15 @@ import {
   createChannelInputSchema,
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
+  createNodeEnrollmentTokenInputSchema,
+  exchangeNodeEnrollmentInputSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeSkillStateInputSchema,
 } from "@openbot/protocol";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
@@ -39,6 +42,11 @@ import {
   serializeEmployeeTemplate,
 } from "./employee-package.js";
 import {
+  InvalidNodeEnrollmentError,
+  NodeIdentityNotFoundError,
+  type NodeIdentityService,
+} from "./node-identity.js";
+import {
   InvalidCredentialsError,
   LoginRateLimitedError,
   type OwnerAuthService,
@@ -53,6 +61,8 @@ export interface AppDependencies {
   auth: OwnerAuthService;
   dispatchRun?: (run: Run) => void;
   listNodes: () => ExecutionNode[];
+  nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "revoke">;
+  disconnectNode?: (nodeId: string) => boolean;
   realtime?: ChannelRealtimeHub;
   resolveApproval?: (resolution: ApprovalResolution) => void | Promise<void>;
   runFrames?: Pick<RunFrameStore, "get">;
@@ -96,9 +106,17 @@ export function createApp(dependencies: AppDependencies) {
       credentials: true,
     }),
   );
+  app.use(
+    "/api/v1/nodes/enroll",
+    bodyLimit({
+      maxSize: maximumNodeIdentityRequestBytes,
+      onError: (context) => context.json({ error: "Node enrollment request is too large." }, 413),
+    }),
+  );
 
   app.use("/api/v1/*", async (context, next) => {
     context.header("Cache-Control", "no-store");
+    if (isPublicNodeEnrollmentRoute(context.req.path)) return next();
     if (isMutation(context.req.method) && !isTrustedOrigin(context.req.header("origin"))) {
       return context.json({ error: "Request origin is not allowed." }, 403);
     }
@@ -151,6 +169,16 @@ export function createApp(dependencies: AppDependencies) {
       secure: dependencies.secureCookies,
     });
     return context.body(null, 204);
+  });
+
+  app.post("/api/v1/nodes/enroll", async (context) => {
+    const identity = requireNodeIdentity(dependencies.nodeIdentity);
+    const input = await parseRequest(
+      context.req.raw,
+      exchangeNodeEnrollmentInputSchema,
+      maximumNodeIdentityRequestBytes,
+    );
+    return context.json(await identity.enroll(input), 201);
   });
 
   app.get("/api/v1/bootstrap", async (context) => {
@@ -496,6 +524,27 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/nodes", (context) => context.json({ nodes: dependencies.listNodes() }));
 
+  app.post("/api/v1/nodes/enrollment-tokens", async (context) => {
+    const identity = requireNodeIdentity(dependencies.nodeIdentity);
+    const input = await parseRequest(
+      context.req.raw,
+      createNodeEnrollmentTokenInputSchema,
+      maximumNodeIdentityRequestBytes,
+    );
+    return context.json(await identity.issueEnrollmentToken(input), 201);
+  });
+
+  app.post("/api/v1/nodes/:nodeId/revoke", async (context) => {
+    const nodeId = context.req.param("nodeId");
+    const parsedNodeId = createNodeEnrollmentTokenInputSchema.shape.nodeId.safeParse(nodeId);
+    if (!parsedNodeId.success) {
+      throw new RequestValidationError("Node id is invalid.", { nodeId: ["Invalid Node id."] });
+    }
+    await requireNodeIdentity(dependencies.nodeIdentity).revoke(parsedNodeId.data);
+    dependencies.disconnectNode?.(parsedNodeId.data);
+    return context.body(null, 204);
+  });
+
   app.onError((error, context) => {
     if (error instanceof StoreConflictError) {
       return context.json({ error: error.message }, 409);
@@ -516,6 +565,12 @@ export function createApp(dependencies: AppDependencies) {
       context.header("Retry-After", String(error.retryAfterSeconds));
       return context.json({ error: error.message }, 429);
     }
+    if (error instanceof InvalidNodeEnrollmentError) {
+      return context.json({ error: "Node enrollment token is invalid or expired." }, 401);
+    }
+    if (error instanceof NodeIdentityNotFoundError) {
+      return context.json({ error: error.message }, 404);
+    }
     console.error(error);
     return context.json({ error: "OpenBot Server could not complete the request." }, 500);
   });
@@ -535,6 +590,10 @@ function isMutation(method: string): boolean {
 
 function isPublicAuthRoute(path: string): boolean {
   return path === "/api/v1/auth/session" || path === "/api/v1/auth/login";
+}
+
+function isPublicNodeEnrollmentRoute(path: string): boolean {
+  return path === "/api/v1/nodes/enroll";
 }
 
 function waitForEventOrTimeout(setWake: (wake: () => void) => void): Promise<boolean> {
@@ -562,11 +621,28 @@ class RequestValidationError extends Error {
   }
 }
 
-async function parseRequest<T>(request: Request, schema: ZodType<T>): Promise<T> {
+const maximumApiRequestBytes = 64 * 1024;
+const maximumNodeIdentityRequestBytes = 8 * 1024;
+
+async function parseRequest<T>(
+  request: Request,
+  schema: ZodType<T>,
+  maximumBytes = maximumApiRequestBytes,
+): Promise<T> {
+  const declaredSize = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredSize) && declaredSize > maximumBytes) {
+    throw new RequestValidationError(`Request body must not exceed ${maximumBytes} bytes.`, {});
+  }
+
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    const source = await request.text();
+    if (new TextEncoder().encode(source).byteLength > maximumBytes) {
+      throw new RequestValidationError(`Request body must not exceed ${maximumBytes} bytes.`, {});
+    }
+    body = JSON.parse(source);
+  } catch (error) {
+    if (error instanceof RequestValidationError) throw error;
     throw new RequestValidationError("Request body must be valid JSON.", {});
   }
 
@@ -578,6 +654,13 @@ async function parseRequest<T>(request: Request, schema: ZodType<T>): Promise<T>
     );
   }
   return parsed.data;
+}
+
+function requireNodeIdentity(
+  identity: AppDependencies["nodeIdentity"],
+): NonNullable<AppDependencies["nodeIdentity"]> {
+  if (identity === undefined) throw new Error("Node identity is not configured.");
+  return identity;
 }
 
 const maxEmployeePackageBytes = 1024 * 1024;

@@ -34,6 +34,18 @@ export const nodeIdSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/, "Use a stable machine identifier.");
 
+export const nodeEnrollmentTokenSchema = z
+  .string()
+  .min(48)
+  .max(256)
+  .regex(/^obenr_[A-Za-z0-9_-]+$/, "Use an OpenBot Node enrollment token.");
+
+export const nodeCredentialSchema = z
+  .string()
+  .min(47)
+  .max(256)
+  .regex(/^obn_[A-Za-z0-9_-]+$/, "Use an OpenBot Node credential.");
+
 export const nodeCapabilitySchema = z.enum([
   "browser",
   "shell",
@@ -144,10 +156,39 @@ export const nodeHelloSchema = z
       .refine((value) => new Set(value).size === value.length, "Duplicate capabilities."),
     capabilityManifest: z.array(nodeCapabilityDescriptorSchema).max(32).default([]),
     maxConcurrentRuns: z.number().int().min(1).max(16),
-    token: z.string().min(32).max(4096),
+    credential: nodeCredentialSchema,
     sentAt: z.string().datetime(),
   })
   .strict();
+
+export const createNodeEnrollmentTokenInputSchema = z
+  .object({
+    nodeId: nodeIdSchema,
+    expiresInSeconds: z.number().int().min(60).max(3600).default(600),
+  })
+  .strict();
+
+export type CreateNodeEnrollmentTokenInput = z.infer<typeof createNodeEnrollmentTokenInputSchema>;
+
+export const exchangeNodeEnrollmentInputSchema = z
+  .object({
+    nodeId: nodeIdSchema,
+    token: nodeEnrollmentTokenSchema,
+  })
+  .strict();
+
+export type ExchangeNodeEnrollmentInput = z.infer<typeof exchangeNodeEnrollmentInputSchema>;
+
+export const nodeEnrollmentResultSchema = z
+  .object({
+    format: z.literal("openbot.node-identity/v1"),
+    nodeId: nodeIdSchema,
+    credential: nodeCredentialSchema,
+    enrolledAt: z.string().datetime(),
+  })
+  .strict();
+
+export type NodeEnrollmentResult = z.infer<typeof nodeEnrollmentResultSchema>;
 
 export const nodeHeartbeatSchema = z
   .object({

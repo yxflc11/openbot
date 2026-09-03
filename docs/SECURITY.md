@@ -92,16 +92,19 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 
 - 生产目标是 Node 主动建立 WSS/mTLS 连接，不接受公网入站控制；当前配置只允许 loopback 使用
   `ws:`，非 loopback Server 地址必须使用 `wss:`，但尚未提供 mTLS。
-- 生产目标是每个 Node 使用独立可吊销身份，enrollment token 只能使用一次；当前共享令牌不满足
-  这一要求。
+- 每个 Node 通过短时、单次 enrollment token 换取独立可吊销凭证；Server 只保存令牌和凭证的
+  域分隔 SHA-256 摘要。Owner 吊销后会断开对应在线 Node。
 - `run.accept` 只表示能力与容量校验通过，不授予执行权；只有 Server 持久化条件认领并返回 `run.assigned` 后才能占用任务槽位。
-- 当前 M1 开发切片仍使用部署级共享启动令牌，不具备独立身份和单节点吊销能力，只允许可信私网测试；完成 enrollment、轮换和吊销前不得暴露到不受信任网络。
-- 当前共享启动令牌必须是 32–4,096 个字符，示例值会在启动前被拒绝。这只阻止明显错误配置，
-  不能验证随机性，也不能提供单 Node 身份。
+- 当前 Node credential 仍是 bearer secret，默认保存在专用账户可读的本地文件。它能区分和吊销
+  Node，但不能证明不可导出私钥的持有，也不能阻止凭证被复制后重放。完成系统密钥库、持有证明、
+  轮换、mTLS 和消息序号前，只允许通过 WSS 与可信私网使用。
+- enrollment token 默认十分钟过期、只能兑换一次、只在创建时返回；Node credential 也只在兑换
+  时返回。任何一种明文都不能进入日志、Git、员工包或频道消息。
 - 当前 Node 消息体限制为 32 MiB、未登记 socket 最多保留 10 秒，且每条连接只能登记一次。Server
   每 30 秒发送 ping；未回应的连接会被清退并进入断线恢复。Node 心跳只报告存活，不能增加、释放或
-  结算 Server 权威任务槽位。协议 `0.8.0` 还会拒绝未知消息字段、无效或超长 Node 身份信息、重复
-  能力以及无界审批现场；审批 `beforeState` 最多包含 256 个有界 JSON 值。详见
+  结算 Server 权威任务槽位。协议 `0.9.0` 会拒绝未知消息字段、无效或超长 Node 身份信息、重复
+  能力以及无界审批现场；审批 `beforeState` 最多包含 256 个有界 JSON 值。身份
+  限制详见 [ADR-0023](decisions/0023-one-time-node-enrollment.md)。通道权威与输入边界详见
   [ADR-0017](decisions/0017-node-channel-authority-and-liveness.md)与
   [ADR-0019](decisions/0019-strict-node-protocol-inputs.md)。
 - Node 不能读取其他 Node、Server 数据库或全局凭证。
