@@ -15,11 +15,14 @@ import {
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
   createNodeEnrollmentTokenInputSchema,
+  dsseEnvelopeSchema,
   exchangeNodeEnrollmentInputSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeSkillStateInputSchema,
+  type DsseEnvelope,
+  type EmployeeTemplatePackage,
 } from "@openbot/protocol";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -39,8 +42,8 @@ import {
 } from "./control-plane-store.js";
 import {
   buildEmployeeTemplate,
+  type EmployeeTemplateEnvelopeVerification,
   inspectEmployeeTemplate,
-  serializeEmployeeTemplate,
 } from "./employee-package.js";
 import {
   InvalidNodeEnrollmentError,
@@ -61,6 +64,11 @@ export interface AppDependencies {
   artifactStorage?: Pick<ArtifactStorage, "read">;
   auth: OwnerAuthService;
   dispatchRun?: (run: Run) => void;
+  employeePublisher?: {
+    activeKeyId: string;
+    sign(document: EmployeeTemplatePackage): DsseEnvelope;
+    verify(input: unknown): EmployeeTemplateEnvelopeVerification;
+  };
   listNodes: () => ExecutionNode[];
   nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "list" | "revoke">;
   disconnectNode?: (nodeId: string) => boolean;
@@ -494,12 +502,22 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/bots/:botId/export/preview", async (context) => {
     const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
-    return context.json({ preview: buildEmployeeTemplate(profile).preview });
+    return context.json({
+      preview: buildEmployeeTemplate(profile, {
+        ...(dependencies.employeePublisher === undefined
+          ? {}
+          : { publisherKeyId: dependencies.employeePublisher.activeKeyId }),
+      }).preview,
+    });
   });
 
   app.get("/api/v1/bots/:botId/export", async (context) => {
     const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
-    const employeeTemplate = buildEmployeeTemplate(profile);
+    const employeeTemplate = buildEmployeeTemplate(profile, {
+      ...(dependencies.employeePublisher === undefined
+        ? {}
+        : { publisherKeyId: dependencies.employeePublisher.activeKeyId }),
+    });
     if (employeeTemplate.preview.blocked) {
       throw new StoreValidationError(
         "Employee template export is blocked until sensitive-looking content is removed.",
@@ -509,15 +527,31 @@ export function createApp(dependencies: AppDependencies) {
       "Content-Disposition",
       `attachment; filename="${employeeTemplate.preview.fileName}"`,
     );
-    context.header("Content-Type", "application/vnd.openbot.employee+json; charset=utf-8");
+    context.header(
+      "Content-Type",
+      dependencies.employeePublisher === undefined
+        ? "application/vnd.openbot.employee+json; charset=utf-8"
+        : "application/vnd.openbot.employee.dsse+json; charset=utf-8",
+    );
     context.header("X-Content-Type-Options", "nosniff");
-    return context.body(serializeEmployeeTemplate(employeeTemplate.document));
+    const exportedDocument =
+      dependencies.employeePublisher?.sign(employeeTemplate.document) ?? employeeTemplate.document;
+    return context.body(`${JSON.stringify(exportedDocument, null, 2)}\n`);
   });
 
   app.post("/api/v1/employees/import/preview", async (context) => {
-    const employeePackage = await parseEmployeePackageRequest(context.req.raw);
+    const employeePackage = await parseEmployeePackageRequest(
+      context.req.raw,
+      dependencies.employeePublisher,
+    );
     return context.json({
-      preview: inspectEmployeeTemplate(employeePackage, dependencies.listNodes()),
+      preview: inspectEmployeeTemplate(
+        employeePackage.document,
+        dependencies.listNodes(),
+        employeePackage.trustedKeyId === undefined
+          ? {}
+          : { trustedKeyId: employeePackage.trustedKeyId },
+      ),
     });
   });
 
@@ -689,17 +723,20 @@ function requireNodeIdentity(
   return identity;
 }
 
-const maxEmployeePackageBytes = 1024 * 1024;
+const maxEmployeePackageBytes = 2 * 1024 * 1024;
 
-async function parseEmployeePackageRequest(request: Request) {
+async function parseEmployeePackageRequest(
+  request: Request,
+  publisher: AppDependencies["employeePublisher"],
+): Promise<{ document: EmployeeTemplatePackage; trustedKeyId?: string }> {
   const declaredSize = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredSize) && declaredSize > maxEmployeePackageBytes) {
-    throw new RequestValidationError("Employee package must not exceed 1 MiB.", {});
+    throw new RequestValidationError("Employee package must not exceed 2 MiB.", {});
   }
 
   const body = await request.text();
   if (new TextEncoder().encode(body).byteLength > maxEmployeePackageBytes) {
-    throw new RequestValidationError("Employee package must not exceed 1 MiB.", {});
+    throw new RequestValidationError("Employee package must not exceed 2 MiB.", {});
   }
 
   let value: unknown;
@@ -709,11 +746,28 @@ async function parseEmployeePackageRequest(request: Request) {
     throw new RequestValidationError("Employee package must be valid JSON.", {});
   }
   const parsed = unsignedEmployeeTemplatePackageSchema.safeParse(value);
-  if (!parsed.success) {
-    const fields = Object.fromEntries(
-      parsed.error.issues.map((issue) => [issue.path.join(".") || "package", [issue.message]]),
-    );
-    throw new RequestValidationError("Employee package does not match a supported format.", fields);
+  if (parsed.success) return { document: parsed.data };
+
+  const envelope = dsseEnvelopeSchema.safeParse(value);
+  if (publisher !== undefined && envelope.success) {
+    const verification = publisher.verify(value);
+    if (verification.status === "verified") {
+      return { document: verification.document, trustedKeyId: verification.trustedKeyId };
+    }
+    throw new RequestValidationError("Signed Employee package verification failed.", {
+      package: [`${verification.code}: ${verification.message}`],
+    });
   }
-  return parsed.data;
+
+  if (envelope.success) {
+    throw new RequestValidationError(
+      "Signed Employee packages require a configured publisher trust store.",
+      {},
+    );
+  }
+
+  const fields = Object.fromEntries(
+    parsed.error.issues.map((issue) => [issue.path.join(".") || "package", [issue.message]]),
+  );
+  throw new RequestValidationError("Employee package does not match a supported format.", fields);
 }

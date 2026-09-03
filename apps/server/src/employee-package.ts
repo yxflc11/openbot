@@ -31,6 +31,7 @@ import { requirementsForExecutionProfile } from "./execution-routing.js";
 interface EmployeeTemplateBuildOptions {
   generatedAt?: string;
   packageId?: string;
+  publisherKeyId?: string;
 }
 
 export interface EmployeeTemplateBuild {
@@ -174,7 +175,7 @@ export function buildEmployeeTemplate(
     preview: {
       format: payload.format,
       kind: payload.kind,
-      fileName: `${portableFileStem(profile.employee.name)}.openbot-employee.json`,
+      fileName: `${portableFileStem(profile.employee.name)}.openbot-employee${options.publisherKeyId === undefined ? "" : ".dsse"}.json`,
       generatedAt: payload.generatedAt,
       employeeName: payload.employee.name,
       verifiedSkillCount: payload.skills.length,
@@ -207,7 +208,8 @@ export function buildEmployeeTemplate(
       findings,
       blocked: findings.length > 0,
       checksum,
-      signatureStatus: "unsigned",
+      signatureStatus: options.publisherKeyId === undefined ? "unsigned" : "dsse",
+      ...(options.publisherKeyId === undefined ? {} : { publisherKeyId: options.publisherKeyId }),
       identityOnImport: "new",
       hostAuthority: "none",
     },
@@ -401,8 +403,17 @@ export function verifyEmployeeTemplateEnvelope(
 export function inspectEmployeeTemplate(
   document: EmployeeTemplatePackage,
   nodes: ExecutionNode[],
+  options: { trustedKeyId?: string } = {},
 ): EmployeeImportPreview {
   const { payload } = document;
+  if (payload.signature.status === "dsse" && options.trustedKeyId !== payload.signature.keyid) {
+    throw new TypeError(
+      "Signed Employee packages must be inspected only after trusted verification.",
+    );
+  }
+  if (payload.signature.status === "unsigned" && options.trustedKeyId !== undefined) {
+    throw new TypeError("Unsigned Employee packages cannot have a trusted publisher key.");
+  }
   const issues: EmployeeImportIssue[] = [];
   const skillSlugs = payload.skills.map((skill) => skill.slug);
   const uniqueSkillSlugs = new Set(skillSlugs);
@@ -538,7 +549,10 @@ export function inspectEmployeeTemplate(
     ),
     requestedCapabilities: declaredCapabilities,
     integrity: { algorithm: "sha256", valid: verifyEmployeeTemplateChecksum(document) },
-    signature: { status: "unsigned", trusted: false },
+    signature:
+      payload.signature.status === "dsse"
+        ? { status: "dsse", trusted: true, keyid: payload.signature.keyid }
+        : { status: "unsigned", trusted: false },
     compatibility: {
       hostRequired,
       compatibleHosts,

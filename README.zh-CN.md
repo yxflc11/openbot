@@ -52,7 +52,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 控制平面 | 本地 Owner 认证、带漂移检查的 PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、自动恢复工具和多用户信任模型 |
 | 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、工作主机管理、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
-| 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查、由 Owner 审核的技能元数据，以及经过测试的 DSSE 签名/验证原语 | 发布者密钥生命周期、签名导出/导入接口、可执行 Agent Skills 包、记忆控制、审核后激活、复制和转移 |
+| 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查、Owner 审核技能元数据，以及实验性的 Owner 管理 DSSE 签名导出/导入 | 系统钥匙串/KMS 和公开信任适配器、可执行 Agent Skills 包、记忆控制、审核后激活、复制与所有权转移 |
 | Node 协议 | 出站 WebSocket 登记、Owner 界面配对/列表/吊销、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 持有证明身份、mTLS、轮换、防重放、系统密钥库适配和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
@@ -67,9 +67,9 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - Node 已能独立登记与吊销，但当前凭证仍是保存在 Owner-only 文件里的 bearer secret；它还不是
   持有证明身份、mTLS 或系统密钥库存储，只能通过 WSS 与可信私网使用。
 - 尚不能自主提案或执行已学技能、编辑记忆、激活导入员工包、复制员工或转移所有权。
-- 当前员工模板只有校验和、尚未签名；它不携带记忆和主机权限，未来导入时仍必须隔离审核。
-- 代码已经具备 DSSE/Ed25519 签名和验证原语，但在 Owner 密钥创建、保存、轮换、撤销与信任策略
-  完成前，当前导出接口不会启用签名。
+- 员工导出默认仍不签名。运维者可以启用实验性的 DSSE 签名：私钥加密保存于文件密钥库，轮换与
+  撤销只能通过离线命令执行，外部发布者公钥必须显式信任；所有导入仍是无记忆、无主机权限的
+  只读隔离预览。
 - Cua、Lume 和 coder Provider 目前是扩展边界，不是已完成的运行时。
 - 可选办公室可视化不进入当前产品导航和 Web 构建。
 
@@ -120,6 +120,8 @@ npm run node:enrollment-token -- local-development-node
 本地 Node 默认会诚实地上报“没有执行能力”。在配置兼容 Provider 前，消息仍会保存为排队中的
 Run。运行 `npm run db:stop` 可以停止 PostgreSQL。
 升级、备份或恢复部署前请先阅读[数据库运维](docs/DATABASE.zh-CN.md)。
+如需为可迁移员工模板签名，请按实验性的[员工包签名手册](docs/EMPLOYEE_SIGNING.zh-CN.md)
+初始化；默认不开启签名。
 
 ### 启用只读浏览器切片
 
@@ -259,6 +261,7 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | 参与频道体验开发 | [界面方案](docs/INTERFACE.md) |
 | 审查或改进键盘与辅助技术行为 | [无障碍基线](docs/ACCESSIBILITY.zh-CN.md) |
 | 设计员工身份和迁移 | [可迁移数字员工模型](docs/EMPLOYEE.zh-CN.md) |
+| 运维签名员工包 | [员工包签名手册](docs/EMPLOYEE_SIGNING.zh-CN.md) |
 | 增加操作系统或设备 | [跨平台工作主机](docs/CROSS_PLATFORM.zh-CN.md) |
 | 检查工作主机或 Provider 声明 | [Provider 一致性测试](docs/PROVIDER_CONFORMANCE.zh-CN.md) |
 | 理解上游选择 | [上游策略](docs/UPSTREAMS.md) |

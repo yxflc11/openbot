@@ -70,6 +70,28 @@ describe("server environment", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("requires publisher keyring and passphrase paths together", () => {
+    expect(
+      serverEnvSchema.safeParse({
+        ...required,
+        OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: "./data/publisher",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverEnvSchema.safeParse({
+        ...required,
+        OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: "./secrets/publisher-passphrase",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverEnvSchema.safeParse({
+        ...required,
+        OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: "./data/publisher",
+        OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: "./secrets/publisher-passphrase",
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("node environment", () => {

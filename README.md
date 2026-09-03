@@ -59,7 +59,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, automated recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
-| Employee profile | Seven-view profile, safe template export, quarantined import inspection, Owner-reviewed skill metadata, and a tested DSSE signing/verification primitive | Publisher-key lifecycle, signed export/import routes, executable Agent Skills bundles, memory controls, reviewed activation, cloning, and transfer |
+| Employee profile | Seven-view profile, safe template export, quarantined import inspection, Owner-reviewed skill metadata, and experimental Owner-managed DSSE signed export/import | Native keyring/KMS and public trust adapters, executable Agent Skills bundles, memory controls, reviewed activation, cloning, and ownership transfer |
 | Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Proof-of-possession identity, mTLS, rotation, replay protection, native keyring adapters, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
@@ -76,11 +76,9 @@ and back. The table deliberately separates working code from planned capabilitie
   storage and must stay behind WSS and a trusted private network.
 - It does not yet propose or execute learned skills autonomously, edit memory, activate imported
   employee packages, clone employees, or transfer ownership.
-- The current employee template is checksum-protected but unsigned. It carries no memory or host
-  authority and must remain quarantined when import support is added.
-- A DSSE/Ed25519 signing and verification primitive is implemented, but it is not exposed by the
-  current export route until Owner key creation, storage, rotation, revocation, and trust policy are
-  implemented.
+- Employee export remains unsigned by default. An operator can enable experimental DSSE signing
+  with an encrypted filesystem keyring, offline rotation/revocation, and explicit public-key trust;
+  every import still remains a read-only quarantine preview with no memory or host authority.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
 - The optional office visualization is not part of the current product navigation or Web build.
 
@@ -132,6 +130,8 @@ the Bot to that channel. See [Node enrollment](docs/NODE_ENROLLMENT.md) before p
 By default, the local Node honestly advertises no execution capability. Messages are still stored
 as queued Runs until a compatible provider is configured. Stop PostgreSQL with `npm run db:stop`.
 Read [Database operations](docs/DATABASE.md) before upgrading, backing up, or restoring a deployment.
+To sign portable Employee templates, follow the experimental
+[Employee signing runbook](docs/EMPLOYEE_SIGNING.md); signing is disabled by default.
 
 ### Enable the read-only browser slice
 
@@ -279,6 +279,7 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | Work on the channel experience | [Interface guide](docs/INTERFACE.md) |
 | Review or improve keyboard and assistive-technology behavior | [Accessibility baseline](docs/ACCESSIBILITY.md) |
 | Design employee identity and portability | [Portable employee model](docs/EMPLOYEE.md) |
+| Operate signed Employee packages | [Employee signing runbook](docs/EMPLOYEE_SIGNING.md) |
 | Add an operating system or device | [Cross-platform Worker Hosts](docs/CROSS_PLATFORM.md) |
 | Test a Worker Host or Provider claim | [Provider conformance](docs/PROVIDER_CONFORMANCE.md) |
 | Understand upstream choices | [Upstream strategy](docs/UPSTREAMS.md) |

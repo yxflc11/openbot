@@ -173,7 +173,7 @@ Implemented on the `feat/cross-platform-employees` development line:
   appearance, execution preference, and verified skills;
 - structural exclusion of identity, authority, memory, and work history, plus blocking checks for
   credential-like text, private keys, and user-specific local paths;
-- a 1 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill
+- a 2 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill
   dependency/capability consistency, sensitive text, and connected Worker Host compatibility;
 - a read-only quarantine projection that cannot create an Employee, activate a skill, persist
   memory, bind a host, or grant authority.
@@ -184,11 +184,13 @@ Implemented on the `feat/cross-platform-employees` development line:
 - a bounded DSSE envelope schema plus tested Ed25519 signing and trust-store verification over the
   exact bytes later parsed as the employee package; envelope key hints never make trust decisions.
 
-The current HTTP export is deliberately unsigned and memory-free. The signing primitive is not
-wired to export/import until Owner keys have encrypted storage, rotation, revocation, backup, and a
-trust policy. The skill learning/verification workflow currently covers metadata review only;
+HTTP export is unsigned and memory-free by default. An experimental Owner filesystem keyring now
+supports encrypted Ed25519 private-key storage, explicit public-key trust, rotation, revocation,
+signed DSSE export, and verified quarantine preview. It does not provide global publisher identity,
+automatic revocation distribution, native keyring/KMS custody, or reviewed activation. See the
+[signing runbook](EMPLOYEE_SIGNING.md). The skill learning/verification workflow currently covers metadata review only;
 autonomous skill proposals, executable Agent Skills archives, full-diff review, memory editing and
-retention controls, signed HTTP export/import, reviewed activation, cloning, and authenticated
+retention controls, reviewed activation, cloning, and authenticated
 ownership transfer are not implemented yet. Their data and authority boundaries are defined here
 so contributors can add them without coupling employee knowledge to Worker Host access.
 

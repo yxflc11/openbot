@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from "node:crypto";
 import type {
   Approval,
   Bot,
@@ -14,7 +15,11 @@ import type {
   Run,
   RunProgress,
 } from "@openbot/domain";
-import { employeeTemplatePackageSchema, protocolVersion } from "@openbot/protocol";
+import {
+  dsseEnvelopeSchema,
+  employeeTemplatePackageSchema,
+  protocolVersion,
+} from "@openbot/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createApp, ownerSessionCookie, secureOwnerSessionCookie } from "./app.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
@@ -26,7 +31,11 @@ import {
   StoreNotFoundError,
   StoreValidationError,
 } from "./control-plane-store.js";
-import { verifyEmployeeTemplateChecksum } from "./employee-package.js";
+import {
+  signEmployeeTemplateEnvelope,
+  verifyEmployeeTemplateChecksum,
+  verifyEmployeeTemplateEnvelope,
+} from "./employee-package.js";
 import { NodeIdentityService, type NodeIdentityStore } from "./node-identity.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { RunFrameStore } from "./run-frame-store.js";
@@ -734,13 +743,79 @@ describe("server app", () => {
     const response = await app.request("/api/v1/employees/import/preview", {
       method: "POST",
       headers: authenticatedHeaders(cookie),
-      body: JSON.stringify({ padding: "x".repeat(1024 * 1024) }),
+      body: JSON.stringify({ padding: "x".repeat(2 * 1024 * 1024) }),
     });
 
     expect(response.status).toBe(422);
     expect(await response.json()).toEqual({
-      error: "Employee package must not exceed 1 MiB.",
+      error: "Employee package must not exceed 2 MiB.",
       fields: {},
+    });
+  });
+
+  it("exports DSSE and accepts only a signature from configured publisher trust", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Portable Ops",
+      role: "Browser and operations",
+      computerProfile: "docker-linux",
+    });
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const employeePublisher = {
+      activeKeyId: "owner-key-1",
+      sign: (document: Parameters<typeof signEmployeeTemplateEnvelope>[0]) =>
+        signEmployeeTemplateEnvelope(document, { keyid: "owner-key-1", privateKey }),
+      verify: (input: unknown) =>
+        verifyEmployeeTemplateEnvelope(input, [{ keyid: "owner-key-1", publicKey }]),
+    };
+    const app = createTestApp({ store, employeePublisher });
+    const cookie = await login(app);
+
+    const previewResponse = await app.request(`/api/v1/bots/${bot.id}/export/preview`, {
+      headers: { Cookie: cookie },
+    });
+    expect(await previewResponse.json()).toMatchObject({
+      preview: {
+        fileName: "portable-ops.openbot-employee.dsse.json",
+        signatureStatus: "dsse",
+        publisherKeyId: "owner-key-1",
+      },
+    });
+
+    const downloadResponse = await app.request(`/api/v1/bots/${bot.id}/export`, {
+      headers: { Cookie: cookie },
+    });
+    expect(downloadResponse.headers.get("content-type")).toContain(
+      "application/vnd.openbot.employee.dsse+json",
+    );
+    const envelope = dsseEnvelopeSchema.parse(await downloadResponse.json());
+    const importResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(envelope),
+    });
+    expect(importResponse.status).toBe(200);
+    expect(await importResponse.json()).toMatchObject({
+      preview: { signature: { status: "dsse", trusted: true, keyid: "owner-key-1" } },
+    });
+
+    const untrustedApp = createTestApp({
+      store,
+      employeePublisher: {
+        ...employeePublisher,
+        verify: (input: unknown) => verifyEmployeeTemplateEnvelope(input, []),
+      },
+    });
+    const untrustedCookie = await login(untrustedApp);
+    const rejected = await untrustedApp.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(untrustedCookie),
+      body: JSON.stringify(envelope),
+    });
+    expect(rejected.status).toBe(422);
+    expect(await rejected.json()).toMatchObject({
+      error: "Signed Employee package verification failed.",
+      fields: { package: [expect.stringContaining("no-trusted-signature")] },
     });
   });
 
@@ -1068,6 +1143,7 @@ function createTestApp({
   listNodes = () => [],
   realtime,
   artifactStorage,
+  employeePublisher,
   runFrames,
   workspaceRealtime,
   secureCookies = false,
@@ -1080,6 +1156,7 @@ function createTestApp({
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
   artifactStorage?: Pick<ArtifactStorage, "read">;
+  employeePublisher?: Parameters<typeof createApp>[0]["employeePublisher"];
   runFrames?: Pick<RunFrameStore, "get">;
   workspaceRealtime?: WorkspaceRealtimeHub;
   secureCookies?: boolean;
@@ -1096,6 +1173,7 @@ function createTestApp({
     ...(disconnectNode === undefined ? {} : { disconnectNode }),
     ...(resolveApproval === undefined ? {} : { resolveApproval }),
     ...(artifactStorage === undefined ? {} : { artifactStorage }),
+    ...(employeePublisher === undefined ? {} : { employeePublisher }),
     listNodes,
     ...(nodeIdentity === undefined ? {} : { nodeIdentity }),
     ...(realtime === undefined ? {} : { realtime }),

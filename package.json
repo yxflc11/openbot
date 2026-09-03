@@ -25,6 +25,7 @@
     "dev:web": "npm run dev --workspace @openbot/web",
     "dev:node": "npm run dev --workspace @openbot/node",
     "docs:check": "node scripts/check-docs.mjs",
+    "employee:publisher-key": "npm run employee:publisher-key --workspace @openbot/server --",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",

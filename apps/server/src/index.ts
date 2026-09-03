@@ -5,6 +5,7 @@ import { createDatabase } from "@openbot/db";
 import { createApp } from "./app.js";
 import { FileArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import { EmployeePublisherKeyring } from "./employee-publisher-keyring.js";
 import { closeHttpServer } from "./http-shutdown.js";
 import { NodeIdentityService } from "./node-identity.js";
 import { NodeRegistry } from "./node-registry.js";
@@ -37,6 +38,13 @@ const unsubscribeNodeEvents = [
 ];
 const store = new PostgresControlPlaneStore(database.db);
 const artifactStorage = new FileArtifactStorage(env.OPENBOT_OBJECT_STORE_PATH);
+const employeePublisher =
+  env.OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH === undefined
+    ? undefined
+    : await EmployeePublisherKeyring.load({
+        directory: env.OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH,
+        passphraseFile: env.OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE as string,
+      });
 const runFrames = new RunFrameStore();
 const dispatcher = new RunDispatcher(
   store,
@@ -57,6 +65,7 @@ const app = createApp({
   artifactStorage,
   auth,
   dispatchRun: (run) => dispatcher.enqueue(run),
+  ...(employeePublisher === undefined ? {} : { employeePublisher }),
   disconnectNode: (nodeId) => nodeRegistry.disconnect(nodeId),
   listNodes: () => nodeRegistry.list(),
   nodeIdentity,

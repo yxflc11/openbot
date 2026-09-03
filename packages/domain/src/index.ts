@@ -232,7 +232,8 @@ export interface EmployeeExportPreview {
   findings: EmployeeExportFinding[];
   blocked: boolean;
   checksum: string;
-  signatureStatus: "unsigned";
+  signatureStatus: "unsigned" | "dsse";
+  publisherKeyId?: string;
   identityOnImport: "new";
   hostAuthority: "none";
 }
@@ -271,10 +272,16 @@ export interface EmployeeImportPreview {
     algorithm: "sha256";
     valid: boolean;
   };
-  signature: {
-    status: "unsigned";
-    trusted: false;
-  };
+  signature:
+    | {
+        status: "unsigned";
+        trusted: false;
+      }
+    | {
+        status: "dsse";
+        trusted: true;
+        keyid: string;
+      };
   compatibility: {
     hostRequired: boolean;
     compatibleHosts: Array<

@@ -65,6 +65,8 @@ export const serverEnvSchema = z
       )
       .pipe(z.array(z.string().url()).min(1)),
     OPENBOT_OBJECT_STORE_PATH: z.string().default("./data/objects"),
+    OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: z.string().trim().min(1).optional(),
+    OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: z.string().trim().min(1).optional(),
     OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   })
   .superRefine((value, context) => {
@@ -94,6 +96,17 @@ export const serverEnvSchema = z
         code: "custom",
         message: "Secure cookies are required when an allowed origin is not loopback.",
         path: ["OPENBOT_SECURE_COOKIES"],
+      });
+    }
+    if (
+      (value.OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH === undefined) !==
+      (value.OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Employee publisher keyring and passphrase-file paths must be configured together.",
+        path: ["OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH"],
       });
     }
   });

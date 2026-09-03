@@ -2,6 +2,9 @@
 
 Status: Accepted — 2026-09-04
 
+Implementation note: ADR-0024 now supplies the Owner key lifecycle and HTTP adapter that this
+decision intentionally deferred. The DSSE format and trust constraints below remain unchanged.
+
 ## Context
 
 `openbot.employee/v1` deliberately started as a checksum-protected, identity-free template. A

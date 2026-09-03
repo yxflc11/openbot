@@ -30,8 +30,9 @@ The development line already contains:
 The current browser Provider is still read-only. Native desktop control, package activation, and
 production Node trust are not part of this baseline.
 
-The codebase now also contains a standards-based DSSE/Ed25519 signing and verification primitive.
-It remains internal until the Owner publisher-key lifecycle and trust policy are implemented.
+The codebase now also contains experimental Owner-managed encrypted Ed25519 keys, explicit
+public-key trust, rotation/revocation, DSSE signed export, and verified quarantine preview. Native
+keyrings, KMS, public trust distribution, and reviewed activation remain future adapters.
 
 ## Continuous execution schedule
 
@@ -71,11 +72,11 @@ tests, hardening, or the next slice.
 
 The next order is:
 
-1. Owner publisher-key lifecycle and signed package HTTP integration;
-2. reviewed import activation with a fresh Employee id and disabled skills;
-3. memory retention, deletion, and selective portable memory;
-4. single-use capability leases after approval;
-5. Windows, macOS, and Linux native Provider conformance;
+1. reviewed import activation with a fresh Employee id and disabled skills;
+2. memory retention, deletion, and selective portable memory;
+3. single-use capability leases after approval;
+4. Windows, macOS, and Linux native Provider conformance;
+5. native keyring/KMS and public publisher-trust adapters;
 6. local cloning and authenticated ownership transfer;
 7. optional office visualization plugin after the core channel workflow is mature.
 

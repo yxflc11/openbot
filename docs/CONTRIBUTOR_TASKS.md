@@ -53,15 +53,15 @@ claim at the lowest level proven by tests.
   validator failure all fail closed; the Server receives only a bounded report.
 - **Out of scope:** activation, host grants, autonomous skill execution, or network access.
 
-## Advanced: signed Employee package design
+## Completed baseline: signed Employee package design
 
-- **Outcome:** an ADR and executable fixtures define publisher keys, signature envelope, rotation,
-  revocation, expiry, and offline verification for `openbot.employee/v1` or its successor.
+- **Delivered:** ADR-0014 and ADR-0024 define the signature envelope, encrypted local keyring,
+  explicit trust, rotation, revocation, and offline verification for `openbot.employee/v1`.
 - **Start in:** `docs/decisions`, `apps/server/src/employee-package.ts`, `packages/domain`.
 - **Research first:** Sigstore, in-toto, DSSE, TUF, and existing agent-package signing work.
-- **Acceptance:** test vectors cover tampering, wrong publisher, revoked/expired keys, algorithm
-  confusion, downgrade, and unsigned legacy packages; authority still never travels in the package.
-- **Out of scope:** activation or ownership transfer.
+- **Remaining contribution:** add native keyring/KMS adapters, publisher-key expiry, TUF continuity,
+  and public identity/transparency without changing the DSSE package contract.
+- **Still out of scope:** activation or ownership transfer.
 
 ## Advanced: reviewed Employee activation
 

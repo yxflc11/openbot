@@ -145,26 +145,31 @@ Node、Provider、路由、审批策略或主机授权。完整技能目录将�
 明确排除项和阻止原因。v1 默认模板不包含任何记忆，也不包含来源员工 ID、所有权、Run、
 进化历史、决策、产物、审批、Node 身份、主机绑定、凭证、Session 或能力授权。
 
-`GET /api/v1/bots/:botId/export` 只在预览没有阻止项时返回
-`application/vnd.openbot.employee+json`。Server 会检查导出自由文本中的疑似凭证、Bearer Token、
+`GET /api/v1/bots/:botId/export` 只在预览没有阻止项时返回模板。默认媒体类型为
+`application/vnd.openbot.employee+json`；配置 Owner 发布者密钥库后，返回
+`application/vnd.openbot.employee.dsse+json` DSSE 信封。Server 会检查导出自由文本中的疑似凭证、Bearer Token、
 私钥标记和用户本地路径；命中后返回 `422`，不会生成下载。包内 SHA-256 对规范化 `payload`
-提供意外修改检测，但当前 `signature.status` 是 `unsigned`，不能证明发布者身份。未来导入功能必须
-先隔离校验、创建新的本地员工 ID，并让所有导入技能保持禁用，直到 Owner 完成本地策略审核。
+提供意外修改检测；无签名模板的 `signature.status` 是 `unsigned`，不能证明发布者身份。导入功能
+始终先隔离校验，未来创建新的本地员工 ID 时，所有导入技能仍必须保持禁用，直到 Owner 完成
+本地策略审核。
 
 代码内已经有 DSSE/Ed25519 签名与验证原语，并使用固定版本的 `@sigstore/core` 生成标准预认证
 编码。它签署 `application/vnd.openbot.employee.v1+json` 的精确字节，且只信任 Server 显式配置、
-真正通过验签的公钥；信封 `keyid` 只用于查找，不能授予信任。当前没有签名导出或导入 API，
-也不会临时生成服务器密钥；必须先完成 Owner 密钥加密保存、轮换、撤销、备份和信任策略。
+真正通过验签的公钥；信封 `keyid` 只用于查找，不能授予信任。实验性的文件密钥库用加密 PKCS#8
+保存活动私钥，离线 CLI 负责初始化、显式信任、轮换和撤销。密钥库一旦显式配置但无法安全加载，
+Server 会拒绝启动而不是退回无签名模式。使用方法见[员工包签名手册](EMPLOYEE_SIGNING.zh-CN.md)。
 
-`POST /api/v1/employees/import/preview` 接受整个 v1 员工模板 JSON，最大 1 MiB。它使用严格
-schema，任何未声明字段都会返回 `422`，不会被静默忽略。通过结构验证后，Server 检查 SHA-256、
+`POST /api/v1/employees/import/preview` 接受整个 v1 员工模板或 DSSE 信封 JSON，最大 2 MiB。
+无签名模板使用严格 schema；签名信封必须先由活动、已退役或外部显式信任的公钥验证，之后才
+解析同一份已认证字节。未知格式、未信任或已撤销签名都会返回 `422`。通过验证后，Server 检查 SHA-256、
 技能 slug 与依赖、技能实际能力和顶层能力声明是否一致、疑似敏感文本，以及当前在线工作主机
 能否满足执行配置和全部能力。
 
 成功响应只是一份 `quarantine.active: true` 的只读投影。`quarantine.canActivate` 固定为 `false`，
 `createsNewIdentity` 固定为 `true`，`importedSkillState` 固定为
 `disabled-pending-review`，`hostAuthority` 固定为 `none`。该接口不写入 Bot、技能、记忆、Node
-绑定或权限；即使 `blocked: false`，也只表示可以进入人工审核，不表示员工已导入或已获信任。
+绑定或权限；即使 `blocked: false` 且 `signature.trusted: true`，也只表示签名来源和内容完整性
+通过并可以进入人工审核，不表示员工已导入或已获得运行权限。
 
 ## 创建频道
 
