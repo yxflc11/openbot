@@ -43,3 +43,5 @@ Owner 刚刚检查过的同一份包实例。
 聚焦、持续维护的设备名判断器，确保建议下载名在 Windows、macOS 与 Linux 上安全可用。
 [POSIX Node 凭证权限](posix-node-credential-permissions.md)审查随后把 OpenSSH 的私钥 fail-closed
 规则用于现有原子文件适配器，同时明确 Windows ACL 与系统密钥库不在当前声明范围内。
+[Artifact 读取完整性](artifact-read-integrity.md)审查把 OCI descriptor 校验用于已有大小和
+SHA-256 元数据，使被替换的截图字节在返回前失败。

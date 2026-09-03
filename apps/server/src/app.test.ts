@@ -352,12 +352,13 @@ describe("server app", () => {
 
   it("serves an authenticated artifact as non-cacheable inline content", async () => {
     const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    let storedBytes = bytes;
     const artifact: ArtifactRecord = {
       id: "00000000-0000-4000-8000-000000000010",
       runId: "00000000-0000-4000-8000-000000000011",
       name: "result.png",
       mediaType: "image/png",
-      sha256: "0".repeat(64),
+      sha256: createHash("sha256").update(bytes).digest("hex"),
       sizeBytes: bytes.byteLength,
       createdAt: "2026-09-03T00:00:00.000Z",
       storageKey:
@@ -370,7 +371,7 @@ describe("server app", () => {
       artifactStorage: {
         read: async (storageKey) => {
           expect(storageKey).toBe(artifact.storageKey);
-          return bytes;
+          return storedBytes;
         },
       },
       store,
@@ -389,6 +390,12 @@ describe("server app", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
+
+    storedBytes = Buffer.from([0x89, 0x50, 0x4e, 0x46]);
+    const corrupted = await app.request(`/api/v1/artifacts/${artifact.id}/content`, {
+      headers: { Cookie: cookie },
+    });
+    expect(corrupted.status).toBe(500);
   });
 
   it("serves the latest authenticated live frame without persistence", async () => {

@@ -43,12 +43,16 @@ No upstream source was copied or substantially adapted.
 5. Treat the configured artifact root as a trusted operator boundary. Symlink-resistant traversal
    and an object-store adapter remain required before less-trusted processes can write inside that
    directory tree.
+6. A follow-up [Artifact read-integrity review](../research/artifact-read-integrity.md) adopts OCI's
+   descriptor rule: verify the authoritative size and SHA-256 before returning stored bytes. A
+   mismatch fails closed and is not served to the Client.
 
 ## Consequences
 
 - A failed local artifact write no longer relies on OpenBot's incomplete temporary-file cleanup.
 - The direct dependency and transitive `signal-exit` dependency are recorded by the lockfile and
   normal dependency audit.
-- Result files remain private by mode and recoverable by their database storage key.
+- Result files remain private by mode and recoverable by their database storage key; accidental
+  replacement or corruption is detected at the authenticated read boundary.
 - A malformed file beginning with a PNG signature can still be accepted. This limitation remains
   explicit until bounded decode-and-normalize validation is implemented.

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   ApprovalResolution,
   BootstrapSummary,
@@ -372,6 +373,10 @@ export function createApp(dependencies: AppDependencies) {
       throw new Error("Artifact storage is not configured.");
     }
     const bytes = await dependencies.artifactStorage.read(record.storageKey);
+    const actualDigest = createHash("sha256").update(bytes).digest("hex");
+    if (bytes.byteLength !== record.sizeBytes || actualDigest !== record.sha256) {
+      throw new Error("Artifact content does not match its authoritative metadata.");
+    }
     return new Response(bytes, {
       headers: {
         "Cache-Control": "private, no-store",
