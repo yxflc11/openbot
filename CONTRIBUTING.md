@@ -55,6 +55,11 @@ Run `npm run db:stop` when the development database is no longer needed.
 
 ## Engineering principles
 
+- Research maintained GitHub repositories and open standards before designing any non-trivial
+  feature. Record the comparison, selected version, license, and decision in an issue, ADR, or
+  [reuse note](docs/OPEN_SOURCE_REUSE.md).
+- Prefer, in order: an open standard, a released dependency, a thin pinned adapter, an upstream
+  contribution, a narrow fork, and finally a documented local gap implementation.
 - Preserve one Server-owned source of truth for tasks, approvals, and audit events.
 - Prefer adapters over forks and upstream fixes over long-lived local patches.
 - Treat models, webpages, skills, inbound messages, and execution environments as untrusted.
@@ -109,6 +114,7 @@ through the private process in [SECURITY.md](SECURITY.md), not a public issue.
 3. Update docs and existing translations when user-visible behavior or project claims change.
 4. Complete every applicable section of the pull request template.
 5. Preserve upstream copyright and license notices.
+6. Link the upstream research note and state whether source was copied or substantially adapted.
 
 All new source files are contributed under the repository's MIT license unless a directory contains
 a more specific upstream notice.

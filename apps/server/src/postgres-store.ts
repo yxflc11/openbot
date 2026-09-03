@@ -8,6 +8,7 @@ import type {
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeSkillInput,
   CreateMessageInput,
   EmployeeDecisionTrace,
   EmployeeEvidenceReference,
@@ -15,11 +16,13 @@ import type {
   EmployeeMemory,
   EmployeeProfile,
   EmployeeSkill,
+  EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
   Run,
   RunProgress,
   SubmitTaskResult,
+  UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
 import {
   artifacts as artifactsTable,
@@ -356,6 +359,251 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     }
 
     return toBot(bot);
+  }
+
+  async createEmployeeSkill(
+    botId: string,
+    input: CreateEmployeeSkillInput,
+  ): Promise<EmployeeSkillMutationResult> {
+    return this.#db.transaction(async (transaction) => {
+      const botRows = await transaction
+        .select({ id: bots.id })
+        .from(bots)
+        .where(eq(bots.id, botId))
+        .limit(1);
+      if (botRows.length === 0) throw new StoreNotFoundError("Bot not found.");
+
+      if (input.dependencySkillIds.length > 0) {
+        const dependencyAssignments = await transaction
+          .select({ skillId: employeeSkills.skillId, state: employeeSkills.state })
+          .from(employeeSkills)
+          .where(
+            and(
+              eq(employeeSkills.botId, botId),
+              inArray(employeeSkills.skillId, input.dependencySkillIds),
+            ),
+          );
+        if (dependencyAssignments.length !== input.dependencySkillIds.length) {
+          throw new StoreValidationError(
+            "Every dependency must already be assigned to this employee.",
+          );
+        }
+        if (dependencyAssignments.some((dependency) => dependency.state !== "verified")) {
+          throw new StoreValidationError(
+            "Every dependency must be verified before this candidate can be added.",
+          );
+        }
+      }
+
+      const now = new Date();
+      const insertedRows = await transaction
+        .insert(skills)
+        .values({
+          id: randomUUID(),
+          slug: input.slug,
+          name: input.name,
+          description: input.description,
+          version: input.version,
+          source: input.source,
+          requiredCapabilities: input.requiredCapabilities,
+          metadata: { format: "agentskills.io" },
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing({ target: [skills.slug, skills.version] })
+        .returning();
+      const insertedSkill = insertedRows[0];
+      const [resolvedSkill] =
+        insertedSkill === undefined
+          ? await transaction
+              .select()
+              .from(skills)
+              .where(and(eq(skills.slug, input.slug), eq(skills.version, input.version)))
+              .limit(1)
+          : [insertedSkill];
+      if (resolvedSkill === undefined) {
+        throw new StoreConflictError("The skill definition changed during creation.");
+      }
+      const skillRow: typeof skills.$inferSelect = resolvedSkill;
+
+      if (insertedSkill !== undefined) {
+        if (input.dependencySkillIds.length > 0) {
+          await transaction.insert(skillDependencies).values(
+            input.dependencySkillIds.map((dependencySkillId) => ({
+              skillId: skillRow.id,
+              dependsOnSkillId: dependencySkillId,
+            })),
+          );
+        }
+      } else {
+        const dependencyRows = await transaction
+          .select({ id: skillDependencies.dependsOnSkillId })
+          .from(skillDependencies)
+          .where(eq(skillDependencies.skillId, skillRow.id));
+        const existingDependencies = dependencyRows.map((row) => row.id).sort();
+        if (
+          skillRow.name !== input.name ||
+          skillRow.description !== input.description ||
+          skillRow.source !== input.source ||
+          !sameStringSet(
+            toStringArray(skillRow.requiredCapabilities),
+            input.requiredCapabilities,
+          ) ||
+          !sameStringSet(existingDependencies, input.dependencySkillIds)
+        ) {
+          throw new StoreConflictError(
+            "This skill slug and version already identify a different definition.",
+          );
+        }
+      }
+
+      const existingAssignments = await transaction
+        .select({ skillId: employeeSkills.skillId })
+        .from(employeeSkills)
+        .where(and(eq(employeeSkills.botId, botId), eq(employeeSkills.skillId, skillRow.id)))
+        .limit(1);
+      if (existingAssignments.length > 0) {
+        throw new StoreConflictError("This skill is already assigned to the employee.");
+      }
+
+      const assignmentRows = await transaction
+        .insert(employeeSkills)
+        .values({
+          botId,
+          skillId: skillRow.id,
+          state: "candidate",
+          confidence: 0,
+          evidence: input.evidence,
+          acquiredAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing({ target: [employeeSkills.botId, employeeSkills.skillId] })
+        .returning();
+      const assignment = assignmentRows[0];
+      if (assignment === undefined) {
+        throw new StoreConflictError("This skill is already assigned to the employee.");
+      }
+
+      const evolutionRows = await transaction
+        .insert(employeeEvolutionEvents)
+        .values({
+          id: randomUUID(),
+          botId,
+          type: "skill_discovered",
+          title: "Candidate skill added",
+          summary: input.reason,
+          source: input.source === "imported" ? "import" : "manual",
+          sourceId: skillRow.id,
+          evidence: input.evidence,
+          createdAt: now,
+        })
+        .returning();
+      const evolution = evolutionRows[0];
+      if (evolution === undefined) {
+        throw new Error("Evolution event creation did not return a record.");
+      }
+
+      return {
+        skill: toEmployeeSkill(skillRow, assignment, input.dependencySkillIds),
+        evolution: toEmployeeEvolutionEvent(evolution),
+      };
+    });
+  }
+
+  async updateEmployeeSkillState(
+    botId: string,
+    skillId: string,
+    input: UpdateEmployeeSkillStateInput,
+  ): Promise<EmployeeSkillMutationResult> {
+    return this.#db.transaction(async (transaction) => {
+      const [record] = await transaction
+        .select({ assignment: employeeSkills, skill: skills })
+        .from(employeeSkills)
+        .innerJoin(skills, eq(employeeSkills.skillId, skills.id))
+        .where(and(eq(employeeSkills.botId, botId), eq(employeeSkills.skillId, skillId)))
+        .limit(1);
+      if (record === undefined) throw new StoreNotFoundError("Employee skill not found.");
+
+      const currentState = record.assignment.state as EmployeeSkill["state"];
+      if (!isEmployeeSkillTransitionAllowed(currentState, input.state)) {
+        throw new StoreConflictError(
+          `A ${currentState} skill cannot transition to ${input.state}.`,
+        );
+      }
+
+      const dependencyRows = await transaction
+        .select({ id: skillDependencies.dependsOnSkillId })
+        .from(skillDependencies)
+        .where(eq(skillDependencies.skillId, skillId));
+      const dependencyIds = dependencyRows.map((row) => row.id).sort();
+      if (input.state === "verified" && dependencyIds.length > 0) {
+        const verifiedDependencies = await transaction
+          .select({ skillId: employeeSkills.skillId, state: employeeSkills.state })
+          .from(employeeSkills)
+          .where(
+            and(eq(employeeSkills.botId, botId), inArray(employeeSkills.skillId, dependencyIds)),
+          );
+        if (
+          verifiedDependencies.length !== dependencyIds.length ||
+          verifiedDependencies.some((dependency) => dependency.state !== "verified")
+        ) {
+          throw new StoreValidationError(
+            "Every dependency must be verified before this skill can be verified.",
+          );
+        }
+      }
+
+      const evidence = mergeEvidenceReferences(
+        toEvidenceReferences(record.assignment.evidence),
+        input.evidence,
+      );
+      const now = new Date();
+      const assignmentRows = await transaction
+        .update(employeeSkills)
+        .set({
+          state: input.state,
+          confidence: input.state === "verified" ? input.confidence : record.assignment.confidence,
+          evidence,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(employeeSkills.botId, botId),
+            eq(employeeSkills.skillId, skillId),
+            eq(employeeSkills.state, currentState),
+          ),
+        )
+        .returning();
+      const assignment = assignmentRows[0];
+      if (assignment === undefined) {
+        throw new StoreConflictError("The skill state changed while it was being reviewed.");
+      }
+
+      const eventType = `skill_${input.state}` as EmployeeEvolutionEvent["type"];
+      const evolutionRows = await transaction
+        .insert(employeeEvolutionEvents)
+        .values({
+          id: randomUUID(),
+          botId,
+          type: eventType,
+          title: skillStateEventTitle(input.state),
+          summary: input.reason,
+          source: "manual",
+          sourceId: skillId,
+          evidence: input.evidence,
+          createdAt: now,
+        })
+        .returning();
+      const evolution = evolutionRows[0];
+      if (evolution === undefined) {
+        throw new Error("Evolution event creation did not return a record.");
+      }
+
+      return {
+        skill: toEmployeeSkill(record.skill, assignment, dependencyIds),
+        evolution: toEmployeeEvolutionEvent(evolution),
+      };
+    });
   }
 
   async createChannel(input: CreateChannelInput): Promise<Channel> {
@@ -1177,7 +1425,7 @@ function toEmployeeSkill(
     name: skill.name,
     description: skill.description,
     version: skill.version,
-    source: skill.source,
+    source: skill.source as EmployeeSkill["source"],
     state: assignment.state as EmployeeSkill["state"],
     confidence: assignment.confidence,
     requiredCapabilities: toStringArray(skill.requiredCapabilities),
@@ -1227,6 +1475,44 @@ function toStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function sameStringSet(left: string[], right: string[]): boolean {
+  const normalizedLeft = [...new Set(left)].sort();
+  const normalizedRight = [...new Set(right)].sort();
+  return (
+    normalizedLeft.length === normalizedRight.length &&
+    normalizedLeft.every((value, index) => value === normalizedRight[index])
+  );
+}
+
+function mergeEvidenceReferences(
+  current: EmployeeEvidenceReference[],
+  additional: EmployeeEvidenceReference[],
+): EmployeeEvidenceReference[] {
+  const merged = new Map<string, EmployeeEvidenceReference>();
+  for (const reference of [...current, ...additional]) {
+    const key = `${reference.kind}:${reference.id}`;
+    merged.delete(key);
+    merged.set(key, reference);
+  }
+  return [...merged.values()].slice(-64);
+}
+
+function isEmployeeSkillTransitionAllowed(
+  current: EmployeeSkill["state"],
+  next: UpdateEmployeeSkillStateInput["state"],
+): boolean {
+  if (current === "revoked" || current === next) return false;
+  if (current === "candidate") return true;
+  if (current === "verified") return next === "suspended" || next === "revoked";
+  return next === "verified" || next === "revoked";
+}
+
+function skillStateEventTitle(state: UpdateEmployeeSkillStateInput["state"]): string {
+  if (state === "verified") return "Skill verified";
+  if (state === "suspended") return "Skill suspended";
+  return "Skill revoked";
 }
 
 function toArtifact(row: typeof artifactsTable.$inferSelect): Artifact {

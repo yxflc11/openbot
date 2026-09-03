@@ -81,7 +81,7 @@ export type EmployeeEvidenceKind = "run" | "artifact" | "approval" | "manual" | 
 export interface EmployeeEvidenceReference {
   kind: EmployeeEvidenceKind;
   id: EntityId;
-  label?: string;
+  label?: string | undefined;
 }
 
 /** Append-only, evidence-backed history used by the employee evolution view. */
@@ -98,6 +98,7 @@ export interface EmployeeEvolutionEvent {
 }
 
 export type EmployeeSkillState = "candidate" | "verified" | "suspended" | "revoked";
+export type EmployeeSkillSource = "built-in" | "installed" | "learned" | "imported" | "manual";
 
 /** A versioned skill assignment. Confidence is evidence quality, never an authority grant. */
 export interface EmployeeSkill {
@@ -106,7 +107,7 @@ export interface EmployeeSkill {
   name: string;
   description: string;
   version: string;
-  source: string;
+  source: EmployeeSkillSource;
   state: EmployeeSkillState;
   confidence: number;
   requiredCapabilities: string[];
@@ -114,6 +115,38 @@ export interface EmployeeSkill {
   evidence: EmployeeEvidenceReference[];
   acquiredAt: string;
   updatedAt: string;
+}
+
+export interface CreateEmployeeSkillInput {
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  source: EmployeeSkillSource;
+  requiredCapabilities: string[];
+  dependencySkillIds: EntityId[];
+  evidence: EmployeeEvidenceReference[];
+  reason: string;
+}
+
+export type UpdateEmployeeSkillStateInput =
+  | {
+      state: "verified";
+      confidence: number;
+      reason: string;
+      evidence: EmployeeEvidenceReference[];
+      ownerReviewed: true;
+    }
+  | {
+      state: "suspended" | "revoked";
+      reason: string;
+      evidence: EmployeeEvidenceReference[];
+      ownerReviewed: true;
+    };
+
+export interface EmployeeSkillMutationResult {
+  skill: EmployeeSkill;
+  evolution: EmployeeEvolutionEvent;
 }
 
 export type EmployeeMemoryKind =

@@ -24,6 +24,8 @@
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
 | `GET` | `/api/v1/bots/:botId/profile` | 读取数字员工档案、进化、技能、记忆与工作记录 |
+| `POST` | `/api/v1/bots/:botId/skills` | 登记一个待 Owner 审核的候选技能元数据 |
+| `POST` | `/api/v1/bots/:botId/skills/:skillId/state` | 由 Owner 验证、暂停或永久撤销技能 |
 | `GET` | `/api/v1/bots/:botId/export/preview` | 预览默认脱敏员工模板及全部排除项 |
 | `GET` | `/api/v1/bots/:botId/export` | 下载通过安全检查的员工模板 JSON |
 | `POST` | `/api/v1/employees/import/preview` | 在隔离区严格检查员工模板，不写入任何员工数据 |
@@ -76,6 +78,47 @@ manifest 用于兼容性展示和后续策略迁移，本身不授予执行权�
 `records.decisions` 只来自 Worker Host 上报并持久化的 `RUN_PROGRESS` 事件，用于解释阶段、已观察事实和下一步动作。它不是模型原始思维链，也不允许 Provider 把隐藏提示、密钥或私有推理写入其中。
 
 技能的 `confidence` 表示证据质量，不会授予电脑权限；真正的执行权限仍由 Server 的 Node 路由、策略、审批和后续 capability lease 独立决定。记忆的 `portability` 也只是导出候选策略，导出时仍需重新过滤和 Owner 确认。
+
+## 审核员工技能元数据
+
+`POST /api/v1/bots/:botId/skills` 只创建 `candidate`。`slug` 使用 Agent Skills 兼容的英文小写、
+数字和连字符格式，最多 64 字符；`description` 必填且最多 1,024 字符。Server 会去重所需能力和
+前置技能，并要求每项前置技能已经属于同一员工且为 `verified`。请求不能携带 `state` 或
+`confidence` 来绕过审核。
+
+```json
+{
+  "slug": "source-triangulation",
+  "name": "Source triangulation",
+  "description": "Compare independent primary sources before reporting a conclusion.",
+  "version": "1.0.0",
+  "source": "learned",
+  "requiredCapabilities": ["browser.observe"],
+  "dependencySkillIds": [],
+  "evidence": [{ "kind": "run", "id": "run-reference" }],
+  "reason": "Repeated successful Runs produced a reusable procedure."
+}
+```
+
+`POST /api/v1/bots/:botId/skills/:skillId/state` 接受 `verified`、`suspended` 或 `revoked`。
+每次变更必须包含非空原因和字面值 `ownerReviewed: true`；鉴权 Session 证明请求者就是当前单
+Owner。验证还需要 1–100 的 `confidence`，并再次确认全部依赖仍为已验证。撤销是终止状态，
+不能恢复；并发审核以 `409` 失败，不会后写覆盖先写。
+
+```json
+{
+  "state": "verified",
+  "confidence": 88,
+  "reason": "The Owner reviewed the procedure and evidence.",
+  "ownerReviewed": true,
+  "evidence": [{ "kind": "manual", "id": "owner-review-1" }]
+}
+```
+
+每次成功变更都会在同一事务内追加 `skill_discovered`、`skill_verified`、`skill_suspended` 或
+`skill_revoked` 进化事件。这个接口只管理档案元数据：不会安装或执行 `SKILL.md`，也不会修改
+Node、Provider、路由、审批策略或主机授权。完整技能目录将在后续隔离导入时采用开放的
+[Agent Skills](https://github.com/agentskills/agentskills) 规范和官方 `skills-ref` 校验器。
 
 ## 导出安全员工模板
 

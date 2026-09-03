@@ -54,7 +54,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, and SSE reconnect | Installable PWA, notification delivery, accessibility and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
-| Employee profile | Seven-view profile plus safe template export and a strict, read-only quarantined import inspection | Skill learning and verification, memory controls, signed packages, reviewed activation, cloning, and transfer |
+| Employee profile | Seven-view profile, safe template export, quarantined import inspection, and Owner-reviewed candidate/verify/suspend/revoke skill metadata | Executable Agent Skills bundles, autonomous proposals, memory controls, signed packages, reviewed activation, cloning, and transfer |
 | Node protocol | Outbound WebSocket registration, heartbeat, capacity, deterministic routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and protocol compatibility tests |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
@@ -67,8 +67,8 @@ and back. The table deliberately separates working code from planned capabilitie
 - It does not yet issue cryptographic, single-use capability leases after approval.
 - It does not provide continuous remote desktop control.
 - It does not yet have production-grade Node identity, mTLS, or credential rotation.
-- It does not yet learn or verify skills autonomously, edit memory, import employee packages, clone
-  employees, or transfer ownership.
+- It does not yet propose or execute learned skills autonomously, edit memory, activate imported
+  employee packages, clone employees, or transfer ownership.
 - The current employee template is checksum-protected but unsigned. It carries no memory or host
   authority and must remain quarantined when import support is added.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
@@ -255,6 +255,7 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | Design employee identity and portability | [Portable employee model](docs/EMPLOYEE.md) |
 | Add an operating system or device | [Cross-platform Worker Hosts](docs/CROSS_PLATFORM.md) |
 | Understand upstream choices | [Upstream strategy](docs/UPSTREAMS.md) |
+| Follow the open-source-first review process | [Open-source reuse policy and current audit](docs/OPEN_SOURCE_REUSE.md) |
 | Review why a decision was made | [Architecture decision records](docs/decisions/) |
 
 ## Upstream projects
@@ -267,6 +268,10 @@ multiple control planes into one repository:
 - [Cua](https://github.com/trycua/cua) and Lume — planned macOS execution providers.
 - [OpenClaw](https://github.com/openclaw/openclaw) — optional runtime, skills, and operational
   reference; not a second source of truth.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — product reference for the
+  employee evolution archive, learning graph, skill/memory separation, and reviewed skill writes.
+- [Agent Skills](https://github.com/agentskills/agentskills) — planned standard format and official
+  validator for executable skill bundles.
 - Codex, Claude, and Multica — planned isolated coding-provider integrations.
 
 Upstream licenses and notices must be preserved whenever code is incorporated.

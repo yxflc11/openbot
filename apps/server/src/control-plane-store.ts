@@ -8,13 +8,16 @@ import type {
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeSkillInput,
   CreateMessageInput,
   EmployeeProfile,
+  EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
   Run,
   RunProgress,
   SubmitTaskResult,
+  UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
 
 export interface RequestApprovalInput {
@@ -59,6 +62,15 @@ export interface ControlPlaneStore {
   getRunningRunForNode(runId: string, nodeId: string): Promise<Run | undefined>;
   getCounts(): Promise<PersistedCounts>;
   createBot(input: CreateBotInput): Promise<Bot>;
+  createEmployeeSkill(
+    botId: string,
+    input: CreateEmployeeSkillInput,
+  ): Promise<EmployeeSkillMutationResult>;
+  updateEmployeeSkillState(
+    botId: string,
+    skillId: string,
+    input: UpdateEmployeeSkillStateInput,
+  ): Promise<EmployeeSkillMutationResult>;
   createChannel(input: CreateChannelInput): Promise<Channel>;
   submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult>;
   assignRun(runId: string, nodeId: string): Promise<Run | undefined>;

@@ -4,9 +4,11 @@ import type {
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeSkillInput,
   CreateMessageInput,
   EmployeeEvolutionEvent,
   EmployeeProfile,
+  EmployeeSkill,
   ExecutionNode,
   Message,
   Run,
@@ -356,6 +358,150 @@ describe("server app", () => {
       headers: { Cookie: cookie },
     });
     expect(missing.status).toBe(404);
+  });
+
+  it("keeps learned skills pending until the Owner reviews an auditable transition", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Researcher",
+      role: "Evidence-backed research",
+      computerProfile: "docker-linux",
+    });
+    const node: ExecutionNode = {
+      id: "linux-worker",
+      name: "Linux worker",
+      platform: "linux",
+      osVersion: "6.8",
+      architecture: "x64",
+      deviceClass: "server",
+      isolation: "container",
+      trustTier: "dedicated",
+      capabilities: ["browser"],
+      capabilityManifest: [],
+      maxConcurrentRuns: 1,
+      activeRunIds: [],
+      status: "online",
+      connectedAt: "2026-09-04T00:00:00.000Z",
+      lastSeenAt: "2026-09-04T00:00:00.000Z",
+    };
+    const app = createTestApp({ store, listNodes: () => [node] });
+
+    const unauthenticated = await app.request(`/api/v1/bots/${bot.id}/skills`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({}),
+    });
+    expect(unauthenticated.status).toBe(401);
+
+    const cookie = await login(app);
+    const created = await app.request(`/api/v1/bots/${bot.id}/skills`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        slug: "source-triangulation",
+        name: "Source triangulation",
+        description: "Compare independent primary sources before reporting a conclusion.",
+        version: "1.0.0",
+        source: "learned",
+        requiredCapabilities: ["browser.observe", "browser.observe"],
+        reason: "Repeated research Runs produced a reusable procedure.",
+        evidence: [{ kind: "run", id: "research-run-42", label: "Evaluation fixture" }],
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdPayload = (await created.json()) as {
+      skill: EmployeeSkill;
+      evolution: EmployeeEvolutionEvent;
+    };
+    expect(createdPayload).toMatchObject({
+      skill: {
+        state: "candidate",
+        confidence: 0,
+        requiredCapabilities: ["browser.observe"],
+      },
+      evolution: {
+        type: "skill_discovered",
+        summary: "Repeated research Runs produced a reusable procedure.",
+      },
+    });
+
+    const unreviewed = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "verified",
+          confidence: 88,
+          reason: "The fixture passed, but review was not asserted.",
+        }),
+      },
+    );
+    expect(unreviewed.status).toBe(422);
+
+    const verified = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "verified",
+          confidence: 88,
+          reason: "The Owner reviewed the procedure and its evidence.",
+          ownerReviewed: true,
+          evidence: [{ kind: "manual", id: "owner-review-1" }],
+        }),
+      },
+    );
+    expect(verified.status).toBe(200);
+    expect(await verified.json()).toMatchObject({
+      skill: { state: "verified", confidence: 88 },
+      evolution: { type: "skill_verified" },
+    });
+
+    const profile = await app.request(`/api/v1/bots/${bot.id}/profile`, {
+      headers: { Cookie: cookie },
+    });
+    expect(await profile.json()).toMatchObject({
+      profile: {
+        skills: [{ id: createdPayload.skill.id, state: "verified" }],
+        evolution: [{ type: "created" }, { type: "skill_discovered" }, { type: "skill_verified" }],
+        statistics: { verifiedSkills: 1 },
+      },
+    });
+
+    const nodes = await app.request("/api/v1/nodes", { headers: { Cookie: cookie } });
+    expect(await nodes.json()).toEqual({ nodes: [node] });
+
+    const revoked = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "revoked",
+          reason: "The procedure is no longer safe for current sources.",
+          ownerReviewed: true,
+        }),
+      },
+    );
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toMatchObject({ skill: { state: "revoked" } });
+
+    const restoreRevoked = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "verified",
+          confidence: 90,
+          reason: "Attempt to restore a terminal skill.",
+          ownerReviewed: true,
+        }),
+      },
+    );
+    expect(restoreRevoked.status).toBe(409);
   });
 
   it("previews and downloads an identity-free employee template", async () => {
@@ -869,6 +1015,8 @@ function createTestStore(): ControlPlaneStore {
   const runs: Run[] = [];
   const approvals: Approval[] = [];
   const evolution: EmployeeEvolutionEvent[] = [];
+  const skillAssignments: EmployeeSkill[] = [];
+  const skillOwners = new Map<string, string>();
   const progress: RunProgress[] = [];
   let nextId = 0;
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
@@ -887,7 +1035,7 @@ function createTestStore(): ControlPlaneStore {
       return {
         employee: bot,
         evolution: evolution.filter((event) => event.botId === botId),
-        skills: [],
+        skills: skillAssignments.filter((skill) => skillOwners.get(skill.id) === botId),
         memories: [],
         records: {
           runs: employeeRuns,
@@ -901,7 +1049,9 @@ function createTestStore(): ControlPlaneStore {
           totalRuns: employeeRuns.length,
           completedRuns: employeeRuns.filter((run) => run.status === "completed").length,
           failedRuns: employeeRuns.filter((run) => run.status === "failed").length,
-          verifiedSkills: 0,
+          verifiedSkills: skillAssignments.filter(
+            (skill) => skillOwners.get(skill.id) === botId && skill.state === "verified",
+          ).length,
         },
         configuration: {
           executionProfile: bot.computerProfile,
@@ -967,6 +1117,123 @@ function createTestStore(): ControlPlaneStore {
         createdAt: bot.createdAt,
       });
       return bot;
+    },
+    async createEmployeeSkill(botId: string, input: CreateEmployeeSkillInput) {
+      if (!bots.some((bot) => bot.id === botId)) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      const duplicate = skillAssignments.find(
+        (skill) =>
+          skillOwners.get(skill.id) === botId &&
+          skill.slug === input.slug &&
+          skill.version === input.version,
+      );
+      if (duplicate !== undefined) {
+        throw new StoreConflictError("This skill is already assigned to the employee.");
+      }
+      const dependencies = input.dependencySkillIds.map((dependencyId) =>
+        skillAssignments.find(
+          (skill) => skill.id === dependencyId && skillOwners.get(skill.id) === botId,
+        ),
+      );
+      if (dependencies.some((dependency) => dependency === undefined)) {
+        throw new StoreValidationError(
+          "Every dependency must already be assigned to this employee.",
+        );
+      }
+      if (dependencies.some((dependency) => dependency?.state !== "verified")) {
+        throw new StoreValidationError(
+          "Every dependency must be verified before this candidate can be added.",
+        );
+      }
+      const now = new Date().toISOString();
+      const skill: EmployeeSkill = {
+        id: id(),
+        slug: input.slug,
+        name: input.name,
+        description: input.description,
+        version: input.version,
+        source: input.source,
+        state: "candidate",
+        confidence: 0,
+        requiredCapabilities: input.requiredCapabilities,
+        dependencyIds: input.dependencySkillIds,
+        evidence: input.evidence,
+        acquiredAt: now,
+        updatedAt: now,
+      };
+      const event: EmployeeEvolutionEvent = {
+        id: id(),
+        botId,
+        type: "skill_discovered",
+        title: "Candidate skill added",
+        summary: input.reason,
+        source: input.source === "imported" ? "import" : "manual",
+        sourceId: skill.id,
+        evidence: input.evidence,
+        createdAt: now,
+      };
+      skillAssignments.push(skill);
+      skillOwners.set(skill.id, botId);
+      evolution.push(event);
+      return { skill, evolution: event };
+    },
+    async updateEmployeeSkillState(botId, skillId, input) {
+      if (!bots.some((bot) => bot.id === botId)) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      const skill = skillAssignments.find(
+        (candidate) => candidate.id === skillId && skillOwners.get(candidate.id) === botId,
+      );
+      if (skill === undefined) throw new StoreNotFoundError("Employee skill not found.");
+      const transitionAllowed =
+        skill.state !== "revoked" &&
+        skill.state !== input.state &&
+        (skill.state === "candidate" ||
+          (skill.state === "verified" && ["suspended", "revoked"].includes(input.state)) ||
+          (skill.state === "suspended" && ["verified", "revoked"].includes(input.state)));
+      if (!transitionAllowed) {
+        throw new StoreConflictError(`A ${skill.state} skill cannot transition to ${input.state}.`);
+      }
+      if (input.state === "verified") {
+        const dependencies = skill.dependencyIds.map((dependencyId) =>
+          skillAssignments.find(
+            (candidate) => candidate.id === dependencyId && skillOwners.get(candidate.id) === botId,
+          ),
+        );
+        if (dependencies.some((dependency) => dependency?.state !== "verified")) {
+          throw new StoreValidationError(
+            "Every dependency must be verified before this skill can be verified.",
+          );
+        }
+        skill.confidence = input.confidence;
+      }
+      skill.state = input.state;
+      skill.evidence = [...skill.evidence, ...input.evidence].filter(
+        (reference, index, references) =>
+          references.findIndex(
+            (candidate) => candidate.kind === reference.kind && candidate.id === reference.id,
+          ) === index,
+      );
+      skill.updatedAt = new Date().toISOString();
+      const event: EmployeeEvolutionEvent = {
+        id: id(),
+        botId,
+        type: `skill_${input.state}`,
+        title:
+          input.state === "verified"
+            ? "Skill verified"
+            : input.state === "suspended"
+              ? "Skill suspended"
+              : "Skill revoked",
+        summary: input.reason,
+        source: "manual",
+        sourceId: skill.id,
+        evidence: input.evidence,
+        createdAt: skill.updatedAt,
+      };
+      evolution.push(event);
+      return { skill, evolution: event };
     },
     async createChannel(input: CreateChannelInput) {
       const channel: Channel = {

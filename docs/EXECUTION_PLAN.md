@@ -40,8 +40,8 @@ tests, hardening, or the next slice.
 | 1:45–3:15 | Complete | Employee profile foundation | Persisted evolution/skill/memory records, aggregate API, seven-view responsive UI, and existing-Bot backfill | Every UI entry opens the same employee; full repository check and browser QA pass |
 | 3:15–4:30 | Complete | Safe template export | Strict package schema, preview, sensitive-text blocker, checksum, and JSON download | Default package has no source id, secret, session, approval, Node identity, memory, history, or authority |
 | 4:30–5:45 | Complete | Import inspection and quarantine | Upload/parse boundary, schema and checksum validation, compatibility report, and review-only preview | Invalid/unknown fields fail closed; no Bot, skill, memory, or authority is created during preview |
-| 5:45–6:45 | Active | Contributor skill interfaces | Minimal versioned skill create/verify/suspend APIs with immutable evolution events | Verification requires evidence or explicit Owner review; skill state never changes host policy |
-| 6:45–7:45 | Queued | Cross-platform conformance hardening | Provider/Node fixture matrix, routing negatives, reconnect tests, and documented support levels | Unsupported platforms and capabilities remain visibly blocked without silent fallback |
+| 5:45–6:45 | Complete | Contributor skill interfaces | Minimal versioned skill create/verify/suspend APIs with immutable evolution events | Verification requires evidence or explicit Owner review; skill state never changes host policy |
+| 6:45–7:45 | Active | Cross-platform conformance hardening | Provider/Node fixture matrix, routing negatives, reconnect tests, and documented support levels | Unsupported platforms and capabilities remain visibly blocked without silent fallback |
 | 7:45–8:30 | Queued | Integration and contribution handoff | Full checks, API docs, roadmap, issue-ready follow-ups, accessibility pass, and small reviewable commits | `npm run check` passes; docs distinguish implemented, experimental, and planned behavior |
 
 ## Execution rules
@@ -58,6 +58,9 @@ tests, hardening, or the next slice.
 9. Finish each slice with focused tests, a full check where practical, updated docs, and one small
    commit.
 10. Preserve unrelated user files and uncommitted work.
+11. Before each non-trivial slice, research maintained open-source implementations, record the
+    selected version and license, and reuse a standard/dependency/adapter before implementing a
+    documented gap. Follow [the reuse policy](OPEN_SOURCE_REUSE.md).
 
 ## After the first 8 hours
 

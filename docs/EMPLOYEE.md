@@ -38,6 +38,12 @@ The avatar opens the profile from the channel roster, message author, and Bot li
 
 ## Evolution is evidence, not gamification
 
+This product direction is inspired by
+[Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py):
+skills, memories, provenance, use, and their relationships should be inspectable instead of hidden
+inside one prompt. OpenBot adopts that idea while keeping authorization in its own Server policy;
+no Hermes source code is copied into this implementation.
+
 An evolution event records a real change to the employee:
 
 - a skill was installed, learned, verified, upgraded, suspended, or removed;
@@ -52,7 +58,9 @@ but they cannot grant execution authority.
 
 ## Skill graph
 
-A skill is a versioned capability description with explicit provenance:
+A skill is a versioned capability description with explicit provenance. Executable skill bundles
+will use the open [Agent Skills](https://github.com/agentskills/agentskills) `SKILL.md` directory
+format and its official validator rather than an OpenBot-only format:
 
 ```text
 Skill
@@ -68,6 +76,10 @@ Skill
 Learning creates a `candidate` skill. It becomes `verified` only after deterministic validation or
 human review. Skill confidence can influence recommendations, but routing and authorization still
 use explicit Server policy.
+
+The current lifecycle API registers graph metadata only. It does not install scripts, load a
+`SKILL.md` into a runtime, or grant tools. Those actions require a later quarantined archive,
+license/provenance checks, official format validation, and a separate local policy grant.
 
 ## Visible runtime reasoning
 
@@ -165,12 +177,17 @@ Implemented on the `feat/cross-platform-employees` development line:
   dependency/capability consistency, sensitive text, and connected Worker Host compatibility;
 - a read-only quarantine projection that cannot create an Employee, activate a skill, persist
   memory, bind a host, or grant authority.
+- strict Owner-authenticated commands that add Agent Skills-compatible metadata as a `candidate`
+  and explicitly verify, suspend, or permanently revoke it while appending evolution evidence;
+- conditional state updates that reject concurrent review races and never change Worker Host
+  capability claims or policy grants.
 
 The current v1 template is deliberately unsigned and memory-free. The skill learning/verification
-workflow, memory editing and retention controls, signed archive, reviewed import activation,
-cloning, and authenticated ownership transfer are not implemented yet. Their data and authority
-boundaries are defined here so contributors can add them without coupling employee knowledge to
-Worker Host access.
+workflow currently covers metadata review only; autonomous skill proposals, executable Agent
+Skills archives, full-diff review, memory editing and retention controls, signed archives, reviewed
+import activation, cloning, and authenticated ownership transfer are not implemented yet. Their
+data and authority boundaries are defined here so contributors can add them without coupling
+employee knowledge to Worker Host access.
 
 ## Acceptance criteria
 

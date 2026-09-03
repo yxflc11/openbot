@@ -12,7 +12,9 @@ M3 基础切片已完成：员工进化事件、版本化技能、技能依赖�
 可以从 Bot 列表、频道成员和消息作者进入。安全模板导出已有严格 schema、默认排除项、疑似敏感
 文本阻止、SHA-256 校验和 Owner 鉴权下载。只读导入预览也已完成严格 schema、1 MiB 上限、
 完整性与技能语义检查、敏感文本检查和在线主机兼容报告；它不能创建员工或获得工作主机权限。
-当前模板仍未签名且不含记忆，下一步是有证据的技能变更接口和签名/审核后激活设计。
+当前模板仍未签名且不含记忆。Agent Skills 兼容的技能元数据现在只能先成为候选，再由登录
+Owner 验证、暂停或永久撤销；每次变化都会追加进化事件，不会改变主机权限。下一步是可执行
+技能目录的隔离检查、完整 diff 审核，以及签名/审核后激活设计。
 
 ## 当前持续目标的执行顺序
 
@@ -141,8 +143,8 @@ M3 基础切片已完成：员工进化事件、版本化技能、技能依赖�
 
 ## 下一批 Issue
 
-1. `Domain: add Owner-reviewed Skill create, verify, suspend, and revoke commands`
-2. `Database: persist immutable Skill evidence and review events`
+1. `Skills: validate quarantined SKILL.md directories with the official skills-ref worker`
+2. `Skills: add bounded proposal expiry, supersession, notification, and full-diff review`
 3. `Protocol: publish cross-platform Provider conformance fixtures`
 4. `Routing: reject unsupported capability versions without fallback`
 5. `Security: design publisher keys and signed Employee archives`

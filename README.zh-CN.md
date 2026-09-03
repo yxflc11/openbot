@@ -47,7 +47,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 控制平面 | 本地 Owner 认证、PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、恢复工具和多用户信任模型 |
 | 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批和 SSE 重连 | 可安装 PWA、通知投递、无障碍和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
-| 员工档案 | 七视图个人主页、安全模板导出，以及严格、只读、隔离的导入检查 | 技能学习/验证、记忆控制、签名员工包、审核后激活、复制和转移 |
+| 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查，以及由 Owner 审核的技能候选/验证/暂停/撤销元数据 | 可执行 Agent Skills 包、自动提案、记忆控制、签名员工包、审核后激活、复制和转移 |
 | Node 协议 | 出站 WebSocket 登记、心跳、容量、确定性路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和协议兼容测试 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
@@ -60,7 +60,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - 审批后还不会签发加密的单次 capability lease。
 - 尚不提供连续远程桌面控制。
 - 尚未具备生产级 Node 身份、mTLS 或凭证轮换。
-- 尚不能自主学习或验证技能、编辑记忆、导入员工包、复制员工或转移所有权。
+- 尚不能自主提案或执行已学技能、编辑记忆、激活导入员工包、复制员工或转移所有权。
 - 当前员工模板只有校验和、尚未签名；它不携带记忆和主机权限，未来导入时仍必须隔离审核。
 - Cua、Lume 和 coder Provider 目前是扩展边界，不是已完成的运行时。
 - 可选办公室可视化不进入当前产品导航和 Web 构建。
@@ -239,6 +239,7 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | 设计员工身份和迁移 | [可迁移数字员工模型](docs/EMPLOYEE.zh-CN.md) |
 | 增加操作系统或设备 | [跨平台工作主机](docs/CROSS_PLATFORM.zh-CN.md) |
 | 理解上游选择 | [上游策略](docs/UPSTREAMS.md) |
+| 遵循开源优先审查流程 | [开源复用规则与当前审查](docs/OPEN_SOURCE_REUSE.zh-CN.md) |
 | 查看一项决策的原因 | [架构决策记录](docs/decisions/) |
 
 ## 上游项目
@@ -249,6 +250,10 @@ OpenBot 通过窄接口融合现有开源工作，不会把多个控制平面复
   边界与产品研究来源。
 - [Cua](https://github.com/trycua/cua) 与 Lume — 计划中的 macOS 执行 Provider。
 - [OpenClaw](https://github.com/openclaw/openclaw) — 可选运行时、技能与运维参考，不作为第二真相源。
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — 员工进化档案、学习图谱、技能与
+  记忆分离以及技能写入审核的产品参考。
+- [Agent Skills](https://github.com/agentskills/agentskills) — 未来可执行技能包采用的开放格式与
+  官方校验器。
 - Codex、Claude 与 Multica — 计划中的隔离编码 Provider 集成。
 
 任何引入的上游代码都必须保留其许可证和版权声明。

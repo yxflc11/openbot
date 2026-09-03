@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createBotInputSchema,
   createChannelInputSchema,
+  createEmployeeSkillInputSchema,
   createMessageInputSchema,
   employeeTemplatePackageSchema,
   loginInputSchema,
@@ -10,6 +11,7 @@ import {
   runEventSchema,
   runOfferSchema,
   serverMessageSchema,
+  updateEmployeeSkillStateInputSchema,
 } from "./index.js";
 
 describe("node protocol", () => {
@@ -317,6 +319,64 @@ describe("portable employee format", () => {
           ...employeePackage.payload,
           employee: { ...employeePackage.payload.employee, sourceEmployeeId: "source-id" },
         },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("employee skill commands", () => {
+  it("normalizes a candidate skill without allowing direct verification", () => {
+    expect(
+      createEmployeeSkillInputSchema.parse({
+        slug: "browser-observe",
+        name: "Observe browser",
+        description: "Observe public webpages without interacting with them.",
+        version: "1.0.0",
+        source: "manual",
+        requiredCapabilities: ["browser.observe", "browser.observe"],
+        reason: "Prepare a candidate for Owner review.",
+      }),
+    ).toMatchObject({
+      slug: "browser-observe",
+      requiredCapabilities: ["browser.observe"],
+      dependencySkillIds: [],
+      evidence: [],
+    });
+    expect(
+      createEmployeeSkillInputSchema.safeParse({
+        slug: "Unsafe Skill",
+        name: "Unsafe",
+        description: "Attempts to bypass review.",
+        version: "latest",
+        source: "manual",
+        state: "verified",
+        reason: "Bypass review",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires explicit Owner review and bounded confidence for verification", () => {
+    expect(
+      updateEmployeeSkillStateInputSchema.safeParse({
+        state: "verified",
+        confidence: 90,
+        reason: "Passed the deterministic fixture.",
+        ownerReviewed: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      updateEmployeeSkillStateInputSchema.safeParse({
+        state: "verified",
+        confidence: 90,
+        reason: "No explicit review",
+      }).success,
+    ).toBe(false);
+    expect(
+      updateEmployeeSkillStateInputSchema.safeParse({
+        state: "verified",
+        confidence: 101,
+        reason: "Invalid confidence",
+        ownerReviewed: true,
       }).success,
     ).toBe(false);
   });

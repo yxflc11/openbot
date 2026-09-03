@@ -11,10 +11,12 @@ import {
   approvalDecisionInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
+  createEmployeeSkillInputSchema,
   createMessageInputSchema,
   employeeTemplatePackageSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
+  updateEmployeeSkillStateInputSchema,
 } from "@openbot/protocol";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -414,6 +416,22 @@ export function createApp(dependencies: AppDependencies) {
       profile: await dependencies.store.getEmployeeProfile(context.req.param("botId")),
     }),
   );
+
+  app.post("/api/v1/bots/:botId/skills", async (context) => {
+    const input = await parseRequest(context.req.raw, createEmployeeSkillInputSchema);
+    const result = await dependencies.store.createEmployeeSkill(context.req.param("botId"), input);
+    return context.json(result, 201);
+  });
+
+  app.post("/api/v1/bots/:botId/skills/:skillId/state", async (context) => {
+    const input = await parseRequest(context.req.raw, updateEmployeeSkillStateInputSchema);
+    const result = await dependencies.store.updateEmployeeSkillState(
+      context.req.param("botId"),
+      context.req.param("skillId"),
+      input,
+    );
+    return context.json(result);
+  });
 
   app.get("/api/v1/bots/:botId/export/preview", async (context) => {
     const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));

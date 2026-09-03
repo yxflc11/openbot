@@ -369,6 +369,87 @@ export const botAppearanceSchema = z.object({
   accent: z.enum(["green", "yellow", "red", "blue"]),
 });
 
+export const employeeEvidenceReferenceSchema = z
+  .object({
+    kind: z.enum(["run", "artifact", "approval", "manual", "import"]),
+    id: z.string().trim().min(1).max(160),
+    label: z.string().trim().min(1).max(240).optional(),
+  })
+  .strict();
+
+const employeeSkillSourceSchema = z.enum([
+  "built-in",
+  "installed",
+  "learned",
+  "imported",
+  "manual",
+]);
+const employeeSkillCapabilitySchema = z.union([nodeCapabilitySchema, versionedCapabilityIdSchema]);
+const employeeSkillReasonSchema = z.string().trim().min(1).max(1000);
+
+export const createEmployeeSkillInputSchema = z
+  .object({
+    // `slug` is the interoperable Agent Skills name; the display name remains separate.
+    slug: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+        "Use an Agent Skills-compatible lowercase name with hyphens.",
+      ),
+    name: z.string().trim().min(1).max(160),
+    description: z.string().trim().min(1).max(1024),
+    version: z
+      .string()
+      .trim()
+      .max(64)
+      .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, "Use a semantic version."),
+    source: employeeSkillSourceSchema,
+    requiredCapabilities: z
+      .array(employeeSkillCapabilitySchema)
+      .max(64)
+      .default([])
+      .transform((values) => [...new Set(values)].sort()),
+    dependencySkillIds: z
+      .array(z.string().uuid())
+      .max(64)
+      .default([])
+      .transform((values) => [...new Set(values)].sort()),
+    evidence: z.array(employeeEvidenceReferenceSchema).max(32).default([]),
+    reason: employeeSkillReasonSchema,
+  })
+  .strict();
+
+const employeeSkillReviewFields = {
+  reason: employeeSkillReasonSchema,
+  evidence: z.array(employeeEvidenceReferenceSchema).max(32).default([]),
+  ownerReviewed: z.literal(true),
+};
+
+export const updateEmployeeSkillStateInputSchema = z.discriminatedUnion("state", [
+  z
+    .object({
+      state: z.literal("verified"),
+      confidence: z.number().int().min(1).max(100),
+      ...employeeSkillReviewFields,
+    })
+    .strict(),
+  z
+    .object({
+      state: z.literal("suspended"),
+      ...employeeSkillReviewFields,
+    })
+    .strict(),
+  z
+    .object({
+      state: z.literal("revoked"),
+      ...employeeSkillReviewFields,
+    })
+    .strict(),
+]);
+
 export const createBotInputSchema = z.object({
   name: z.string().trim().min(1, "Bot name is required.").max(64),
   role: z.string().trim().min(1, "Bot role is required.").max(160),
@@ -410,9 +491,14 @@ export const loginInputSchema = z.object({
  */
 export const employeeTemplateSkillSchema = z
   .object({
-    slug: z.string().trim().min(1).max(160),
+    slug: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
     name: z.string().trim().min(1).max(160),
-    description: z.string().trim().max(2000),
+    description: z.string().trim().min(1).max(1024),
     version: z.string().trim().min(1).max(64),
     requiredCapabilities: z.array(z.string().trim().min(1).max(160)).max(64),
     dependencySlugs: z.array(z.string().trim().min(1).max(160)).max(64),

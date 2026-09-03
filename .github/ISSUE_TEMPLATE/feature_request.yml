@@ -17,6 +17,13 @@ body:
       description: What must require approval, fail closed or remain out of scope?
     validations:
       required: true
+  - type: textarea
+    id: upstreams
+    attributes:
+      label: Existing open-source implementations
+      description: Link maintained repositories or open standards already researched. Include versions and licenses when known, or explain why no suitable implementation was found.
+    validations:
+      required: true
   - type: dropdown
     id: milestone
     attributes:
