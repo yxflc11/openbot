@@ -3,6 +3,7 @@ import {
   createBotInputSchema,
   createChannelInputSchema,
   createMessageInputSchema,
+  loginInputSchema,
   nodeMessageSchema,
   protocolVersion,
   runEventSchema,
@@ -87,5 +88,13 @@ describe("control plane inputs", () => {
       content: "继续检查表单",
     });
     expect(createMessageInputSchema.safeParse({ content: "   " }).success).toBe(false);
+  });
+
+  it("bounds login input without normalizing the password", () => {
+    expect(loginInputSchema.parse({ password: "  keep spaces  " })).toEqual({
+      password: "  keep spaces  ",
+    });
+    expect(loginInputSchema.safeParse({ password: "" }).success).toBe(false);
+    expect(loginInputSchema.safeParse({ password: "x".repeat(1025) }).success).toBe(false);
   });
 });

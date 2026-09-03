@@ -9,13 +9,20 @@ import {
   createChannelInputSchema,
   createMessageInputSchema,
   joinChannelBotInputSchema,
+  loginInputSchema,
 } from "@openbot/protocol";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { logger } from "hono/logger";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import {
+  InvalidCredentialsError,
+  LoginRateLimitedError,
+  type OwnerAuthService,
+} from "./owner-auth.js";
 import {
   StoreConflictError,
   StoreNotFoundError,
@@ -24,10 +31,15 @@ import {
 } from "./control-plane-store.js";
 
 export interface AppDependencies {
+  allowedOrigins: string[];
+  auth: OwnerAuthService;
   listNodes: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
+  secureCookies: boolean;
   store: ControlPlaneStore;
 }
+
+export const ownerSessionCookie = "openbot_session";
 
 export function createApp(dependencies: AppDependencies) {
   const app = new Hono();
@@ -37,11 +49,24 @@ export function createApp(dependencies: AppDependencies) {
   app.use(
     "/api/*",
     cors({
-      origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+      origin: dependencies.allowedOrigins,
       allowHeaders: ["Content-Type"],
       allowMethods: ["GET", "POST", "OPTIONS"],
+      credentials: true,
     }),
   );
+
+  app.use("/api/v1/*", async (context, next) => {
+    context.header("Cache-Control", "no-store");
+    if (isMutation(context.req.method) && !isTrustedOrigin(context.req.header("origin"))) {
+      return context.json({ error: "Request origin is not allowed." }, 403);
+    }
+    if (isPublicAuthRoute(context.req.path)) return next();
+
+    const session = await dependencies.auth.authenticate(getCookie(context, ownerSessionCookie));
+    if (!session.authenticated) return context.json({ error: "Authentication required." }, 401);
+    return next();
+  });
 
   app.get("/health", (context) =>
     context.json({
@@ -51,6 +76,41 @@ export function createApp(dependencies: AppDependencies) {
       time: new Date().toISOString(),
     }),
   );
+
+  app.get("/api/v1/auth/session", async (context) => {
+    const session = await dependencies.auth.authenticate(getCookie(context, ownerSessionCookie));
+    return context.json(session);
+  });
+
+  app.post("/api/v1/auth/login", async (context) => {
+    const input = await parseRequest(context.req.raw, loginInputSchema);
+    const result = await dependencies.auth.login(
+      input.password,
+      context.req.header("origin") ?? "unknown",
+    );
+    const maxAge = Math.max(
+      1,
+      Math.floor((new Date(result.session.expiresAt).getTime() - Date.now()) / 1000),
+    );
+    setCookie(context, ownerSessionCookie, result.token, {
+      httpOnly: true,
+      maxAge,
+      path: "/",
+      sameSite: "Strict",
+      secure: dependencies.secureCookies,
+    });
+    return context.json({ session: result.session });
+  });
+
+  app.post("/api/v1/auth/logout", async (context) => {
+    await dependencies.auth.logout(getCookie(context, ownerSessionCookie));
+    deleteCookie(context, ownerSessionCookie, {
+      path: "/",
+      sameSite: "Strict",
+      secure: dependencies.secureCookies,
+    });
+    return context.body(null, 204);
+  });
 
   app.get("/api/v1/bootstrap", async (context) => {
     const nodes = dependencies.listNodes();
@@ -202,14 +262,33 @@ export function createApp(dependencies: AppDependencies) {
     if (error instanceof RequestValidationError) {
       return context.json({ error: error.message, fields: error.fields }, 422);
     }
+    if (error instanceof InvalidCredentialsError) {
+      return context.json({ error: "Password is incorrect." }, 401);
+    }
+    if (error instanceof LoginRateLimitedError) {
+      context.header("Retry-After", String(error.retryAfterSeconds));
+      return context.json({ error: error.message }, 429);
+    }
     console.error(error);
     return context.json({ error: "OpenBot Server could not complete the request." }, 500);
   });
 
   return app;
+
+  function isTrustedOrigin(origin: string | undefined): boolean {
+    return origin !== undefined && dependencies.allowedOrigins.includes(origin);
+  }
 }
 
 const channelHeartbeatMs = 15_000;
+
+function isMutation(method: string): boolean {
+  return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+}
+
+function isPublicAuthRoute(path: string): boolean {
+  return path === "/api/v1/auth/session" || path === "/api/v1/auth/login";
+}
 
 function waitForEventOrTimeout(setWake: (wake: () => void) => void): Promise<boolean> {
   return new Promise((resolve) => {

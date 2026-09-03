@@ -1,4 +1,5 @@
 import type {
+  AuthSessionSnapshot,
   Bot,
   Channel,
   ChannelRealtimeEvent,
@@ -16,11 +17,40 @@ interface ErrorPayload {
 
 export class ApiError extends Error {
   readonly fields: Record<string, string[]>;
+  readonly status: number;
 
-  constructor(message: string, fields: Record<string, string[]> = {}) {
+  constructor(message: string, status: number, fields: Record<string, string[]> = {}) {
     super(message);
+    this.status = status;
     this.fields = fields;
   }
+}
+
+export async function getAuthSession(signal?: AbortSignal): Promise<AuthSessionSnapshot> {
+  return request<AuthSessionSnapshot>("/api/v1/auth/session", signal ? { signal } : undefined);
+}
+
+export async function login(
+  password: string,
+): Promise<AuthSessionSnapshot & { authenticated: true }> {
+  const result = await request<{ session: AuthSessionSnapshot & { authenticated: true } }>(
+    "/api/v1/auth/login",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    },
+  );
+  return result.session;
+}
+
+export async function logout(): Promise<void> {
+  await request<void>("/api/v1/auth/logout", { method: "POST" });
+}
+
+export function subscribeToUnauthorized(handler: () => void): () => void {
+  window.addEventListener("openbot:unauthorized", handler);
+  return () => window.removeEventListener("openbot:unauthorized", handler);
 }
 
 export async function getWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
@@ -150,14 +180,19 @@ export function subscribeToChannelEvents(
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, { credentials: "include", ...init });
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({}))) as ErrorPayload;
+    if (response.status === 401 && url !== "/api/v1/auth/login") {
+      window.dispatchEvent(new Event("openbot:unauthorized"));
+    }
     throw new ApiError(
       payload.error ?? `OpenBot Server returned ${response.status}.`,
+      response.status,
       payload.fields,
     );
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 

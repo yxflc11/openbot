@@ -4,26 +4,90 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
+  ExecutionNode,
   Message,
 } from "@openbot/domain";
 import { describe, expect, it } from "vitest";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { StoreNotFoundError, type ControlPlaneStore } from "./control-plane-store.js";
-import { createApp } from "./app.js";
+import { createApp, ownerSessionCookie } from "./app.js";
+import { OwnerAuthService } from "./owner-auth.js";
+import type {
+  CreateOwnerSessionInput,
+  OwnerSessionStore,
+  StoredOwnerSession,
+} from "./session-store.js";
+
+const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
   it("reports M0 health", async () => {
-    const app = createApp({ listNodes: () => [], store: createTestStore() });
+    const app = createTestApp({ store: createTestStore() });
     const response = await app.request("/health");
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, phase: "m0" });
   });
 
+  it("reports an anonymous session and protects control-plane data", async () => {
+    const app = createTestApp({ store: createTestStore() });
+
+    const session = await app.request("/api/v1/auth/session");
+    expect(await session.json()).toEqual({ authenticated: false });
+
+    const workspace = await app.request("/api/v1/workspace");
+    expect(workspace.status).toBe(401);
+    expect(await workspace.json()).toEqual({ error: "Authentication required." });
+  });
+
+  it("creates and revokes an HttpOnly owner session", async () => {
+    const app = createTestApp({ store: createTestStore() });
+
+    const rejected = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({ password: "incorrect-password" }),
+    });
+    expect(rejected.status).toBe(401);
+    expect(rejected.headers.get("set-cookie")).toBeNull();
+
+    const cookie = await login(app);
+    expect(cookie).toContain(`${ownerSessionCookie}=`);
+
+    const active = await app.request("/api/v1/auth/session", {
+      headers: { Cookie: cookie },
+    });
+    expect(await active.json()).toMatchObject({
+      authenticated: true,
+      owner: { id: "owner", name: "Test Owner" },
+    });
+
+    const logout = await app.request("/api/v1/auth/logout", {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: testOrigin },
+    });
+    expect(logout.status).toBe(204);
+
+    const revoked = await app.request("/api/v1/auth/session", {
+      headers: { Cookie: cookie },
+    });
+    expect(await revoked.json()).toEqual({ authenticated: false });
+  });
+
+  it("rejects mutations without a trusted Origin", async () => {
+    const app = createTestApp({ store: createTestStore() });
+    const response = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    expect(response.status).toBe(403);
+  });
+
   it("projects persisted and connected counts into workspace", async () => {
     const store = createTestStore();
     await store.createBot({ name: "Ops", role: "Operations", computerProfile: "docker-linux" });
-    const app = createApp({
+    const app = createTestApp({
       listNodes: () => [
         {
           id: "node-1",
@@ -36,7 +100,8 @@ describe("server app", () => {
       ],
       store,
     });
-    const response = await app.request("/api/v1/workspace");
+    const cookie = await login(app);
+    const response = await app.request("/api/v1/workspace", { headers: { Cookie: cookie } });
 
     expect(await response.json()).toMatchObject({
       counts: { bots: 1, channels: 0, connectedNodes: 1 },
@@ -44,10 +109,11 @@ describe("server app", () => {
   });
 
   it("creates a Bot through the validated API", async () => {
-    const app = createApp({ listNodes: () => [], store: createTestStore() });
+    const app = createTestApp({ store: createTestStore() });
+    const cookie = await login(app);
     const response = await app.request("/api/v1/bots", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authenticatedHeaders(cookie),
       body: JSON.stringify({
         name: "Ops",
         role: "Browser and operations",
@@ -62,10 +128,11 @@ describe("server app", () => {
   });
 
   it("rejects invalid Bot input before reaching storage", async () => {
-    const app = createApp({ listNodes: () => [], store: createTestStore() });
+    const app = createTestApp({ store: createTestStore() });
+    const cookie = await login(app);
     const response = await app.request("/api/v1/bots", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authenticatedHeaders(cookie),
       body: JSON.stringify({ name: "", role: "", computerProfile: "root-shell" }),
     });
 
@@ -82,10 +149,11 @@ describe("server app", () => {
       role: "Coordinator",
       computerProfile: "none",
     });
-    const app = createApp({ listNodes: () => [], store });
+    const app = createTestApp({ store });
+    const cookie = await login(app);
     const response = await app.request("/api/v1/channels", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authenticatedHeaders(cookie),
       body: JSON.stringify({
         name: "运营中心",
         description: "日常运营工作",
@@ -106,11 +174,12 @@ describe("server app", () => {
       description: "日常任务",
       botIds: [],
     });
-    const app = createApp({ listNodes: () => [], store });
+    const app = createTestApp({ store });
+    const cookie = await login(app);
 
     const created = await app.request(`/api/v1/channels/${channel.id}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authenticatedHeaders(cookie),
       body: JSON.stringify({ content: "  打开测试页并截图  " }),
     });
     expect(created.status).toBe(201);
@@ -118,16 +187,20 @@ describe("server app", () => {
       message: { channelId: channel.id, authorType: "human", content: "打开测试页并截图" },
     });
 
-    const listed = await app.request(`/api/v1/channels/${channel.id}/messages`);
+    const listed = await app.request(`/api/v1/channels/${channel.id}/messages`, {
+      headers: { Cookie: cookie },
+    });
     expect(await listed.json()).toMatchObject({
       messages: [{ content: "打开测试页并截图" }],
     });
   });
 
   it("returns 404 when reading messages from an unknown channel", async () => {
-    const app = createApp({ listNodes: () => [], store: createTestStore() });
+    const app = createTestApp({ store: createTestStore() });
+    const cookie = await login(app);
     const response = await app.request(
       "/api/v1/channels/00000000-0000-4000-8000-000000000099/messages",
+      { headers: { Cookie: cookie } },
     );
     expect(response.status).toBe(404);
   });
@@ -144,9 +217,11 @@ describe("server app", () => {
     const unsubscribe = realtime.subscribe(channel.id, (event) => {
       if (event.type === "message.created") published.push(event.message);
     });
-    const app = createApp({ listNodes: () => [], realtime, store });
+    const app = createTestApp({ realtime, store });
+    const cookie = await login(app);
     const controller = new AbortController();
     const response = await app.request(`/api/v1/channels/${channel.id}/events`, {
+      headers: { Cookie: cookie },
       signal: controller.signal,
     });
 
@@ -159,7 +234,7 @@ describe("server app", () => {
 
     const created = await app.request(`/api/v1/channels/${channel.id}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authenticatedHeaders(cookie),
       body: JSON.stringify({ content: "同步给其他设备" }),
     });
     expect(created.status).toBe(201);
@@ -175,13 +250,85 @@ describe("server app", () => {
   });
 
   it("rejects an event stream for an unknown channel", async () => {
-    const app = createApp({ listNodes: () => [], store: createTestStore() });
+    const app = createTestApp({ store: createTestStore() });
+    const cookie = await login(app);
     const response = await app.request(
       "/api/v1/channels/00000000-0000-4000-8000-000000000099/events",
+      { headers: { Cookie: cookie } },
     );
     expect(response.status).toBe(404);
   });
 });
+
+function createTestApp({
+  store,
+  listNodes = () => [],
+  realtime,
+}: {
+  store: ControlPlaneStore;
+  listNodes?: () => ExecutionNode[];
+  realtime?: ChannelRealtimeHub;
+}) {
+  const auth = new OwnerAuthService(createMemorySessionStore(), {
+    ownerName: "Test Owner",
+    ownerPassword: "correct-owner-password",
+    sessionTtlMs: 60_000,
+  });
+  return createApp({
+    allowedOrigins: [testOrigin],
+    auth,
+    listNodes,
+    ...(realtime === undefined ? {} : { realtime }),
+    secureCookies: false,
+    store,
+  });
+}
+
+async function login(app: ReturnType<typeof createApp>): Promise<string> {
+  const response = await app.request("/api/v1/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: testOrigin },
+    body: JSON.stringify({ password: "correct-owner-password" }),
+  });
+  expect(response.status).toBe(200);
+  const setCookie = response.headers.get("set-cookie");
+  expect(setCookie).toContain("HttpOnly");
+  expect(setCookie).toContain("SameSite=Strict");
+  expect(setCookie).not.toContain("Secure");
+  if (setCookie === null) throw new Error("Login did not set an owner session cookie.");
+  return setCookie.split(";", 1)[0] ?? "";
+}
+
+function authenticatedHeaders(cookie: string): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Cookie: cookie,
+    Origin: testOrigin,
+  };
+}
+
+function createMemorySessionStore(): OwnerSessionStore {
+  const sessions: Array<StoredOwnerSession & { revokedAt?: Date }> = [];
+  return {
+    async createSession(input: CreateOwnerSessionInput) {
+      const session = { ...input };
+      sessions.push(session);
+      return session;
+    },
+    async findActiveSession(tokenDigest: string, now: Date) {
+      return sessions.find(
+        (session) =>
+          session.tokenDigest === tokenDigest &&
+          session.revokedAt === undefined &&
+          session.expiresAt > now,
+      );
+    },
+    async revokeSession(tokenDigest: string, now: Date) {
+      const session = sessions.find((item) => item.tokenDigest === tokenDigest);
+      if (session !== undefined) session.revokedAt = now;
+    },
+  };
+}
 
 function createTestStore(): ControlPlaneStore {
   const bots: Bot[] = [];

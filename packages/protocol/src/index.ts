@@ -108,3 +108,7 @@ export const joinChannelBotInputSchema = z.object({
 export const createMessageInputSchema = z.object({
   content: z.string().trim().min(1, "Message is required.").max(8000),
 });
+
+export const loginInputSchema = z.object({
+  password: z.string().min(1, "Password is required.").max(1024),
+});

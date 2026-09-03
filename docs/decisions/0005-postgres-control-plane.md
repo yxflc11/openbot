@@ -19,4 +19,4 @@ OpenBot Server 启动时自动运行仓库内已提交的 migration。频道、B
 - M0 开发环境启动前需要 PostgreSQL；
 - migration 一旦合入不再改写，只追加新文件；
 - Node 的在线状态在 M1 完成 durable enrollment 前仍是进程内投影；
-- 登录和 session middleware 完成前，API 只能部署在可信私网。
+- Owner Session 已作为 API 边界落地，但 Server 仍只应部署在可信私网或 Tailscale 后方；公网入口必须额外使用 HTTPS 与严格来源配置。

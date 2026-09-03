@@ -1,26 +1,46 @@
 import type { Bot, Channel } from "@openbot/domain";
+import { useState } from "react";
 import { BotIcon, HashIcon, OfficeIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
   bots: Bot[];
   channels: Channel[];
+  ownerName: string;
   selectedChannelId?: string | undefined;
   onOffice(): void;
   onSelectChannel(channelId: string): void;
   onCreateBot(): void;
   onCreateChannel(): void;
+  onLogout(): Promise<void>;
 }
 
 export function Sidebar({
   bots,
   channels,
+  ownerName,
   selectedChannelId,
   onOffice,
   onSelectChannel,
   onCreateBot,
   onCreateChannel,
+  onLogout,
 }: SidebarProps) {
+  const [logoutError, setLogoutError] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError(false);
+    try {
+      await onLogout();
+    } catch {
+      setLogoutError(true);
+      setLoggingOut(false);
+    }
+  }
+
   return (
     <aside className="sidebar" aria-label="主导航">
       <a className="brand" href="/" aria-label="OpenBot 首页">
@@ -88,6 +108,18 @@ export function Sidebar({
           </button>
         </nav>
       </div>
+
+      <footer className="sidebar-owner">
+        <span>
+          <strong>{ownerName}</strong>
+          <small className={logoutError ? "warning" : ""} role={logoutError ? "alert" : undefined}>
+            {logoutError ? "退出失败，请重试" : "本地 Owner"}
+          </small>
+        </span>
+        <button type="button" disabled={loggingOut} onClick={() => void handleLogout()}>
+          {loggingOut ? "退出中" : "退出"}
+        </button>
+      </footer>
     </aside>
   );
 }

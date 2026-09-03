@@ -77,6 +77,14 @@ flowchart LR
 - 消息、附件和组件都使用本地 object/storage contract；
 - PWA 可安装到主屏幕，但仍是同一 Web 应用。
 
+### Local Owner Auth
+
+- M0 是单 Owner 工作区，密码由部署环境提供，Server 启动时强制要求至少 12 个字符；
+- 登录成功签发随机 Session Token，浏览器只通过 `HttpOnly` Cookie 持有；
+- PostgreSQL 只保存 Token 摘要、过期时间和撤销时间；
+- `/api/v1` 默认拒绝匿名请求，写请求同时校验 Origin；
+- 多用户、设备信任和高风险操作重新验证不混入 M0，后续在现有 Session 边界上扩展。
+
 ### Local Threads & Realtime
 
 替代 CopilotKit Intelligence，至少提供：
@@ -236,4 +244,3 @@ Mac Mini：Cua/Lume Node
 - 若可行，建立正式 fork 并保留 CopilotKit MIT notice。
 - 通用修复尽量回 upstream；本地化、Node 和 Cua 差集留在本项目。
 - OpenClaw 只作为可选 Agent adapter，不再承担频道、线程或审批状态。
-

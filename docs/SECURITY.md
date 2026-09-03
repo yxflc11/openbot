@@ -78,7 +78,9 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 
 - PostgreSQL、频道、线程、策略、凭证和审计只存在于 Server 控制域。
 - 默认只经 Tailscale/私网 HTTPS 访问；禁止公开数据库和内部 API。
-- PWA session 使用短时 cookie/token，审批等高风险操作需要重新验证或设备绑定。
+- M0 使用单 Owner 本地认证：Owner 密码来自 Server 环境变量，不写入数据库；随机 Session Token 只进入 `HttpOnly`、`SameSite=Strict` Cookie，数据库只保存 SHA-256 摘要。
+- 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录连续失败会被临时限速。
+- Session 默认 12 小时过期，支持主动撤销；生产 HTTPS 部署必须启用 Secure Cookie。审批等高风险操作仍需要后续增加重新验证或设备绑定。
 - Server 签发的 view/control/upload token 都绑定用户、run、node、用途和 TTL。
 - 备份加密并定期在另一台机器验证恢复。
 

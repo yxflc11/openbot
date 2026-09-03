@@ -67,6 +67,19 @@ export interface Message {
   createdAt: string;
 }
 
+export interface OwnerIdentity {
+  id: "owner";
+  name: string;
+}
+
+export type AuthSessionSnapshot =
+  | { authenticated: false }
+  | {
+      authenticated: true;
+      owner: OwnerIdentity;
+      expiresAt: string;
+    };
+
 export type ChannelRealtimeEvent =
   | {
       type: "channel.ready";

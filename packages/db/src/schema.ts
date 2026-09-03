@@ -136,6 +136,26 @@ export const messages = pgTable(
   ],
 );
 
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: text("id").primaryKey(),
+    tokenDigest: text("token_digest").notNull(),
+    ownerId: text("owner_id").notNull().default("owner"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("auth_sessions_token_digest_idx").on(table.tokenDigest),
+    index("auth_sessions_active_expiry_idx")
+      .on(table.expiresAt)
+      .where(sql`${table.revokedAt} IS NULL`),
+    check("auth_sessions_owner_valid", sql`${table.ownerId} = 'owner'`),
+    check("auth_sessions_token_digest_valid", sql`length(${table.tokenDigest}) = 64`),
+  ],
+);
+
 export const approvals = pgTable(
   "approvals",
   {

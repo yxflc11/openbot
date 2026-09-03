@@ -1,10 +1,25 @@
-import type { CreateBotInput, CreateChannelInput, WorkspaceSnapshot } from "@openbot/domain";
+import type {
+  AuthSessionSnapshot,
+  CreateBotInput,
+  CreateChannelInput,
+  WorkspaceSnapshot,
+} from "@openbot/domain";
 import { useCallback, useEffect, useState } from "react";
-import { createBot, createChannel, getWorkspace, joinBotToChannel } from "./api";
+import {
+  createBot,
+  createChannel,
+  getAuthSession,
+  getWorkspace,
+  joinBotToChannel,
+  login,
+  logout,
+  subscribeToUnauthorized,
+} from "./api";
 import { ChannelWorkspace } from "./components/ChannelWorkspace";
 import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
+import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
 import { Office } from "./components/Office";
 import { Sidebar } from "./components/Sidebar";
@@ -12,6 +27,80 @@ import { Sidebar } from "./components/Sidebar";
 type Dialog = "bot" | "channel" | undefined;
 
 export function App() {
+  const [session, setSession] = useState<AuthSessionSnapshot>();
+  const [sessionError, setSessionError] = useState<string>();
+
+  const refreshSession = useCallback(async (signal?: AbortSignal) => {
+    setSessionError(undefined);
+    try {
+      setSession(await getAuthSession(signal));
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setSessionError(
+        cause instanceof Error ? cause.message : "无法连接 OpenBot Server。请确认服务已启动。",
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshSession(controller.signal);
+    return () => controller.abort();
+  }, [refreshSession]);
+
+  useEffect(() => subscribeToUnauthorized(() => setSession({ authenticated: false })), []);
+
+  useEffect(() => {
+    if (session?.authenticated !== true) return;
+    const remainingMs = new Date(session.expiresAt).getTime() - Date.now();
+    if (remainingMs <= 0) {
+      setSession({ authenticated: false });
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setSession({ authenticated: false }),
+      Math.min(remainingMs, 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [session]);
+
+  if (session === undefined) {
+    return (
+      <main className="loading-screen">
+        <span className="loading-mark">O</span>
+        <h1>{sessionError ? "无法打开 OpenBot" : "正在验证本地会话"}</h1>
+        <p>{sessionError ?? "正在安全连接你的 OpenBot Server…"}</p>
+        {sessionError ? (
+          <button className="primary-button" type="button" onClick={() => refreshSession()}>
+            重新连接
+          </button>
+        ) : null}
+      </main>
+    );
+  }
+
+  if (!session.authenticated) {
+    return <LoginScreen onLogin={async (password) => setSession(await login(password))} />;
+  }
+
+  return (
+    <AuthenticatedWorkspace
+      ownerName={session.owner.name}
+      onLogout={async () => {
+        await logout();
+        setSession({ authenticated: false });
+      }}
+    />
+  );
+}
+
+function AuthenticatedWorkspace({
+  ownerName,
+  onLogout,
+}: {
+  ownerName: string;
+  onLogout(): Promise<void>;
+}) {
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
   const [selectedChannelId, setSelectedChannelId] = useState<string>();
   const [dialog, setDialog] = useState<Dialog>();
@@ -92,11 +181,13 @@ export function App() {
       <Sidebar
         bots={workspace.bots}
         channels={workspace.channels}
+        ownerName={ownerName}
         selectedChannelId={selectedChannel?.id}
         onOffice={() => setSelectedChannelId(undefined)}
         onSelectChannel={selectChannel}
         onCreateBot={() => setDialog("bot")}
         onCreateChannel={() => setDialog("channel")}
+        onLogout={onLogout}
       />
 
       {selectedChannel ? (
