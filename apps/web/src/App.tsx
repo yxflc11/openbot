@@ -1,4 +1,6 @@
 import type {
+  Approval,
+  ApprovalDecision,
   Artifact,
   AuthSessionSnapshot,
   CreateBotInput,
@@ -12,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   createBot,
   createChannel,
+  decideApproval,
   getAuthSession,
   getWorkspace,
   joinBotToChannel,
@@ -244,9 +247,21 @@ function AuthenticatedWorkspace({
           };
         });
       },
+      onApproval(approval, run) {
+        setWorkspace((current) =>
+          current === undefined
+            ? current
+            : {
+                ...current,
+                approvals: mergeApprovals(current.approvals, [approval]),
+                runs: mergeRuns(current.runs, [run]),
+              },
+        );
+      },
+      onRun: projectRun,
       onState: setWorkspaceRealtimeState,
     });
-  }, [workspaceReady]);
+  }, [projectRun, workspaceReady]);
 
   async function handleCreateBot(input: CreateBotInput) {
     const bot = await createBot(input);
@@ -269,6 +284,20 @@ function AuthenticatedWorkspace({
     await joinBotToChannel(selectedChannelId, botId);
     await refresh();
     showNotice("Bot 已加入频道。");
+  }
+
+  async function handleDecideApproval(approvalId: string, decision: ApprovalDecision) {
+    const resolution = await decideApproval(approvalId, decision);
+    setWorkspace((current) =>
+      current === undefined
+        ? current
+        : {
+            ...current,
+            approvals: mergeApprovals(current.approvals, [resolution.approval]),
+            runs: mergeRuns(current.runs, [resolution.run]),
+          },
+    );
+    showNotice(decision === "approve" ? "已批准一次。" : "已拒绝该动作。");
   }
 
   function showNotice(message: string) {
@@ -341,6 +370,7 @@ function AuthenticatedWorkspace({
       <ContextRail
         realtimeState={workspaceRealtimeState}
         workspace={workspace}
+        onDecideApproval={handleDecideApproval}
         onInspectRun={setSelectedRunId}
       />
 
@@ -348,9 +378,10 @@ function AuthenticatedWorkspace({
         panel={mobilePanel}
         bots={workspace.bots}
         channels={workspace.channels}
-        nodes={workspace.nodes}
         runs={workspace.runs}
+        approvals={workspace.approvals}
         onPanel={setMobilePanel}
+        onDecideApproval={handleDecideApproval}
         onOffice={() => {
           setSelectedChannelId(undefined);
           setMobilePanel(undefined);
@@ -395,4 +426,12 @@ function AuthenticatedWorkspace({
       ) : null}
     </div>
   );
+}
+
+function mergeApprovals(primary: Approval[], secondary: Approval[]): Approval[] {
+  const byId = new Map<string, Approval>();
+  for (const approval of [...primary, ...secondary]) byId.set(approval.id, approval);
+  return Array.from(byId.values())
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, 100);
 }

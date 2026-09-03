@@ -1,5 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
+  Approval,
+  ApprovalDecision,
+  ApprovalResolution,
   Artifact,
   Bot,
   Channel,
@@ -14,6 +17,7 @@ import type {
 } from "@openbot/domain";
 import {
   artifacts as artifactsTable,
+  approvals as approvalsTable,
   bots,
   channelBots,
   channels,
@@ -27,6 +31,7 @@ import type {
   ArtifactRecord,
   ControlPlaneStore,
   PersistedCounts,
+  RequestApprovalInput,
   RunCompletion,
 } from "./control-plane-store.js";
 import {
@@ -116,6 +121,16 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
 
     const rows = await this.#db.select().from(runs).orderBy(desc(runs.createdAt)).limit(50);
     return rows.map(toRun);
+  }
+
+  async listApprovals(): Promise<Approval[]> {
+    const rows = await this.#db
+      .select({ approval: approvalsTable, channelId: runs.channelId, botId: runs.botId })
+      .from(approvalsTable)
+      .innerJoin(runs, eq(approvalsTable.runId, runs.id))
+      .orderBy(desc(approvalsTable.createdAt))
+      .limit(100);
+    return rows.map((row) => toApproval(row.approval, row.channelId, row.botId));
   }
 
   async listRunProgress(channelId?: string): Promise<RunProgress[]> {
@@ -426,6 +441,138 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     });
   }
 
+  async requestApproval(
+    runId: string,
+    nodeId: string,
+    input: RequestApprovalInput,
+  ): Promise<ApprovalResolution | undefined> {
+    const now = new Date();
+    const expiresAt = new Date(input.expiresAt);
+    if (!Number.isFinite(expiresAt.getTime()) || expiresAt <= now) {
+      throw new StoreValidationError("Approval expiry must be in the future.");
+    }
+    const targetFingerprint = approvalTargetFingerprint(input);
+
+    try {
+      return await this.#db.transaction(async (transaction) => {
+        const [updatedRun] = await transaction
+          .update(runs)
+          .set({ status: "waiting_approval", updatedAt: now })
+          .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "running")))
+          .returning();
+        if (updatedRun === undefined) return undefined;
+
+        const [approval] = await transaction
+          .insert(approvalsTable)
+          .values({
+            id: input.requestId,
+            runId,
+            nodeId,
+            action: input.action,
+            target: input.target,
+            summary: input.summary,
+            risk: input.risk,
+            targetFingerprint,
+            status: "pending",
+            beforeState: input.beforeState,
+            expiresAt,
+            createdAt: now,
+          })
+          .returning();
+        if (approval === undefined) throw new Error("Approval was not persisted.");
+
+        await transaction.insert(runEvents).values({
+          id: randomUUID(),
+          runId,
+          channelId: updatedRun.channelId,
+          botId: updatedRun.botId,
+          nodeId,
+          type: "APPROVAL_REQUESTED",
+          payload: {
+            approvalId: approval.id,
+            action: approval.action,
+            risk: approval.risk,
+            targetFingerprint,
+            expiresAt: expiresAt.toISOString(),
+          },
+        });
+        return {
+          approval: toApproval(approval, updatedRun.channelId, updatedRun.botId),
+          run: toRun(updatedRun),
+        };
+      });
+    } catch (error) {
+      translateDatabaseError(error, "This approval request has already been recorded.");
+    }
+  }
+
+  async decideApproval(
+    approvalId: string,
+    decision: ApprovalDecision,
+    decidedBy: string,
+  ): Promise<ApprovalResolution> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const [current] = await transaction
+        .select({ approval: approvalsTable, run: runs })
+        .from(approvalsTable)
+        .innerJoin(runs, eq(approvalsTable.runId, runs.id))
+        .where(eq(approvalsTable.id, approvalId))
+        .limit(1);
+      if (current === undefined) throw new StoreNotFoundError("Approval not found.");
+      if (current.approval.status !== "pending") {
+        throw new StoreConflictError("Approval has already been resolved.");
+      }
+      if (current.run.status !== "waiting_approval") {
+        throw new StoreConflictError("The run is no longer waiting for this approval.");
+      }
+
+      const expired = current.approval.expiresAt <= now;
+      const status = expired ? "expired" : decision === "approve" ? "approved" : "rejected";
+      const runStatus = status === "approved" ? "running" : "blocked";
+      const [updatedApproval] = await transaction
+        .update(approvalsTable)
+        .set({ status, decidedBy, decidedAt: now })
+        .where(and(eq(approvalsTable.id, approvalId), eq(approvalsTable.status, "pending")))
+        .returning();
+      if (updatedApproval === undefined) {
+        throw new StoreConflictError("Approval has already been resolved.");
+      }
+      const [updatedRun] = await transaction
+        .update(runs)
+        .set({ status: runStatus, updatedAt: now })
+        .where(and(eq(runs.id, current.run.id), eq(runs.status, "waiting_approval")))
+        .returning();
+      if (updatedRun === undefined) {
+        throw new StoreConflictError("The run is no longer waiting for this approval.");
+      }
+
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        runId: updatedRun.id,
+        channelId: updatedRun.channelId,
+        botId: updatedRun.botId,
+        nodeId: updatedApproval.nodeId,
+        type:
+          status === "approved"
+            ? "APPROVAL_APPROVED"
+            : status === "rejected"
+              ? "APPROVAL_REJECTED"
+              : "APPROVAL_EXPIRED",
+        payload: {
+          approvalId: updatedApproval.id,
+          action: updatedApproval.action,
+          targetFingerprint: updatedApproval.targetFingerprint,
+          decidedBy,
+        },
+      });
+      return {
+        approval: toApproval(updatedApproval, updatedRun.channelId, updatedRun.botId),
+        run: toRun(updatedRun),
+      };
+    });
+  }
+
   async appendRunProgress(
     runId: string,
     nodeId: string,
@@ -727,6 +874,31 @@ function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
   };
 }
 
+function toApproval(
+  row: typeof approvalsTable.$inferSelect,
+  channelId: string,
+  botId: string,
+): Approval {
+  return {
+    id: row.id,
+    runId: row.runId,
+    channelId,
+    botId,
+    nodeId: row.nodeId,
+    action: row.action,
+    target: row.target,
+    summary: row.summary,
+    risk: row.risk as Approval["risk"],
+    targetFingerprint: row.targetFingerprint,
+    beforeState: asRecord(row.beforeState),
+    status: row.status as Approval["status"],
+    expiresAt: row.expiresAt.toISOString(),
+    ...(row.decidedBy === null ? {} : { decidedBy: row.decidedBy }),
+    ...(row.decidedAt === null ? {} : { decidedAt: row.decidedAt.toISOString() }),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function toRunProgress(row: typeof runEvents.$inferSelect): RunProgress[] {
   const payload = asRecord(row.payload);
   if (
@@ -784,6 +956,16 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function taskTitle(content: string): string {
   return content.length <= 80 ? content : `${content.slice(0, 77)}...`;
+}
+
+function approvalTargetFingerprint(input: RequestApprovalInput): string {
+  return createHash("sha256")
+    .update(input.action)
+    .update("\0")
+    .update(input.target)
+    .update("\0")
+    .update(JSON.stringify(input.beforeState))
+    .digest("hex");
 }
 
 function translateDatabaseError(error: unknown, conflictMessage: string): never {

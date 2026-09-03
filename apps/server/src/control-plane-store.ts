@@ -1,4 +1,8 @@
 import type {
+  Approval,
+  ApprovalDecision,
+  ApprovalResolution,
+  ApprovalRisk,
   Artifact,
   Bot,
   Channel,
@@ -11,6 +15,16 @@ import type {
   RunProgress,
   SubmitTaskResult,
 } from "@openbot/domain";
+
+export interface RequestApprovalInput {
+  requestId: string;
+  action: string;
+  target: string;
+  summary: string;
+  risk: ApprovalRisk;
+  beforeState: Record<string, unknown>;
+  expiresAt: string;
+}
 
 export interface ArtifactRecord extends Artifact {
   storageKey: string;
@@ -34,6 +48,7 @@ export interface ControlPlaneStore {
   listBots(): Promise<Bot[]>;
   listMessages(channelId: string): Promise<Message[]>;
   listRuns(channelId?: string): Promise<Run[]>;
+  listApprovals(): Promise<Approval[]>;
   listRunProgress(channelId?: string): Promise<RunProgress[]>;
   listArtifacts(runId?: string): Promise<Artifact[]>;
   getArtifact(artifactId: string): Promise<ArtifactRecord | undefined>;
@@ -45,6 +60,16 @@ export interface ControlPlaneStore {
   submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult>;
   assignRun(runId: string, nodeId: string): Promise<Run | undefined>;
   startRun(runId: string, nodeId: string): Promise<Run | undefined>;
+  requestApproval(
+    runId: string,
+    nodeId: string,
+    input: RequestApprovalInput,
+  ): Promise<ApprovalResolution | undefined>;
+  decideApproval(
+    approvalId: string,
+    decision: ApprovalDecision,
+    decidedBy: string,
+  ): Promise<ApprovalResolution>;
   appendRunProgress(
     runId: string,
     nodeId: string,

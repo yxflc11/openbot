@@ -33,7 +33,14 @@ const unsubscribeNodeEvents = [
 const store = new PostgresControlPlaneStore(database.db);
 const artifactStorage = new FileArtifactStorage(env.OPENBOT_OBJECT_STORE_PATH);
 const runFrames = new RunFrameStore();
-const dispatcher = new RunDispatcher(store, nodeRegistry, realtime, artifactStorage, runFrames);
+const dispatcher = new RunDispatcher(
+  store,
+  nodeRegistry,
+  realtime,
+  artifactStorage,
+  runFrames,
+  workspaceRealtime,
+);
 await dispatcher.start();
 const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
   ownerName: env.OPENBOT_OWNER_NAME,
@@ -47,6 +54,7 @@ const app = createApp({
   dispatchRun: (run) => dispatcher.enqueue(run),
   listNodes: () => nodeRegistry.list(),
   realtime,
+  resolveApproval: (resolution) => dispatcher.resolveApproval(resolution),
   runFrames,
   secureCookies: env.OPENBOT_SECURE_COOKIES,
   store,

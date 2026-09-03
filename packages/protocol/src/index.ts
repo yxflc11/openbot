@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const protocolVersion = "0.4.0" as const;
+export const protocolVersion = "0.5.0" as const;
 
 export const nodeCapabilitySchema = z.enum([
   "browser",
@@ -86,6 +86,21 @@ export const runFrameSchema = z.object({
   capturedAt: z.string().datetime(),
 });
 
+export const approvalRequestSchema = z.object({
+  type: z.literal("approval.request"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  runId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  action: z.string().trim().min(1).max(120),
+  target: z.string().trim().min(1).max(2048),
+  summary: z.string().trim().min(1).max(500),
+  risk: z.enum(["write", "destructive", "privileged"]),
+  beforeState: z.record(z.string(), z.unknown()).default({}),
+  expiresInSeconds: z.number().int().min(30).max(900).default(300),
+  requestedAt: z.string().datetime(),
+});
+
 const screenshotMetadataSchema = z
   .object({
     width: z.number().int().positive().max(20_000).optional(),
@@ -135,6 +150,7 @@ export const nodeMessageSchema = z.discriminatedUnion("type", [
   runStartRequestSchema,
   runProgressSchema,
   runFrameSchema,
+  approvalRequestSchema,
   runCompletedSchema,
   runFailedSchema,
 ]);
@@ -200,6 +216,16 @@ export const runSettledSchema = z.object({
   settledAt: z.string().datetime(),
 });
 
+export const approvalResolvedSchema = z.object({
+  type: z.literal("approval.resolved"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  runId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  decision: z.enum(["approved", "rejected", "expired"]),
+  decidedAt: z.string().datetime(),
+});
+
 export const serverMessageSchema = z.discriminatedUnion("type", [
   serverAckSchema,
   runOfferSchema,
@@ -207,6 +233,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   runCancelSchema,
   runStartSchema,
   runSettledSchema,
+  approvalResolvedSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
@@ -224,6 +251,9 @@ export const runEventTypeSchema = z.enum([
   "RUN_PLAN_UPDATED",
   "NODE_BOUND",
   "APPROVAL_REQUESTED",
+  "APPROVAL_APPROVED",
+  "APPROVAL_REJECTED",
+  "APPROVAL_EXPIRED",
   "FRAME_UPDATED",
   "ARTIFACT_CREATED",
   "RUN_BLOCKED",
@@ -275,6 +305,10 @@ export const joinChannelBotInputSchema = z.object({
 export const createMessageInputSchema = z.object({
   content: z.string().trim().min(1, "Message is required.").max(8000),
   botId: z.string().uuid().optional(),
+});
+
+export const approvalDecisionInputSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
 });
 
 export const loginInputSchema = z.object({

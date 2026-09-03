@@ -239,6 +239,8 @@ describe("run dispatcher", () => {
     const projectedProgress: string[] = [];
     const projectedFrames: number[] = [];
     const settled: Array<{ runId: string; status: "completed" | "failed" }> = [];
+    const projectedApprovals: string[] = [];
+    const projectedWorkspaceStatuses: Run["status"][] = [];
     let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
     const dispatcher = new RunDispatcher(
       {
@@ -269,6 +271,29 @@ describe("run dispatcher", () => {
             stage,
             message,
             createdAt: "2026-09-03T00:01:00.000Z",
+          };
+        },
+        async requestApproval(_runId, nodeId, input) {
+          if (run.status !== "running" || run.nodeId !== nodeId) return undefined;
+          run.status = "waiting_approval";
+          return {
+            approval: {
+              id: input.requestId,
+              runId: run.id,
+              channelId: run.channelId,
+              botId: run.botId,
+              nodeId,
+              action: input.action,
+              target: input.target,
+              summary: input.summary,
+              risk: input.risk,
+              targetFingerprint: "0".repeat(64),
+              beforeState: input.beforeState,
+              status: "pending",
+              expiresAt: input.expiresAt,
+              createdAt: "2026-09-03T00:01:00.000Z",
+            },
+            run,
           };
         },
         async completeRun(_runId, nodeId, summary, artifacts) {
@@ -312,6 +337,12 @@ describe("run dispatcher", () => {
       },
       artifactStorage,
       new RunFrameStore(),
+      {
+        publish(event) {
+          if (event.type === "approval.updated") projectedApprovals.push(event.approval.id);
+          if (event.type === "run.updated") projectedWorkspaceStatuses.push(event.run.status);
+        },
+      },
     );
 
     await dispatcher.start();
@@ -325,6 +356,24 @@ describe("run dispatcher", () => {
       requestedAt: new Date().toISOString(),
     });
     await waitFor(() => run.status === "running");
+
+    runHandler?.(linuxNode, {
+      type: "approval.request",
+      protocolVersion,
+      nodeId: linuxNode.id,
+      runId: run.id,
+      requestId: "00000000-0000-4000-8000-000000000009",
+      action: "form.submit",
+      target: "https://example.test/form#signup",
+      summary: "提交测试表单",
+      risk: "write",
+      beforeState: { fields: 3 },
+      expiresInSeconds: 300,
+      requestedAt: new Date().toISOString(),
+    });
+    await waitFor(() => run.status === "waiting_approval");
+    expect(projectedApprovals).toEqual(["00000000-0000-4000-8000-000000000009"]);
+    run.status = "running";
 
     runHandler?.(linuxNode, {
       type: "run.progress",
@@ -365,7 +414,13 @@ describe("run dispatcher", () => {
     expect(projectedProgress).toEqual(["正在打开测试页"]);
     expect(projectedFrames).toEqual([1]);
     expect(settled).toEqual([{ runId: run.id, status: "completed" }]);
-    expect(projectedStatuses).toEqual(["assigned", "running", "completed"]);
+    expect(projectedStatuses).toEqual(["assigned", "running", "waiting_approval", "completed"]);
+    expect(projectedWorkspaceStatuses).toEqual([
+      "assigned",
+      "running",
+      "waiting_approval",
+      "completed",
+    ]);
     dispatcher.stop();
   });
 });

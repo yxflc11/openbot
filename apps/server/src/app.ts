@@ -1,4 +1,5 @@
 import type {
+  ApprovalResolution,
   BootstrapSummary,
   ChannelRealtimeEvent,
   ExecutionNode,
@@ -7,6 +8,7 @@ import type {
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import {
+  approvalDecisionInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
   createMessageInputSchema,
@@ -42,6 +44,7 @@ export interface AppDependencies {
   dispatchRun?: (run: Run) => void;
   listNodes: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
+  resolveApproval?: (resolution: ApprovalResolution) => void | Promise<void>;
   runFrames?: Pick<RunFrameStore, "get">;
   secureCookies: boolean;
   store: ControlPlaneStore;
@@ -138,19 +141,22 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/workspace", async (context) => {
     const nodes = dependencies.listNodes();
-    const [channels, bots, runs, artifacts, progress, persistedCounts] = await Promise.all([
-      dependencies.store.listChannels(),
-      dependencies.store.listBots(),
-      dependencies.store.listRuns(),
-      dependencies.store.listArtifacts(),
-      dependencies.store.listRunProgress(),
-      dependencies.store.getCounts(),
-    ]);
+    const [channels, bots, runs, approvals, artifacts, progress, persistedCounts] =
+      await Promise.all([
+        dependencies.store.listChannels(),
+        dependencies.store.listBots(),
+        dependencies.store.listRuns(),
+        dependencies.store.listApprovals(),
+        dependencies.store.listArtifacts(),
+        dependencies.store.listRunProgress(),
+        dependencies.store.getCounts(),
+      ]);
     const workspace: WorkspaceSnapshot = {
       channels,
       bots,
       nodes,
       runs,
+      approvals,
       artifacts,
       progress,
       counts: {
@@ -206,7 +212,16 @@ export function createApp(dependencies: AppDependencies) {
               event: event.type,
               ...(event.type === "workspace.ready"
                 ? {}
-                : { id: event.type === "node.upserted" ? event.node.id : event.nodeId }),
+                : {
+                    id:
+                      event.type === "node.upserted"
+                        ? event.node.id
+                        : event.type === "node.removed"
+                          ? event.nodeId
+                          : event.type === "approval.updated"
+                            ? event.approval.id
+                            : event.run.id,
+                  }),
               data: JSON.stringify(event),
             });
             event = queued.shift();
@@ -246,6 +261,26 @@ export function createApp(dependencies: AppDependencies) {
   app.get("/api/v1/channels/:channelId/runs", async (context) =>
     context.json({ runs: await dependencies.store.listRuns(context.req.param("channelId")) }),
   );
+
+  app.post("/api/v1/approvals/:approvalId/decision", async (context) => {
+    const input = await parseRequest(context.req.raw, approvalDecisionInputSchema);
+    const resolution = await dependencies.store.decideApproval(
+      context.req.param("approvalId"),
+      input.decision,
+      "owner",
+    );
+    realtime.publish({
+      type: "run.updated",
+      channelId: resolution.run.channelId,
+      run: resolution.run,
+    });
+    workspaceRealtime.publish({ type: "approval.updated", ...resolution });
+    await dependencies.resolveApproval?.(resolution);
+    if (resolution.approval.status === "expired") {
+      return context.json({ error: "Approval expired before it was decided." }, 409);
+    }
+    return context.json(resolution);
+  });
 
   app.get("/api/v1/artifacts/:artifactId/content", async (context) => {
     const record = await dependencies.store.getArtifact(context.req.param("artifactId"));

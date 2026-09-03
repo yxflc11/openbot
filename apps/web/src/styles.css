@@ -996,6 +996,104 @@ select:focus-visible {
   margin: 8px 0 0;
   font-size: 12px;
 }
+.approval-list {
+  display: grid;
+  gap: 10px;
+}
+.approval-card {
+  padding: 14px;
+  border: 1px solid #e5c28d;
+  border-left: 3px solid var(--orange);
+  border-radius: 9px;
+  background: #fffaf3;
+}
+.approval-card.risk-destructive,
+.approval-card.risk-privileged {
+  border-color: #e2aaa5;
+  border-left-color: #c94b43;
+  background: #fff8f7;
+}
+.approval-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.approval-card header span {
+  color: #a85319;
+  font-size: 10px;
+  font-weight: 750;
+}
+.approval-card.risk-destructive header span,
+.approval-card.risk-privileged header span {
+  color: #a13731;
+}
+.approval-card time {
+  color: #8b7c6e;
+  font-size: 9px;
+}
+.approval-card > strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.approval-card > p {
+  overflow: hidden;
+  margin: 6px 0;
+  color: #6e6258;
+  font-size: 10px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.approval-card > small {
+  color: #8b8177;
+  font-size: 9px;
+}
+.approval-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  margin-top: 12px;
+}
+.approval-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+.approval-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+.approval-reject {
+  border: 1px solid #d8cfc6;
+  background: #fff;
+}
+.approval-approve {
+  overflow: hidden;
+  border: 1px solid #b85e1e;
+  color: #fff;
+  background: #c96722;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.risk-destructive .approval-approve,
+.risk-privileged .approval-approve {
+  border-color: #a33b35;
+  background: #b8463f;
+}
+.approval-card > em {
+  display: block;
+  margin-top: 8px;
+  color: #a13731;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.4;
+}
 .rail-empty {
   margin: 0;
   padding: 14px 0;
@@ -2377,6 +2475,16 @@ select:focus-visible {
   .mobile-sheet h2 {
     margin: 0;
     font-size: 18px;
+  }
+  .mobile-approval-list {
+    gap: 12px;
+  }
+  .mobile-approval-list .approval-card {
+    padding: 16px;
+  }
+  .mobile-approval-list .approval-actions button {
+    min-height: 40px;
+    font-size: 11px;
   }
   .mobile-sheet-header button {
     border: 0;

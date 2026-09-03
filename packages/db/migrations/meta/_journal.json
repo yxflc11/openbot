@@ -57,6 +57,13 @@
       "when": 1789017600000,
       "tag": "0007_run_execution",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789104000000,
+      "tag": "0008_owner_approvals",
+      "breakpoints": true
     }
   ]
 }

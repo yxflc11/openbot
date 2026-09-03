@@ -197,8 +197,14 @@ export const approvals = pgTable(
     runId: text("run_id")
       .notNull()
       .references(() => runs.id, { onDelete: "cascade" }),
+    nodeId: text("node_id")
+      .notNull()
+      .references(() => nodes.id),
     action: text("action").notNull(),
     target: text("target").notNull(),
+    summary: text("summary").notNull(),
+    risk: text("risk").notNull(),
+    targetFingerprint: text("target_fingerprint").notNull(),
     status: text("status").notNull().default("pending"),
     beforeState: jsonb("before_state").notNull().default({}),
     decidedBy: text("decided_by"),
@@ -206,7 +212,19 @@ export const approvals = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("approvals_run_status_idx").on(table.runId, table.status)],
+  (table) => [
+    index("approvals_run_status_idx").on(table.runId, table.status),
+    index("approvals_status_expiry_idx").on(table.status, table.expiresAt),
+    check(
+      "approvals_status_valid",
+      sql`${table.status} IN ('pending', 'approved', 'rejected', 'expired')`,
+    ),
+    check("approvals_risk_valid", sql`${table.risk} IN ('write', 'destructive', 'privileged')`),
+    check("approvals_action_not_blank", sql`length(btrim(${table.action})) > 0`),
+    check("approvals_target_not_blank", sql`length(btrim(${table.target})) > 0`),
+    check("approvals_summary_not_blank", sql`length(btrim(${table.summary})) > 0`),
+    check("approvals_target_fingerprint_valid", sql`length(${table.targetFingerprint}) = 64`),
+  ],
 );
 
 export const artifacts = pgTable(

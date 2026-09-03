@@ -1,17 +1,19 @@
-import type { Bot, Channel, ExecutionNode, Run } from "@openbot/domain";
+import type { Approval, ApprovalDecision, Bot, Channel, Run } from "@openbot/domain";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
-import { BotIcon, HashIcon, NodeIcon, OfficeIcon, PlusIcon } from "./Icons";
+import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalIcon, BotIcon, HashIcon, OfficeIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
-export type MobilePanel = "channels" | "bots" | "nodes" | undefined;
+export type MobilePanel = "channels" | "bots" | "approvals" | undefined;
 
 export function MobileNavigation({
   panel,
   bots,
   channels,
-  nodes,
   runs,
+  approvals,
   onPanel,
+  onDecideApproval,
   onOffice,
   onCreateBot,
   onCreateChannel,
@@ -20,15 +22,19 @@ export function MobileNavigation({
   panel: MobilePanel;
   bots: Bot[];
   channels: Channel[];
-  nodes: ExecutionNode[];
   runs: Run[];
+  approvals: Approval[];
   onPanel(panel: MobilePanel): void;
+  onDecideApproval(approvalId: string, decision: ApprovalDecision): Promise<void>;
   onOffice(): void;
   onCreateBot(): void;
   onCreateChannel(): void;
   onSelectChannel(channelId: string): void;
 }) {
   const activeRunByBot = indexActiveRunsByBot(runs);
+  const botById = new Map(bots.map((bot) => [bot.id, bot]));
+  const channelById = new Map(channels.map((channel) => [channel.id, channel]));
+  const pendingApprovals = approvals.filter((approval) => approval.status === "pending");
   return (
     <>
       {panel ? (
@@ -75,18 +81,20 @@ export function MobileNavigation({
                 );
               })}
             </>
-          ) : nodes.length === 0 ? (
-            <p className="mobile-empty">没有在线节点</p>
+          ) : pendingApprovals.length === 0 ? (
+            <p className="mobile-empty">暂无待审批动作</p>
           ) : (
-            nodes.map((node) => (
-              <div className="mobile-list-row" key={node.id}>
-                <NodeIcon />
-                <span className="mobile-list-label">{node.name}</span>
-                <small>
-                  {node.activeRunIds.length}/{node.maxConcurrentRuns} 任务
-                </small>
-              </div>
-            ))
+            <div className="approval-list mobile-approval-list">
+              {pendingApprovals.map((approval) => (
+                <ApprovalCard
+                  approval={approval}
+                  bot={botById.get(approval.botId)}
+                  channel={channelById.get(approval.channelId)}
+                  onDecide={onDecideApproval}
+                  key={approval.id}
+                />
+              ))}
+            </div>
           )}
         </section>
       ) : null}
@@ -103,9 +111,9 @@ export function MobileNavigation({
           <BotIcon />
           <span>Bots</span>
         </button>
-        <button type="button" onClick={() => onPanel("nodes")}>
-          <NodeIcon />
-          <span>节点</span>
+        <button type="button" onClick={() => onPanel("approvals")}>
+          <ApprovalIcon />
+          <span>审批{pendingApprovals.length > 0 ? ` ${pendingApprovals.length}` : ""}</span>
         </button>
       </nav>
     </>
@@ -113,5 +121,5 @@ export function MobileNavigation({
 }
 
 function panelLabel(panel: Exclude<MobilePanel, undefined>) {
-  return panel === "channels" ? "频道" : panel === "bots" ? "Bots" : "节点";
+  return panel === "channels" ? "频道" : panel === "bots" ? "Bots" : "审批";
 }

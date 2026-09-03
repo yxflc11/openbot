@@ -20,6 +20,10 @@ export type RunStatus =
   | "failed"
   | "cancelled";
 
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired";
+export type ApprovalRisk = "write" | "destructive" | "privileged";
+export type ApprovalDecision = "approve" | "reject";
+
 export interface Channel {
   id: EntityId;
   name: string;
@@ -62,6 +66,30 @@ export interface Run {
   errorMessage?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Approval {
+  id: EntityId;
+  runId: EntityId;
+  channelId: EntityId;
+  botId: EntityId;
+  nodeId: EntityId;
+  action: string;
+  target: string;
+  summary: string;
+  risk: ApprovalRisk;
+  targetFingerprint: string;
+  beforeState: Record<string, unknown>;
+  status: ApprovalStatus;
+  expiresAt: string;
+  decidedBy?: string;
+  decidedAt?: string;
+  createdAt: string;
+}
+
+export interface ApprovalResolution {
+  approval: Approval;
+  run: Run;
 }
 
 export interface Artifact {
@@ -167,6 +195,16 @@ export type WorkspaceRealtimeEvent =
       type: "node.removed";
       nodeId: EntityId;
       occurredAt: string;
+    }
+  | {
+      type: "approval.updated";
+      approval: Approval;
+      run: Run;
+    }
+  | {
+      type: "run.updated";
+      run: Run;
+      artifacts?: Artifact[];
     };
 
 export interface BootstrapSummary {
@@ -185,6 +223,7 @@ export interface WorkspaceSnapshot {
   bots: Bot[];
   nodes: ExecutionNode[];
   runs: Run[];
+  approvals: Approval[];
   artifacts: Artifact[];
   progress: RunProgress[];
   counts: BootstrapSummary["counts"];

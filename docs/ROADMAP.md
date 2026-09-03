@@ -4,7 +4,9 @@
 
 M1 第二切片已完成：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、任务、结构化事件、Owner Session、结果和 Artifact 元数据会真实落库；Web 可以本地登录、创建 Bot、创建频道、把 Bot 加入频道、提交频道任务，并在频道、桌面办公室和手机列表中读取同一份数据。频道 SSE、多浏览器即时同步、断线检测和自动重连已跑通。任务先由 Server 确定性地选择频道成员，再以 Bot 固定的 execution profile 匹配有容量的 Node。
 
-Node 已通过出站 WebSocket 上报真实可执行能力和并发容量；两阶段 offer/accept/confirm、显式 start、progress、frame、completed/failed/settled、数据库条件转换、节点断线恢复已通过进程级链路验证。首个 Docker provider 已用薄适配层接通 CopilotKit/OpenBot `agent-computer`：当前只打开任务中明确的公开 URL 并回传一张 PNG。Workspace SSE 已让 Node 上线、容量变化与断开在所有设备实时同步；结构化 progress 与最新临时画面已进入 Run Inspector。M1 剩余切片是由真正的交互式 provider 连续采集画面；网页点击/填写必须与 M2 Action Gateway 和审批一起设计。
+Node 已通过出站 WebSocket 上报真实可执行能力和并发容量；两阶段 offer/accept/confirm、显式 start、progress、frame、completed/failed/settled、数据库条件转换、节点断线恢复已通过进程级链路验证。首个 Docker provider 已用薄适配层接通 CopilotKit/OpenBot `agent-computer`：当前只打开任务中明确的公开 URL 并回传一张 PNG。Workspace SSE 已让 Node、Run 与审批状态在所有设备实时同步；结构化 progress 与最新临时画面已进入 Run Inspector。
+
+M2 第一切片已完成：Node/provider 可发送结构化 `approval.request`，Server 原子保存审批和目标指纹并把 Run 切换为 `waiting_approval`；桌面 Attention 与手机审批页可批准一次或拒绝，决定会审计并回传原 Node。重复决定、过期审批和失联 Node 均 fail closed。下一步是接入真正的交互式 provider，并把当前请求/决定握手升级为可验证、可消费一次的 capability lease；连续画面与接管仍待补。
 
 ## Spike — 决定是否正式 fork CopilotKit/OpenBot
 
@@ -61,10 +63,11 @@ Node 已通过出站 WebSocket 上报真实可执行能力和并发容量；两�
 
 - Tailscale-first 部署文档。
 - 手机 PWA 的频道、审批和电脑画面。
-- Attention 审批卡在桌面右栏和手机任务页同时置顶。
+- Attention 审批卡在桌面右栏和手机审批页同时置顶（第一切片已完成）。
+- 审批请求、目标指纹、超时、Owner 决定、审计和 Node 恢复握手（第一切片已完成）。
 - 一次性 capability lease。
 - view token、独占 control lease 和人机互斥。
-- Run、审批、Node 和电脑状态的多设备 realtime 同步。
+- Run、审批与 Node 状态的多设备 realtime 同步（已完成）；连续电脑画面待补。
 
 ### 过线测试
 

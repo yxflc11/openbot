@@ -56,7 +56,7 @@ describe("node run offers", () => {
       displayName: "Test computer",
       platforms: ["linux", "macos"],
       capabilities: ["browser", "screenshot"],
-      async execute(_context, input, reportProgress, reportFrame) {
+      async execute(_context, input, reportProgress, reportFrame, requestApproval) {
         expect(input.instruction).toBe(offer.instruction);
         reportProgress({ stage: "navigate", message: "Opening test page" });
         reportFrame?.({
@@ -68,6 +68,16 @@ describe("node run offers", () => {
           height: 800,
           capturedAt: "2026-09-03T00:00:00.000Z",
         });
+        expect(requestApproval).toBeDefined();
+        const approval = await requestApproval?.({
+          actionId: "prepared-action-1",
+          action: "form.submit",
+          target: "https://example.test/form#signup",
+          summary: "Submit the test form",
+          risk: "write",
+          beforeState: { fields: 3 },
+        });
+        expect(approval?.status).toBe("approved");
         return { ok: true, summary: "Page opened and captured", artifacts: [] };
       },
     };
@@ -115,6 +125,17 @@ describe("node run offers", () => {
             startedAt: new Date().toISOString(),
           });
         }
+        if (message.type === "approval.request") {
+          send(socket, {
+            type: "approval.resolved",
+            protocolVersion,
+            nodeId: message.nodeId,
+            runId: message.runId,
+            requestId: message.requestId,
+            decision: "approved",
+            decidedAt: new Date().toISOString(),
+          });
+        }
         if (message.type === "run.completed") {
           send(socket, {
             type: "run.settled",
@@ -140,6 +161,7 @@ describe("node run offers", () => {
         "run.start_request",
         "run.progress",
         "run.frame",
+        "approval.request",
         "run.completed",
       ]);
     } finally {

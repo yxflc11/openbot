@@ -1,22 +1,27 @@
-import type { ExecutionNode, WorkspaceSnapshot } from "@openbot/domain";
+import type { ApprovalDecision, ExecutionNode, WorkspaceSnapshot } from "@openbot/domain";
 import type { RealtimeConnectionState } from "../api";
 import { isActiveRun, runStatusLabel } from "../run-state";
+import { ApprovalCard } from "./ApprovalCard";
 import { NodeIcon } from "./Icons";
 
 export function ContextRail({
   realtimeState,
   workspace,
+  onDecideApproval,
   onInspectRun,
 }: {
   realtimeState: RealtimeConnectionState;
   workspace: WorkspaceSnapshot;
+  onDecideApproval(approvalId: string, decision: ApprovalDecision): Promise<void>;
   onInspectRun(runId: string): void;
 }) {
   const activeRuns = workspace.runs.filter(isActiveRun);
+  const pendingApprovals = workspace.approvals.filter((approval) => approval.status === "pending");
   const recentResults = workspace.runs
     .filter((run) => run.status === "completed" || run.status === "failed")
     .slice(0, 2);
   const botById = new Map(workspace.bots.map((bot) => [bot.id, bot]));
+  const channelById = new Map(workspace.channels.map((channel) => [channel.id, channel]));
   const nodeById = new Map(workspace.nodes.map((node) => [node.id, node]));
   return (
     <aside className="context-rail" aria-label="运行状态">
@@ -34,13 +39,27 @@ export function ContextRail({
       </dl>
 
       <section className="rail-section attention">
-        <h3>需要处理</h3>
-        <div className="attention-empty">
-          <span className="attention-symbol" aria-hidden="true">
-            ⌑
-          </span>
-          <p>暂无待处理事项</p>
-        </div>
+        <h3>需要处理{pendingApprovals.length > 0 ? ` · ${pendingApprovals.length}` : ""}</h3>
+        {pendingApprovals.length === 0 ? (
+          <div className="attention-empty">
+            <span className="attention-symbol" aria-hidden="true">
+              ⌑
+            </span>
+            <p>暂无待处理事项</p>
+          </div>
+        ) : (
+          <div className="approval-list">
+            {pendingApprovals.map((approval) => (
+              <ApprovalCard
+                approval={approval}
+                bot={botById.get(approval.botId)}
+                channel={channelById.get(approval.channelId)}
+                onDecide={onDecideApproval}
+                key={approval.id}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rail-section runs-section">

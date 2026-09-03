@@ -1,4 +1,9 @@
-import type { ExecutionNode, Run } from "@openbot/domain";
+import type {
+  ApprovalResolution,
+  ExecutionNode,
+  Run,
+  WorkspaceRealtimeEvent,
+} from "@openbot/domain";
 import type { CompletedArtifact } from "@openbot/protocol";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import type { ChannelRealtimeHub } from "./channel-realtime-hub.js";
@@ -25,7 +30,8 @@ type DispatchStore = Pick<
   | "requeueAssignedRuns"
   | "startRun"
   | "upsertNode"
->;
+> &
+  Partial<Pick<ControlPlaneStore, "requestApproval">>;
 
 export interface NodeGateway {
   list(): ExecutionNode[];
@@ -35,11 +41,22 @@ export interface NodeGateway {
   offerRun(nodeId: string, input: RunOfferInput): Promise<RunOfferResult>;
   confirmRun(nodeId: string, runId: string): boolean;
   startRun(nodeId: string, runId: string): boolean;
+  resolveApproval?(
+    nodeId: string,
+    runId: string,
+    requestId: string,
+    decision: "approved" | "rejected" | "expired",
+  ): boolean;
   settleRun(nodeId: string, runId: string, status: "completed" | "failed"): void;
   cancelRun(nodeId: string, runId: string, reason: string): void;
 }
 
 type RunPublisher = Pick<ChannelRealtimeHub, "publish">;
+interface WorkspacePublisher {
+  publish(
+    event: Extract<WorkspaceRealtimeEvent, { type: "approval.updated" | "run.updated" }>,
+  ): void;
+}
 type FramePublisher = Pick<RunFrameStore, "publish">;
 
 export class RunDispatcher {
@@ -48,6 +65,7 @@ export class RunDispatcher {
   readonly #realtime: RunPublisher;
   readonly #artifacts: ArtifactStorage;
   readonly #frames: FramePublisher | undefined;
+  readonly #workspace: WorkspacePublisher | undefined;
   readonly #runMessageTails = new Map<string, Promise<void>>();
   #draining = false;
   #drainAgain = false;
@@ -62,12 +80,14 @@ export class RunDispatcher {
     realtime: RunPublisher,
     artifacts: ArtifactStorage,
     frames?: FramePublisher,
+    workspace?: WorkspacePublisher,
   ) {
     this.#store = store;
     this.#nodes = nodes;
     this.#realtime = realtime;
     this.#artifacts = artifacts;
     this.#frames = frames;
+    this.#workspace = workspace;
   }
 
   async start(): Promise<void> {
@@ -101,6 +121,36 @@ export class RunDispatcher {
   enqueue(run: Run): void {
     if (run.status !== "queued" || run.executionProfile === "none") return;
     void this.dispatchQueued().catch(reportDispatchError);
+  }
+
+  async resolveApproval(resolution: ApprovalResolution): Promise<void> {
+    const { approval, run } = resolution;
+    const decision = approval.status;
+    if (decision === "pending") return;
+    const delivered =
+      this.#nodes.resolveApproval?.(approval.nodeId, run.id, approval.id, decision) ?? false;
+
+    if (decision === "approved") {
+      if (delivered) return;
+      const failed = await this.#store.failRun(
+        run.id,
+        approval.nodeId,
+        "Approval was granted, but the execution Node was no longer connected.",
+      );
+      if (failed !== undefined) {
+        this.#nodes.settleRun(approval.nodeId, run.id, "failed");
+        this.#publishUpdates([failed]);
+      }
+      await this.dispatchQueued();
+      return;
+    }
+
+    this.#nodes.cancelRun(
+      approval.nodeId,
+      run.id,
+      decision === "expired" ? "Approval expired." : "Owner rejected the requested action.",
+    );
+    await this.dispatchQueued();
   }
 
   async dispatchQueued(): Promise<void> {
@@ -236,6 +286,28 @@ export class RunDispatcher {
         }
         return;
       }
+      case "approval.request": {
+        const resolution = await this.#store.requestApproval?.(message.runId, node.id, {
+          requestId: message.requestId,
+          action: message.action,
+          target: message.target,
+          summary: message.summary,
+          risk: message.risk,
+          beforeState: message.beforeState,
+          expiresAt: new Date(Date.now() + message.expiresInSeconds * 1000).toISOString(),
+        });
+        if (resolution === undefined) {
+          this.#nodes.cancelRun(node.id, message.runId, "Run cannot request an approval now.");
+          return;
+        }
+        this.#publishUpdates([resolution.run]);
+        this.#workspace?.publish({
+          type: "approval.updated",
+          approval: resolution.approval,
+          run: resolution.run,
+        });
+        return;
+      }
       case "run.completed":
         await this.#completeRun(node.id, message.runId, message.summary, message.artifacts);
         return;
@@ -276,6 +348,11 @@ export class RunDispatcher {
         run: completion.run,
         artifacts: completion.artifacts,
       });
+      this.#workspace?.publish({
+        type: "run.updated",
+        run: completion.run,
+        artifacts: completion.artifacts,
+      });
       await this.dispatchQueued();
     } catch (error) {
       await this.#artifacts.remove(persisted.map((artifact) => artifact.storageKey));
@@ -295,6 +372,7 @@ export class RunDispatcher {
   #publishUpdates(runs: Run[]): void {
     for (const run of runs) {
       this.#realtime.publish({ type: "run.updated", channelId: run.channelId, run });
+      this.#workspace?.publish({ type: "run.updated", run });
     }
   }
 }

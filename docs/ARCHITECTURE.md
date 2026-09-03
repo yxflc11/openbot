@@ -148,7 +148,8 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - `run.offer` / `run.accept` / `run.reject` / `run.assigned`
 - `run.start_request` / `run.start` / `run.progress` / `run.frame`
 - `run.completed` / `run.failed` / `run.settled` / `run.cancel`
-- `approval.lease` / `approval.revoke`
+- `approval.request` / `approval.resolved`（已实现请求与决定握手）
+- `approval.lease` / `approval.revoke`（待实现一次性能力票据）
 - `control.acquire` / `control.release`
 
 ### 数据消息
@@ -167,7 +168,7 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - Node 凭证不能登录 Web，也不能访问其他 Node；
 - 所有消息绑定 connection、node、run 和 sequence。
 
-协议 `0.4.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、completed/failed、持久化后 settled 与 cancel。`run.frame` 只接受有界 PNG，Server 验证 Run 与 Node 的运行绑定后更新内存中的 latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 Artifact Storage。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
+协议 `0.5.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、`approval.request`、`approval.resolved`、completed/failed、持久化后 settled 与 cancel。`run.frame` 只接受有界 PNG，Server 验证 Run 与 Node 的运行绑定后更新内存中的 latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 Artifact Storage。审批请求绑定 Run、Bot、Node、动作、目标指纹和过期时间，但尚未签发独立的 capability lease。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
 
 ## 5. Provider contract
 

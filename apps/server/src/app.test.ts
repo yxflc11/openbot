@@ -1,4 +1,5 @@
 import type {
+  Approval,
   Bot,
   Channel,
   CreateBotInput,
@@ -13,6 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
+  StoreConflictError,
   StoreNotFoundError,
   StoreValidationError,
   type ArtifactRecord,
@@ -122,7 +124,7 @@ describe("server app", () => {
     });
   });
 
-  it("streams the authoritative Node snapshot and later Node changes", async () => {
+  it("streams the authoritative Node snapshot and later workspace changes", async () => {
     const node: ExecutionNode = {
       id: "node-1",
       name: "Linux worker",
@@ -161,6 +163,24 @@ describe("server app", () => {
     const removed = new TextDecoder().decode((await reader?.read())?.value);
     expect(removed).toContain("event: node.removed");
     expect(removed).toContain('"nodeId":"node-1"');
+
+    const run: Run = {
+      id: "00000000-0000-4000-8000-000000000020",
+      channelId: "00000000-0000-4000-8000-000000000021",
+      botId: "00000000-0000-4000-8000-000000000022",
+      executionProfile: "docker-linux",
+      instruction: "打开测试页",
+      title: "打开测试页",
+      status: "completed",
+      resultSummary: "完成",
+      createdAt: "2026-09-04T00:00:00.000Z",
+      updatedAt: "2026-09-04T00:02:00.000Z",
+    };
+    workspaceRealtime.publish({ type: "run.updated", run });
+    const updated = new TextDecoder().decode((await reader?.read())?.value);
+    expect(updated).toContain("event: run.updated");
+    expect(updated).toContain(`id: ${run.id}`);
+    expect(updated).toContain('"status":"completed"');
 
     await reader?.cancel();
     controller.abort();
@@ -342,6 +362,63 @@ describe("server app", () => {
     expect(await listedRuns.json()).toMatchObject({
       runs: [{ botId: bot.id, status: "queued", title: "打开测试页并截图" }],
     });
+  });
+
+  it("lets the authenticated Owner resolve a pending approval exactly once", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Ops",
+      role: "日常运营",
+      computerProfile: "docker-linux",
+    });
+    const channel = await store.createChannel({
+      name: "审批测试",
+      description: "验证敏感动作",
+      botIds: [bot.id],
+    });
+    const submitted = await store.submitTask(channel.id, { content: "提交测试表单" });
+    await store.assignRun(submitted.run.id, "node-1");
+    await store.startRun(submitted.run.id, "node-1");
+    const requested = await store.requestApproval(submitted.run.id, "node-1", {
+      requestId: "00000000-0000-4000-8000-000000000099",
+      action: "form.submit",
+      target: "https://example.test/form#signup",
+      summary: "提交注册表单",
+      risk: "write",
+      beforeState: { fields: 3 },
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+    expect(requested?.run.status).toBe("waiting_approval");
+    if (requested === undefined) throw new Error("Approval was not requested.");
+
+    const resolveApproval = vi.fn();
+    const app = createTestApp({ resolveApproval, store });
+    const cookie = await login(app);
+    const workspace = await app.request("/api/v1/workspace", { headers: { Cookie: cookie } });
+    expect(await workspace.json()).toMatchObject({
+      approvals: [{ id: requested.approval.id, status: "pending" }],
+    });
+
+    const approved = await app.request(`/api/v1/approvals/${requested.approval.id}/decision`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      approval: { status: "approved", decidedBy: "owner" },
+      run: { status: "running" },
+    });
+    expect(resolveApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ approval: expect.objectContaining({ status: "approved" }) }),
+    );
+
+    const replayed = await app.request(`/api/v1/approvals/${requested.approval.id}/decision`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ decision: "reject" }),
+    });
+    expect(replayed.status).toBe(409);
   });
 
   it("rejects a task when the channel has no Bot", async () => {
@@ -530,6 +607,7 @@ describe("server app", () => {
 function createTestApp({
   store,
   dispatchRun,
+  resolveApproval,
   listNodes = () => [],
   realtime,
   artifactStorage,
@@ -538,6 +616,7 @@ function createTestApp({
 }: {
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
+  resolveApproval?: Parameters<typeof createApp>[0]["resolveApproval"];
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
   artifactStorage?: Pick<ArtifactStorage, "read">;
@@ -553,6 +632,7 @@ function createTestApp({
     allowedOrigins: [testOrigin],
     auth,
     ...(dispatchRun === undefined ? {} : { dispatchRun }),
+    ...(resolveApproval === undefined ? {} : { resolveApproval }),
     ...(artifactStorage === undefined ? {} : { artifactStorage }),
     listNodes,
     ...(realtime === undefined ? {} : { realtime }),
@@ -614,6 +694,7 @@ function createTestStore(): ControlPlaneStore {
   const channels: Channel[] = [];
   const messages: Message[] = [];
   const runs: Run[] = [];
+  const approvals: Approval[] = [];
   let nextId = 0;
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
 
@@ -638,6 +719,9 @@ function createTestStore(): ControlPlaneStore {
         throw new StoreNotFoundError("Channel not found.");
       }
       return channelId === undefined ? runs : runs.filter((run) => run.channelId === channelId);
+    },
+    async listApprovals() {
+      return approvals;
     },
     async listRunProgress() {
       return [];
@@ -732,6 +816,49 @@ function createTestStore(): ControlPlaneStore {
       run.status = "running";
       run.updatedAt = new Date().toISOString();
       return run;
+    },
+    async requestApproval(runId, nodeId, input) {
+      const run = runs.find(
+        (item) => item.id === runId && item.nodeId === nodeId && item.status === "running",
+      );
+      if (run === undefined) return undefined;
+      run.status = "waiting_approval";
+      run.updatedAt = new Date().toISOString();
+      const approval: Approval = {
+        id: input.requestId,
+        runId,
+        channelId: run.channelId,
+        botId: run.botId,
+        nodeId,
+        action: input.action,
+        target: input.target,
+        summary: input.summary,
+        risk: input.risk,
+        targetFingerprint: "0".repeat(64),
+        beforeState: input.beforeState,
+        status: "pending",
+        expiresAt: input.expiresAt,
+        createdAt: new Date().toISOString(),
+      };
+      approvals.push(approval);
+      return { approval, run };
+    },
+    async decideApproval(approvalId, decision, decidedBy) {
+      const approval = approvals.find((item) => item.id === approvalId);
+      if (approval === undefined) throw new StoreNotFoundError("Approval not found.");
+      if (approval.status !== "pending") {
+        throw new StoreConflictError("Approval has already been resolved.");
+      }
+      const run = runs.find((item) => item.id === approval.runId);
+      if (run === undefined || run.status !== "waiting_approval") {
+        throw new StoreConflictError("The run is no longer waiting for this approval.");
+      }
+      approval.status = decision === "approve" ? "approved" : "rejected";
+      approval.decidedBy = decidedBy;
+      approval.decidedAt = new Date().toISOString();
+      run.status = decision === "approve" ? "running" : "blocked";
+      run.updatedAt = approval.decidedAt;
+      return { approval, run };
     },
     async appendRunProgress(runId: string, nodeId: string) {
       const run = runs.find(

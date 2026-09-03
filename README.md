@@ -4,7 +4,7 @@
 
 OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
 
-当前状态：**M1 已跑通第一条完整执行链：含明确公开 URL 的任务会按固定 execution profile 分配给在线 Node，经 CopilotKit/OpenBot `agent-computer` 打开网页并截图；节点连接/断开、Run 状态、结构化进度和最新执行画面会实时同步，结果与截图持久化后可在任务 Inspector 中复查。当前 provider 每次截图会上报一个临时画面，尚未连续采集；系统仍不会点击、填写或提交表单，也还没有审批。**
+当前状态：**M1 已跑通第一条完整执行链：含明确公开 URL 的任务会按固定 execution profile 分配给在线 Node，经 CopilotKit/OpenBot `agent-computer` 打开网页并截图；节点连接/断开、Run 状态、结构化进度和最新执行画面会实时同步，结果与截图持久化后可在任务 Inspector 中复查。第一段 M2 审批控制面也已接通：provider 可在动作前发起审批，Run 会原子进入 `waiting_approval`，Owner 可在桌面或手机批准一次或拒绝，决定与目标指纹会持久化并回传原 Node。当前 Docker provider 仍是只读适配器，不会点击、填写或提交表单；一次性加密 capability lease 尚未实现。**
 
 ## 产品公式
 
@@ -22,7 +22,7 @@ OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面�
 
 > 用户在手机浏览器打开自己的 OpenBot，对 `Ops` 说「打开测试页，填写但不要提交，截图给我」；部署在任意服务器上的控制面把任务发给在线执行节点，任务完成后在同一频道返回截图。若要求提交，系统必须停下来等批准。
 
-当前已经完成这条目标中的“明确网址 → 无人值守打开 → 临时画面 → 截图回频道”；“连续画面”“填写但不提交”和“提交前审批”仍是下一阶段，不能把现在的只读适配器描述成完整电脑操作。
+当前已经完成“明确网址 → 无人值守打开 → 临时画面 → 截图回频道”和“provider 请求动作 → Owner 审批 → 原 Node 收到决定”的控制链。“连续画面”“填写但不提交”“一次性 capability lease”和真正提交动作仍是下一阶段，不能把现在的只读适配器描述成完整电脑操作。
 
 ## 总体架构
 
@@ -191,7 +191,7 @@ npm run check
 npm audit
 ```
 
-此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`。节点在线状态、容量、执行阶段和最新画面经 SSE 实时投影；点击频道任务或右栏任务即可打开 Inspector，查看指令、Bot、电脑、进度、临时画面、结果与 PNG 产物。画面只在 Server 内存中短时保留，通过 Owner Session 读取，不写入 PostgreSQL。执行中的 Node 断线会把 Run 明确标记失败，避免对未知外部副作用盲目重试。连续屏幕采集、审批、网页填写/点击和远程接管仍将按 M1–M2 逐步接入。
+此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`。节点在线状态、容量、执行阶段、审批和最新画面经 SSE 实时投影；点击频道任务或右栏任务即可打开 Inspector，查看指令、Bot、电脑、进度、临时画面、结果与 PNG 产物。provider 发起写入、删除或特权动作前可请求审批，Owner 的一次批准或拒绝会落库并只回传对应 Run 与 Node。画面只在 Server 内存中短时保留，通过 Owner Session 读取，不写入 PostgreSQL。执行中的 Node 断线会把 Run 明确标记失败，避免对未知外部副作用盲目重试。连续屏幕采集、真实网页填写/点击、加密的一次性 capability lease 和远程接管仍将按 M1–M2 逐步接入。
 
 生产环境必须使用 HTTPS，把 `OPENBOT_SECURE_COOKIES` 设为 `true`，并让 `OPENBOT_ALLOWED_ORIGINS` 只包含实际 Web/PWA 地址。Owner 密码至少 12 个字符，建议使用密码管理器生成的长随机值。
 

@@ -55,6 +55,15 @@ export function NodeIcon() {
   );
 }
 
+export function ApprovalIcon() {
+  return (
+    <Icon>
+      <path d="M12 3.5 19 6v5.3c0 4.5-2.8 7.6-7 9.2-4.2-1.6-7-4.7-7-9.2V6Z" {...strokeProps} />
+      <path d="m8.5 12 2.2 2.2 4.8-5" {...strokeProps} />
+    </Icon>
+  );
+}
+
 export function PlusIcon() {
   return (
     <Icon size={16}>

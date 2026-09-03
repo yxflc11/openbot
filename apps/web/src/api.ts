@@ -1,4 +1,7 @@
 import type {
+  Approval,
+  ApprovalDecision,
+  ApprovalResolution,
   Artifact,
   AuthSessionSnapshot,
   Bot,
@@ -62,6 +65,17 @@ export function subscribeToUnauthorized(handler: () => void): () => void {
 
 export async function getWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
   return request<WorkspaceSnapshot>("/api/v1/workspace", signal ? { signal } : undefined);
+}
+
+export async function decideApproval(
+  approvalId: string,
+  decision: ApprovalDecision,
+): Promise<ApprovalResolution> {
+  return request<ApprovalResolution>(`/api/v1/approvals/${approvalId}/decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision }),
+  });
 }
 
 export async function createBot(input: CreateBotInput): Promise<Bot> {
@@ -240,9 +254,11 @@ export function subscribeToChannelEvents(
 }
 
 export function subscribeToWorkspaceEvents(handlers: {
+  onApproval(approval: Approval, run: Run): void;
   onNode(node: ExecutionNode): void;
   onNodeRemoved(nodeId: string): void;
   onReady(nodes: ExecutionNode[]): void;
+  onRun(run: Run, artifacts: Artifact[]): void;
   onState(state: RealtimeConnectionState): void;
 }): () => void {
   const reconnectDelayMs = 2000;
@@ -274,6 +290,18 @@ export function subscribeToWorkspaceEvents(handlers: {
     markLive();
     handlers.onNodeRemoved(payload.nodeId);
   };
+  const onApproval = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isApprovalUpdatedEvent(payload)) return;
+    markLive();
+    handlers.onApproval(payload.approval, payload.run);
+  };
+  const onRun = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isWorkspaceRunUpdatedEvent(payload)) return;
+    markLive();
+    handlers.onRun(payload.run, payload.artifacts ?? []);
+  };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
     source?.close();
@@ -297,6 +325,8 @@ export function subscribeToWorkspaceEvents(handlers: {
     nextSource.addEventListener("heartbeat", markLive);
     nextSource.addEventListener("node.upserted", onNode);
     nextSource.addEventListener("node.removed", onNodeRemoved);
+    nextSource.addEventListener("approval.updated", onApproval);
+    nextSource.addEventListener("run.updated", onRun);
   };
 
   handlers.onState("connecting");
@@ -509,6 +539,73 @@ function isNodeRemovedEvent(
     value.type === "node.removed" &&
     "nodeId" in value &&
     typeof value.nodeId === "string"
+  );
+}
+
+function isApprovalUpdatedEvent(
+  value: unknown,
+): value is Extract<WorkspaceRealtimeEvent, { type: "approval.updated" }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "approval.updated" &&
+    "approval" in value &&
+    isApprovalProjection(value.approval) &&
+    "run" in value &&
+    isRunProjection(value.run)
+  );
+}
+
+function isWorkspaceRunUpdatedEvent(
+  value: unknown,
+): value is Extract<WorkspaceRealtimeEvent, { type: "run.updated" }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "run.updated" &&
+    "run" in value &&
+    isRunProjection(value.run) &&
+    (!("artifacts" in value) ||
+      value.artifacts === undefined ||
+      (Array.isArray(value.artifacts) && value.artifacts.every(isArtifactProjection)))
+  );
+}
+
+function isApprovalProjection(value: unknown): value is Approval {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "runId" in value &&
+    typeof value.runId === "string" &&
+    "nodeId" in value &&
+    typeof value.nodeId === "string" &&
+    "status" in value &&
+    typeof value.status === "string" &&
+    "summary" in value &&
+    typeof value.summary === "string" &&
+    "expiresAt" in value &&
+    typeof value.expiresAt === "string"
+  );
+}
+
+function isRunProjection(value: unknown): value is Run {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "channelId" in value &&
+    typeof value.channelId === "string" &&
+    "botId" in value &&
+    typeof value.botId === "string" &&
+    "status" in value &&
+    typeof value.status === "string" &&
+    "updatedAt" in value &&
+    typeof value.updatedAt === "string"
   );
 }
 

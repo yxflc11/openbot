@@ -9,8 +9,8 @@
 | `POST` | `/api/v1/auth/login` | 使用部署密码创建 Owner Session |
 | `POST` | `/api/v1/auth/logout` | 撤销当前 Session 并清除 Cookie |
 | `GET` | `/api/v1/bootstrap` | 轻量计数与阶段信息 |
-| `GET` | `/api/v1/workspace` | 频道、Bot、Node、Run、Progress、Artifact 和计数的一次性投影 |
-| `GET` | `/api/v1/workspace/events` | 订阅全局在线 Node 与容量变化（SSE） |
+| `GET` | `/api/v1/workspace` | 频道、Bot、Node、Run、Approval、Progress、Artifact 和计数的一次性投影 |
+| `GET` | `/api/v1/workspace/events` | 订阅全局 Node、Run 与 Approval 变化（SSE） |
 | `GET` | `/api/v1/channels` | 频道与 Bot roster |
 | `POST` | `/api/v1/channels` | 创建频道并原子加入初始 Bot |
 | `POST` | `/api/v1/channels/:channelId/bots` | 把已有 Bot 加入频道 |
@@ -18,6 +18,7 @@
 | `POST` | `/api/v1/channels/:channelId/messages` | 原子保存用户消息并创建排队任务 |
 | `GET` | `/api/v1/channels/:channelId/runs` | 读取频道最近 50 个任务 |
 | `GET` | `/api/v1/channels/:channelId/events` | 订阅频道实时事件（SSE） |
+| `POST` | `/api/v1/approvals/:approvalId/decision` | Owner 批准一次或拒绝一个待批动作 |
 | `GET` | `/api/v1/artifacts/:artifactId/content` | 鉴权读取任务产物；当前仅 PNG 截图 |
 | `GET` | `/api/v1/runs/:runId/frame` | 鉴权读取任务最新临时画面；不持久化 |
 | `GET` | `/api/v1/bots` | Bot 名册 |
@@ -97,7 +98,9 @@ Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，
 
 Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主动关闭连接，并以 2 秒间隔重连。每次收到 `channel.ready` 后，Web 都会重新读取最近历史，并按实体 ID 与 `updatedAt` 合并消息和 Run，以补齐断线期间写入的数据且不让旧 REST 快照覆盖较新的 SSE 状态。SSE 只承担 Server 到浏览器的下行投影；创建消息等命令继续使用 REST。
 
-`GET /api/v1/workspace/events` 使用独立的全局 SSE。首帧 `workspace.ready` 包含当前在线 Node 权威快照，之后发送 `node.upserted` 与 `node.removed`；Web 因此不需要刷新就能看到远程机器上线、心跳容量变化和断开。频道事件与 Node 事件分流，避免把全局机器拓扑复制到每个频道。
+`GET /api/v1/workspace/events` 使用独立的全局 SSE。首帧 `workspace.ready` 包含当前在线 Node 权威快照，之后发送 `node.upserted`、`node.removed`、`run.updated` 与 `approval.updated`；Web 因此不需要刷新就能看到远程机器、办公室任务和待审批动作变化。频道事件仍负责单频道消息、进度与画面，Workspace 事件负责跨频道总览。
+
+审批决定正文为 `{ "decision": "approve" }` 或 `{ "decision": "reject" }`。Server 只接受 `pending` 状态且未过期的审批；每个审批只能决定一次，重复请求返回 `409`。批准会把 Run 恢复为 `running` 并把决定送回发起请求的 Node，拒绝或过期会把 Run 标记为 `blocked` 并取消 Node 执行。当前握手尚未签发独立、可验证的一次性 capability lease，因此只允许可信私网测试 provider 使用。
 
 当前 realtime hub 是单 Server 进程内广播。需要运行多个 Server 副本时，必须先换成 PostgreSQL `LISTEN/NOTIFY`、Redis Streams 或 NATS 等共享事件总线，不能依赖进程内 fan-out。
 
@@ -108,7 +111,7 @@ Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `p
 - `401`：未登录、会话已过期或登录密码错误；
 - `403`：非只读请求缺少可信 `Origin`，或来源不在允许列表；
 - `429`：登录失败次数过多，调用方应遵循 `Retry-After`；
-- `409`：频道或 Bot 名称冲突；
+- `409`：频道或 Bot 名称冲突，审批已决定或已过期；
 - `422`：输入字段或 roster 无效；
 - `404`：频道或 Bot 不存在；
 - `500`：未预期的 Server 错误，响应不会泄漏数据库细节。

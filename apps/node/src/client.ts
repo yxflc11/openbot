@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { hostname, platform } from "node:os";
 import type { NodeEnv } from "@openbot/config";
-import type { ComputerProvider } from "@openbot/provider-sdk";
+import type { ApprovalOutcome, ComputerProvider, PreparedAction } from "@openbot/provider-sdk";
 import {
+  approvalRequestSchema,
   type NodeCapability,
   type NodeMessage,
   protocolVersion,
@@ -24,6 +26,15 @@ export class OpenBotNodeClient {
   readonly #assignedRunIds = new Set<string>();
   readonly #acceptedOffers = new Map<string, RunOffer>();
   readonly #executions = new Map<string, AbortController>();
+  readonly #approvalWaiters = new Map<
+    string,
+    {
+      runId: string;
+      resolve(outcome: ApprovalOutcome): void;
+      reject(error: Error): void;
+      timer: NodeJS.Timeout;
+    }
+  >();
   #stopped = false;
 
   constructor(env: NodeEnv, providers = configuredProviders(env)) {
@@ -146,6 +157,15 @@ export class OpenBotNodeClient {
         return;
       }
 
+      if (message.type === "approval.resolved") {
+        const waiter = this.#approvalWaiters.get(message.requestId);
+        if (waiter === undefined || waiter.runId !== message.runId) return;
+        clearTimeout(waiter.timer);
+        this.#approvalWaiters.delete(message.requestId);
+        waiter.resolve({ approvalId: message.requestId, status: message.decision });
+        return;
+      }
+
       if (message.type === "run.cancel") this.#executions.get(message.runId)?.abort();
       this.#releaseRun(message.runId);
     });
@@ -224,6 +244,7 @@ export class OpenBotNodeClient {
             console.warn("Provider emitted an invalid or oversized live frame; frame skipped.");
           }
         },
+        (action) => this.#requestApproval(runId, action, controller.signal),
       );
       if (controller.signal.aborted) return;
       if (!result.ok) {
@@ -268,6 +289,58 @@ export class OpenBotNodeClient {
     }
   }
 
+  #requestApproval(
+    runId: string,
+    action: PreparedAction,
+    signal: AbortSignal,
+  ): Promise<ApprovalOutcome> {
+    if (action.risk === "read") {
+      throw new Error("Read-only actions must not request an approval lease.");
+    }
+    if (this.#socket?.readyState !== WebSocket.OPEN) {
+      throw new Error("Approval request could not reach the Server.");
+    }
+    const requestId = randomUUID();
+    const expiresInSeconds = Math.floor(
+      Math.min(900, Math.max(30, action.expiresInSeconds ?? 300)),
+    );
+    const message = approvalRequestSchema.parse({
+      type: "approval.request",
+      protocolVersion,
+      nodeId: this.#env.OPENBOT_NODE_ID,
+      runId,
+      requestId,
+      action: action.action,
+      target: action.target,
+      summary: action.summary,
+      risk: action.risk,
+      beforeState: action.beforeState ?? {},
+      expiresInSeconds,
+      requestedAt: new Date().toISOString(),
+    });
+
+    return new Promise((resolve, reject) => {
+      const finishWithError = (error: Error) => {
+        const waiter = this.#approvalWaiters.get(requestId);
+        if (waiter === undefined) return;
+        clearTimeout(waiter.timer);
+        this.#approvalWaiters.delete(requestId);
+        waiter.reject(error);
+      };
+      const timer = setTimeout(
+        () => finishWithError(new Error("Approval request expired before it was decided.")),
+        expiresInSeconds * 1000,
+      );
+      this.#approvalWaiters.set(requestId, { runId, resolve, reject, timer });
+      signal.addEventListener(
+        "abort",
+        () => finishWithError(new Error("Approval request was cancelled.")),
+        { once: true },
+      );
+      this.#send(message);
+    });
+  }
+
   #releaseRun(runId: string): void {
     this.#executions.get(runId)?.abort();
     this.#executions.delete(runId);
@@ -278,6 +351,11 @@ export class OpenBotNodeClient {
   #abortExecutions(): void {
     for (const controller of this.#executions.values()) controller.abort();
     this.#executions.clear();
+    for (const [requestId, waiter] of this.#approvalWaiters) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error("Node connection closed while approval was pending."));
+      this.#approvalWaiters.delete(requestId);
+    }
   }
 }
 

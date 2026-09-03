@@ -44,7 +44,13 @@ type NodeHandler = (node: ExecutionNode) => void;
 export type NodeRunMessage = Extract<
   NodeMessage,
   {
-    type: "run.start_request" | "run.progress" | "run.frame" | "run.completed" | "run.failed";
+    type:
+      | "run.start_request"
+      | "run.progress"
+      | "run.frame"
+      | "approval.request"
+      | "run.completed"
+      | "run.failed";
   }
 >;
 type NodeRunHandler = (node: ExecutionNode, message: NodeRunMessage) => void;
@@ -173,6 +179,37 @@ export class NodeRegistry {
       runId,
       nodeId,
       startedAt: new Date().toISOString(),
+    };
+    try {
+      node.socket.send(JSON.stringify(message));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  resolveApproval(
+    nodeId: string,
+    runId: string,
+    requestId: string,
+    decision: "approved" | "rejected" | "expired",
+  ): boolean {
+    const node = this.#nodes.get(nodeId);
+    if (
+      node === undefined ||
+      node.socket.readyState !== WebSocket.OPEN ||
+      !node.activeRunIds.includes(runId)
+    ) {
+      return false;
+    }
+    const message: ServerMessage = {
+      type: "approval.resolved",
+      protocolVersion,
+      nodeId,
+      runId,
+      requestId,
+      decision,
+      decidedAt: new Date().toISOString(),
     };
     try {
       node.socket.send(JSON.stringify(message));
@@ -315,6 +352,7 @@ export class NodeRegistry {
           message.type === "run.start_request" ||
           message.type === "run.progress" ||
           message.type === "run.frame" ||
+          message.type === "approval.request" ||
           message.type === "run.completed" ||
           message.type === "run.failed"
         ) {

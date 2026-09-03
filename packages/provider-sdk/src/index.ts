@@ -28,6 +28,13 @@ export interface PreparedAction {
   target: string;
   summary: string;
   risk: "read" | "write" | "destructive" | "privileged";
+  beforeState?: Record<string, unknown>;
+  expiresInSeconds?: number;
+}
+
+export interface ApprovalOutcome {
+  approvalId: string;
+  status: "approved" | "rejected" | "expired";
 }
 
 export interface ProviderResult {
@@ -59,6 +66,7 @@ export interface ComputerProvider {
     input: ProviderRunInput,
     report: (progress: ProviderProgress) => void,
     reportFrame?: (frame: ProviderFrame) => void,
+    requestApproval?: (action: PreparedAction) => Promise<ApprovalOutcome>,
   ): Promise<ProviderResult>;
   prepare?(context: ProviderContext, action: unknown): Promise<PreparedAction>;
   commit?(context: ProviderContext, prepared: PreparedAction): Promise<ProviderResult>;
