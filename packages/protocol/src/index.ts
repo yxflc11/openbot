@@ -552,6 +552,17 @@ export const employeeTemplateSkillSchema = z
   })
   .strict();
 
+export const employeeTemplateSignatureSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("unsigned") }).strict(),
+  z
+    .object({
+      status: z.literal("dsse"),
+      algorithm: z.literal("ed25519"),
+      keyid: z.string().trim().min(1).max(256),
+    })
+    .strict(),
+]);
+
 export const employeeTemplatePayloadSchema = z
   .object({
     format: z.literal("openbot.employee/v1"),
@@ -580,11 +591,7 @@ export const employeeTemplatePayloadSchema = z
         importedSkillState: z.literal("disabled-pending-review"),
       })
       .strict(),
-    signature: z
-      .object({
-        status: z.literal("unsigned"),
-      })
-      .strict(),
+    signature: employeeTemplateSignatureSchema,
   })
   .strict();
 
@@ -604,3 +611,46 @@ export const employeeTemplatePackageSchema = z
   .strict();
 
 export type EmployeeTemplatePackage = z.infer<typeof employeeTemplatePackageSchema>;
+
+/** The current HTTP import route accepts only standalone, explicitly unsigned templates. */
+export const unsignedEmployeeTemplatePackageSchema = employeeTemplatePackageSchema.refine(
+  (document) => document.payload.signature.status === "unsigned",
+  {
+    path: ["payload", "signature", "status"],
+    message: "Signed employee packages must be verified from their DSSE envelope.",
+  },
+);
+
+/**
+ * DSSE authenticates the exact package bytes and their application-specific media type. Unknown
+ * envelope fields remain forward compatible as required by the DSSE v1 envelope specification;
+ * the decoded OpenBot package itself is still parsed with a strict schema.
+ */
+const dsseBase64Schema = z
+  .string()
+  .min(1)
+  .max(1_500_000)
+  .regex(/^[A-Za-z0-9+/_-]+={0,2}$/)
+  .refine((value) => value.replace(/=+$/, "").length % 4 !== 1, "Invalid base64 length.");
+
+export const dsseEnvelopeSchema = z
+  .object({
+    payload: dsseBase64Schema,
+    payloadType: z.string().min(1).max(512),
+    signatures: z
+      .array(
+        z
+          .object({
+            keyid: z.string().max(256).optional(),
+            sig: z.string().min(1).max(8192).pipe(dsseBase64Schema),
+          })
+          .passthrough(),
+      )
+      .min(1)
+      .max(16),
+  })
+  .passthrough();
+
+export type DsseEnvelope = z.infer<typeof dsseEnvelopeSchema>;
+
+export const employeeTemplateDssePayloadType = "application/vnd.openbot.employee.v1+json" as const;

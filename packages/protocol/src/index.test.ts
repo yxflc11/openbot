@@ -4,6 +4,8 @@ import {
   createChannelInputSchema,
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
+  dsseEnvelopeSchema,
+  employeeTemplateDssePayloadType,
   employeeTemplatePackageSchema,
   loginInputSchema,
   nodeMessageSchema,
@@ -11,6 +13,7 @@ import {
   runEventSchema,
   runOfferSchema,
   serverMessageSchema,
+  unsignedEmployeeTemplatePackageSchema,
   updateEmployeeSkillStateInputSchema,
 } from "./index.js";
 
@@ -313,6 +316,7 @@ describe("portable employee format", () => {
 
   it("accepts the bounded identity-free template", () => {
     expect(employeeTemplatePackageSchema.safeParse(employeePackage).success).toBe(true);
+    expect(unsignedEmployeeTemplatePackageSchema.safeParse(employeePackage).success).toBe(true);
   });
 
   it("rejects undeclared authority and credential fields at every level", () => {
@@ -328,6 +332,37 @@ describe("portable employee format", () => {
         payload: {
           ...employeePackage.payload,
           employee: { ...employeePackage.payload.employee, sourceEmployeeId: "source-id" },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts forward-compatible DSSE metadata and rejects malformed base64", () => {
+    expect(
+      dsseEnvelopeSchema.safeParse({
+        payload: Buffer.from(JSON.stringify(employeePackage)).toString("base64"),
+        payloadType: employeeTemplateDssePayloadType,
+        signatures: [{ keyid: "owner-key", sig: Buffer.from("signature").toString("base64") }],
+        futureEnvelopeField: true,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      dsseEnvelopeSchema.safeParse({
+        payload: "not base64!",
+        payloadType: employeeTemplateDssePayloadType,
+        signatures: [{ sig: "also not base64!" }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires signed package metadata to arrive inside a verified DSSE envelope", () => {
+    expect(
+      unsignedEmployeeTemplatePackageSchema.safeParse({
+        ...employeePackage,
+        payload: {
+          ...employeePackage.payload,
+          signature: { status: "dsse", algorithm: "ed25519", keyid: "owner-key" },
         },
       }).success,
     ).toBe(false);

@@ -1,4 +1,13 @@
-import { createHash, randomUUID } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  KeyObject,
+  randomUUID,
+  sign as signBytes,
+  verify as verifyBytes,
+  type KeyLike,
+} from "node:crypto";
 import type {
   EmployeeExportFinding,
   EmployeeExportPreview,
@@ -7,8 +16,13 @@ import type {
   EmployeeProfile,
   ExecutionNode,
 } from "@openbot/domain";
+import { dsse } from "@sigstore/core";
 import {
+  dsseEnvelopeSchema,
+  employeeTemplateDssePayloadType,
+  employeeTemplatePackageSchema,
   employeeTemplatePayloadSchema,
+  type DsseEnvelope,
   type EmployeeTemplatePackage,
   type EmployeeTemplatePayload,
 } from "@openbot/protocol";
@@ -23,6 +37,35 @@ export interface EmployeeTemplateBuild {
   document: EmployeeTemplatePackage;
   preview: EmployeeExportPreview;
 }
+
+export interface EmployeeTemplateSigningKey {
+  keyid: string;
+  privateKey: KeyLike;
+}
+
+export interface EmployeeTemplateTrustedKey {
+  keyid: string;
+  publicKey: KeyLike;
+}
+
+export type EmployeeTemplateEnvelopeVerification =
+  | {
+      status: "verified";
+      trustedKeyId: string;
+      document: EmployeeTemplatePackage;
+    }
+  | {
+      status: "rejected";
+      code:
+        | "invalid-envelope"
+        | "invalid-trust-store"
+        | "no-trusted-signature"
+        | "unsupported-payload-type"
+        | "invalid-payload"
+        | "checksum-mismatch"
+        | "signature-metadata-mismatch";
+      message: string;
+    };
 
 const sensitivePatterns: ReadonlyArray<{
   code: EmployeeExportFinding["code"];
@@ -146,7 +189,8 @@ export function buildEmployeeTemplate(
         {
           category: "authority",
           count: 1,
-          reason: "Host bindings, approvals, credentials, sessions, and capability grants are absent.",
+          reason:
+            "Host bindings, approvals, credentials, sessions, and capability grants are absent.",
         },
         {
           category: "memory",
@@ -156,7 +200,8 @@ export function buildEmployeeTemplate(
         {
           category: "work-history",
           count: workHistoryCount,
-          reason: "Runs, decisions, artifacts, approvals, and evolution history stay on the source Server.",
+          reason:
+            "Runs, decisions, artifacts, approvals, and evolution history stay on the source Server.",
         },
       ],
       findings,
@@ -176,6 +221,178 @@ export function serializeEmployeeTemplate(document: EmployeeTemplatePackage): st
 export function verifyEmployeeTemplateChecksum(document: EmployeeTemplatePackage): boolean {
   const actual = createHash("sha256").update(canonicalJson(document.payload)).digest("hex");
   return actual === document.integrity.digest;
+}
+
+/**
+ * Wraps the exact serialized employee package bytes in a DSSE v1 envelope. This primitive does not
+ * create or persist owner keys; callers must obtain an Ed25519 signing key from a separate key
+ * lifecycle and must never place private key material in the employee package.
+ */
+export function signEmployeeTemplateEnvelope(
+  document: EmployeeTemplatePackage,
+  signer: EmployeeTemplateSigningKey,
+): DsseEnvelope {
+  const source = employeeTemplatePackageSchema.parse(document);
+  if (!verifyEmployeeTemplateChecksum(source)) {
+    throw new Error("Refusing to sign an employee package with an invalid checksum.");
+  }
+  if (source.payload.signature.status !== "unsigned") {
+    throw new Error("Refusing to sign an employee package that is already marked as signed.");
+  }
+  if (scanPortableFields(source.payload).length > 0) {
+    throw new Error("Refusing to sign an employee package containing sensitive-looking content.");
+  }
+
+  const privateKey = asEd25519PrivateKey(signer.privateKey);
+  const signedPayload = employeeTemplatePayloadSchema.parse({
+    ...source.payload,
+    signature: {
+      status: "dsse",
+      algorithm: "ed25519",
+      keyid: signer.keyid,
+    },
+  });
+  const signedDocument = employeeTemplatePackageSchema.parse({
+    payload: signedPayload,
+    integrity: {
+      algorithm: "sha256",
+      canonicalization: "openbot-json-v1",
+      digest: createHash("sha256").update(canonicalJson(signedPayload)).digest("hex"),
+    },
+  });
+  const payloadBytes = Buffer.from(serializeEmployeeTemplate(signedDocument), "utf8");
+  const pae = dsse.preAuthEncoding(employeeTemplateDssePayloadType, payloadBytes);
+  const signature = signBytes(null, pae, privateKey);
+  if (signedPayload.signature.status !== "dsse") {
+    throw new Error("Employee package signature metadata did not normalize to DSSE.");
+  }
+
+  return dsseEnvelopeSchema.parse({
+    payload: payloadBytes.toString("base64"),
+    payloadType: employeeTemplateDssePayloadType,
+    signatures: [{ keyid: signedPayload.signature.keyid, sig: signature.toString("base64") }],
+  });
+}
+
+/**
+ * Verifies DSSE over the same bytes that are parsed as the employee package. Envelope key ids are
+ * treated only as hints: every signature is checked against configured trusted public keys, and
+ * the authenticated key id inside the package must identify a key that actually verified.
+ */
+export function verifyEmployeeTemplateEnvelope(
+  input: unknown,
+  trustedKeys: readonly EmployeeTemplateTrustedKey[],
+): EmployeeTemplateEnvelopeVerification {
+  const parsedEnvelope = dsseEnvelopeSchema.safeParse(input);
+  if (!parsedEnvelope.success) {
+    return {
+      status: "rejected",
+      code: "invalid-envelope",
+      message: "The DSSE envelope is malformed or exceeds the supported bounds.",
+    };
+  }
+
+  let payloadBytes: Buffer;
+  try {
+    payloadBytes = decodeDsseBase64(parsedEnvelope.data.payload);
+  } catch {
+    return {
+      status: "rejected",
+      code: "invalid-envelope",
+      message: "The DSSE envelope payload is not valid base64.",
+    };
+  }
+
+  let trustedPublicKeys: Array<{ keyid: string; publicKey: KeyObject }>;
+  try {
+    trustedPublicKeys = normalizeTrustedKeys(trustedKeys);
+  } catch (error) {
+    return {
+      status: "rejected",
+      code: "invalid-trust-store",
+      message: error instanceof Error ? error.message : "The trusted key configuration is invalid.",
+    };
+  }
+
+  const pae = dsse.preAuthEncoding(parsedEnvelope.data.payloadType, payloadBytes);
+  const verifiedKeyIds = new Set<string>();
+  for (const signature of parsedEnvelope.data.signatures) {
+    let signatureBytes: Buffer;
+    try {
+      signatureBytes = decodeDsseBase64(signature.sig);
+    } catch {
+      continue;
+    }
+    for (const trustedKey of trustedPublicKeys) {
+      try {
+        if (verifyBytes(null, pae, trustedKey.publicKey, signatureBytes)) {
+          verifiedKeyIds.add(trustedKey.keyid);
+        }
+      } catch {
+        // A malformed signature is untrusted input; another signature may still verify.
+      }
+    }
+  }
+
+  if (verifiedKeyIds.size === 0) {
+    return {
+      status: "rejected",
+      code: "no-trusted-signature",
+      message: "No signature was produced by a configured trusted public key.",
+    };
+  }
+  if (parsedEnvelope.data.payloadType !== employeeTemplateDssePayloadType) {
+    return {
+      status: "rejected",
+      code: "unsupported-payload-type",
+      message: `Unsupported DSSE payload type: ${parsedEnvelope.data.payloadType}`,
+    };
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payloadBytes));
+  } catch {
+    return {
+      status: "rejected",
+      code: "invalid-payload",
+      message: "The verified payload is not valid UTF-8 JSON.",
+    };
+  }
+  const parsedDocument = employeeTemplatePackageSchema.safeParse(payload);
+  if (!parsedDocument.success) {
+    return {
+      status: "rejected",
+      code: "invalid-payload",
+      message: "The verified payload is not a supported OpenBot employee package.",
+    };
+  }
+  if (!verifyEmployeeTemplateChecksum(parsedDocument.data)) {
+    return {
+      status: "rejected",
+      code: "checksum-mismatch",
+      message: "The signed employee package checksum does not match its payload.",
+    };
+  }
+
+  const signatureMetadata = parsedDocument.data.payload.signature;
+  if (
+    signatureMetadata.status !== "dsse" ||
+    signatureMetadata.algorithm !== "ed25519" ||
+    !verifiedKeyIds.has(signatureMetadata.keyid)
+  ) {
+    return {
+      status: "rejected",
+      code: "signature-metadata-mismatch",
+      message: "The authenticated package metadata does not identify a signature that verified.",
+    };
+  }
+
+  return {
+    status: "verified",
+    trustedKeyId: signatureMetadata.keyid,
+    document: parsedDocument.data,
+  };
 }
 
 /**
@@ -377,6 +594,55 @@ function portableFileStem(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
   return stem || "employee";
+}
+
+function asEd25519PrivateKey(key: KeyLike): KeyObject {
+  const privateKey = key instanceof KeyObject ? key : createPrivateKey(key);
+  if (privateKey.type !== "private" || privateKey.asymmetricKeyType !== "ed25519") {
+    throw new TypeError("Employee package signing requires an Ed25519 private key.");
+  }
+  return privateKey;
+}
+
+function normalizeTrustedKeys(
+  trustedKeys: readonly EmployeeTemplateTrustedKey[],
+): Array<{ keyid: string; publicKey: KeyObject }> {
+  if (trustedKeys.length > 256) {
+    throw new TypeError("Employee package trust stores may contain at most 256 public keys.");
+  }
+  const seenKeyIds = new Set<string>();
+  return trustedKeys.map((trustedKey) => {
+    const keyid = trustedKey.keyid.trim();
+    if (keyid.length === 0 || keyid.length > 256) {
+      throw new TypeError("Every trusted employee-package key needs a 1-256 character key id.");
+    }
+    if (seenKeyIds.has(keyid)) {
+      throw new TypeError(`Duplicate trusted employee-package key id: ${keyid}`);
+    }
+    seenKeyIds.add(keyid);
+
+    const publicKey =
+      trustedKey.publicKey instanceof KeyObject
+        ? trustedKey.publicKey
+        : createPublicKey(trustedKey.publicKey);
+    if (publicKey.type !== "public" || publicKey.asymmetricKeyType !== "ed25519") {
+      throw new TypeError(`Trusted employee-package key ${keyid} is not an Ed25519 public key.`);
+    }
+    return { keyid, publicKey };
+  });
+}
+
+function decodeDsseBase64(value: string): Buffer {
+  const unpadded = value.replace(/=+$/, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (unpadded.length % 4 === 1) {
+    throw new TypeError("Invalid DSSE base64 length.");
+  }
+  const padded = unpadded.padEnd(unpadded.length + ((4 - (unpadded.length % 4)) % 4), "=");
+  const decoded = Buffer.from(padded, "base64");
+  if (decoded.toString("base64").replace(/=+$/, "") !== unpadded) {
+    throw new TypeError("Invalid DSSE base64 encoding.");
+  }
+  return decoded;
 }
 
 function canonicalJson(value: unknown): string {

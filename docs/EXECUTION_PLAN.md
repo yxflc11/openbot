@@ -30,6 +30,9 @@ The development line already contains:
 The current browser Provider is still read-only. Native desktop control, package activation, and
 production Node trust are not part of this baseline.
 
+The codebase now also contains a standards-based DSSE/Ed25519 signing and verification primitive.
+It remains internal until the Owner publisher-key lifecycle and trust policy are implemented.
+
 ## Continuous execution schedule
 
 Times are work budgets, not release dates. If a slice finishes early, its remaining budget moves to
@@ -68,7 +71,7 @@ tests, hardening, or the next slice.
 
 The next order is:
 
-1. signed package and publisher-key lifecycle;
+1. Owner publisher-key lifecycle and signed package HTTP integration;
 2. reviewed import activation with a fresh Employee id and disabled skills;
 3. memory retention, deletion, and selective portable memory;
 4. single-use capability leases after approval;

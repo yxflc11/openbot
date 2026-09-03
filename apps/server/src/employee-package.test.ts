@@ -1,10 +1,14 @@
+import { generateKeyPairSync, sign as signBytes } from "node:crypto";
 import type { EmployeeProfile } from "@openbot/domain";
-import { employeeTemplatePackageSchema } from "@openbot/protocol";
+import { dsse } from "@sigstore/core";
+import { employeeTemplateDssePayloadType, employeeTemplatePackageSchema } from "@openbot/protocol";
 import { describe, expect, it } from "vitest";
 import {
   buildEmployeeTemplate,
   inspectEmployeeTemplate,
   serializeEmployeeTemplate,
+  signEmployeeTemplateEnvelope,
+  verifyEmployeeTemplateEnvelope,
   verifyEmployeeTemplateChecksum,
 } from "./employee-package.js";
 
@@ -121,6 +125,192 @@ describe("employee template package", () => {
     expect(preview.issues.map((issue) => issue.code)).toEqual(
       expect.arrayContaining(["checksum-mismatch", "missing-capability", "no-compatible-host"]),
     );
+  });
+});
+
+describe("signed employee template envelope", () => {
+  it("signs exact employee-package bytes and verifies them against an explicit trust store", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+
+    const envelope = signEmployeeTemplateEnvelope(document, {
+      keyid: "owner-key-1",
+      privateKey,
+    });
+    const verification = verifyEmployeeTemplateEnvelope(envelope, [
+      { keyid: "owner-key-1", publicKey },
+    ]);
+
+    expect(document.payload.signature).toEqual({ status: "unsigned" });
+    expect(envelope.payloadType).toBe(employeeTemplateDssePayloadType);
+    expect(verification).toMatchObject({
+      status: "verified",
+      trustedKeyId: "owner-key-1",
+      document: {
+        payload: {
+          packageId,
+          signature: { status: "dsse", algorithm: "ed25519", keyid: "owner-key-1" },
+        },
+      },
+    });
+  });
+
+  it("does not treat the unauthenticated envelope key id as a trust decision", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    const envelope = signEmployeeTemplateEnvelope(document, {
+      keyid: "owner-key-1",
+      privateKey,
+    });
+    envelope.signatures[0] = { ...envelope.signatures[0], keyid: "attacker-controlled-hint" };
+
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [{ keyid: "owner-key-1", publicKey }]),
+    ).toMatchObject({ status: "verified", trustedKeyId: "owner-key-1" });
+  });
+
+  it("refuses to sign a package that the export scanner has blocked", () => {
+    const { privateKey } = generateKeyPairSync("ed25519");
+    const profile = createProfile();
+    profile.employee.role = "Use api_key=super-secret-value for operations";
+    const { document } = buildEmployeeTemplate(profile, { generatedAt: timestamp, packageId });
+
+    expect(() =>
+      signEmployeeTemplateEnvelope(document, { keyid: "owner-key-1", privateKey }),
+    ).toThrow("sensitive-looking content");
+  });
+
+  it("rejects changed payload bytes and signatures from an untrusted key", () => {
+    const trusted = generateKeyPairSync("ed25519");
+    const attacker = generateKeyPairSync("ed25519");
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    const envelope = signEmployeeTemplateEnvelope(document, {
+      keyid: "attacker-key",
+      privateKey: attacker.privateKey,
+    });
+
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [
+        { keyid: "trusted-key", publicKey: trusted.publicKey },
+      ]),
+    ).toMatchObject({ status: "rejected", code: "no-trusted-signature" });
+
+    const payloadBytes = Buffer.from(envelope.payload, "base64");
+    const changedByteIndex = payloadBytes.length - 2;
+    const originalByte = payloadBytes[changedByteIndex];
+    if (originalByte === undefined) throw new Error("Expected a non-empty signed payload fixture.");
+    payloadBytes[changedByteIndex] = originalByte ^ 1;
+    envelope.payload = payloadBytes.toString("base64");
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [
+        { keyid: "attacker-key", publicKey: attacker.publicKey },
+      ]),
+    ).toMatchObject({ status: "rejected", code: "no-trusted-signature" });
+  });
+
+  it("separately rejects a valid signature over a package with a stale checksum", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    const envelope = signEmployeeTemplateEnvelope(document, {
+      keyid: "owner-key-1",
+      privateKey,
+    });
+    const signedDocument = employeeTemplatePackageSchema.parse(
+      JSON.parse(Buffer.from(envelope.payload, "base64").toString("utf8")),
+    );
+    signedDocument.payload.employee.role = "Changed and re-signed without updating integrity";
+    const changedBytes = Buffer.from(serializeEmployeeTemplate(signedDocument), "utf8");
+    const signature = signBytes(
+      null,
+      dsse.preAuthEncoding(employeeTemplateDssePayloadType, changedBytes),
+      privateKey,
+    );
+    const changedEnvelope = {
+      payload: changedBytes.toString("base64"),
+      payloadType: employeeTemplateDssePayloadType,
+      signatures: [{ keyid: "owner-key-1", sig: signature.toString("base64") }],
+    };
+
+    expect(
+      verifyEmployeeTemplateEnvelope(changedEnvelope, [{ keyid: "owner-key-1", publicKey }]),
+    ).toMatchObject({ status: "rejected", code: "checksum-mismatch" });
+  });
+
+  it("rejects authenticated package metadata that names a different trusted key", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    const envelope = signEmployeeTemplateEnvelope(document, {
+      keyid: "different-key",
+      privateKey,
+    });
+
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [{ keyid: "owner-key-1", publicKey }]),
+    ).toMatchObject({ status: "rejected", code: "signature-metadata-mismatch" });
+  });
+
+  it("rejects a valid signature when its authenticated payload type is unsupported", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    const signed = signEmployeeTemplateEnvelope(document, {
+      keyid: "owner-key-1",
+      privateKey,
+    });
+    const unsupportedType = "application/vnd.example.employee+json";
+    const payloadBytes = Buffer.from(signed.payload, "base64");
+    const signature = signBytes(
+      null,
+      dsse.preAuthEncoding(unsupportedType, payloadBytes),
+      privateKey,
+    );
+
+    expect(
+      verifyEmployeeTemplateEnvelope(
+        {
+          payload: signed.payload,
+          payloadType: unsupportedType,
+          signatures: [{ keyid: "owner-key-1", sig: signature.toString("base64") }],
+        },
+        [{ keyid: "owner-key-1", publicKey }],
+      ),
+    ).toMatchObject({ status: "rejected", code: "unsupported-payload-type" });
+  });
+
+  it("fails closed when the configured trust store has duplicate key ids", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    const envelope = signEmployeeTemplateEnvelope(document, {
+      keyid: "owner-key-1",
+      privateKey,
+    });
+
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [
+        { keyid: "owner-key-1", publicKey },
+        { keyid: "owner-key-1", publicKey },
+      ]),
+    ).toMatchObject({ status: "rejected", code: "invalid-trust-store" });
   });
 });
 

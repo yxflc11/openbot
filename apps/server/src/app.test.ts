@@ -575,6 +575,22 @@ describe("server app", () => {
     expect(await unknownFieldResponse.json()).toMatchObject({
       error: "Employee package does not match a supported format.",
     });
+
+    const unverifiedSignedDocumentResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        ...employeePackage,
+        payload: {
+          ...employeePackage.payload,
+          signature: { status: "dsse", algorithm: "ed25519", keyid: "unverified-key" },
+        },
+      }),
+    });
+    expect(unverifiedSignedDocumentResponse.status).toBe(422);
+    expect(await unverifiedSignedDocumentResponse.json()).toMatchObject({
+      error: "Employee package does not match a supported format.",
+    });
   });
 
   it("rejects invalid Bot input before reaching storage", async () => {

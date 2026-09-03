@@ -13,9 +13,9 @@ import {
   createChannelInputSchema,
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
-  employeeTemplatePackageSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
+  unsignedEmployeeTemplatePackageSchema,
   updateEmployeeSkillStateInputSchema,
 } from "@openbot/protocol";
 import { Hono } from "hono";
@@ -573,7 +573,7 @@ async function parseEmployeePackageRequest(request: Request) {
   } catch {
     throw new RequestValidationError("Employee package must be valid JSON.", {});
   }
-  const parsed = employeeTemplatePackageSchema.safeParse(value);
+  const parsed = unsignedEmployeeTemplatePackageSchema.safeParse(value);
   if (!parsed.success) {
     const fields = Object.fromEntries(
       parsed.error.issues.map((issue) => [issue.path.join(".") || "package", [issue.message]]),

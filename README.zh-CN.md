@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
-[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](package.json)
+[![Node.js 22.22.2+](https://img.shields.io/badge/Node.js-22.22.2%2B-339933.svg)](package.json)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#项目状态)
 
 OpenBot 是一个早期阶段的开源、自托管平台，用来在你掌控的电脑上运行具名 AI 员工。你在
@@ -47,7 +47,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 控制平面 | 本地 Owner 认证、PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、恢复工具和多用户信任模型 |
 | 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、SSE 重连、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
-| 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查，以及由 Owner 审核的技能候选/验证/暂停/撤销元数据 | 可执行 Agent Skills 包、自动提案、记忆控制、签名员工包、审核后激活、复制和转移 |
+| 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查、由 Owner 审核的技能元数据，以及经过测试的 DSSE 签名/验证原语 | 发布者密钥生命周期、签名导出/导入接口、可执行 Agent Skills 包、记忆控制、审核后激活、复制和转移 |
 | Node 协议 | 出站 WebSocket 登记、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
@@ -62,6 +62,8 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - 尚未具备生产级 Node 身份、mTLS 或凭证轮换。
 - 尚不能自主提案或执行已学技能、编辑记忆、激活导入员工包、复制员工或转移所有权。
 - 当前员工模板只有校验和、尚未签名；它不携带记忆和主机权限，未来导入时仍必须隔离审核。
+- 代码已经具备 DSSE/Ed25519 签名和验证原语，但在 Owner 密钥创建、保存、轮换、撤销与信任策略
+  完成前，当前导出接口不会启用签名。
 - Cua、Lume 和 coder Provider 目前是扩展边界，不是已完成的运行时。
 - 可选办公室可视化不进入当前产品导航和 Web 构建。
 
@@ -69,7 +71,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 
 ### 环境要求
 
-- Node.js 22 或更高版本
+- Node.js 22.22.2+、24.15.0+ 或 26+
 - npm 10 或更高版本
 - Docker 与 Docker Compose
 

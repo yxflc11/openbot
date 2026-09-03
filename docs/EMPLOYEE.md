@@ -180,14 +180,17 @@ Implemented on the `feat/cross-platform-employees` development line:
 - strict Owner-authenticated commands that add Agent Skills-compatible metadata as a `candidate`
   and explicitly verify, suspend, or permanently revoke it while appending evolution evidence;
 - conditional state updates that reject concurrent review races and never change Worker Host
-  capability claims or policy grants.
+  capability claims or policy grants;
+- a bounded DSSE envelope schema plus tested Ed25519 signing and trust-store verification over the
+  exact bytes later parsed as the employee package; envelope key hints never make trust decisions.
 
-The current v1 template is deliberately unsigned and memory-free. The skill learning/verification
-workflow currently covers metadata review only; autonomous skill proposals, executable Agent
-Skills archives, full-diff review, memory editing and retention controls, signed archives, reviewed
-import activation, cloning, and authenticated ownership transfer are not implemented yet. Their
-data and authority boundaries are defined here so contributors can add them without coupling
-employee knowledge to Worker Host access.
+The current HTTP export is deliberately unsigned and memory-free. The signing primitive is not
+wired to export/import until Owner keys have encrypted storage, rotation, revocation, backup, and a
+trust policy. The skill learning/verification workflow currently covers metadata review only;
+autonomous skill proposals, executable Agent Skills archives, full-diff review, memory editing and
+retention controls, signed HTTP export/import, reviewed activation, cloning, and authenticated
+ownership transfer are not implemented yet. Their data and authority boundaries are defined here
+so contributors can add them without coupling employee knowledge to Worker Host access.
 
 ## Acceptance criteria
 

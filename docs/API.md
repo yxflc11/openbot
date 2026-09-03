@@ -133,6 +133,11 @@ Node、Provider、路由、审批策略或主机授权。完整技能目录将�
 提供意外修改检测，但当前 `signature.status` 是 `unsigned`，不能证明发布者身份。未来导入功能必须
 先隔离校验、创建新的本地员工 ID，并让所有导入技能保持禁用，直到 Owner 完成本地策略审核。
 
+代码内已经有 DSSE/Ed25519 签名与验证原语，并使用固定版本的 `@sigstore/core` 生成标准预认证
+编码。它签署 `application/vnd.openbot.employee.v1+json` 的精确字节，且只信任 Server 显式配置、
+真正通过验签的公钥；信封 `keyid` 只用于查找，不能授予信任。当前没有签名导出或导入 API，
+也不会临时生成服务器密钥；必须先完成 Owner 密钥加密保存、轮换、撤销、备份和信任策略。
+
 `POST /api/v1/employees/import/preview` 接受整个 v1 员工模板 JSON，最大 1 MiB。它使用严格
 schema，任何未声明字段都会返回 `422`，不会被静默忽略。通过结构验证后，Server 检查 SHA-256、
 技能 slug 与依赖、技能实际能力和顶层能力声明是否一致、疑似敏感文本，以及当前在线工作主机

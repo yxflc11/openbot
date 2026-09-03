@@ -16,6 +16,7 @@
     "@openbot/db": "0.0.0",
     "@openbot/domain": "0.0.0",
     "@openbot/protocol": "0.0.0",
+    "@sigstore/core": "4.0.1",
     "hono": "4.13.5",
     "ws": "8.21.3",
     "zod": "4.5.4"
