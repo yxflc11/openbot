@@ -22,6 +22,12 @@
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked: ADR-0014, Employee package tests,
   strict package schemas, quarantine-only import preview, `OPEN_SOURCE_REUSE.md`, the current Server
   configuration boundary, and atomic `0600` file storage.
+- Follow-up audit on 2026-09-04: the
+  [POSIX credential permission review](posix-node-credential-permissions.md) identified the same
+  read-after-metadata-check race in this adapter. OpenSSH portable
+  [`1bf5871a`](https://github.com/openssh/openssh-portable/blob/1bf5871aead6d73177d727add15ab0f14c258fdf/authfile.c)
+  validates the opened file handle. The local adapter now applies that invariant before reading its
+  passphrase, trust manifest, or active private key.
 
 ## Candidate comparison
 
@@ -46,7 +52,8 @@
   OpenBot-specific policy and file layout.
 - Exact OpenBot-specific gap: bind an Owner-controlled encrypted key to the existing
   `openbot.employee/v1` DSSE primitive, expose signed export and verified quarantine preview, and
-  preserve local trust state without ever allowing an Employee package to carry authority.
+  preserve local trust state without ever allowing an Employee package to carry authority. The
+  file backend validates permission, type, and size on the opened handle before reading bytes.
 - Upgrade, replacement, or exit plan: the signer and trust resolver are interfaces. A future
   Cosign KMS, native keyring, Sigstore keyless, or TUF registry adapter can replace the filesystem
   backend without changing Employee packages or HTTP routes.
@@ -68,8 +75,9 @@
 - Automated tests: create encrypted Ed25519 keyring; deterministic SPKI fingerprint; load active
   signer; rotate while retaining the former public key; require an expected fingerprint before
   trusting a transferred public key; revoke a key; signed HTTP export; trusted signed import preview.
-- Negative and fail-closed tests: wrong passphrase, loose permissions, symlinked files, malformed
-  manifest, signer/public-key mismatch, untrusted signer, revoked signer, payload tampering,
+- Negative and fail-closed tests: wrong passphrase, loose passphrase/manifest/private-key
+  permissions, symlinked files, malformed manifest, signer/public-key mismatch, untrusted signer,
+  revoked signer, payload tampering,
   algorithm confusion, signed package presented as unsigned, and absent configuration.
 - Platforms and devices: file adapter tests on the repository's Linux CI and local macOS; native OS
   keyrings and KMS are separate Providers and not claimed by this slice.

@@ -27,6 +27,10 @@ The upstream comparison is recorded in
 Exact repositories, licenses, source locations, and rejected integration choices are recorded in
 the linked research note.
 
+A 2026-09-04 follow-up audit applies OpenSSH portable `1bf5871a` opened-handle validation to every
+protected input. The Server now checks type, POSIX permissions, and size on the same handle it reads,
+instead of trusting metadata collected before a separate path read.
+
 ## Reuse decision
 
 Reuse Node.js crypto and the existing `@sigstore/core` DSSE primitive. Adopt Cosign's public/private
@@ -45,8 +49,9 @@ reuse ledger.
 
 1. The first backend is an operator-managed filesystem keyring outside PostgreSQL and the object
    store. Its private Ed25519 key is password-encrypted PKCS#8 PEM; public keys are SPKI PEM.
-2. The decryption passphrase is read from a separate `0600` regular file. It is never accepted by an
-   HTTP route or stored in the key manifest.
+2. The decryption passphrase is read from a separate `0600` regular file. The passphrase, manifest,
+   and active private key are validated on their opened handles before any bytes are read. They are
+   never accepted by an HTTP route or stored in the key manifest.
 3. Key ids are deterministic `ed25519:<sha256-spki-der>` fingerprints. The Server recomputes the id
    and proves the configured private and public keys match before enabling signing.
 4. The trust manifest is strict, bounded, versioned, and atomically replaced. It records one active
@@ -90,8 +95,8 @@ signature verification and preview themselves remain read-only and never grant a
 
 - Unit tests generate and decrypt an encrypted keyring, derive deterministic public-key
   fingerprints, rotate keys, retain historical verification, revoke keys, reject active-key
-  revocation, reject unsafe permissions and symlinks, and require a matching out-of-band fingerprint
-  for external trust.
+  revocation, reject unsafe passphrase/manifest/private-key permissions and symlinks, and require a
+  matching out-of-band fingerprint for external trust.
 - HTTP tests cover signed export, trusted quarantine preview, untrusted-signature rejection, and
   unsigned backward compatibility. Existing DSSE fixtures continue to cover tampering, algorithm
   confusion, payload-type confusion, checksum mismatch, malformed envelopes, and unauthenticated

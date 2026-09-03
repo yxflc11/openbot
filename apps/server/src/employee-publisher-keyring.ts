@@ -6,7 +6,8 @@ import {
   randomBytes,
   type KeyObject,
 } from "node:crypto";
-import { chmod, lstat, mkdir, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { chmod, lstat, mkdir, open } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import type { DsseEnvelope, EmployeeTemplatePackage } from "@openbot/protocol";
 import writeFileAtomic from "write-file-atomic";
@@ -407,21 +408,41 @@ async function readProtectedFile(
   maximumBytes: number,
   label: string,
 ): Promise<Buffer> {
-  const source = await readRegularFile(path, maximumBytes, label);
-  const metadata = await lstat(path);
-  if (process.platform !== "win32" && (metadata.mode & 0o077) !== 0) {
-    throw new Error(`Employee publisher ${label} must not be accessible by group or other users.`);
-  }
-  return source;
+  return readRegularFile(path, maximumBytes, label, true);
 }
 
-async function readRegularFile(path: string, maximumBytes: number, label: string): Promise<Buffer> {
-  const metadata = await lstat(path);
-  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+async function readRegularFile(
+  path: string,
+  maximumBytes: number,
+  label: string,
+  requireOwnerOnly = false,
+): Promise<Buffer> {
+  const pathEntry = await lstat(path);
+  if (!pathEntry.isFile() || pathEntry.isSymbolicLink()) {
     throw new Error(`Employee publisher ${label} must be a regular non-symlink file.`);
   }
-  if (metadata.size > maximumBytes) throw new Error(`Employee publisher ${label} is too large.`);
-  return readFile(path);
+
+  const handle = await open(
+    path,
+    process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) {
+      throw new Error(`Employee publisher ${label} must be a regular non-symlink file.`);
+    }
+    if (requireOwnerOnly && process.platform !== "win32" && (metadata.mode & 0o077) !== 0) {
+      throw new Error(
+        `Employee publisher ${label} must not be accessible by group or other users.`,
+      );
+    }
+    if (metadata.size > maximumBytes) {
+      throw new Error(`Employee publisher ${label} is too large.`);
+    }
+    return handle.readFile();
+  } finally {
+    await handle.close();
+  }
 }
 
 async function assertProtectedDirectory(path: string): Promise<void> {

@@ -104,7 +104,7 @@ describe("Employee publisher keyring", () => {
 
   it("fails closed for a wrong passphrase and unsafe file permissions", async () => {
     const location = await temporaryLocation();
-    await initializeEmployeePublisherKeyring(location);
+    const status = await initializeEmployeePublisherKeyring(location);
     await writeFile(location.passphraseFile, "this-is-the-wrong-passphrase\n", { mode: 0o600 });
     await expect(EmployeePublisherKeyring.load(location)).rejects.toThrow("could not be decrypted");
 
@@ -112,6 +112,19 @@ describe("Employee publisher keyring", () => {
       await chmod(location.passphraseFile, 0o644);
       await expect(EmployeePublisherKeyring.load(location)).rejects.toThrow(
         "must not be accessible by group or other users",
+      );
+
+      await chmod(location.passphraseFile, 0o600);
+      await chmod(join(location.directory, "trust.json"), 0o644);
+      await expect(EmployeePublisherKeyring.load(location)).rejects.toThrow(
+        "trust manifest must not be accessible by group or other users",
+      );
+
+      await chmod(join(location.directory, "trust.json"), 0o600);
+      const privateKeyName = `${status.activeKeyId.slice("ed25519:".length)}.key.pem`;
+      await chmod(join(location.directory, "keys", privateKeyName), 0o644);
+      await expect(EmployeePublisherKeyring.load(location)).rejects.toThrow(
+        "private key must not be accessible by group or other users",
       );
     }
   });
