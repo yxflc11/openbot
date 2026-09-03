@@ -1,0 +1,25 @@
+{
+  "name": "@openbot/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx --env-file-if-exists=../../.env watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "test": "vitest run src",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@openbot/config": "0.0.0",
+    "@openbot/domain": "0.0.0",
+    "@openbot/protocol": "0.0.0",
+    "hono": "4.13.5",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1",
+    "tsx": "4.23.13"
+  }
+}

@@ -1,0 +1,11 @@
+.git
+.github
+.turbo
+coverage
+data
+dist
+node_modules
+**/dist
+**/node_modules
+*.log
+.env*

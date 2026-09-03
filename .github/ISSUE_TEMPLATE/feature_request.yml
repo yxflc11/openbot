@@ -1,0 +1,26 @@
+name: Feature request
+description: Propose a scoped capability tied to an acceptance journey.
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: User outcome
+      description: What should the user be able to complete?
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Permission and failure boundary
+      description: What must require approval, fail closed or remain out of scope?
+    validations:
+      required: true
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      options: [Spike, M0, M1, M2, M3, M4, M5]
+    validations:
+      required: true

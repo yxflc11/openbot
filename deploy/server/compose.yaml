@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: openbot
+      POSTGRES_USER: openbot
+      POSTGRES_PASSWORD: ${OPENBOT_POSTGRES_PASSWORD:-openbot-development-only}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openbot -d openbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - openbot-postgres:/var/lib/postgresql/data
+
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      OPENBOT_HOST: 0.0.0.0
+      OPENBOT_PORT: 3001
+      OPENBOT_DATABASE_URL: postgres://openbot:${OPENBOT_POSTGRES_PASSWORD:-openbot-development-only}@postgres:5432/openbot
+      OPENBOT_NODE_TOKEN: ${OPENBOT_NODE_TOKEN:?set OPENBOT_NODE_TOKEN}
+      OPENBOT_OBJECT_STORE_PATH: /var/lib/openbot/objects
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - openbot-objects:/var/lib/openbot/objects
+
+volumes:
+  openbot-postgres:
+  openbot-objects:

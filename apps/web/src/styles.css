@@ -1,0 +1,231 @@
+:root {
+  color: #161616;
+  background: #ffffff;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+a {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #1d63ed;
+  outline-offset: 2px;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 300px;
+  min-height: 100vh;
+}
+
+.navigation,
+.runtime {
+  padding: 32px 24px;
+  background: #fafafa;
+}
+
+.navigation {
+  border-right: 1px solid #e5e5e5;
+}
+
+.runtime {
+  border-left: 1px solid #e5e5e5;
+}
+
+.brand {
+  display: inline-block;
+  margin-bottom: 36px;
+  color: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+nav {
+  display: grid;
+  gap: 6px;
+}
+
+.nav-item {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #4a4a4a;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+}
+
+.nav-item:hover,
+.nav-item.active {
+  color: #111111;
+  background: #eeeeee;
+}
+
+.foundation {
+  display: grid;
+  align-content: center;
+  gap: 48px;
+  padding: 72px clamp(32px, 7vw, 108px);
+}
+
+.foundation header {
+  max-width: 760px;
+}
+
+.foundation header > p:first-child,
+.section-label {
+  margin: 0 0 16px;
+  color: #656565;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 720px;
+  margin: 0 0 20px;
+  font-size: clamp(36px, 5vw, 68px);
+  font-weight: 620;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+
+.foundation header > p:last-child {
+  max-width: 640px;
+  margin: 0;
+  color: #626262;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.boundaries {
+  max-width: 760px;
+  padding-top: 24px;
+  border-top: 1px solid #dedede;
+}
+
+.boundaries h2 {
+  margin: 0 0 20px;
+  font-size: 14px;
+}
+
+.boundaries dl,
+.metrics {
+  margin: 0;
+}
+
+.boundaries dl {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+}
+
+.boundaries dt,
+.metrics dd {
+  font-weight: 700;
+}
+
+.boundaries dd,
+.metrics dt {
+  margin: 6px 0 0;
+  color: #737373;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.metrics {
+  display: grid;
+  gap: 0;
+}
+
+.metrics > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 18px 0;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.metrics dd {
+  margin: 0;
+  color: #161616;
+  font-size: 24px;
+}
+
+.muted,
+.error {
+  color: #696969;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.error {
+  color: #a1281d;
+}
+
+@media (max-width: 1000px) {
+  .app-shell {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .runtime {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-shell {
+    display: block;
+  }
+
+  .navigation {
+    padding: 20px;
+    border-right: 0;
+    border-bottom: 1px solid #e5e5e5;
+  }
+
+  .brand {
+    margin-bottom: 16px;
+  }
+
+  nav {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+  }
+
+  .nav-item {
+    flex: 0 0 auto;
+  }
+
+  .foundation {
+    gap: 36px;
+    padding: 56px 24px;
+  }
+
+  .boundaries dl {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

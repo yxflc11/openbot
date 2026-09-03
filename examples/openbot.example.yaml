@@ -1,0 +1,110 @@
+# Proposal only. Never put credentials or personal paths in this file.
+
+apiVersion: openbot.local/v1alpha1
+kind: OpenBotDeployment
+
+metadata:
+  name: personal-openbot
+
+spec:
+  server:
+    publicUrl: https://openbot.example.ts.net
+    access: tailscale-only
+    database:
+      backend: postgres
+      secretRef: openbot-database-url
+    threads:
+      backend: local-postgres
+    realtime:
+      backend: local-websocket
+    objectStore:
+      backend: local-filesystem
+
+  channel:
+    type: local-web
+    pwa: true
+    ownerOnly: true
+
+  nodes:
+    enrollment: owner-approval
+    connection: outbound-wss
+    requireMutualTls: true
+    heartbeat: 30s
+    offlineAfter: 90s
+
+  agents:
+    - id: chief
+      displayName: Chief
+      executionProfiles:
+        - no-computer
+      canDelegateTo:
+        - ops
+      denyCapabilities:
+        - computer
+        - shell
+
+    - id: ops
+      displayName: Ops
+      executionProfiles:
+        - docker-linux
+        - mac-cua-observe
+        - lume-macos
+
+  executionProfiles:
+    - id: no-computer
+      requiredCapabilities: []
+
+    - id: docker-linux
+      requiredCapabilities:
+        - docker
+        - browser
+      workspaceAccess: isolated-rw
+      hostMounts: []
+
+    - id: mac-cua-observe
+      requiredCapabilities:
+        - macos
+        - cua-driver
+      actionPolicy: cua-observe-only
+
+    - id: lume-macos
+      requiredCapabilities:
+        - apple-silicon
+        - lume
+      actionPolicy: mac-vm-standard
+
+  actionPolicy:
+    default: deny
+    classes:
+      observe:
+        decision: auto
+      prepare:
+        decision: lease
+        ttl: 10m
+      commit:
+        decision: approve-each
+        ttl: 2m
+        maxUses: 1
+      forbidden:
+        decision: deny
+    forbiddenIntents:
+      - payment
+      - money-transfer
+      - export-primary-secret
+      - change-system-security
+      - disable-audit
+
+  remoteControl:
+    clientConnectsTo: server-only
+    viewTokenTtl: 5m
+    controlLeaseTtl: 10m
+    exclusiveInput: true
+
+  audit:
+    backend: postgres
+    redact:
+      - secrets
+      - tokens
+      - passwords
+      - one-time-codes
+
