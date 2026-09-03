@@ -95,6 +95,10 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 - Docker supervisor、Cua 和 Lume 只监听 loopback/Unix socket。
 - 人接管必须持有 Server 签发的独占 control lease。
 
+当前 `agent-computer` 适配器只开放 observe 切片：任务必须显式包含 HTTP(S) URL，只调用 navigate 和 screenshot；没有配置 URL/token 时 Node 上报零项相关能力。默认拒绝解析到 loopback、链路本地、私网、CGNAT、组播和云元数据地址，即使显式允许私网仍永久拒绝已知元数据端点。
+
+应用层 DNS 检查不能单独阻止 DNS rebinding、重定向到私网或浏览器级旁路。生产执行环境必须再用独立网络命名空间、出站代理或防火墙阻断内网与元数据网段；在这层 egress 隔离完成前，当前 provider 只适合可信私网里的测试账号和公开测试页面。
+
 ### macOS Node
 
 - 专用标准用户；管理员账号只在维护时使用。

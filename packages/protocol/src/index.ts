@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const protocolVersion = "0.2.0" as const;
+export const protocolVersion = "0.3.0" as const;
 
 export const nodeCapabilitySchema = z.enum([
   "browser",
@@ -52,11 +52,74 @@ export const runRejectSchema = z.object({
   rejectedAt: z.string().datetime(),
 });
 
+export const runStartRequestSchema = z.object({
+  type: z.literal("run.start_request"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  runId: z.string().uuid(),
+  requestedAt: z.string().datetime(),
+});
+
+export const runProgressSchema = z.object({
+  type: z.literal("run.progress"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  runId: z.string().uuid(),
+  stage: z.string().trim().min(1).max(80),
+  message: z.string().trim().min(1).max(500),
+  occurredAt: z.string().datetime(),
+});
+
+const screenshotMetadataSchema = z
+  .object({
+    width: z.number().int().positive().max(20_000).optional(),
+    height: z.number().int().positive().max(20_000).optional(),
+    capturedAt: z.string().datetime().optional(),
+    url: z.string().url().max(2048).optional(),
+  })
+  .strict();
+
+export const completedArtifactSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  mediaType: z.literal("image/png"),
+  base64: z
+    .string()
+    .min(12)
+    .max(7_000_000)
+    .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  metadata: screenshotMetadataSchema.optional(),
+});
+
+export type CompletedArtifact = z.infer<typeof completedArtifactSchema>;
+
+export const runCompletedSchema = z.object({
+  type: z.literal("run.completed"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  runId: z.string().uuid(),
+  summary: z.string().trim().min(1).max(2000),
+  artifacts: z.array(completedArtifactSchema).max(4),
+  completedAt: z.string().datetime(),
+});
+
+export const runFailedSchema = z.object({
+  type: z.literal("run.failed"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  runId: z.string().uuid(),
+  error: z.string().trim().min(1).max(2000),
+  failedAt: z.string().datetime(),
+});
+
 export const nodeMessageSchema = z.discriminatedUnion("type", [
   nodeHelloSchema,
   nodeHeartbeatSchema,
   runAcceptSchema,
   runRejectSchema,
+  runStartRequestSchema,
+  runProgressSchema,
+  runCompletedSchema,
+  runFailedSchema,
 ]);
 
 export type NodeMessage = z.infer<typeof nodeMessageSchema>;
@@ -79,6 +142,7 @@ export const runOfferSchema = z.object({
   channelId: z.string().uuid(),
   botId: z.string().uuid(),
   title: z.string().trim().min(1).max(80),
+  instruction: z.string().trim().min(1).max(8000),
   executionProfile: z.enum(["docker-linux", "macos-cua", "lume-vm", "coder"]),
   requiredCapabilities: z.array(nodeCapabilitySchema).min(1),
   sentAt: z.string().datetime(),
@@ -102,11 +166,30 @@ export const runCancelSchema = z.object({
   cancelledAt: z.string().datetime(),
 });
 
+export const runStartSchema = z.object({
+  type: z.literal("run.start"),
+  protocolVersion: z.literal(protocolVersion),
+  runId: z.string().uuid(),
+  nodeId: z.string().min(1),
+  startedAt: z.string().datetime(),
+});
+
+export const runSettledSchema = z.object({
+  type: z.literal("run.settled"),
+  protocolVersion: z.literal(protocolVersion),
+  runId: z.string().uuid(),
+  nodeId: z.string().min(1),
+  status: z.enum(["completed", "failed"]),
+  settledAt: z.string().datetime(),
+});
+
 export const serverMessageSchema = z.discriminatedUnion("type", [
   serverAckSchema,
   runOfferSchema,
   runAssignedSchema,
   runCancelSchema,
+  runStartSchema,
+  runSettledSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
@@ -119,6 +202,8 @@ export const runEventTypeSchema = z.enum([
   "RUN_CREATED",
   "RUN_ASSIGNED",
   "RUN_REQUEUED",
+  "RUN_STARTED",
+  "RUN_PROGRESS",
   "RUN_PLAN_UPDATED",
   "NODE_BOUND",
   "APPROVAL_REQUESTED",
@@ -126,6 +211,7 @@ export const runEventTypeSchema = z.enum([
   "ARTIFACT_CREATED",
   "RUN_BLOCKED",
   "RUN_COMPLETED",
+  "RUN_FAILED",
 ]);
 
 export const runEventSchema = z.object({

@@ -6,7 +6,7 @@
 
 | 项目 | OpenBot 中的角色 | 采用方式 |
 | --- | --- | --- |
-| [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) | **产品底座候选**：UI、频道、Bot、policy、audit、电脑、routine、handoff | 先 spike，合格后正式 fork；保留 MIT notice |
+| [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) | **产品底座候选**：UI、频道、Bot、policy、audit、电脑、routine、handoff | 已先接 `agent-computer` HTTP provider；其余继续 spike，合格后才 fork |
 | [Cua](https://github.com/trycua/cua) | macOS 原生操作与 Lume VM | OpenBot Node provider；固定版本和 managed policy |
 | [OpenClaw](https://github.com/openclaw/openclaw) | 可选 Agent runtime、技能和 CLI adapter | 通过 AG-UI/adapter 接入；不做第二控制面 |
 | [OpenMausBot](https://github.com/milind-soni/OpenMausBot) | Cua、CLI Agent 和 Grok-like UX 参考 | 参考/贡献，不双运行 |
@@ -42,6 +42,12 @@
 - routine queue、handoff 和 MCP governance；
 - 测试与安全默认值。
 
+## 已落地的第一条集成
+
+当前兼容基线固定为 CopilotKit/OpenBot commit [`257c1280`](https://github.com/CopilotKit/openbot/commit/257c1280d684089be9adb0b35cce262efc7064bf)。本仓没有复制上游源代码，也没有引入第二套 Server；`providers/docker` 只适配其 token 保护、按 Bot 隔离的 `/navigate` 和 `/screenshot` HTTP 表面，`agent-computer` 仍作为 Node 机器上的独立进程或容器运行。
+
+这条接缝证明可以先复用成熟“电脑手”，同时保留我们自己的本地频道、数据库、调度和远程 Node。后续若必须修改上游 supervisor、policy 或 live-screen，需单独 ADR 决定 fork/submodule；不能在没有版本和许可证边界的情况下把多个仓库复制进来。
+
 ## 拟新增或替换
 
 - `local-threads`：本地 thread/memory/realtime；
@@ -62,4 +68,3 @@
 ## 名称风险
 
 如果正式 fork CopilotKit/OpenBot，我们不能继续以另一个同名 OpenBot 对外发布。代码仓本地名可以暂留，公开前必须确定新的产品名、GitHub slug 和域名。
-

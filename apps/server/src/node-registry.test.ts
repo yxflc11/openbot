@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { protocolVersion, serverMessageSchema, type ServerMessage } from "@openbot/protocol";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { isEnrollmentTokenValid, NodeRegistry } from "./node-registry.js";
+import { isEnrollmentTokenValid, NodeRegistry, type NodeRunMessage } from "./node-registry.js";
 
 describe("node enrollment", () => {
   it("accepts only an exact token match", () => {
@@ -12,7 +12,7 @@ describe("node enrollment", () => {
     expect(isEnrollmentTokenValid("short", "foundation-token")).toBe(false);
   });
 
-  it("delivers a run offer and confirms assignment over the outbound Node socket", async () => {
+  it("carries assignment and execution lifecycle over the outbound Node socket", async () => {
     const server = createServer();
     const registry = new NodeRegistry("foundation-token", { offerTimeoutMs: 500 });
     registry.attach(server);
@@ -23,6 +23,8 @@ describe("node enrollment", () => {
 
     const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
     const received: ServerMessage[] = [];
+    const runtimeMessages: NodeRunMessage[] = [];
+    registry.onRunMessage((_node, message) => runtimeMessages.push(message));
     client.on("message", (raw) => {
       const parsed = serverMessageSchema.safeParse(JSON.parse(raw.toString()));
       if (!parsed.success) return;
@@ -36,6 +38,30 @@ describe("node enrollment", () => {
             offerId: parsed.data.offerId,
             runId: parsed.data.runId,
             acceptedAt: new Date().toISOString(),
+          }),
+        );
+      }
+      if (parsed.data.type === "run.assigned") {
+        client.send(
+          JSON.stringify({
+            type: "run.start_request",
+            protocolVersion,
+            nodeId: "linux-node",
+            runId: parsed.data.runId,
+            requestedAt: new Date().toISOString(),
+          }),
+        );
+      }
+      if (parsed.data.type === "run.start") {
+        client.send(
+          JSON.stringify({
+            type: "run.completed",
+            protocolVersion,
+            nodeId: "linux-node",
+            runId: parsed.data.runId,
+            summary: "已打开页面并截图",
+            artifacts: [],
+            completedAt: new Date().toISOString(),
           }),
         );
       }
@@ -64,6 +90,7 @@ describe("node enrollment", () => {
         channelId: "00000000-0000-4000-8000-000000000002",
         botId: "00000000-0000-4000-8000-000000000003",
         title: "打开测试页并截图",
+        instruction: "打开 https://example.test 并截图",
         executionProfile: "docker-linux",
         requiredCapabilities: ["browser", "screenshot"],
       });
@@ -71,6 +98,12 @@ describe("node enrollment", () => {
       expect(registry.confirmRun("linux-node", runId)).toBe(true);
       await waitFor(() => received.some((message) => message.type === "run.assigned"));
       expect(registry.list()[0]?.activeRunIds).toEqual([runId]);
+      await waitFor(() => runtimeMessages.some((message) => message.type === "run.start_request"));
+      expect(registry.startRun("linux-node", runId)).toBe(true);
+      await waitFor(() => runtimeMessages.some((message) => message.type === "run.completed"));
+      registry.settleRun("linux-node", runId, "completed");
+      await waitFor(() => received.some((message) => message.type === "run.settled"));
+      expect(registry.list()[0]?.activeRunIds).toEqual([]);
     } finally {
       client.close();
       await once(client, "close");

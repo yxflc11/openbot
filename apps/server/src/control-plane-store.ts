@@ -1,4 +1,5 @@
 import type {
+  Artifact,
   Bot,
   Channel,
   CreateBotInput,
@@ -9,6 +10,16 @@ import type {
   Run,
   SubmitTaskResult,
 } from "@openbot/domain";
+
+export interface ArtifactRecord extends Artifact {
+  storageKey: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface RunCompletion {
+  run: Run;
+  artifacts: Artifact[];
+}
 
 export interface PersistedCounts {
   channels: number;
@@ -22,12 +33,29 @@ export interface ControlPlaneStore {
   listBots(): Promise<Bot[]>;
   listMessages(channelId: string): Promise<Message[]>;
   listRuns(channelId?: string): Promise<Run[]>;
+  listArtifacts(runId?: string): Promise<Artifact[]>;
+  getArtifact(artifactId: string): Promise<ArtifactRecord | undefined>;
   listDispatchableRuns(limit?: number): Promise<Run[]>;
   getCounts(): Promise<PersistedCounts>;
   createBot(input: CreateBotInput): Promise<Bot>;
   createChannel(input: CreateChannelInput): Promise<Channel>;
   submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult>;
   assignRun(runId: string, nodeId: string): Promise<Run | undefined>;
+  startRun(runId: string, nodeId: string): Promise<Run | undefined>;
+  appendRunProgress(
+    runId: string,
+    nodeId: string,
+    stage: string,
+    message: string,
+  ): Promise<boolean>;
+  completeRun(
+    runId: string,
+    nodeId: string,
+    summary: string,
+    artifacts: ArtifactRecord[],
+  ): Promise<RunCompletion | undefined>;
+  failRun(runId: string, nodeId: string, error: string): Promise<Run | undefined>;
+  failRunningRuns(nodeId?: string): Promise<Run[]>;
   requeueAssignedRuns(nodeId?: string): Promise<Run[]>;
   upsertNode(node: ExecutionNode): Promise<void>;
   markNodeOffline(nodeId: string): Promise<void>;

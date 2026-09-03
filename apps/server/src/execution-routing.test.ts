@@ -7,6 +7,7 @@ const run: Run = {
   channelId: "00000000-0000-4000-8000-000000000002",
   botId: "00000000-0000-4000-8000-000000000003",
   executionProfile: "docker-linux",
+  instruction: "打开 https://example.test 并截图",
   title: "打开测试页并截图",
   status: "queued",
   createdAt: "2026-09-03T00:00:00.000Z",

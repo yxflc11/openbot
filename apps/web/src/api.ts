@@ -1,4 +1,5 @@
 import type {
+  Artifact,
   AuthSessionSnapshot,
   Bot,
   Channel,
@@ -119,7 +120,7 @@ export function subscribeToChannelEvents(
   channelId: string,
   handlers: {
     onMessage(message: Message): void;
-    onRun(run: Run): void;
+    onRun(run: Run, artifacts: Artifact[]): void;
     onReady(): void;
     onState(state: RealtimeConnectionState): void;
   },
@@ -157,7 +158,10 @@ export function subscribeToChannelEvents(
       const payload: unknown = JSON.parse(event.data);
       if (isRunProjectionEvent(payload, channelId)) {
         markLive();
-        handlers.onRun(payload.run);
+        handlers.onRun(
+          payload.run,
+          payload.type === "run.updated" ? (payload.artifacts ?? []) : [],
+        );
       }
     } catch {
       // Ignore malformed frames and keep the stream available for the next valid event.
@@ -230,6 +234,12 @@ function isRunProjectionEvent(
   }
   if (!("channelId" in value) || value.channelId !== channelId) return false;
   if (!("run" in value) || typeof value.run !== "object" || value.run === null) return false;
+  if (
+    "artifacts" in value &&
+    (!Array.isArray(value.artifacts) || !value.artifacts.every(isArtifactProjection))
+  ) {
+    return false;
+  }
   return (
     "id" in value.run &&
     typeof value.run.id === "string" &&
@@ -239,12 +249,35 @@ function isRunProjectionEvent(
     typeof value.run.botId === "string" &&
     "title" in value.run &&
     typeof value.run.title === "string" &&
+    "instruction" in value.run &&
+    typeof value.run.instruction === "string" &&
     "status" in value.run &&
     typeof value.run.status === "string" &&
     "createdAt" in value.run &&
     typeof value.run.createdAt === "string" &&
     "updatedAt" in value.run &&
     typeof value.run.updatedAt === "string"
+  );
+}
+
+function isArtifactProjection(value: unknown): value is Artifact {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "runId" in value &&
+    typeof value.runId === "string" &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "mediaType" in value &&
+    typeof value.mediaType === "string" &&
+    "sha256" in value &&
+    typeof value.sha256 === "string" &&
+    "sizeBytes" in value &&
+    typeof value.sizeBytes === "number" &&
+    "createdAt" in value &&
+    typeof value.createdAt === "string"
   );
 }
 

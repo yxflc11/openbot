@@ -35,12 +35,30 @@ export const serverEnvSchema = z.object({
   OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
-export const nodeEnvSchema = z.object({
-  OPENBOT_NODE_ID: z.string().min(1),
-  OPENBOT_NODE_SERVER_URL: z.string().url().default("ws://localhost:3001/ws/nodes"),
-  OPENBOT_NODE_TOKEN: z.string().min(1),
-  OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
-});
+export const nodeEnvSchema = z
+  .object({
+    OPENBOT_NODE_ID: z.string().min(1),
+    OPENBOT_NODE_SERVER_URL: z.string().url().default("ws://localhost:3001/ws/nodes"),
+    OPENBOT_NODE_TOKEN: z.string().min(1),
+    OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
+    OPENBOT_NODE_WORK_DIRECTORY: z.string().default("./data/node"),
+    OPENBOT_DOCKER_COMPUTER_URL: z.string().url().optional(),
+    OPENBOT_DOCKER_COMPUTER_TOKEN: z.string().min(16).optional(),
+    OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS: booleanSchema,
+  })
+  .superRefine((value, context) => {
+    if (
+      (value.OPENBOT_DOCKER_COMPUTER_URL === undefined) !==
+      (value.OPENBOT_DOCKER_COMPUTER_TOKEN === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "OPENBOT_DOCKER_COMPUTER_URL and OPENBOT_DOCKER_COMPUTER_TOKEN must be set together.",
+        path: ["OPENBOT_DOCKER_COMPUTER_URL"],
+      });
+    }
+  });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 export type NodeEnv = z.infer<typeof nodeEnvSchema>;

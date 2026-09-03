@@ -1,4 +1,4 @@
-import type { ExecutionNode, Run } from "@openbot/domain";
+import type { Artifact, ExecutionNode, Run } from "@openbot/domain";
 
 const activeStatuses = new Set<Run["status"]>([
   "queued",
@@ -21,6 +21,14 @@ export function mergeRuns(primary: Run[], secondary: Run[]): Run[] {
   return Array.from(byId.values())
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .slice(0, 50);
+}
+
+export function mergeArtifacts(primary: Artifact[], secondary: Artifact[]): Artifact[] {
+  const byId = new Map(primary.map((artifact) => [artifact.id, artifact]));
+  for (const artifact of secondary) byId.set(artifact.id, artifact);
+  return Array.from(byId.values()).sort((left, right) =>
+    right.createdAt.localeCompare(left.createdAt),
+  );
 }
 
 function isNewerProjection(candidate: Run, existing: Run): boolean {

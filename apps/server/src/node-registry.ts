@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 import type { ExecutionNode } from "@openbot/domain";
 import {
   type NodeCapability,
+  type NodeMessage,
   nodeMessageSchema,
   protocolVersion,
   type RunOffer,
@@ -28,6 +29,7 @@ export interface RunOfferInput {
   channelId: string;
   botId: string;
   title: string;
+  instruction: string;
   executionProfile: RunOffer["executionProfile"];
   requiredCapabilities: NodeCapability[];
 }
@@ -39,6 +41,11 @@ export type RunOfferResult =
   | { status: "timeout" };
 
 type NodeHandler = (node: ExecutionNode) => void;
+export type NodeRunMessage = Extract<
+  NodeMessage,
+  { type: "run.start_request" | "run.progress" | "run.completed" | "run.failed" }
+>;
+type NodeRunHandler = (node: ExecutionNode, message: NodeRunMessage) => void;
 
 export class NodeRegistry {
   readonly #nodes = new Map<string, ConnectedNode>();
@@ -46,6 +53,7 @@ export class NodeRegistry {
   readonly #offerTimeoutMs: number;
   readonly #availableHandlers = new Set<NodeHandler>();
   readonly #unavailableHandlers = new Set<NodeHandler>();
+  readonly #runHandlers = new Set<NodeRunHandler>();
   readonly #pendingOffers = new Map<string, PendingOffer>();
   #gateway?: WebSocketServer;
 
@@ -66,6 +74,11 @@ export class NodeRegistry {
   onUnavailable(handler: NodeHandler): () => void {
     this.#unavailableHandlers.add(handler);
     return () => this.#unavailableHandlers.delete(handler);
+  }
+
+  onRunMessage(handler: NodeRunHandler): () => void {
+    this.#runHandlers.add(handler);
+    return () => this.#runHandlers.delete(handler);
   }
 
   async offerRun(nodeId: string, input: RunOfferInput): Promise<RunOfferResult> {
@@ -131,6 +144,50 @@ export class NodeRegistry {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  startRun(nodeId: string, runId: string): boolean {
+    const node = this.#nodes.get(nodeId);
+    if (
+      node === undefined ||
+      node.socket.readyState !== WebSocket.OPEN ||
+      !node.activeRunIds.includes(runId)
+    ) {
+      return false;
+    }
+    const message: ServerMessage = {
+      type: "run.start",
+      protocolVersion,
+      runId,
+      nodeId,
+      startedAt: new Date().toISOString(),
+    };
+    try {
+      node.socket.send(JSON.stringify(message));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  settleRun(nodeId: string, runId: string, status: "completed" | "failed"): void {
+    const node = this.#nodes.get(nodeId);
+    if (node === undefined) return;
+    node.activeRunIds = node.activeRunIds.filter((id) => id !== runId);
+    if (node.socket.readyState !== WebSocket.OPEN) return;
+    const message: ServerMessage = {
+      type: "run.settled",
+      protocolVersion,
+      runId,
+      nodeId,
+      status,
+      settledAt: new Date().toISOString(),
+    };
+    try {
+      node.socket.send(JSON.stringify(message));
+    } catch {
+      // A later heartbeat or disconnect reconciles the in-memory capacity view.
     }
   }
 
@@ -234,6 +291,21 @@ export class NodeRegistry {
           return;
         }
 
+        if (
+          message.type === "run.start_request" ||
+          message.type === "run.progress" ||
+          message.type === "run.completed" ||
+          message.type === "run.failed"
+        ) {
+          if (!node.activeRunIds.includes(message.runId)) {
+            sendAck(socket, false, "Run is not assigned to this Node connection.");
+            return;
+          }
+          this.#emitRun(node, message);
+          sendAck(socket, true);
+          return;
+        }
+
         const pending = this.#pendingOffers.get(message.offerId);
         if (
           pending === undefined ||
@@ -291,6 +363,11 @@ export class NodeRegistry {
   #emit(handlers: Set<NodeHandler>, node: ConnectedNode): void {
     const { socket: _socket, ...snapshot } = node;
     for (const handler of handlers) handler(snapshot);
+  }
+
+  #emitRun(node: ConnectedNode, message: NodeRunMessage): void {
+    const { socket: _socket, ...snapshot } = node;
+    for (const handler of this.#runHandlers) handler(snapshot, message);
   }
 }
 

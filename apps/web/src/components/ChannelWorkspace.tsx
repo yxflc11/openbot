@@ -1,4 +1,4 @@
-import type { Bot, Channel, Message, Run } from "@openbot/domain";
+import type { Artifact, Bot, Channel, Message, Run } from "@openbot/domain";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   createMessage,
@@ -14,17 +14,25 @@ import { RobotAvatar } from "./RobotAvatar";
 export function ChannelWorkspace({
   channel,
   bots,
+  artifacts,
   onJoin,
   onRun,
 }: {
   channel: Channel;
   bots: Bot[];
+  artifacts: Artifact[];
   onJoin(botId: string): Promise<void>;
-  onRun(run: Run): void;
+  onRun(run: Run, artifacts?: Artifact[]): void;
 }) {
   const members = bots.filter((bot) => channel.botIds.includes(bot.id));
   const available = bots.filter((bot) => !channel.botIds.includes(bot.id));
   const botsById = new Map(bots.map((bot) => [bot.id, bot]));
+  const artifactsByRun = new Map<string, Artifact[]>();
+  for (const artifact of artifacts) {
+    const items = artifactsByRun.get(artifact.runId) ?? [];
+    items.push(artifact);
+    artifactsByRun.set(artifact.runId, items);
+  }
   const [botId, setBotId] = useState(available[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -63,9 +71,9 @@ export function ChannelWorkspace({
       onMessage(message) {
         setMessages((current) => mergeMessages(current, [message]));
       },
-      onRun(run) {
+      onRun(run, projectedArtifacts) {
         setRuns((current) => mergeRuns(current, [run]));
-        onRun(run);
+        onRun(run, projectedArtifacts);
       },
       onReady() {
         void syncChannel();
@@ -200,14 +208,39 @@ export function ChannelWorkspace({
             <div>
               {runs.slice(0, 5).map((run) => {
                 const assignee = botsById.get(run.botId);
+                const runArtifacts = artifactsByRun.get(run.id) ?? [];
                 return (
-                  <article className="run-row" key={run.id}>
-                    {assignee ? <RobotAvatar bot={assignee} compact /> : null}
-                    <span className="run-row-copy">
-                      <strong>{run.title}</strong>
-                      <small>{assignee?.name ?? "未知 Bot"}</small>
-                    </span>
-                    <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
+                  <article className="run-row-shell" key={run.id}>
+                    <div className="run-row">
+                      {assignee ? <RobotAvatar bot={assignee} compact /> : null}
+                      <span className="run-row-copy">
+                        <strong>{run.title}</strong>
+                        <small>{assignee?.name ?? "未知 Bot"}</small>
+                      </span>
+                      <span className={`run-status ${run.status}`}>
+                        {runStatusLabel(run.status)}
+                      </span>
+                    </div>
+                    {run.resultSummary || run.errorMessage || runArtifacts.length > 0 ? (
+                      <div className={`run-result ${run.errorMessage ? "failed" : ""}`}>
+                        <p>{run.errorMessage ?? run.resultSummary}</p>
+                        {runArtifacts.map((artifact) => (
+                          <a
+                            href={`/api/v1/artifacts/${artifact.id}/content`}
+                            target="_blank"
+                            rel="noreferrer"
+                            key={artifact.id}
+                          >
+                            <img
+                              src={`/api/v1/artifacts/${artifact.id}/content`}
+                              alt={artifact.name}
+                              loading="lazy"
+                            />
+                            <span>{artifact.name}</span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
                   </article>
                 );
               })}

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   indexActiveRunsByBot,
   isActiveRun,
+  mergeArtifacts,
   mergeRuns,
   projectRunOnNodes,
   runStatusLabel,
@@ -14,6 +15,7 @@ function run(overrides: Partial<Run> = {}): Run {
     channelId: "channel-1",
     botId: "bot-1",
     executionProfile: "docker-linux",
+    instruction: "Test task",
     title: "Test task",
     status: "queued",
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -80,5 +82,21 @@ describe("run projections", () => {
 
     expect(withAssignment[0]?.activeRunIds).toEqual([queued.id]);
     expect(requeued[0]?.activeRunIds).toEqual([]);
+  });
+
+  it("merges completed artifacts without duplicating realtime projections", () => {
+    const artifact = {
+      id: "artifact-1",
+      runId: "run-1",
+      name: "result.png",
+      mediaType: "image/png",
+      sha256: "a".repeat(64),
+      sizeBytes: 128,
+      createdAt: "2026-01-01T00:01:00.000Z",
+    };
+
+    expect(mergeArtifacts([artifact], [{ ...artifact, name: "renamed.png" }])).toEqual([
+      { ...artifact, name: "renamed.png" },
+    ]);
   });
 });

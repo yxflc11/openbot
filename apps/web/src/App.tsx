@@ -1,4 +1,5 @@
 import type {
+  Artifact,
   AuthSessionSnapshot,
   CreateBotInput,
   CreateChannelInput,
@@ -24,7 +25,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
 import { Office } from "./components/Office";
 import { Sidebar } from "./components/Sidebar";
-import { isActiveRun, mergeRuns, projectRunOnNodes } from "./run-state";
+import { isActiveRun, mergeArtifacts, mergeRuns, projectRunOnNodes } from "./run-state";
 
 type Dialog = "bot" | "channel" | undefined;
 
@@ -110,7 +111,7 @@ function AuthenticatedWorkspace({
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
 
-  const projectRun = useCallback((run: Run) => {
+  const projectRun = useCallback((run: Run, artifacts: Artifact[] = []) => {
     setWorkspace((current) => {
       if (current === undefined) return current;
       const previous = current.runs.find((item) => item.id === run.id);
@@ -122,6 +123,7 @@ function AuthenticatedWorkspace({
         ...current,
         nodes: projectRunOnNodes(current.nodes, previous, projected),
         runs,
+        artifacts: mergeArtifacts(current.artifacts, artifacts),
         counts: {
           ...current.counts,
           activeRuns: Math.max(0, current.counts.activeRuns + activeRunDelta),
@@ -217,6 +219,7 @@ function AuthenticatedWorkspace({
         <ChannelWorkspace
           channel={selectedChannel}
           bots={workspace.bots}
+          artifacts={workspace.artifacts}
           onJoin={handleJoinBot}
           onRun={projectRun}
         />

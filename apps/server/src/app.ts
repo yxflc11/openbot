@@ -18,6 +18,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { logger } from "hono/logger";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
+import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
   InvalidCredentialsError,
@@ -33,6 +34,7 @@ import {
 
 export interface AppDependencies {
   allowedOrigins: string[];
+  artifactStorage?: Pick<ArtifactStorage, "read">;
   auth: OwnerAuthService;
   dispatchRun?: (run: Run) => void;
   listNodes: () => ExecutionNode[];
@@ -130,10 +132,11 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/workspace", async (context) => {
     const nodes = dependencies.listNodes();
-    const [channels, bots, runs, persistedCounts] = await Promise.all([
+    const [channels, bots, runs, artifacts, persistedCounts] = await Promise.all([
       dependencies.store.listChannels(),
       dependencies.store.listBots(),
       dependencies.store.listRuns(),
+      dependencies.store.listArtifacts(),
       dependencies.store.getCounts(),
     ]);
     const workspace: WorkspaceSnapshot = {
@@ -141,6 +144,7 @@ export function createApp(dependencies: AppDependencies) {
       bots,
       nodes,
       runs,
+      artifacts,
       counts: {
         ...persistedCounts,
         connectedNodes: nodes.length,
@@ -177,6 +181,24 @@ export function createApp(dependencies: AppDependencies) {
   app.get("/api/v1/channels/:channelId/runs", async (context) =>
     context.json({ runs: await dependencies.store.listRuns(context.req.param("channelId")) }),
   );
+
+  app.get("/api/v1/artifacts/:artifactId/content", async (context) => {
+    const record = await dependencies.store.getArtifact(context.req.param("artifactId"));
+    if (record === undefined) throw new StoreNotFoundError("Artifact not found.");
+    if (dependencies.artifactStorage === undefined) {
+      throw new Error("Artifact storage is not configured.");
+    }
+    const bytes = await dependencies.artifactStorage.read(record.storageKey);
+    return new Response(bytes, {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Length": String(bytes.byteLength),
+        "Content-Type": record.mediaType,
+        "Content-Disposition": "inline",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
 
   app.get("/api/v1/channels/:channelId/events", async (context) => {
     const channelId = context.req.param("channelId");

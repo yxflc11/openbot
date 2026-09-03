@@ -124,6 +124,8 @@ agent policy ∩ task requirements ∩ online node capabilities
 
 当前分配流程使用两阶段握手：Server 先向候选 Node 发 `run.offer`，Node 只验证能力和本地容量并回复 accept/reject；Server 再用短数据库事务条件更新仍为 `queued` 且尚未绑定节点的 Run，成功后发送 `run.assigned` confirm。外部网络等待不占用数据库事务，条件更新保证多个调度器不能同时认领同一 Run。未完成 confirm、节点断线或 Server 重启时，尚未执行的 `assigned` Run 会回队。
 
+执行是第二段显式握手：Node 发 `run.start_request`，Server 把仍属于该 Node 的 `assigned` Run 条件更新为 `running`，随后才发 `run.start`。Node 可上报结构化 progress，并以 completed/failed 结束；Server 先持久化结果，再发 `run.settled` 释放容量。`running` 状态失联后直接失败而不自动重试，因为 Server 无法证明外部动作尚未发生。
+
 ### Action Gateway
 
 延续 CopilotKit/OpenBot 的“决定和审计先于执行”，再增加跨 Node 的 capability lease：
@@ -142,7 +144,8 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 
 - `node.hello` / `node.heartbeat` / `node.capabilities_changed`
 - `run.offer` / `run.accept` / `run.reject` / `run.assigned`
-- `run.cancel` / `run.status` / `run.result`
+- `run.start_request` / `run.start` / `run.progress`
+- `run.completed` / `run.failed` / `run.settled` / `run.cancel`
 - `approval.lease` / `approval.revoke`
 - `control.acquire` / `control.release`
 
@@ -162,7 +165,7 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - Node 凭证不能登录 Web，也不能访问其他 Node；
 - 所有消息绑定 connection、node、run 和 sequence。
 
-协议 `0.2.0` 已实现 `node.hello`、heartbeat、offer/accept/reject、assigned confirm 与 cancel。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
+协议 `0.3.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、completed/failed、持久化后 settled 与 cancel。小型 PNG 截图可在 completed 消息中有界传输；Server 验证类型、编码和大小后写入 Artifact Storage。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
 
 ## 5. Provider contract
 
@@ -184,6 +187,8 @@ health / version
 | Cua | macOS Node | 宿主机原生 App，默认观察优先 |
 | Lume | Apple Silicon Node | 隔离 macOS GUI |
 | Coder | 任意合格 Node | Codex/Claude/Multica 工作区 |
+
+当前只落地了 Docker provider 的第一条 observe 能力。它是对 CopilotKit/OpenBot `agent-computer` `/navigate` 与 `/screenshot` 接口的薄适配器，而不是复制上游控制面；只有 URL 和 token 同时配置后，Node 才声明 `browser`、`screenshot`。其他 provider 目录仍是接口占位，不会虚假上报能力。
 
 ## 6. 远程屏幕与接管
 
@@ -210,7 +215,7 @@ Client 不直连 Node：
 - routine/work queue；
 - credential references。
 
-截图和大产物进入本地 S3-compatible object store 或文件存储，数据库只保存引用、大小、哈希和 redaction metadata。
+当前 PNG 截图进入 Server 本地文件存储，采用随机键、原子写入和 `0600` 文件权限；数据库只保存引用、大小、SHA-256 和 metadata。未来大产物可替换为 S3-compatible object store，而无需改变 Client 的鉴权读取接口。
 
 ## 8. 部署形态
 

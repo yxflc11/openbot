@@ -1,20 +1,39 @@
 import type { ExecutionNode, Run } from "@openbot/domain";
+import type { CompletedArtifact } from "@openbot/protocol";
+import type { ArtifactStorage } from "./artifact-storage.js";
 import type { ChannelRealtimeHub } from "./channel-realtime-hub.js";
-import type { ControlPlaneStore } from "./control-plane-store.js";
+import type { ArtifactRecord, ControlPlaneStore } from "./control-plane-store.js";
 import { selectExecutionNode } from "./execution-routing.js";
-import type { NodeRegistry, RunOfferInput, RunOfferResult } from "./node-registry.js";
+import type {
+  NodeRegistry,
+  NodeRunMessage,
+  RunOfferInput,
+  RunOfferResult,
+} from "./node-registry.js";
 
 type DispatchStore = Pick<
   ControlPlaneStore,
-  "assignRun" | "listDispatchableRuns" | "markNodeOffline" | "requeueAssignedRuns" | "upsertNode"
+  | "appendRunProgress"
+  | "assignRun"
+  | "completeRun"
+  | "failRun"
+  | "failRunningRuns"
+  | "listDispatchableRuns"
+  | "markNodeOffline"
+  | "requeueAssignedRuns"
+  | "startRun"
+  | "upsertNode"
 >;
 
 export interface NodeGateway {
   list(): ExecutionNode[];
   onAvailable(handler: (node: ExecutionNode) => void): () => void;
   onUnavailable(handler: (node: ExecutionNode) => void): () => void;
+  onRunMessage(handler: (node: ExecutionNode, message: NodeRunMessage) => void): () => void;
   offerRun(nodeId: string, input: RunOfferInput): Promise<RunOfferResult>;
   confirmRun(nodeId: string, runId: string): boolean;
+  startRun(nodeId: string, runId: string): boolean;
+  settleRun(nodeId: string, runId: string, status: "completed" | "failed"): void;
   cancelRun(nodeId: string, runId: string, reason: string): void;
 }
 
@@ -24,16 +43,24 @@ export class RunDispatcher {
   readonly #store: DispatchStore;
   readonly #nodes: NodeGateway;
   readonly #realtime: RunPublisher;
+  readonly #artifacts: ArtifactStorage;
   #draining = false;
   #drainAgain = false;
   #stopped = true;
   #unsubscribeAvailable?: () => void;
   #unsubscribeUnavailable?: () => void;
+  #unsubscribeRunMessage?: () => void;
 
-  constructor(store: DispatchStore, nodes: NodeRegistry | NodeGateway, realtime: RunPublisher) {
+  constructor(
+    store: DispatchStore,
+    nodes: NodeRegistry | NodeGateway,
+    realtime: RunPublisher,
+    artifacts: ArtifactStorage,
+  ) {
     this.#store = store;
     this.#nodes = nodes;
     this.#realtime = realtime;
+    this.#artifacts = artifacts;
   }
 
   async start(): Promise<void> {
@@ -44,9 +71,15 @@ export class RunDispatcher {
     this.#unsubscribeUnavailable = this.#nodes.onUnavailable((node) => {
       void this.#handleNodeUnavailable(node).catch(reportDispatchError);
     });
+    this.#unsubscribeRunMessage = this.#nodes.onRunMessage((node, message) => {
+      void this.#handleRunMessage(node, message).catch(reportDispatchError);
+    });
 
-    const recovered = await this.#store.requeueAssignedRuns();
-    this.#publishUpdates(recovered);
+    const [requeued, failed] = await Promise.all([
+      this.#store.requeueAssignedRuns(),
+      this.#store.failRunningRuns(),
+    ]);
+    this.#publishUpdates([...requeued, ...failed]);
     await this.dispatchQueued();
   }
 
@@ -54,6 +87,7 @@ export class RunDispatcher {
     this.#stopped = true;
     this.#unsubscribeAvailable?.();
     this.#unsubscribeUnavailable?.();
+    this.#unsubscribeRunMessage?.();
   }
 
   enqueue(run: Run): void {
@@ -92,6 +126,7 @@ export class RunDispatcher {
       channelId: run.channelId,
       botId: run.botId,
       title: run.title,
+      instruction: run.instruction,
       executionProfile: requirements.executionProfile,
       requiredCapabilities: requirements.capabilities,
     });
@@ -112,16 +147,105 @@ export class RunDispatcher {
 
   async #handleNodeAvailable(node: ExecutionNode): Promise<void> {
     await this.#store.upsertNode(node);
-    const recovered = await this.#store.requeueAssignedRuns(node.id);
-    this.#publishUpdates(recovered);
+    const [requeued, failed] = await Promise.all([
+      this.#store.requeueAssignedRuns(node.id),
+      this.#store.failRunningRuns(node.id),
+    ]);
+    this.#publishUpdates([...requeued, ...failed]);
     await this.dispatchQueued();
   }
 
   async #handleNodeUnavailable(node: ExecutionNode): Promise<void> {
     await this.#store.markNodeOffline(node.id);
-    const requeued = await this.#store.requeueAssignedRuns(node.id);
-    this.#publishUpdates(requeued);
+    const [requeued, failed] = await Promise.all([
+      this.#store.requeueAssignedRuns(node.id),
+      this.#store.failRunningRuns(node.id),
+    ]);
+    this.#publishUpdates([...requeued, ...failed]);
     await this.dispatchQueued();
+  }
+
+  async #handleRunMessage(node: ExecutionNode, message: NodeRunMessage): Promise<void> {
+    switch (message.type) {
+      case "run.start_request": {
+        const started = await this.#store.startRun(message.runId, node.id);
+        if (started === undefined) {
+          this.#nodes.cancelRun(node.id, message.runId, "Run is no longer assignable.");
+          return;
+        }
+        if (!this.#nodes.startRun(node.id, message.runId)) {
+          const failed = await this.#store.failRun(
+            message.runId,
+            node.id,
+            "Node disconnected before execution could start.",
+          );
+          if (failed !== undefined) {
+            this.#nodes.settleRun(node.id, message.runId, "failed");
+            this.#publishUpdates([failed]);
+            await this.dispatchQueued();
+          }
+          return;
+        }
+        this.#publishUpdates([started]);
+        return;
+      }
+      case "run.progress":
+        await this.#store.appendRunProgress(message.runId, node.id, message.stage, message.message);
+        return;
+      case "run.completed":
+        await this.#completeRun(node.id, message.runId, message.summary, message.artifacts);
+        return;
+      case "run.failed": {
+        const failed = await this.#store.failRun(message.runId, node.id, message.error);
+        if (failed !== undefined) {
+          this.#nodes.settleRun(node.id, message.runId, "failed");
+          this.#publishUpdates([failed]);
+          await this.dispatchQueued();
+        }
+      }
+    }
+  }
+
+  async #completeRun(
+    nodeId: string,
+    runId: string,
+    summary: string,
+    inputs: CompletedArtifact[],
+  ): Promise<void> {
+    let persisted: ArtifactRecord[] = [];
+    try {
+      persisted = (await this.#artifacts.persist(runId, inputs)).map((record) => ({
+        ...record.artifact,
+        storageKey: record.storageKey,
+        metadata: record.metadata,
+      }));
+      const completion = await this.#store.completeRun(runId, nodeId, summary, persisted);
+      if (completion === undefined) {
+        await this.#artifacts.remove(persisted.map((artifact) => artifact.storageKey));
+        this.#nodes.cancelRun(nodeId, runId, "Run is no longer running on this Node.");
+        return;
+      }
+      this.#nodes.settleRun(nodeId, runId, "completed");
+      this.#realtime.publish({
+        type: "run.updated",
+        channelId: completion.run.channelId,
+        run: completion.run,
+        artifacts: completion.artifacts,
+      });
+      await this.dispatchQueued();
+    } catch (error) {
+      await this.#artifacts.remove(persisted.map((artifact) => artifact.storageKey));
+      const failed = await this.#store.failRun(
+        runId,
+        nodeId,
+        error instanceof Error ? error.message : "The result artifact could not be persisted.",
+      );
+      if (failed !== undefined) {
+        this.#nodes.settleRun(nodeId, runId, "failed");
+        this.#publishUpdates([failed]);
+        await this.dispatchQueued();
+      }
+    }
   }
 
   #publishUpdates(runs: Run[]): void {

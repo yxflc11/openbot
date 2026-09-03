@@ -56,4 +56,22 @@ describe("node environment", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("enables the Docker computer only with a complete credential pair", () => {
+    const base = { OPENBOT_NODE_ID: "linux-node", OPENBOT_NODE_TOKEN: "node-token" };
+    expect(
+      nodeEnvSchema.safeParse({
+        ...base,
+        OPENBOT_DOCKER_COMPUTER_URL: "http://127.0.0.1:4100",
+      }).success,
+    ).toBe(false);
+    expect(
+      nodeEnvSchema.parse({
+        ...base,
+        OPENBOT_DOCKER_COMPUTER_URL: "http://127.0.0.1:4100",
+        OPENBOT_DOCKER_COMPUTER_TOKEN: "computer-token-for-tests",
+        OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS: "true",
+      }).OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS,
+    ).toBe(true);
+  });
 });

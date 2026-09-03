@@ -2,9 +2,9 @@
 
 ## 当前进度
 
-M1 第一切片正在推进：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、任务、结构化事件和 Owner Session 会真实落库；Web 可以本地登录、创建 Bot、创建频道、把 Bot 加入频道、提交频道任务，并在频道、桌面办公室和手机列表中读取同一份数据。频道 SSE、多浏览器即时同步、断线检测和自动重连已跑通。任务先由 Server 确定性地选择频道成员，再以 Bot 固定的 execution profile 匹配有容量的 Node。
+M1 第二切片已完成：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、任务、结构化事件、Owner Session、结果和 Artifact 元数据会真实落库；Web 可以本地登录、创建 Bot、创建频道、把 Bot 加入频道、提交频道任务，并在频道、桌面办公室和手机列表中读取同一份数据。频道 SSE、多浏览器即时同步、断线检测和自动重连已跑通。任务先由 Server 确定性地选择频道成员，再以 Bot 固定的 execution profile 匹配有容量的 Node。
 
-Node 已通过出站 WebSocket 上报能力和并发容量；两阶段 offer/accept/confirm、数据库条件认领、`assigned` 实时投影、节点断线回队和 Server 重启恢复已通过真实链路验证。当前仍只完成“安全接单”，尚未执行 provider、回传日志/截图/产物或处理外部副作用。M0 仍缺共享记忆、完整 policy 与 audit 页面；M1 下一切片接 Docker browser provider 与可恢复的执行状态机。
+Node 已通过出站 WebSocket 上报真实可执行能力和并发容量；两阶段 offer/accept/confirm、显式 start、progress、completed/failed/settled、数据库条件转换、节点断线恢复已通过进程级链路验证。首个 Docker provider 已用薄适配层接通 CopilotKit/OpenBot `agent-computer`：当前只打开任务中明确的公开 URL 并回传一张 PNG，结果可在频道和右栏读取。M1 下一切片是把结构化 progress 和实时画面接到 Inspector；网页点击/填写必须与 M2 Action Gateway 和审批一起设计。
 
 ## Spike — 决定是否正式 fork CopilotKit/OpenBot
 
@@ -44,8 +44,8 @@ Node 已通过出站 WebSocket 上报能力和并发容量；两阶段 offer/acc
 - Node enrollment、WSS 长连接、心跳、吊销（当前为共享启动令牌，独立身份与吊销待补）。
 - capability registry 与 deterministic router（首个切片已完成）。
 - 两阶段任务分配、并发容量和断线/重启回队（首个切片已完成）。
-- Docker browser provider。
-- run、屏幕、日志和产物回传。
+- Docker browser provider（只读 navigate + screenshot 已完成）。
+- run 生命周期、结果和小型 PNG 产物回传（已完成）；实时屏幕与 UI progress 待补。
 - Run Inspector 的 Computer、Progress、Team 与 Artifacts 实时投影。
 
 ### 过线测试

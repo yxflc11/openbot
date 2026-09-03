@@ -9,10 +9,12 @@ import type {
   Run,
 } from "@openbot/domain";
 import { describe, expect, it, vi } from "vitest";
+import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
   StoreNotFoundError,
   StoreValidationError,
+  type ArtifactRecord,
   type ControlPlaneStore,
 } from "./control-plane-store.js";
 import { createApp, ownerSessionCookie } from "./app.js";
@@ -114,6 +116,47 @@ describe("server app", () => {
     expect(await response.json()).toMatchObject({
       counts: { bots: 1, channels: 0, connectedNodes: 1 },
     });
+  });
+
+  it("serves an authenticated artifact as non-cacheable inline content", async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    const artifact: ArtifactRecord = {
+      id: "00000000-0000-4000-8000-000000000010",
+      runId: "00000000-0000-4000-8000-000000000011",
+      name: "result.png",
+      mediaType: "image/png",
+      sha256: "0".repeat(64),
+      sizeBytes: bytes.byteLength,
+      createdAt: "2026-09-03T00:00:00.000Z",
+      storageKey:
+        "runs/00000000-0000-4000-8000-000000000011/00000000-0000-4000-8000-000000000010.png",
+      metadata: {},
+    };
+    const store = createTestStore();
+    store.getArtifact = async (artifactId) => (artifactId === artifact.id ? artifact : undefined);
+    const app = createTestApp({
+      artifactStorage: {
+        read: async (storageKey) => {
+          expect(storageKey).toBe(artifact.storageKey);
+          return bytes;
+        },
+      },
+      store,
+    });
+
+    const anonymous = await app.request(`/api/v1/artifacts/${artifact.id}/content`);
+    expect(anonymous.status).toBe(401);
+
+    const cookie = await login(app);
+    const response = await app.request(`/api/v1/artifacts/${artifact.id}/content`, {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
   });
 
   it("creates a Bot through the validated API", async () => {
@@ -376,11 +419,13 @@ function createTestApp({
   dispatchRun,
   listNodes = () => [],
   realtime,
+  artifactStorage,
 }: {
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
+  artifactStorage?: Pick<ArtifactStorage, "read">;
 }) {
   const auth = new OwnerAuthService(createMemorySessionStore(), {
     ownerName: "Test Owner",
@@ -391,6 +436,7 @@ function createTestApp({
     allowedOrigins: [testOrigin],
     auth,
     ...(dispatchRun === undefined ? {} : { dispatchRun }),
+    ...(artifactStorage === undefined ? {} : { artifactStorage }),
     listNodes,
     ...(realtime === undefined ? {} : { realtime }),
     secureCookies: false,
@@ -534,6 +580,7 @@ function createTestStore(): ControlPlaneStore {
         botId: assignee.id,
         sourceMessageId: message.id,
         executionProfile: assignee.computerProfile,
+        instruction: input.content,
         title: input.content,
         status: "queued",
         createdAt: new Date().toISOString(),
@@ -552,6 +599,44 @@ function createTestStore(): ControlPlaneStore {
       run.updatedAt = new Date().toISOString();
       return run;
     },
+    async startRun(runId: string, nodeId: string) {
+      const run = runs.find((item) => item.id === runId);
+      if (run === undefined || run.status !== "assigned" || run.nodeId !== nodeId) return undefined;
+      run.status = "running";
+      run.updatedAt = new Date().toISOString();
+      return run;
+    },
+    async appendRunProgress(runId: string, nodeId: string) {
+      return runs.some(
+        (run) => run.id === runId && run.nodeId === nodeId && run.status === "running",
+      );
+    },
+    async completeRun(runId: string, nodeId: string, summary: string) {
+      const run = runs.find((item) => item.id === runId);
+      if (run === undefined || run.status !== "running" || run.nodeId !== nodeId) return undefined;
+      run.status = "completed";
+      run.resultSummary = summary;
+      run.updatedAt = new Date().toISOString();
+      return { run, artifacts: [] };
+    },
+    async failRun(runId: string, nodeId: string, error: string) {
+      const run = runs.find((item) => item.id === runId);
+      if (run === undefined || run.status !== "running" || run.nodeId !== nodeId) return undefined;
+      run.status = "failed";
+      run.errorMessage = error;
+      run.updatedAt = new Date().toISOString();
+      return run;
+    },
+    async failRunningRuns(nodeId?: string) {
+      const failed = runs.filter(
+        (run) => run.status === "running" && (nodeId === undefined || run.nodeId === nodeId),
+      );
+      for (const run of failed) {
+        run.status = "failed";
+        run.errorMessage = "Execution interrupted.";
+      }
+      return failed;
+    },
     async requeueAssignedRuns(nodeId?: string) {
       const requeued = runs.filter(
         (run) => run.status === "assigned" && (nodeId === undefined || run.nodeId === nodeId),
@@ -562,6 +647,12 @@ function createTestStore(): ControlPlaneStore {
         run.updatedAt = new Date().toISOString();
       }
       return requeued;
+    },
+    async listArtifacts() {
+      return [];
+    },
+    async getArtifact() {
+      return undefined;
     },
     async upsertNode() {},
     async markNodeOffline() {},

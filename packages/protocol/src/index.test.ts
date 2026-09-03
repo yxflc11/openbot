@@ -53,6 +53,7 @@ describe("node protocol", () => {
       channelId: "00000000-0000-4000-8000-000000000003",
       botId: "00000000-0000-4000-8000-000000000004",
       title: "打开测试页并截图",
+      instruction: "打开 https://example.test 并截图",
       executionProfile: "docker-linux",
       requiredCapabilities: ["browser", "screenshot"],
       sentAt: new Date().toISOString(),
@@ -72,6 +73,41 @@ describe("node protocol", () => {
     ).toBe(true);
     expect(
       runOfferSchema.safeParse({ ...offer, requiredCapabilities: ["root-access"] }).success,
+    ).toBe(false);
+    expect(
+      nodeMessageSchema.safeParse({
+        type: "run.completed",
+        protocolVersion,
+        nodeId: "linux-node",
+        runId: offer.runId,
+        summary: "已完成截图",
+        artifacts: [
+          {
+            name: "result.png",
+            mediaType: "image/png",
+            base64: "iVBORw0KGgo=",
+          },
+        ],
+        completedAt: new Date().toISOString(),
+      }).success,
+    ).toBe(true);
+    expect(
+      nodeMessageSchema.safeParse({
+        type: "run.completed",
+        protocolVersion,
+        nodeId: "linux-node",
+        runId: offer.runId,
+        summary: "伪造截图",
+        artifacts: [
+          {
+            name: "result.png",
+            mediaType: "image/png",
+            base64: "not base64!!!",
+            metadata: { secret: "unbounded metadata is not accepted" },
+          },
+        ],
+        completedAt: new Date().toISOString(),
+      }).success,
     ).toBe(false);
   });
 });

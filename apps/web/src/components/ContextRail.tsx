@@ -4,6 +4,9 @@ import { NodeIcon } from "./Icons";
 
 export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
   const activeRuns = workspace.runs.filter(isActiveRun);
+  const recentResults = workspace.runs
+    .filter((run) => run.status === "completed" || run.status === "failed")
+    .slice(0, 2);
   const botById = new Map(workspace.bots.map((bot) => [bot.id, bot]));
   const nodeById = new Map(workspace.nodes.map((node) => [node.id, node]));
   return (
@@ -45,6 +48,31 @@ export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
           })
         )}
       </section>
+
+      {recentResults.length > 0 ? (
+        <section className="rail-section result-section">
+          <h3>最近结果</h3>
+          {recentResults.map((run) => {
+            const artifact = workspace.artifacts.find((item) => item.runId === run.id);
+            return (
+              <article className="rail-result" key={run.id}>
+                <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
+                <strong>{run.title}</strong>
+                <p>{run.errorMessage ?? run.resultSummary ?? "任务已结束。"}</p>
+                {artifact ? (
+                  <a
+                    href={`/api/v1/artifacts/${artifact.id}/content`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    查看截图
+                  </a>
+                ) : null}
+              </article>
+            );
+          })}
+        </section>
+      ) : null}
 
       <section className="rail-section nodes-section">
         <h3>电脑</h3>

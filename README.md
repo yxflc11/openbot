@@ -4,7 +4,7 @@
 
 OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
 
-当前状态：**M1 第一切片推进中：在 M0 的本地控制面之上，排队任务已能按固定 execution profile 匹配在线 Node，经“offer → accept → 数据库认领 → confirm”握手进入 `assigned`；并发上限、节点断线回队和 Server 重启恢复已跑通。真正的 provider 执行、日志、截图与产物回传尚未接入。**
+当前状态：**M1 已跑通第一条完整执行链：含明确公开 URL 的任务会按固定 execution profile 分配给在线 Node，经 CopilotKit/OpenBot `agent-computer` 打开网页并截图；Run 会进入 `running`，结果和截图持久化后实时回到频道。当前仍是只读切片，不会点击、填写或提交表单，也还没有审批和实时画面。**
 
 ## 产品公式
 
@@ -18,9 +18,11 @@ OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面�
   = 我们的自托管 Grok Bot
 ```
 
-## 第一版只证明一件事
+## M1 完整验收只证明一件事
 
 > 用户在手机浏览器打开自己的 OpenBot，对 `Ops` 说「打开测试页，填写但不要提交，截图给我」；部署在任意服务器上的控制面把任务发给在线执行节点，任务完成后在同一频道返回截图。若要求提交，系统必须停下来等批准。
+
+当前已经完成这条目标中的“明确网址 → 无人值守打开 → 截图回频道”；“填写但不提交”和“提交前审批”仍是下一阶段，不能把现在的只读适配器描述成完整电脑操作。
 
 ## 总体架构
 
@@ -116,7 +118,7 @@ sequenceDiagram
 
 | 能力 | 采用 | 我们开发什么 |
 | --- | --- | --- |
-| 产品壳、Bot、频道、策略、审计、容器电脑 | CopilotKit/OpenBot fork/上游基线 | 去云依赖、Node provider、PWA |
+| 产品壳、Bot、频道、策略、审计、容器电脑 | CopilotKit/OpenBot 上游基线 | 当前复用 `agent-computer` HTTP 边界；后续再决定是否 fork UI/策略层 |
 | macOS 后台操作与 VM | Cua Driver / Lume | Node adapter、审批关联、远程屏幕 |
 | Agent CLI 与技能 | Codex / Claude / OpenClaw adapters | 统一 AG-UI/run contract |
 | 编码任务看板 | Multica（后加） | 只给 `coder` Node |
@@ -172,14 +174,24 @@ npm run db:up
 npm run dev
 ```
 
-随后打开 `http://localhost:5173`。Server 启动时会自动执行已提交的 PostgreSQL migration；`apps/node` 会使用根目录 `.env` 中的登记令牌主动连接 Server，并以 `OPENBOT_NODE_MAX_CONCURRENT_RUNS` 声明并发容量。停止本地数据库可运行 `npm run db:stop`。提交代码前运行：
+随后打开 `http://localhost:5173`。Server 启动时会自动执行已提交的 PostgreSQL migration；`apps/node` 会使用根目录 `.env` 中的登记令牌主动连接 Server，并以 `OPENBOT_NODE_MAX_CONCURRENT_RUNS` 声明并发容量。未配置可执行 provider 时，Node 会如实上报零项执行能力，任务保持排队。
+
+要启用当前只读浏览器切片，先按上游说明在 **Node 所在机器**运行固定版本的 [CopilotKit/OpenBot `agent-computer`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer)，把它保持在 loopback；然后在本仓 `.env` 中同时设置：
+
+```dotenv
+OPENBOT_DOCKER_COMPUTER_URL=http://127.0.0.1:4100
+OPENBOT_DOCKER_COMPUTER_TOKEN=<与 agent-computer 的 COMPUTER_TOKEN 相同>
+OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS=false
+```
+
+重启 Node 后，它才会声明 `browser` 和 `screenshot`。在频道中发送“打开 `https://example.com` 并截图”即可走完整链路；任务必须包含明确的 HTTP(S) URL。停止本地数据库可运行 `npm run db:stop`。提交代码前运行：
 
 ```bash
 npm run check
 npm audit
 ```
 
-此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后，频道、办公室和右栏同步显示“已分配”及节点负载。当前 `assigned` 只表示任务槽位已确认，不表示 provider 已执行；审批、截图、产物和远程接管仍将按 M1–M2 逐步接入。
+此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`，完成摘要和 PNG 截图会持久化并通过 SSE 投影到频道和右栏。执行中的 Node 断线会把 Run 明确标记失败，避免对未知外部副作用盲目重试。审批、网页填写/点击、实时屏幕和远程接管仍将按 M1–M2 逐步接入。
 
 生产环境必须使用 HTTPS，把 `OPENBOT_SECURE_COOKIES` 设为 `true`，并让 `OPENBOT_ALLOWED_ORIGINS` 只包含实际 Web/PWA 地址。Owner 密码至少 12 个字符，建议使用密码管理器生成的长随机值。
 
@@ -201,6 +213,7 @@ npm audit
 - [ADR-0007：单 Owner 本地认证与数据库会话](docs/decisions/0007-local-owner-auth.md)
 - [ADR-0008：频道消息到持久化任务](docs/decisions/0008-channel-task-runs.md)
 - [ADR-0009：两阶段 Node 任务分配](docs/decisions/0009-two-phase-node-assignment.md)
+- [ADR-0010：复用 agent-computer 的 provider 边界](docs/decisions/0010-agent-computer-provider-boundary.md)
 - [声明式配置草案](examples/openbot.example.yaml)
 
 ## 开源注意事项

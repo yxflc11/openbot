@@ -3,6 +3,7 @@ import type { Server as HttpServer } from "node:http";
 import { serverEnvSchema } from "@openbot/config";
 import { createDatabase } from "@openbot/db";
 import { createApp } from "./app.js";
+import { FileArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
@@ -16,7 +17,8 @@ await database.migrate();
 const nodeRegistry = new NodeRegistry(env.OPENBOT_NODE_TOKEN);
 const realtime = new ChannelRealtimeHub();
 const store = new PostgresControlPlaneStore(database.db);
-const dispatcher = new RunDispatcher(store, nodeRegistry, realtime);
+const artifactStorage = new FileArtifactStorage(env.OPENBOT_OBJECT_STORE_PATH);
+const dispatcher = new RunDispatcher(store, nodeRegistry, realtime, artifactStorage);
 await dispatcher.start();
 const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
   ownerName: env.OPENBOT_OWNER_NAME,
@@ -25,6 +27,7 @@ const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
 });
 const app = createApp({
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,
+  artifactStorage,
   auth,
   dispatchRun: (run) => dispatcher.enqueue(run),
   listNodes: () => nodeRegistry.list(),

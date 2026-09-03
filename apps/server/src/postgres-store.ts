@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  Artifact,
   Bot,
   Channel,
   CreateBotInput,
@@ -10,9 +11,23 @@ import type {
   Run,
   SubmitTaskResult,
 } from "@openbot/domain";
-import { bots, channelBots, channels, messages, nodes, runEvents, runs } from "@openbot/db";
+import {
+  artifacts as artifactsTable,
+  bots,
+  channelBots,
+  channels,
+  messages,
+  nodes,
+  runEvents,
+  runs,
+} from "@openbot/db";
 import { and, asc, count, desc, eq, inArray, isNull, ne } from "drizzle-orm";
-import type { ControlPlaneStore, PersistedCounts } from "./control-plane-store.js";
+import type {
+  ArtifactRecord,
+  ControlPlaneStore,
+  PersistedCounts,
+  RunCompletion,
+} from "./control-plane-store.js";
 import {
   StoreConflictError,
   StoreNotFoundError,
@@ -100,6 +115,26 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
 
     const rows = await this.#db.select().from(runs).orderBy(desc(runs.createdAt)).limit(50);
     return rows.map(toRun);
+  }
+
+  async listArtifacts(runId?: string): Promise<Artifact[]> {
+    const query = this.#db.select().from(artifactsTable);
+    const rows = await (runId === undefined
+      ? query.orderBy(desc(artifactsTable.createdAt)).limit(100)
+      : query
+          .where(eq(artifactsTable.runId, runId))
+          .orderBy(desc(artifactsTable.createdAt))
+          .limit(100));
+    return rows.map(toArtifact);
+  }
+
+  async getArtifact(artifactId: string): Promise<ArtifactRecord | undefined> {
+    const [row] = await this.#db
+      .select()
+      .from(artifactsTable)
+      .where(eq(artifactsTable.id, artifactId))
+      .limit(1);
+    return row === undefined ? undefined : toArtifactRecord(row);
   }
 
   async listDispatchableRuns(limit = 50): Promise<Run[]> {
@@ -272,6 +307,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         botId: assignee.id,
         sourceMessageId: message.id,
         executionProfile: assignee.computerProfile,
+        instruction: input.content,
         title: taskTitle(input.content),
         status: "queued",
         createdAt: now,
@@ -310,6 +346,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         botId: selectedBotId,
         sourceMessageId: message.id,
         executionProfile: selectedExecutionProfile,
+        instruction: input.content,
         title: taskTitle(input.content),
         status: "queued",
         createdAt: now.toISOString(),
@@ -338,6 +375,154 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         payload: { executionProfile: updated.executionProfile },
       });
       return toRun(updated);
+    });
+  }
+
+  async startRun(runId: string, nodeId: string): Promise<Run | undefined> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const [updated] = await transaction
+        .update(runs)
+        .set({ status: "running", updatedAt: now })
+        .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "assigned")))
+        .returning();
+      if (updated === undefined) return undefined;
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        runId,
+        channelId: updated.channelId,
+        botId: updated.botId,
+        nodeId,
+        type: "RUN_STARTED",
+        payload: {},
+      });
+      return toRun(updated);
+    });
+  }
+
+  async appendRunProgress(
+    runId: string,
+    nodeId: string,
+    stage: string,
+    message: string,
+  ): Promise<boolean> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const [updated] = await transaction
+        .update(runs)
+        .set({ updatedAt: now })
+        .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "running")))
+        .returning({
+          channelId: runs.channelId,
+          botId: runs.botId,
+        });
+      if (updated === undefined) return false;
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        runId,
+        channelId: updated.channelId,
+        botId: updated.botId,
+        nodeId,
+        type: "RUN_PROGRESS",
+        payload: { stage, message },
+      });
+      return true;
+    });
+  }
+
+  async completeRun(
+    runId: string,
+    nodeId: string,
+    summary: string,
+    artifacts: ArtifactRecord[],
+  ): Promise<RunCompletion | undefined> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const [updated] = await transaction
+        .update(runs)
+        .set({ status: "completed", resultSummary: summary, errorMessage: null, updatedAt: now })
+        .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "running")))
+        .returning();
+      if (updated === undefined) return undefined;
+
+      if (artifacts.length > 0) {
+        await transaction.insert(artifactsTable).values(
+          artifacts.map((record) => ({
+            id: record.id,
+            runId: record.runId,
+            name: record.name,
+            mediaType: record.mediaType,
+            storageKey: record.storageKey,
+            sha256: record.sha256,
+            metadata: record.metadata,
+            createdAt: new Date(record.createdAt),
+          })),
+        );
+      }
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        runId,
+        channelId: updated.channelId,
+        botId: updated.botId,
+        nodeId,
+        type: "RUN_COMPLETED",
+        payload: { summary, artifactIds: artifacts.map((artifact) => artifact.id) },
+      });
+      return { run: toRun(updated), artifacts: artifacts.map(stripArtifactRecord) };
+    });
+  }
+
+  async failRun(runId: string, nodeId: string, error: string): Promise<Run | undefined> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const [updated] = await transaction
+        .update(runs)
+        .set({ status: "failed", errorMessage: error, updatedAt: now })
+        .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "running")))
+        .returning();
+      if (updated === undefined) return undefined;
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        runId,
+        channelId: updated.channelId,
+        botId: updated.botId,
+        nodeId,
+        type: "RUN_FAILED",
+        payload: { error },
+      });
+      return toRun(updated);
+    });
+  }
+
+  async failRunningRuns(nodeId?: string): Promise<Run[]> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const condition =
+        nodeId === undefined
+          ? eq(runs.status, "running")
+          : and(eq(runs.status, "running"), eq(runs.nodeId, nodeId));
+      const updated = await transaction
+        .update(runs)
+        .set({
+          status: "failed",
+          errorMessage: "Execution was interrupted before the Server received a result.",
+          updatedAt: now,
+        })
+        .where(condition)
+        .returning();
+      if (updated.length === 0) return [];
+      await transaction.insert(runEvents).values(
+        updated.map((run) => ({
+          id: randomUUID(),
+          runId: run.id,
+          channelId: run.channelId,
+          botId: run.botId,
+          nodeId: nodeId ?? run.nodeId,
+          type: "RUN_FAILED",
+          payload: { reason: nodeId === undefined ? "server-recovery" : "node-unavailable" },
+        })),
+      );
+      return updated.map(toRun);
     });
   }
 
@@ -492,11 +677,49 @@ function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
       : { sourceMessageId: row.sourceMessageId }),
     ...(row.nodeId === null || row.nodeId === undefined ? {} : { nodeId: row.nodeId }),
     executionProfile: row.executionProfile as Run["executionProfile"],
+    instruction: row.instruction ?? row.title,
     title: row.title,
     status: row.status as Run["status"],
+    ...(row.resultSummary === null || row.resultSummary === undefined
+      ? {}
+      : { resultSummary: row.resultSummary }),
+    ...(row.errorMessage === null || row.errorMessage === undefined
+      ? {}
+      : { errorMessage: row.errorMessage }),
     createdAt: (row.createdAt ?? new Date()).toISOString(),
     updatedAt: (row.updatedAt ?? new Date()).toISOString(),
   };
+}
+
+function toArtifact(row: typeof artifactsTable.$inferSelect): Artifact {
+  const metadata = asRecord(row.metadata);
+  return {
+    id: row.id,
+    runId: row.runId,
+    name: row.name,
+    mediaType: row.mediaType,
+    sha256: row.sha256,
+    sizeBytes: typeof metadata.sizeBytes === "number" ? metadata.sizeBytes : 0,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toArtifactRecord(row: typeof artifactsTable.$inferSelect): ArtifactRecord {
+  return { ...toArtifact(row), storageKey: row.storageKey, metadata: asRecord(row.metadata) };
+}
+
+function stripArtifactRecord({
+  storageKey: _storageKey,
+  metadata: _metadata,
+  ...artifact
+}: ArtifactRecord): Artifact {
+  return artifact;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function taskTitle(content: string): string {

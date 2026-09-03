@@ -55,10 +55,23 @@ export interface Run {
   sourceMessageId?: EntityId;
   nodeId?: EntityId;
   executionProfile: Bot["computerProfile"];
+  instruction: string;
   title: string;
   status: RunStatus;
+  resultSummary?: string;
+  errorMessage?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Artifact {
+  id: EntityId;
+  runId: EntityId;
+  name: string;
+  mediaType: string;
+  sha256: string;
+  sizeBytes: number;
+  createdAt: string;
 }
 
 export type MessageAuthorType = "human" | "bot" | "system";
@@ -105,6 +118,7 @@ export type ChannelRealtimeEvent =
       type: "run.updated";
       channelId: EntityId;
       run: Run;
+      artifacts?: Artifact[];
     };
 
 export interface BootstrapSummary {
@@ -123,6 +137,7 @@ export interface WorkspaceSnapshot {
   bots: Bot[];
   nodes: ExecutionNode[];
   runs: Run[];
+  artifacts: Artifact[];
   counts: BootstrapSummary["counts"];
 }
 

@@ -116,8 +116,11 @@ export const runs = pgTable(
     }),
     nodeId: text("node_id").references(() => nodes.id),
     executionProfile: text("execution_profile").notNull().default("none"),
+    instruction: text("instruction").notNull(),
     title: text("title").notNull(),
     status: text("status").notNull().default("queued"),
+    resultSummary: text("result_summary"),
+    errorMessage: text("error_message"),
     ...timestamps,
   },
   (table) => [
@@ -135,6 +138,7 @@ export const runs = pgTable(
       .on(table.sourceMessageId)
       .where(sql`${table.sourceMessageId} IS NOT NULL`),
     check("runs_title_not_blank", sql`length(btrim(${table.title})) > 0`),
+    check("runs_instruction_not_blank", sql`length(btrim(${table.instruction})) > 0`),
     check(
       "runs_status_valid",
       sql`${table.status} IN ('queued', 'assigned', 'running', 'waiting_approval', 'blocked', 'completed', 'failed', 'cancelled')`,
@@ -219,5 +223,10 @@ export const artifacts = pgTable(
     metadata: jsonb("metadata").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("artifacts_run_idx").on(table.runId)],
+  (table) => [
+    index("artifacts_run_idx").on(table.runId),
+    uniqueIndex("artifacts_storage_key_idx").on(table.storageKey),
+    check("artifacts_name_not_blank", sql`length(btrim(${table.name})) > 0`),
+    check("artifacts_sha256_valid", sql`length(${table.sha256}) = 64`),
+  ],
 );
