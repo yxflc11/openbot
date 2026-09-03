@@ -56,10 +56,10 @@ and back. The table deliberately separates working code from planned capabilitie
 
 | Area | Available now | Next step |
 | --- | --- | --- |
-| Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, automated recovery tooling, and multi-user trust |
+| Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, Employee memory lifecycle, and audit events | Durable routines, memory retrieval/retention, automated recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
-| Employee profile | Seven-view profile, safe template export, quarantined import inspection, reviewed activation with a fresh identity and immutable receipt, Owner-reviewed skill metadata, and experimental Owner-managed DSSE signing | Native keyring/KMS and public trust adapters, executable Agent Skills bundles, memory controls, selective cloning, registry distribution, and ownership transfer |
+| Employee profile | Seven-view profile, Owner-reviewed skill metadata, Owner-managed typed memory with revision checks and content-free audit, safe template export, quarantined import, reviewed fresh-identity activation, and experimental DSSE signing | Memory retrieval/retention and autonomous proposals, native keyring/KMS and public trust adapters, executable Agent Skills bundles, selective cloning, registry distribution, and ownership transfer |
 | Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Proof-of-possession identity, mTLS, rotation, replay protection, native keyring adapters, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
@@ -74,8 +74,10 @@ and back. The table deliberately separates working code from planned capabilitie
 - Node enrollment is individually revocable, but the current credential is still a bearer secret
   stored in an Owner-only file. It is not yet proof-of-possession identity, mTLS, or native-keyring
   storage and must stay behind WSS and a trusted private network.
-- It does not yet propose or execute learned skills autonomously, edit memory, selectively clone
-  employee experience, distribute packages through a registry, or transfer ownership.
+- It does not let models write or retrieve long-term memory autonomously, enforce retention
+  schedules, selectively clone employee experience, distribute packages through a registry, or
+  transfer ownership. The authenticated Owner can manually add, edit, and delete bounded memory;
+  memory remains excluded from every v1 Employee package.
 - Employee export remains unsigned by default. An operator can enable experimental DSSE signing
   with an encrypted filesystem keyring, offline rotation/revocation, and explicit public-key trust;
   import activation still requires an exact preview digest, explicit Owner review, a fresh local

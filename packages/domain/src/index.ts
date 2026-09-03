@@ -168,8 +168,60 @@ export interface EmployeeMemory {
   sensitivity: EmployeeMemorySensitivity;
   portability: EmployeeMemoryPortability;
   provenance: Record<string, unknown>;
+  revision: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type EmployeeMemoryChangedField =
+  | "kind"
+  | "title"
+  | "content"
+  | "sensitivity"
+  | "portability";
+
+/** Content-free, append-only audit metadata for one Owner memory mutation. */
+export interface EmployeeMemoryEvent {
+  id: EntityId;
+  botId: EntityId;
+  memoryId: EntityId;
+  action: "created" | "updated" | "deleted";
+  revision: number;
+  changedFields: EmployeeMemoryChangedField[];
+  actor: "owner";
+  createdAt: string;
+}
+
+export interface CreateEmployeeMemoryInput {
+  kind: EmployeeMemoryKind;
+  title: string;
+  content: string;
+  sensitivity: EmployeeMemorySensitivity;
+  portability: Exclude<EmployeeMemoryPortability, "included">;
+}
+
+export interface UpdateEmployeeMemoryInput {
+  expectedRevision: number;
+  kind?: EmployeeMemoryKind | undefined;
+  title?: string | undefined;
+  content?: string | undefined;
+  sensitivity?: EmployeeMemorySensitivity | undefined;
+  portability?: Exclude<EmployeeMemoryPortability, "included"> | undefined;
+}
+
+export interface DeleteEmployeeMemoryInput {
+  expectedRevision: number;
+  ownerReviewed: true;
+}
+
+export interface EmployeeMemoryMutationResult {
+  memory: EmployeeMemory;
+  event: EmployeeMemoryEvent;
+}
+
+export interface EmployeeMemoryDeletionResult {
+  memoryId: EntityId;
+  event: EmployeeMemoryEvent;
 }
 
 /** A safe runtime explanation derived from structured progress, not private chain-of-thought. */
@@ -182,6 +234,7 @@ export interface EmployeeProfile {
   evolution: EmployeeEvolutionEvent[];
   skills: EmployeeSkill[];
   memories: EmployeeMemory[];
+  memoryEvents: EmployeeMemoryEvent[];
   records: {
     runs: Run[];
     approvals: Approval[];

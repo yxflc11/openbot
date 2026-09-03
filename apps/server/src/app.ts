@@ -13,14 +13,17 @@ import {
   approvalDecisionInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
+  createEmployeeMemoryInputSchema,
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
   createNodeEnrollmentTokenInputSchema,
+  deleteEmployeeMemoryInputSchema,
   dsseEnvelopeSchema,
   exchangeNodeEnrollmentInputSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
   unsignedEmployeeTemplatePackageSchema,
+  updateEmployeeMemoryInputSchema,
   updateEmployeeSkillStateInputSchema,
   type DsseEnvelope,
   type EmployeeTemplatePackage,
@@ -113,7 +116,7 @@ export function createApp(dependencies: AppDependencies) {
     cors({
       origin: dependencies.allowedOrigins,
       allowHeaders: ["Content-Type"],
-      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       credentials: true,
     }),
   );
@@ -497,6 +500,32 @@ export function createApp(dependencies: AppDependencies) {
     const result = await dependencies.store.updateEmployeeSkillState(
       context.req.param("botId"),
       context.req.param("skillId"),
+      input,
+    );
+    return context.json(result);
+  });
+
+  app.post("/api/v1/bots/:botId/memories", async (context) => {
+    const input = await parseRequest(context.req.raw, createEmployeeMemoryInputSchema);
+    const result = await dependencies.store.createEmployeeMemory(context.req.param("botId"), input);
+    return context.json(result, 201);
+  });
+
+  app.patch("/api/v1/bots/:botId/memories/:memoryId", async (context) => {
+    const input = await parseRequest(context.req.raw, updateEmployeeMemoryInputSchema);
+    const result = await dependencies.store.updateEmployeeMemory(
+      context.req.param("botId"),
+      context.req.param("memoryId"),
+      input,
+    );
+    return context.json(result);
+  });
+
+  app.delete("/api/v1/bots/:botId/memories/:memoryId", async (context) => {
+    const input = await parseRequest(context.req.raw, deleteEmployeeMemoryInputSchema);
+    const result = await dependencies.store.deleteEmployeeMemory(
+      context.req.param("botId"),
+      context.req.param("memoryId"),
       input,
     );
     return context.json(result);

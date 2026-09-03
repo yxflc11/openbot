@@ -205,6 +205,7 @@ export const employeeMemories = pgTable(
     sensitivity: text("sensitivity").notNull().default("internal"),
     portability: text("portability").notNull().default("owner-selectable"),
     provenance: jsonb("provenance").notNull().default({}),
+    revision: integer("revision").notNull().default(1),
     ...timestamps,
   },
   (table) => [
@@ -223,6 +224,33 @@ export const employeeMemories = pgTable(
     ),
     check("employee_memories_title_not_blank", sql`length(btrim(${table.title})) > 0`),
     check("employee_memories_content_not_blank", sql`length(btrim(${table.content})) > 0`),
+    check("employee_memories_revision_valid", sql`${table.revision} >= 1`),
+  ],
+);
+
+export const employeeMemoryEvents = pgTable(
+  "employee_memory_events",
+  {
+    id: text("id").primaryKey(),
+    botId: text("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    memoryId: text("memory_id").notNull(),
+    action: text("action").notNull(),
+    revision: integer("revision").notNull(),
+    changedFields: jsonb("changed_fields").notNull().default([]),
+    actor: text("actor").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("employee_memory_events_bot_time_idx").on(table.botId, table.createdAt),
+    index("employee_memory_events_memory_time_idx").on(table.memoryId, table.createdAt),
+    check(
+      "employee_memory_events_action_valid",
+      sql`${table.action} IN ('created', 'updated', 'deleted')`,
+    ),
+    check("employee_memory_events_revision_valid", sql`${table.revision} >= 1`),
+    check("employee_memory_events_actor_valid", sql`${table.actor} = 'owner'`),
   ],
 );
 

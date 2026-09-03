@@ -53,6 +53,7 @@ expansion until its upstream and license review is recorded.
 | OpenBot area | Researched source | License | Decision and current status |
 | --- | --- | --- | --- |
 | Employee evolution and learning graph | [NousResearch/hermes-agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d), especially `agent/learning_graph.py` and its skills/memory model | MIT | Adopt the product concepts: skills and memory are distinct, learned skills have provenance and usage evidence, and the profile visualizes their relationships. OpenBot's TypeScript/PostgreSQL implementation is local; no Hermes source has been copied. |
+| Owner-managed Employee memory | [Hermes Agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d), [Letta `0.16.7` / `f3332476`](https://github.com/letta-ai/letta/tree/f33324768950e6752f80d6c725873cc92d22f8b2), [Mem0 `ts-v3.0.5` / `75a37ec9`](https://github.com/mem0ai/mem0/tree/75a37ec93db7278e3bd9aaf2aa3d6e5139e6789d), and [LangMem `f8c7ebd6`](https://github.com/langchain-ai/langmem/tree/f8c7ebd6110c124a36995dab645a8cb0eb0b8210) | MIT; Apache-2.0; Apache-2.0; MIT | Adopt visible bounded mutation, manual editing, stable IDs/history, typed categories, and default-off automatic deletion. Reuse OpenBot's existing PostgreSQL/Zod/Hono/React stack and implement only revision-checked Owner commands plus content-free audit. No runtime or upstream source is incorporated. See [research evidence](research/owner-managed-employee-memory.md). |
 | Skill write review | [Hermes write-approval gate](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/tools/write_approval.py) | MIT | Adapt the pending-review behavior to Server-owned records: new skills are candidates and an authenticated Owner must explicitly verify, suspend, or revoke them. Full skill diffs and queue lifecycle remain planned. |
 | Portable skill format | [Agent Skills specification `69ef37e9`](https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379) and its `skills-ref` validator | Apache-2.0 code; CC-BY-4.0 docs | Adopt the standard rather than invent a skill bundle. Current metadata uses its name and description limits. Executable `SKILL.md` archives and official-validator integration are not implemented yet. |
 | Third-party skill safety | [OpenClaw `428fa8e0`](https://github.com/openclaw/openclaw/tree/428fa8e0d3dac835628f6ac6466bb65ce175b249), including quarantined/scanned skill installation guidance | MIT | Adopt default-untrusted import, inspection before activation, containment, and explicit grants. OpenBot imports Employee-package skills only as disabled candidates. |
@@ -89,7 +90,7 @@ named boundary until the missing review is completed.
 
 | Existing code boundary | Coverage | Audit result |
 | --- | --- | --- |
-| Employee domain, profile, evolution, skills, memory, and package primitives | Reviewed | Hermes, Agent Skills, OpenClaw, DSSE, Sigstore, in-toto, WAI-ARIA, and React Spectrum decisions are recorded. Evolution attribution is explicit in the root README and Employee specification. |
+| Employee domain, profile, evolution, skills, memory, and package primitives | Reviewed | Hermes, Letta, Mem0, LangMem, Agent Skills, OpenClaw, DSSE, Sigstore, in-toto, WAI-ARIA, and React Spectrum decisions are recorded. Evolution and memory lineage is explicit in the root README, Employee specification, ADR-0026, and the memory research record. |
 | Server browser sessions, Origin policy, realtime projection, file artifacts, and process shutdown | Reviewed | Hono/OWASP, Hono streaming, Node/Hono shutdown, `write-file-atomic`, and PNG decoder candidates are recorded. Accepted dispatcher work now drains before PostgreSQL closes; distributed login identity and full PNG normalization remain documented gaps. |
 | Node protocol, capability routing, liveness, configuration, and bootstrap identity | Reviewed | MCP/OCI conformance, `ws`, Kubernetes/Nomad liveness, SPIFFE/SPIRE, Tailscale/Headscale, Kubernetes/Smallstep bootstrap, Hono limits, atomic storage, and strict Zod input decisions are recorded. Per-Node enrollment and revocation are implemented; proof of possession remains planned. |
 | Provider SDK and current Docker browser adapter | Reviewed | CopilotKit/OpenBot `agent-computer`, Cua, MCP conformance, OCI evidence, and platform claim levels are recorded. Native Provider claims remain limited to their evidence. |
@@ -110,6 +111,9 @@ named boundary until the missing review is completed.
 - Concurrent creation and state transitions fail as conflicts instead of silently overwriting a
   review.
 - The current evidence snapshot is bounded; immutable evolution events retain the review trail.
+- Owner memory writes are bounded, revision checked, scoped to one Employee, and recorded in a
+  content-free audit. Credential-like values and private keys reuse the existing export scanner;
+  deletion removes the content while v1 packages continue to export zero memories.
 - Employee previews remain checksum-checked, strict-schema, read-only, and quarantined. Activation
   repeats those checks, binds the reviewed digest, requires explicit unsigned-risk acceptance,
   creates a fresh identity, and stores an immutable idempotent receipt.
@@ -163,6 +167,8 @@ named boundary until the missing review is completed.
   standards-compliant skill directory.
 - The skill proposal queue needs expiry/supersession, notification, and full-diff review before
   autonomous learning is enabled.
+- Memory retrieval, retention scheduling, autonomous write proposals, prompt-injection defenses,
+  version restoration, and selective export require separate reviews before they can be enabled.
 - A skill archive needs path-traversal, symlink, decompression-size, executable-content, license,
   provenance, signature, and static-analysis checks.
 - The official `skills-ref` validator requires Python 3.11+. Integration should run in an isolated

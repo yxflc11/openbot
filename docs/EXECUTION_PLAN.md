@@ -26,6 +26,8 @@ The development line already contains:
   Worker Host compatibility checks.
 - WAI-ARIA-based employee profile tabs and native modal focus behavior for create/import/export
   flows, with desktop and phone browser evidence.
+- Owner-only bounded memory create/edit/delete, optimistic revisions, credential-value blocking,
+  and a content-free lifecycle audit. Memory remains absent from v1 Employee packages.
 
 The current browser Provider is still read-only. Native desktop control and production Node trust
 are not part of this baseline.
@@ -49,7 +51,7 @@ tests, hardening, or the next slice.
 | 4:30–5:45 | Complete | Import inspection and quarantine | Upload/parse boundary, schema and checksum validation, compatibility report, and review-only preview | Invalid/unknown fields fail closed; no Bot, skill, memory, or authority is created during preview |
 | 5:45–6:45 | Complete | Contributor skill interfaces | Minimal versioned skill create/verify/suspend APIs with immutable evolution events | Verification requires evidence or explicit Owner review; skill state never changes host policy |
 | 6:45–7:45 | Complete | Cross-platform conformance hardening | Provider/Node fixture matrix, routing negatives, reconnect tests, and documented support levels | Exact capability majors are checked at both ends; unsupported platforms and versions remain blocked without fallback |
-| 7:45–8:30 | Active | Integration and contribution handoff | Full checks, API docs, roadmap, issue-ready follow-ups, accessibility pass, and small reviewable commits | `npm run check` passes; docs distinguish implemented, experimental, and planned behavior |
+| 7:45–8:30 | Active | Memory safety and contribution handoff | Owner memory lifecycle, full checks, API/docs/roadmap updates, issue-ready follow-ups, and small reviewable commits | Stale or secret-bearing writes fail closed; deletion retains no content; `npm run check` passes; docs distinguish implemented, experimental, and planned behavior |
 
 ## Execution rules
 
@@ -75,7 +77,7 @@ tests, hardening, or the next slice.
 The next order is:
 
 1. package-family updates and registry distribution;
-2. memory retention, deletion, and selective portable memory;
+2. memory retrieval, retention, autonomous proposal review, redaction, and selective portable memory;
 3. single-use capability leases after approval;
 4. Windows, macOS, and Linux native Provider conformance;
 5. native keyring/KMS and public publisher-trust adapters;

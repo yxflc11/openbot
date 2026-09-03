@@ -385,10 +385,12 @@ function createProfile(): EmployeeProfile {
         sensitivity: "restricted",
         portability: "never",
         provenance: { localPath: "/Users/owner/private.txt" },
+        revision: 1,
         createdAt: timestamp,
         updatedAt: timestamp,
       },
     ],
+    memoryEvents: [],
     records: {
       runs: [],
       approvals: [

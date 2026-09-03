@@ -36,6 +36,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | OpenBot 范围 | 调研来源 | 许可证 | 决定与现状 |
 | --- | --- | --- | --- |
 | 员工进化与学习图谱 | [NousResearch/hermes-agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d)，重点参考 `agent/learning_graph.py` 的技能/记忆模型 | MIT | 采用“技能与记忆分离、学习技能保留来源和使用证据、个人页展示关系”的产品思想。OpenBot 的 TypeScript/PostgreSQL 实现为本地代码，没有复制 Hermes 源码。 |
+| Owner 管理员工记忆 | [Hermes Agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d)、[Letta `0.16.7` / `f3332476`](https://github.com/letta-ai/letta/tree/f33324768950e6752f80d6c725873cc92d22f8b2)、[Mem0 `ts-v3.0.5` / `75a37ec9`](https://github.com/mem0ai/mem0/tree/75a37ec93db7278e3bd9aaf2aa3d6e5139e6789d) 与 [LangMem `f8c7ebd6`](https://github.com/langchain-ai/langmem/tree/f8c7ebd6110c124a36995dab645a8cb0eb0b8210) | MIT；Apache-2.0；Apache-2.0；MIT | 采用可见有界变化、人工编辑、稳定 ID/历史、分类记忆和默认关闭自动删除。复用 OpenBot 现有 PostgreSQL/Zod/Hono/React，只补 revision 检查的 Owner 命令与无内容审计；不引入上游运行时或源码。见[调研证据](research/owner-managed-employee-memory.md)。 |
 | 技能写入审核 | [Hermes write-approval gate](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/tools/write_approval.py) | MIT | 将待审核语义适配为 Server 记录：新技能只能是候选，登录 Owner 才能验证、暂停或撤销。完整 diff 和队列生命周期仍待实现。 |
 | 可迁移技能格式 | [Agent Skills 规范 `69ef37e9`](https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379) 与 `skills-ref` | 代码 Apache-2.0；文档 CC-BY-4.0 | 采用开放标准，不自创技能包。当前元数据已采用其名称和简介限制；尚未实现可执行 `SKILL.md` 归档和官方校验器接入。 |
 | 第三方技能安全 | [OpenClaw `428fa8e0`](https://github.com/openclaw/openclaw/tree/428fa8e0d3dac835628f6ac6466bb65ce175b249) 的技能隔离与扫描说明 | MIT | 采用第三方内容默认不可信、激活前检查、路径约束和明确授权。员工包技能只会作为禁用候选导入。 |
@@ -71,7 +72,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 
 | 现有代码边界 | 覆盖状态 | 审查结果 |
 | --- | --- | --- |
-| 员工领域、个人页、进化、技能、记忆和员工包原语 | 已审查 | 已记录 Hermes、Agent Skills、OpenClaw、DSSE、Sigstore、in-toto、WAI-ARIA 与 React Spectrum；README 和员工规范明确标注进化来源。 |
+| 员工领域、个人页、进化、技能、记忆和员工包原语 | 已审查 | 已记录 Hermes、Letta、Mem0、LangMem、Agent Skills、OpenClaw、DSSE、Sigstore、in-toto、WAI-ARIA 与 React Spectrum；README、员工规范、ADR-0026 和记忆调研记录明确标注来源。 |
 | Server 浏览器会话、Origin、实时投影、文件产物和进程停机 | 已审查 | 已记录 Hono/OWASP、Hono streaming、Node/Hono 停机、`write-file-atomic` 与 PNG 解码候选。已接受的调度工作会在 PostgreSQL 关闭前排空；分布式登录身份和完整 PNG 归一化仍是公开缺口。 |
 | Node 协议、能力路由、存活、配置和启动身份 | 已审查 | 已记录 MCP/OCI conformance、`ws`、Kubernetes/Nomad、SPIFFE/SPIRE、Tailscale/Headscale、Kubernetes/Smallstep、Hono 限制、原子存储和严格 Zod 输入。单 Node 登记与吊销已完成；持有证明仍待实现。 |
 | Provider SDK 与当前 Docker 浏览器适配器 | 已审查 | 已记录 CopilotKit/OpenBot `agent-computer`、Cua、MCP conformance、OCI 和平台声明等级；原生 Provider 只能按证据宣称。 |
@@ -88,6 +89,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - 验证必须由已登录 Owner 明确审核，产生只追加进化事件，且不能修改工作主机能力、策略或授权。
 - 并发创建和状态变更以冲突失败，不会静默覆盖审核。
 - 当前证据快照有界，完整审核原因继续保存在不可变进化事件中。
+- Owner 记忆写入有界、检查 revision、限制在单个员工内并产生无内容审计；凭据样文本和私钥复用
+  现有导出扫描器，删除会移除正文，而 v1 员工包继续固定导出零条记忆。
 - 员工预览继续执行校验和、严格 schema、只读和隔离规则。激活会重复检查、绑定人工审核过的摘要、
   要求单独接受未签名风险、生成新身份并保存不可变幂等收据。
 - 技能来源属于员工赋值而不是共享技能定义，因此复用完全相同的定义时，导入赋值仍会明确显示为
@@ -126,6 +129,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 
 - 当前技能记录只描述员工能力，尚未保存或执行符合开放规范的完整技能目录。
 - 自动学习前必须增加提案过期/替代、通知和完整 diff 审核。
+- 记忆检索、定时保留、自主写入提案、提示注入防护、版本恢复和选择性导出都必须先单独审查。
 - 技能归档必须检查路径穿越、符号链接、解压大小、可执行内容、许可证、来源、签名和静态风险。
 - 官方 `skills-ref` 需要 Python 3.11+，应在隔离检查 Worker 中运行，而不是放进权威 Server 进程。
 - Provider 仍需独立场景 runner、隔离执行测试和可重复真实设备 CI，平台才可标记为

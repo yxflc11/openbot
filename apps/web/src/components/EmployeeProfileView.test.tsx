@@ -1,7 +1,11 @@
 import type { EmployeeProfile } from "@openbot/domain";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { EmployeeProfileView, profileTabForNavigationKey } from "./EmployeeProfileView";
+import {
+  EmployeeMemoryPanel,
+  EmployeeProfileView,
+  profileTabForNavigationKey,
+} from "./EmployeeProfileView";
 
 const profile: EmployeeProfile = {
   employee: {
@@ -15,6 +19,7 @@ const profile: EmployeeProfile = {
   evolution: [],
   skills: [],
   memories: [],
+  memoryEvents: [],
   records: { runs: [], approvals: [], artifacts: [], decisions: [] },
   statistics: { totalRuns: 0, completedRuns: 0, failedRuns: 0, verifiedSkills: 0 },
   configuration: { executionProfile: "coder", portabilityFormat: "openbot.employee/v1" },
@@ -30,6 +35,7 @@ describe("EmployeeProfileView", () => {
         onRetry={() => undefined}
         onAssign={() => undefined}
         onExport={() => undefined}
+        onProfileChanged={async () => undefined}
       />,
     );
 
@@ -47,5 +53,15 @@ describe("EmployeeProfileView", () => {
     expect(profileTabForNavigationKey("memory", "Home")).toBe("overview");
     expect(profileTabForNavigationKey("memory", "End")).toBe("configuration");
     expect(profileTabForNavigationKey("memory", "ArrowDown")).toBeUndefined();
+  });
+
+  it("makes Owner memory controls and the no-transfer boundary explicit", () => {
+    const html = renderToStaticMarkup(
+      <EmployeeMemoryPanel profile={profile} onProfileChanged={async () => undefined} />,
+    );
+
+    expect(html).toContain("添加记忆");
+    expect(html).toContain("模型不能直接写入");
+    expect(html).toContain("不会进入当前员工模板");
   });
 });

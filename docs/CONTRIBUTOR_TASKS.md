@@ -75,6 +75,19 @@ claim at the lowest level proven by tests.
 - **Preserve:** fresh Employee id; imported skills disabled; no memory or Worker Host binding;
   idempotent exact replay; changed or duplicate activation fails closed.
 
+## Delivered baseline: Owner-managed Employee memory
+
+- **Delivered:** bounded Owner-only create/edit/delete, optimistic revisions, credential-value
+  blocking, physical content deletion, content-free lifecycle audit, and an accessible profile
+  editor. Every v1 Employee package still contains zero memories.
+- **Start in:** `apps/server`, `apps/web`, `packages/protocol`, `packages/db`, and ADR-0026.
+- **Research baseline:** Hermes, Letta, Mem0, and LangMem; see
+  `docs/research/owner-managed-employee-memory.md`.
+- **Remaining contribution:** retrieval, retention, autonomous proposal review, prompt-injection
+  defenses, version restoration, redaction, and selective export.
+- **Preserve:** the Server is authoritative; models and Worker Hosts cannot write Owner records;
+  secrets are references only; audit never retains titles, content, or content hashes.
+
 ## Advanced: proof-of-possession Node identity
 
 - **Outcome:** replace the current individually revocable bearer credential with a rotatable,

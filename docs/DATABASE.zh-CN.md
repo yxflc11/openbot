@@ -5,6 +5,10 @@
 OpenBot 把频道、员工、Run、审批、审计记录、Session 和 Artifact 元数据保存在 PostgreSQL；
 Artifact 原始文件位于独立对象目录。可用的恢复集必须同时包含两者。
 
+Migration `0015_employee_memory_lifecycle.sql` 为员工记忆增加乐观 revision 与无内容生命周期
+审计。删除记忆会移除标题和正文所在记录，审计只保留员工 ID、记忆 ID、动作、revision、变化
+字段、操作者和时间。备份仍包含其他未删除私人记忆，保护等级必须与凭据相同。
+
 ## Migration 契约
 
 - 不得修改已经应用的 migration；只能新增带序号的 SQL 文件和 journal 条目。

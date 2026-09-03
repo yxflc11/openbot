@@ -8,14 +8,19 @@ import type {
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeMemoryInput,
   CreateEmployeeSkillInput,
   CreateMessageInput,
+  DeleteEmployeeMemoryInput,
   EmployeeDecisionTrace,
   EmployeeEvidenceReference,
   EmployeeEvolutionEvent,
   EmployeeImportActivationResult,
   EmployeeImportReceipt,
   EmployeeMemory,
+  EmployeeMemoryDeletionResult,
+  EmployeeMemoryEvent,
+  EmployeeMemoryMutationResult,
   EmployeeProfile,
   EmployeeSkill,
   EmployeeSkillMutationResult,
@@ -24,6 +29,7 @@ import type {
   Run,
   RunProgress,
   SubmitTaskResult,
+  UpdateEmployeeMemoryInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
 import {
@@ -34,6 +40,7 @@ import {
   channels,
   employeeEvolutionEvents,
   employeeImportReceipts,
+  employeeMemoryEvents,
   employeeMemories,
   employeeSkills,
   messages,
@@ -58,6 +65,7 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import { selectChannelAssignee } from "./task-routing.js";
+import { scanSensitiveText } from "./sensitive-content.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
 
@@ -123,6 +131,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       skillRows,
       dependencyRows,
       memoryRows,
+      memoryEventRows,
       runRows,
       approvalRows,
       artifactRows,
@@ -155,6 +164,12 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         .where(eq(employeeMemories.botId, botId))
         .orderBy(desc(employeeMemories.updatedAt))
         .limit(100),
+      this.#db
+        .select()
+        .from(employeeMemoryEvents)
+        .where(eq(employeeMemoryEvents.botId, botId))
+        .orderBy(desc(employeeMemoryEvents.createdAt))
+        .limit(200),
       this.#db
         .select()
         .from(runs)
@@ -200,6 +215,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       evolution: evolutionRows.map(toEmployeeEvolutionEvent),
       skills: employeeSkillsProjection,
       memories: memoryRows.map(toEmployeeMemory),
+      memoryEvents: memoryEventRows.map(toEmployeeMemoryEvent),
       records: {
         runs: employeeRuns,
         approvals: approvalRows.map((row) => toApproval(row.approval, row.channelId, botId)),
@@ -861,6 +877,185 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         skill: toEmployeeSkill(record.skill, assignment, dependencyIds),
         evolution: toEmployeeEvolutionEvent(evolution),
       };
+    });
+  }
+
+  async createEmployeeMemory(
+    botId: string,
+    input: CreateEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryMutationResult> {
+    const normalizedInput = normalizeEmployeeMemory(input);
+    validateEmployeeMemoryPolicy(normalizedInput);
+    return this.#db.transaction(async (transaction) => {
+      const [bot] = await transaction
+        .select({ id: bots.id })
+        .from(bots)
+        .where(eq(bots.id, botId))
+        .limit(1);
+      if (bot === undefined) throw new StoreNotFoundError("Bot not found.");
+
+      const now = new Date();
+      const memoryId = randomUUID();
+      const [memory] = await transaction
+        .insert(employeeMemories)
+        .values({
+          id: memoryId,
+          botId,
+          kind: normalizedInput.kind,
+          title: normalizedInput.title,
+          content: normalizedInput.content,
+          sensitivity: normalizedInput.sensitivity,
+          portability: normalizedInput.portability,
+          provenance: { source: "owner", actor: "owner" },
+          revision: 1,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+      if (memory === undefined) throw new Error("Employee memory was not created.");
+
+      const [event] = await transaction
+        .insert(employeeMemoryEvents)
+        .values({
+          id: randomUUID(),
+          botId,
+          memoryId,
+          action: "created",
+          revision: 1,
+          changedFields: ["kind", "title", "content", "sensitivity", "portability"],
+          actor: "owner",
+          createdAt: now,
+        })
+        .returning();
+      if (event === undefined) throw new Error("Employee memory event was not created.");
+
+      return { memory: toEmployeeMemory(memory), event: toEmployeeMemoryEvent(event) };
+    });
+  }
+
+  async updateEmployeeMemory(
+    botId: string,
+    memoryId: string,
+    input: UpdateEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryMutationResult> {
+    return this.#db.transaction(async (transaction) => {
+      const [current] = await transaction
+        .select()
+        .from(employeeMemories)
+        .where(and(eq(employeeMemories.botId, botId), eq(employeeMemories.id, memoryId)))
+        .limit(1);
+      if (current === undefined) throw new StoreNotFoundError("Employee memory not found.");
+      if (current.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The memory changed while it was being edited. Reload and review the current value.",
+        );
+      }
+
+      const next = normalizeEmployeeMemory({
+        kind: input.kind ?? (current.kind as EmployeeMemory["kind"]),
+        title: input.title ?? current.title,
+        content: input.content ?? current.content,
+        sensitivity: input.sensitivity ?? (current.sensitivity as EmployeeMemory["sensitivity"]),
+        portability: input.portability ?? (current.portability as EmployeeMemory["portability"]),
+      });
+      validateEmployeeMemoryPolicy(next);
+      const changedFields = employeeMemoryChangedFields(current, next);
+      if (changedFields.length === 0) {
+        throw new StoreValidationError("At least one memory field must change.");
+      }
+
+      const nextRevision = current.revision + 1;
+      const now = new Date();
+      const [memory] = await transaction
+        .update(employeeMemories)
+        .set({ ...next, revision: nextRevision, updatedAt: now })
+        .where(
+          and(
+            eq(employeeMemories.botId, botId),
+            eq(employeeMemories.id, memoryId),
+            eq(employeeMemories.revision, input.expectedRevision),
+          ),
+        )
+        .returning();
+      if (memory === undefined) {
+        throw new StoreConflictError(
+          "The memory changed while it was being edited. Reload and review the current value.",
+        );
+      }
+
+      const [event] = await transaction
+        .insert(employeeMemoryEvents)
+        .values({
+          id: randomUUID(),
+          botId,
+          memoryId,
+          action: "updated",
+          revision: nextRevision,
+          changedFields,
+          actor: "owner",
+          createdAt: now,
+        })
+        .returning();
+      if (event === undefined) throw new Error("Employee memory event was not created.");
+
+      return { memory: toEmployeeMemory(memory), event: toEmployeeMemoryEvent(event) };
+    });
+  }
+
+  async deleteEmployeeMemory(
+    botId: string,
+    memoryId: string,
+    input: DeleteEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryDeletionResult> {
+    if (input.ownerReviewed !== true) {
+      throw new StoreValidationError("Memory deletion requires explicit Owner review.");
+    }
+    return this.#db.transaction(async (transaction) => {
+      const [current] = await transaction
+        .select({ revision: employeeMemories.revision })
+        .from(employeeMemories)
+        .where(and(eq(employeeMemories.botId, botId), eq(employeeMemories.id, memoryId)))
+        .limit(1);
+      if (current === undefined) throw new StoreNotFoundError("Employee memory not found.");
+      if (current.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The memory changed before deletion. Reload and review the current value.",
+        );
+      }
+
+      const deleted = await transaction
+        .delete(employeeMemories)
+        .where(
+          and(
+            eq(employeeMemories.botId, botId),
+            eq(employeeMemories.id, memoryId),
+            eq(employeeMemories.revision, input.expectedRevision),
+          ),
+        )
+        .returning({ id: employeeMemories.id });
+      if (deleted.length === 0) {
+        throw new StoreConflictError(
+          "The memory changed before deletion. Reload and review the current value.",
+        );
+      }
+
+      const now = new Date();
+      const [event] = await transaction
+        .insert(employeeMemoryEvents)
+        .values({
+          id: randomUUID(),
+          botId,
+          memoryId,
+          action: "deleted",
+          revision: current.revision + 1,
+          changedFields: [],
+          actor: "owner",
+          createdAt: now,
+        })
+        .returning();
+      if (event === undefined) throw new Error("Employee memory event was not created.");
+
+      return { memoryId, event: toEmployeeMemoryEvent(event) };
     });
   }
 
@@ -1704,9 +1899,77 @@ function toEmployeeMemory(row: typeof employeeMemories.$inferSelect): EmployeeMe
     sensitivity: row.sensitivity as EmployeeMemory["sensitivity"],
     portability: row.portability as EmployeeMemory["portability"],
     provenance: asRecord(row.provenance),
+    revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function toEmployeeMemoryEvent(row: typeof employeeMemoryEvents.$inferSelect): EmployeeMemoryEvent {
+  return {
+    id: row.id,
+    botId: row.botId,
+    memoryId: row.memoryId,
+    action: row.action as EmployeeMemoryEvent["action"],
+    revision: row.revision,
+    changedFields: toStringArray(row.changedFields).filter(
+      (field): field is EmployeeMemoryEvent["changedFields"][number] =>
+        ["kind", "title", "content", "sensitivity", "portability"].includes(field),
+    ),
+    actor: "owner",
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function employeeMemoryChangedFields(
+  current: typeof employeeMemories.$inferSelect,
+  next: Pick<EmployeeMemory, "kind" | "title" | "content" | "sensitivity" | "portability">,
+): EmployeeMemoryEvent["changedFields"] {
+  const fields: EmployeeMemoryEvent["changedFields"] = [];
+  if (current.kind !== next.kind) fields.push("kind");
+  if (current.title !== next.title) fields.push("title");
+  if (current.content !== next.content) fields.push("content");
+  if (current.sensitivity !== next.sensitivity) fields.push("sensitivity");
+  if (current.portability !== next.portability) fields.push("portability");
+  return fields;
+}
+
+function validateEmployeeMemoryPolicy(
+  memory: Pick<EmployeeMemory, "kind" | "title" | "content" | "sensitivity" | "portability">,
+): void {
+  if (memory.title.length === 0 || memory.title.length > 160) {
+    throw new StoreValidationError("Memory title must contain between 1 and 160 characters.");
+  }
+  if (memory.content.length === 0 || memory.content.length > 8000) {
+    throw new StoreValidationError("Memory content must contain between 1 and 8000 characters.");
+  }
+  if (memory.portability === "included") {
+    throw new StoreValidationError("Memory inclusion is not supported by Employee package v1.");
+  }
+  if (
+    memory.kind === "secret-reference" &&
+    (memory.sensitivity !== "restricted" || memory.portability !== "never")
+  ) {
+    throw new StoreValidationError(
+      "Secret references must use restricted sensitivity and never be portable.",
+    );
+  }
+
+  const sensitiveFindings = [
+    ...scanSensitiveText(memory.title, "title", { portable: false }),
+    ...scanSensitiveText(memory.content, "content", { portable: false }),
+  ];
+  if (sensitiveFindings.length > 0) {
+    throw new StoreValidationError(
+      "Memory cannot contain credential values or private keys. Store only a vault or secret reference.",
+    );
+  }
+}
+
+function normalizeEmployeeMemory<
+  T extends Pick<EmployeeMemory, "kind" | "title" | "content" | "sensitivity" | "portability">,
+>(memory: T): T {
+  return { ...memory, title: memory.title.trim(), content: memory.content.trim() };
 }
 
 function toEvidenceReferences(value: unknown): EmployeeEvidenceReference[] {

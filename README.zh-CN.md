@@ -49,10 +49,10 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 
 | 领域 | 当前已经可用 | 下一步 |
 | --- | --- | --- |
-| 控制平面 | 本地 Owner 认证、带漂移检查的 PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、自动恢复工具和多用户信任模型 |
+| 控制平面 | 本地 Owner 认证、带漂移检查的 PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物、员工记忆生命周期和审计事件 | 持久 routine、记忆检索/保留、自动恢复工具和多用户信任模型 |
 | 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、工作主机管理、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
-| 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查、生成新身份和不可变收据的审核后激活、Owner 审核技能元数据，以及实验性的 Owner 管理 DSSE 签名 | 系统钥匙串/KMS 和公开信任适配器、可执行 Agent Skills 包、记忆控制、选择性复制、注册表分发与所有权转移 |
+| 员工档案 | 七视图个人主页、Owner 审核技能元数据、带版本冲突检查和无内容审计的 Owner 管理分类记忆、安全模板导出、隔离导入、审核后生成新身份，以及实验性 DSSE 签名 | 记忆检索/保留和自主提案、系统钥匙串/KMS 与公开信任适配器、可执行 Agent Skills 包、选择性复制、注册表分发和所有权转移 |
 | Node 协议 | 出站 WebSocket 登记、Owner 界面配对/列表/吊销、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 持有证明身份、mTLS、轮换、防重放、系统密钥库适配和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
@@ -66,7 +66,8 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - 尚不提供连续远程桌面控制。
 - Node 已能独立登记与吊销，但当前凭证仍是保存在 Owner-only 文件里的 bearer secret；它还不是
   持有证明身份、mTLS 或系统密钥库存储，只能通过 WSS 与可信私网使用。
-- 尚不能自主提案或执行已学技能、编辑记忆、选择性复制员工经验、通过注册表分发员工包或转移所有权。
+- 模型尚不能自主写入或检索长期记忆，也没有保留期限执行、选择性复制员工经验、注册表分发或
+  所有权转移。登录 Owner 已可以手动新增、编辑和删除有界记忆；所有 v1 员工包仍排除记忆。
 - 员工导出默认仍不签名。运维者可以启用实验性的 DSSE 签名：私钥加密保存于文件密钥库，轮换与
   撤销只能通过离线命令执行，外部发布者公钥必须显式信任；导入激活仍须绑定预览摘要、由 Owner
   明确确认、生成新身份，并让全部技能保持候选禁用，且不带记忆或主机权限。
@@ -207,7 +208,7 @@ OpenBot 的目标是开放共建。你不需要先理解整个系统才能参与
 | 你的兴趣 | 建议入口 |
 | --- | --- |
 | 产品与移动端体验 | `apps/web`、[界面方案](docs/INTERFACE.md) |
-| API、持久化与实时通信 | `apps/server`、`packages/db`、[API 文档](docs/API.md) |
+| API、持久化与实时通信 | `apps/server`、`packages/db`、[API 文档](docs/API.zh-CN.md) |
 | Node 协议与可靠性 | `apps/node`、`packages/protocol`、[系统架构](docs/ARCHITECTURE.md) |
 | 电脑执行后端 | `providers/*`、`packages/provider-sdk` |
 | 策略与安全 | `packages/policy`、[威胁模型](docs/SECURITY.md) |
@@ -256,7 +257,7 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | 理解整个系统 | [系统架构](docs/ARCHITECTURE.md) |
 | 跟随当前实施顺序 | [目标模式执行计划](docs/EXECUTION_PLAN.zh-CN.md) |
 | 查看当前与未来交付 | [路线图](docs/ROADMAP.md) |
-| 基于 API 开发或集成 | [本地 API](docs/API.md) |
+| 基于 API 开发或集成 | [本地 API](docs/API.zh-CN.md) |
 | 审查安全保证 | [威胁模型](docs/SECURITY.md) |
 | 参与频道体验开发 | [界面方案](docs/INTERFACE.md) |
 | 审查或改进键盘与辅助技术行为 | [无障碍基线](docs/ACCESSIBILITY.zh-CN.md) |

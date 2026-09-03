@@ -425,6 +425,7 @@ function AuthenticatedWorkspace({
           onRetry={() => void loadEmployeeProfile(selectedEmployeeId)}
           onAssign={() => assignEmployee(selectedEmployeeId)}
           onExport={() => setEmployeeExportOpen(true)}
+          onProfileChanged={() => loadEmployeeProfile(selectedEmployeeId)}
         />
       ) : selectedChannel ? (
         <ChannelWorkspace

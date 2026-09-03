@@ -65,6 +65,17 @@
 - **必须保持：**新员工 ID、技能默认禁用、没有记忆或主机绑定、完全相同重试幂等，内容变化或
   重复激活 fail closed。
 
+## 已完成基线：Owner 管理员工记忆
+
+- **已交付：**仅 Owner 可用的有界新增/编辑/删除、乐观 revision、凭据值阻止、正文物理删除、
+  无内容生命周期审计和可访问员工主页编辑器；每个 v1 员工包仍固定包含零条记忆。
+- **路径：**`apps/server`、`apps/web`、`packages/protocol`、`packages/db` 与 ADR-0026。
+- **调研基线：**Hermes、Letta、Mem0 与 LangMem；见
+  `docs/research/owner-managed-employee-memory.md`。
+- **待共建：**检索、保留、自主提案审核、提示注入防护、版本恢复、脱敏和选择性导出。
+- **必须保持：**Server 是唯一权威；模型与工作主机不能写 Owner 记录；秘密只能保存引用；
+  审计永远不能保留标题、正文或正文哈希。
+
 ## 高级：每 Node 独立注册
 
 - **结果：**把当前可单独吊销的 bearer credential 升级为可轮换、具有持有证明的工作主机身份。

@@ -8,16 +8,21 @@ import type {
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeMemoryInput,
   CreateEmployeeSkillInput,
   CreateMessageInput,
+  DeleteEmployeeMemoryInput,
   EmployeeProfile,
   EmployeeImportActivationResult,
+  EmployeeMemoryDeletionResult,
+  EmployeeMemoryMutationResult,
   EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
   Run,
   RunProgress,
   SubmitTaskResult,
+  UpdateEmployeeMemoryInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
 import type { EmployeeTemplatePackage } from "@openbot/protocol";
@@ -86,6 +91,20 @@ export interface ControlPlaneStore {
     skillId: string,
     input: UpdateEmployeeSkillStateInput,
   ): Promise<EmployeeSkillMutationResult>;
+  createEmployeeMemory(
+    botId: string,
+    input: CreateEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryMutationResult>;
+  updateEmployeeMemory(
+    botId: string,
+    memoryId: string,
+    input: UpdateEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryMutationResult>;
+  deleteEmployeeMemory(
+    botId: string,
+    memoryId: string,
+    input: DeleteEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryDeletionResult>;
   createChannel(input: CreateChannelInput): Promise<Channel>;
   submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult>;
   assignRun(runId: string, nodeId: string): Promise<Run | undefined>;

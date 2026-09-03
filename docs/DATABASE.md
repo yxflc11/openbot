@@ -5,6 +5,11 @@
 OpenBot keeps channels, employees, Runs, approvals, audit records, sessions, and artifact metadata
 in PostgreSQL. Artifact bytes live in a separate object directory. A usable recovery set needs both.
 
+Migration `0015_employee_memory_lifecycle.sql` adds optimistic revisions to Employee memories and
+a content-free lifecycle audit. Deleting a memory removes its title and content row while the audit
+retains only the Employee id, memory id, action, revision, changed field names, actor, and time.
+Backups therefore contain private memory text and must receive the same protection as credentials.
+
 ## Migration contract
 
 - Never edit an applied migration. Add a new numbered SQL file and journal entry.

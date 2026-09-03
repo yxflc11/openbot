@@ -180,6 +180,7 @@ function createProfile(): EmployeeProfile {
     evolution: [],
     skills: [],
     memories: [],
+    memoryEvents: [],
     records: { runs: [], approvals: [], artifacts: [], decisions: [] },
     statistics: { totalRuns: 0, completedRuns: 0, failedRuns: 0, verifiedSkills: 0 },
     configuration: {

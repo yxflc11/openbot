@@ -109,8 +109,18 @@ Memory is split by purpose and portability:
 | Procedural | Reusable instructions and learned routines | Included when licensed and verified |
 | Secret reference | Credential or vault reference | Never |
 
-Every memory has provenance, scope, sensitivity, retention, and deletion metadata. Imported content
-is quarantined until the owner reviews its source and requested capabilities.
+Every memory has provenance, sensitivity, portability, and a monotonically increasing revision.
+The current Owner-only lifecycle provides bounded create, edit, and physical delete operations.
+Updates and deletion require the revision the Owner reviewed, so a concurrent change returns a
+conflict instead of being overwritten. Each successful mutation appends a content-free audit event
+containing only the memory id, action, revision, changed field names, actor, and time. Deleted text
+is not retained in that event.
+
+Memory titles and content pass the same credential/private-key scanner used by Employee export.
+`secret-reference` stores only an opaque vault reference, is always `restricted`, and is never
+portable. Machine-local paths remain valid in local-only memories. Models and Worker Hosts cannot
+call the Owner lifecycle, autonomous writes and retrieval are disabled, and
+`openbot.employee/v1` still exports zero memories.
 
 ## Copy, export, and transfer
 
@@ -149,7 +159,8 @@ The receiving owner must explicitly bind it to a Worker Host and grant a local p
 
 - The Server remains the source of truth for employee identity and history.
 - Worker Hosts receive only Run-scoped context and short-lived capabilities.
-- Owners can inspect, export, redact, and delete employee-owned data by category.
+- Owners can inspect, edit, and delete Employee memory; memory export and category-wide retention
+  policies remain planned.
 - Audit records needed to explain security decisions are retained separately from portable memory.
 - Shared skills preserve authorship, source URL, license, and integrity metadata.
 - Transfer and deletion are explicit lifecycle events and cannot be inferred from file download.
@@ -159,7 +170,8 @@ The receiving owner must explicitly bind it to a Worker Host and grant a local p
 1. **Profile foundation:** overview, configuration, Run history, and existing artifacts.
 2. **Evolution ledger:** append-only events generated from existing Bot, Run, and skill changes.
 3. **Skill registry:** versioned records and a read-only dependency graph.
-4. **Memory controls:** typed memories, retention, sensitivity, search, and deletion.
+4. **Memory controls:** Owner-managed typed memories, sensitivity, revision-safe editing, deletion,
+   and content-free audit are implemented; retention, search, and autonomous proposals are next.
 5. **Portable templates:** safe export/import without private memory or authority.
 6. **Selective clones:** owner-reviewed memories and local re-identification.
 7. **Authenticated transfer:** signed ownership handoff, source revocation, and import receipts.
@@ -191,6 +203,9 @@ Implemented on the `feat/cross-platform-employees` development line:
   and explicitly verify, suspend, or permanently revoke it while appending evolution evidence;
 - conditional state updates that reject concurrent review races and never change Worker Host
   capability claims or policy grants;
+- strict Owner-only memory create/update/delete commands with bounded fields, credential-value
+  blocking, optimistic revision checks, physical content deletion, and content-free lifecycle
+  events; the profile provides the corresponding accessible editor and explicit delete review;
 - a bounded DSSE envelope schema plus tested Ed25519 signing and trust-store verification over the
   exact bytes later parsed as the employee package; envelope key hints never make trust decisions.
 
@@ -199,10 +214,10 @@ supports encrypted Ed25519 private-key storage, explicit public-key trust, rotat
 signed DSSE export, verified quarantine preview, and reviewed activation. It does not provide global
 publisher identity, automatic revocation distribution, native keyring/KMS custody, registry
 installation, selective-memory cloning, or ownership transfer. See the
-[signing runbook](EMPLOYEE_SIGNING.md). The skill learning/verification workflow currently covers metadata review only;
-autonomous skill proposals, executable Agent Skills archives, full-diff review, memory editing and
-retention controls, selective cloning, and authenticated ownership transfer are not implemented
-yet. Their data and authority boundaries are defined here
+[signing runbook](EMPLOYEE_SIGNING.md). The skill learning/verification workflow currently covers
+metadata review only. Autonomous skill proposals, executable Agent Skills archives, full-diff
+review, memory retrieval and retention, autonomous memory proposals, selective cloning, and
+authenticated ownership transfer are not implemented yet. Their data and authority boundaries are defined here
 so contributors can add them without coupling employee knowledge to Worker Host access.
 
 ## Acceptance criteria

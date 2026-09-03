@@ -4,6 +4,7 @@ import {
   createBotInputSchema,
   createChannelInputSchema,
   createEmployeeSkillInputSchema,
+  createEmployeeMemoryInputSchema,
   createMessageInputSchema,
   createNodeEnrollmentTokenInputSchema,
   dsseEnvelopeSchema,
@@ -19,6 +20,8 @@ import {
   serverMessageSchema,
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeSkillStateInputSchema,
+  updateEmployeeMemoryInputSchema,
+  deleteEmployeeMemoryInputSchema,
 } from "./index.js";
 
 const nodeCredential = `obn_${"a".repeat(43)}`;
@@ -525,6 +528,56 @@ describe("employee skill commands", () => {
         reason: "Invalid confidence",
         ownerReviewed: true,
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe("employee memory commands", () => {
+  const memory = {
+    kind: "semantic",
+    title: "Preferred report format",
+    content: "Use a short summary before the evidence table.",
+    sensitivity: "internal",
+    portability: "owner-selectable",
+  } as const;
+
+  it("accepts bounded Owner memory fields and excludes direct package inclusion", () => {
+    expect(createEmployeeMemoryInputSchema.parse(memory)).toEqual(memory);
+    expect(
+      createEmployeeMemoryInputSchema.safeParse({ ...memory, portability: "included" }).success,
+    ).toBe(false);
+    expect(
+      createEmployeeMemoryInputSchema.safeParse({ ...memory, content: "x".repeat(8001) }).success,
+    ).toBe(false);
+  });
+
+  it("requires the restricted, never-portable policy for secret references", () => {
+    expect(
+      createEmployeeMemoryInputSchema.safeParse({
+        ...memory,
+        kind: "secret-reference",
+        sensitivity: "restricted",
+        portability: "never",
+      }).success,
+    ).toBe(true);
+    expect(
+      createEmployeeMemoryInputSchema.safeParse({ ...memory, kind: "secret-reference" }).success,
+    ).toBe(false);
+  });
+
+  it("requires an optimistic revision, a real change, and explicit delete review", () => {
+    expect(
+      updateEmployeeMemoryInputSchema.safeParse({ expectedRevision: 2, title: "New title" })
+        .success,
+    ).toBe(true);
+    expect(updateEmployeeMemoryInputSchema.safeParse({ expectedRevision: 2 }).success).toBe(false);
+    expect(
+      deleteEmployeeMemoryInputSchema.safeParse({ expectedRevision: 2, ownerReviewed: true })
+        .success,
+    ).toBe(true);
+    expect(
+      deleteEmployeeMemoryInputSchema.safeParse({ expectedRevision: 2, ownerReviewed: false })
+        .success,
     ).toBe(false);
   });
 });

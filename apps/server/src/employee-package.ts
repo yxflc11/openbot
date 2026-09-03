@@ -27,6 +27,7 @@ import {
   type EmployeeTemplatePayload,
 } from "@openbot/protocol";
 import { requirementsForExecutionProfile } from "./execution-routing.js";
+import { scanSensitiveText } from "./sensitive-content.js";
 
 interface EmployeeTemplateBuildOptions {
   generatedAt?: string;
@@ -67,39 +68,6 @@ export type EmployeeTemplateEnvelopeVerification =
         | "signature-metadata-mismatch";
       message: string;
     };
-
-const sensitivePatterns: ReadonlyArray<{
-  code: EmployeeExportFinding["code"];
-  expression: RegExp;
-  message: string;
-}> = [
-  {
-    code: "private-key-content",
-    expression: /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
-    message: "A private-key marker was found. Remove it before exporting.",
-  },
-  {
-    code: "credential-like-content",
-    expression: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|\bgh[pousr]_[A-Za-z0-9_]{20,}\b/i,
-    message: "A credential-like token was found. Remove it before exporting.",
-  },
-  {
-    code: "credential-like-content",
-    expression:
-      /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|passwd|secret|session(?:id|_token)?)\s*[:=]\s*["']?[^\s"',;]{6,}/i,
-    message: "A credential-like assignment was found. Remove it before exporting.",
-  },
-  {
-    code: "credential-like-content",
-    expression: /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/i,
-    message: "A bearer token was found. Remove it before exporting.",
-  },
-  {
-    code: "local-path-content",
-    expression: /(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)/,
-    message: "A user-specific local path was found. Replace it with a portable path.",
-  },
-];
 
 /**
  * Builds the safe, identity-free v1 template. The generated package is checksum protected but is
@@ -601,10 +569,7 @@ function scanPortableFields(payload: EmployeeTemplatePayload): EmployeeExportFin
   ];
   const findings: EmployeeExportFinding[] = [];
   for (const field of fields) {
-    for (const pattern of sensitivePatterns) {
-      if (!pattern.expression.test(field.value)) continue;
-      findings.push({ code: pattern.code, location: field.location, message: pattern.message });
-    }
+    findings.push(...scanSensitiveText(field.value, field.location, { portable: true }));
   }
   return findings;
 }

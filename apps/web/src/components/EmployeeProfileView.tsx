@@ -1,5 +1,6 @@
-import type { EmployeeProfile } from "@openbot/domain";
-import { useId, useRef, useState } from "react";
+import type { CreateEmployeeMemoryInput, EmployeeMemory, EmployeeProfile } from "@openbot/domain";
+import { type FormEvent, useId, useRef, useState } from "react";
+import { createEmployeeMemory, deleteEmployeeMemory, updateEmployeeMemory } from "../api";
 import { runStatusLabel } from "../run-state";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -41,6 +42,7 @@ export function EmployeeProfileView({
   onRetry,
   onAssign,
   onExport,
+  onProfileChanged,
 }: {
   profile: EmployeeProfile | undefined;
   loading: boolean;
@@ -48,6 +50,7 @@ export function EmployeeProfileView({
   onRetry(): void;
   onAssign(): void;
   onExport(): void;
+  onProfileChanged(): Promise<void>;
 }) {
   const [tab, setTab] = useState<ProfileTab>("overview");
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
@@ -129,7 +132,9 @@ export function EmployeeProfileView({
         {tab === "evolution" ? <Evolution profile={profile} /> : null}
         {tab === "skills" ? <Skills profile={profile} /> : null}
         {tab === "live" ? <LiveWork profile={profile} /> : null}
-        {tab === "memory" ? <Memory profile={profile} /> : null}
+        {tab === "memory" ? (
+          <EmployeeMemoryPanel profile={profile} onProfileChanged={onProfileChanged} />
+        ) : null}
         {tab === "records" ? <Records profile={profile} /> : null}
         {tab === "configuration" ? <Configuration profile={profile} /> : null}
       </section>
@@ -217,27 +222,323 @@ function LiveWork({ profile }: { profile: EmployeeProfile }) {
   );
 }
 
-function Memory({ profile }: { profile: EmployeeProfile }) {
+export function EmployeeMemoryPanel({
+  profile,
+  onProfileChanged,
+}: {
+  profile: EmployeeProfile;
+  onProfileChanged(): Promise<void>;
+}) {
+  const [editingMemoryId, setEditingMemoryId] = useState<string | "new">();
+  const [confirmingMemoryId, setConfirmingMemoryId] = useState<string>();
+  const [deletingMemoryId, setDeletingMemoryId] = useState<string>();
+  const [error, setError] = useState<string>();
+  const editingMemory = profile.memories.find((memory) => memory.id === editingMemoryId);
+
+  async function remove(memory: EmployeeMemory) {
+    setDeletingMemoryId(memory.id);
+    setError(undefined);
+    try {
+      await deleteEmployeeMemory(profile.employee.id, memory.id, {
+        expectedRevision: memory.revision,
+        ownerReviewed: true,
+      });
+      setConfirmingMemoryId(undefined);
+      await onProfileChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法删除这条记忆。");
+    } finally {
+      setDeletingMemoryId(undefined);
+    }
+  }
+
   return (
-    <ProfileSection title="记忆" description="每条记忆都有类型、敏感级别和独立的可迁移策略。">
+    <ProfileSection
+      title="记忆"
+      description="由你查看和维护；模型不能直接写入，任何记忆都不会进入当前员工模板。"
+    >
+      <div className="employee-memory-toolbar">
+        <p>
+          共 {profile.memories.length} 条 · 生命周期记录 {profile.memoryEvents.length} 条
+        </p>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => {
+            setError(undefined);
+            setEditingMemoryId("new");
+          }}
+        >
+          添加记忆
+        </button>
+      </div>
+
+      {editingMemoryId ? (
+        <EmployeeMemoryEditor
+          key={editingMemory?.id ?? "new"}
+          employeeId={profile.employee.id}
+          memory={editingMemory}
+          onCancel={() => setEditingMemoryId(undefined)}
+          onSaved={async () => {
+            setEditingMemoryId(undefined);
+            await onProfileChanged();
+          }}
+        />
+      ) : null}
+
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
       {profile.memories.length === 0 ? (
         <EmployeeEmpty title="还没有长期记忆" copy="运行中的临时状态不会自动进入员工模板。" />
       ) : (
-        <div className="employee-record-list">
-          {profile.memories.map((memory) => (
-            <article key={memory.id}>
-              <div>
-                <strong>{memory.title}</strong>
-                <p>{memory.content}</p>
-              </div>
-              <small>
-                {memoryKindLabel(memory.kind)} · {memory.sensitivity} · {memory.portability}
-              </small>
-            </article>
-          ))}
+        <div className="employee-record-list employee-memory-list">
+          {profile.memories.map((memory) => {
+            const confirming = confirmingMemoryId === memory.id;
+            const deleting = deletingMemoryId === memory.id;
+            return (
+              <article key={memory.id}>
+                <div>
+                  <strong>{memory.title}</strong>
+                  <p>{memory.content}</p>
+                  <small>
+                    {memoryKindLabel(memory.kind)} · {memorySensitivityLabel(memory.sensitivity)} ·{" "}
+                    {memoryPortabilityLabel(memory.portability)} · 修订 {memory.revision}
+                  </small>
+                </div>
+                <div className="employee-memory-actions">
+                  {confirming ? (
+                    <>
+                      <span>内容将永久删除</span>
+                      <button
+                        className="memory-danger-button"
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => void remove(memory)}
+                      >
+                        {deleting ? "删除中…" : "确认删除"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => setConfirmingMemoryId(undefined)}
+                      >
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setError(undefined);
+                          setEditingMemoryId(memory.id);
+                        }}
+                      >
+                        编辑
+                      </button>
+                      <button type="button" onClick={() => setConfirmingMemoryId(memory.id)}>
+                        删除
+                      </button>
+                    </>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
+
+      {profile.memoryEvents.length > 0 ? (
+        <details className="employee-memory-audit">
+          <summary>查看生命周期记录</summary>
+          <ol>
+            {profile.memoryEvents.map((event) => (
+              <li key={event.id}>
+                <time dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
+                <span>
+                  {memoryActionLabel(event.action)} · 修订 {event.revision}
+                  {event.changedFields.length > 0
+                    ? ` · ${event.changedFields.map(memoryFieldLabel).join("、")}`
+                    : ""}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
     </ProfileSection>
+  );
+}
+
+const emptyMemoryDraft: CreateEmployeeMemoryInput = {
+  kind: "semantic",
+  title: "",
+  content: "",
+  sensitivity: "internal",
+  portability: "owner-selectable",
+};
+
+function EmployeeMemoryEditor({
+  employeeId,
+  memory,
+  onCancel,
+  onSaved,
+}: {
+  employeeId: string;
+  memory?: EmployeeMemory | undefined;
+  onCancel(): void;
+  onSaved(): Promise<void>;
+}) {
+  const [draft, setDraft] = useState<CreateEmployeeMemoryInput>(
+    memory === undefined
+      ? { ...emptyMemoryDraft }
+      : {
+          kind: memory.kind,
+          title: memory.title,
+          content: memory.content,
+          sensitivity: memory.sensitivity,
+          portability: memory.portability === "included" ? "owner-selectable" : memory.portability,
+        },
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const formId = useId();
+  const secretReference = draft.kind === "secret-reference";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError(undefined);
+    try {
+      if (memory === undefined) {
+        await createEmployeeMemory(employeeId, draft);
+      } else {
+        await updateEmployeeMemory(employeeId, memory.id, {
+          ...draft,
+          expectedRevision: memory.revision,
+        });
+      }
+      await onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法保存这条记忆。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="form-grid employee-memory-editor" onSubmit={(event) => void submit(event)}>
+      <header>
+        <div>
+          <h3>{memory ? "编辑记忆" : "添加记忆"}</h3>
+          <p>只保存需要跨任务保留的信息。不要在这里粘贴密码或私钥。</p>
+        </div>
+        <span>{draft.content.length}/8000</span>
+      </header>
+      <div className="employee-memory-fields">
+        <label htmlFor={`${formId}-kind`}>
+          <span>类型</span>
+          <select
+            id={`${formId}-kind`}
+            value={draft.kind}
+            onChange={(event) => {
+              const kind = event.target.value as CreateEmployeeMemoryInput["kind"];
+              setDraft((current) => ({
+                ...current,
+                kind,
+                ...(kind === "secret-reference"
+                  ? { sensitivity: "restricted", portability: "never" }
+                  : {}),
+              }));
+            }}
+          >
+            <option value="working">工作</option>
+            <option value="episodic">经历</option>
+            <option value="semantic">知识</option>
+            <option value="procedural">流程</option>
+            <option value="secret-reference">密钥引用</option>
+          </select>
+        </label>
+        <label htmlFor={`${formId}-sensitivity`}>
+          <span>敏感级别</span>
+          <select
+            id={`${formId}-sensitivity`}
+            value={draft.sensitivity}
+            disabled={secretReference}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                sensitivity: event.target.value as CreateEmployeeMemoryInput["sensitivity"],
+              }))
+            }
+          >
+            <option value="public">公开</option>
+            <option value="internal">内部</option>
+            <option value="confidential">机密</option>
+            <option value="restricted">受限</option>
+          </select>
+        </label>
+        <label htmlFor={`${formId}-portability`}>
+          <span>未来迁移策略</span>
+          <select
+            id={`${formId}-portability`}
+            value={draft.portability}
+            disabled={secretReference}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                portability: event.target.value as CreateEmployeeMemoryInput["portability"],
+              }))
+            }
+          >
+            <option value="owner-selectable">以后可由你选择</option>
+            <option value="never">永不迁移</option>
+          </select>
+        </label>
+      </div>
+      <label htmlFor={`${formId}-title`}>
+        <span>标题</span>
+        <input
+          id={`${formId}-title`}
+          value={draft.title}
+          maxLength={160}
+          required
+          onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
+        />
+      </label>
+      <label htmlFor={`${formId}-content`}>
+        <span>{secretReference ? "引用位置" : "内容"}</span>
+        <textarea
+          id={`${formId}-content`}
+          value={draft.content}
+          maxLength={8000}
+          required
+          placeholder={
+            secretReference
+              ? "例如：密码管理器中的条目名称；不要填写真实密钥"
+              : "写下需要跨任务保留的事实、经验或流程"
+          }
+          onChange={(event) => setDraft((current) => ({ ...current, content: event.target.value }))}
+        />
+      </label>
+      {error ? (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <footer className="employee-memory-editor-actions">
+        <button className="primary-button" type="submit" disabled={saving}>
+          {saving ? "保存中…" : "保存记忆"}
+        </button>
+        <button className="secondary-button" type="button" disabled={saving} onClick={onCancel}>
+          取消
+        </button>
+      </footer>
+    </form>
   );
 }
 
@@ -467,6 +768,37 @@ function memoryKindLabel(kind: EmployeeProfile["memories"][number]["kind"]) {
     "secret-reference": "密钥引用",
   };
   return labels[kind];
+}
+
+function memorySensitivityLabel(sensitivity: EmployeeProfile["memories"][number]["sensitivity"]) {
+  return {
+    public: "公开",
+    internal: "内部",
+    confidential: "机密",
+    restricted: "受限",
+  }[sensitivity];
+}
+
+function memoryPortabilityLabel(portability: EmployeeProfile["memories"][number]["portability"]) {
+  return portability === "never"
+    ? "永不迁移"
+    : portability === "owner-selectable"
+      ? "以后可由你选择"
+      : "已选择迁移";
+}
+
+function memoryActionLabel(action: EmployeeProfile["memoryEvents"][number]["action"]) {
+  return action === "created" ? "已创建" : action === "updated" ? "已更新" : "已删除";
+}
+
+function memoryFieldLabel(field: EmployeeProfile["memoryEvents"][number]["changedFields"][number]) {
+  return {
+    kind: "类型",
+    title: "标题",
+    content: "内容",
+    sensitivity: "敏感级别",
+    portability: "迁移策略",
+  }[field];
 }
 
 function formatDate(value: string) {

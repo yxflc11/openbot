@@ -17,7 +17,9 @@ M3 基础切片已完成：员工进化事件、版本化技能、技能依赖�
 显式公钥信任、轮换、撤销，以及 DSSE/Ed25519 签名导出和验签后隔离预览；公钥指纹必须带外核对，
 任何包都不能自授信任或携带权限。Agent Skills
 兼容的技能元数据现在只能先成为候选，再由登录 Owner 验证、暂停或永久撤销；每次变化都会追加
-进化事件，不会改变主机权限。下一步是系统钥匙串/KMS/TUF 信任适配、可执行技能目录的隔离检查、
+进化事件，不会改变主机权限。登录 Owner 现在还可以新增、编辑和删除分类记忆；接口带字段上限、
+凭据值阻止和 revision 并发检查，删除会移除正文并只留下无内容审计。模型与工作主机不能写记忆，
+v1 员工包仍排除全部记忆。下一步是系统钥匙串/KMS/TUF 信任适配、可执行技能目录的隔离检查、
 完整 diff 审核、注册表分发、选择性复制和认证所有权转移。
 
 ## 当前持续目标的执行顺序
@@ -156,7 +158,7 @@ Provider 请使用专门 Issue 表单，不要用能力声明代替真实设备�
 4. `Provider CI: run hermetic and real-device Windows, macOS, and Linux matrices`
 5. `Employee registry: distribute publisher trust, revocation, and package updates`
 6. `Import: add package-family update and selective local clone semantics`
-7. `Memory: add retention, redaction, deletion, and selective export controls`
+7. `Memory: add retrieval, retention, autonomous proposal review, redaction, and selective export`
 8. `Node identity: add proof-of-possession, rotation, native keyrings, and replay protection`
 9. `Approval: issue single-use capability leases bound to target fingerprints`
 10. `Web: add accessible internationalization for Employee portability flows`

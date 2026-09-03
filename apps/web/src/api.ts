@@ -9,10 +9,14 @@ import type {
   ChannelRealtimeEvent,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeMemoryInput,
   CreateMessageInput,
+  DeleteEmployeeMemoryInput,
   EmployeeExportPreview,
   EmployeeImportActivationResult,
   EmployeeImportPreview,
+  EmployeeMemoryDeletionResult,
+  EmployeeMemoryMutationResult,
   EmployeeProfile,
   ExecutionNode,
   Message,
@@ -22,6 +26,7 @@ import type {
   RunFrame,
   RunProgress,
   SubmitTaskResult,
+  UpdateEmployeeMemoryInput,
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
@@ -107,6 +112,50 @@ export async function getEmployeeProfile(
     signal ? { signal } : undefined,
   );
   return result.profile;
+}
+
+export async function createEmployeeMemory(
+  botId: string,
+  input: CreateEmployeeMemoryInput,
+): Promise<EmployeeMemoryMutationResult> {
+  return request<EmployeeMemoryMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/memories`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function updateEmployeeMemory(
+  botId: string,
+  memoryId: string,
+  input: UpdateEmployeeMemoryInput,
+): Promise<EmployeeMemoryMutationResult> {
+  return request<EmployeeMemoryMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/memories/${encodeURIComponent(memoryId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteEmployeeMemory(
+  botId: string,
+  memoryId: string,
+  input: DeleteEmployeeMemoryInput,
+): Promise<EmployeeMemoryDeletionResult> {
+  return request<EmployeeMemoryDeletionResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/memories/${encodeURIComponent(memoryId)}`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function getEmployeeExportPreview(

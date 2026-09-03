@@ -19,3 +19,6 @@ OpenBot 的每项行为变化都要先证明已经调研维护中的开源代码
 
 如果没有找到可用项目，必须记录日期、实际搜索词、看过的仓库和不适用原因。不能用“没找到”
 逃避署名或许可证审查。
+
+已接受记录包括 [Owner 管理员工记忆](owner-managed-employee-memory.md)：明确将进化/记忆方向
+归因于 Hermes，并在选择 OpenBot 现有 PostgreSQL 边界前比较 Letta、Mem0 与 LangMem。

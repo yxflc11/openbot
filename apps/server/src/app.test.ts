@@ -9,6 +9,8 @@ import type {
   CreateMessageInput,
   EmployeeEvolutionEvent,
   EmployeeImportActivationResult,
+  EmployeeMemory,
+  EmployeeMemoryEvent,
   EmployeeProfile,
   EmployeeSkill,
   ExecutionNode,
@@ -488,6 +490,117 @@ describe("server app", () => {
       headers: { Cookie: cookie },
     });
     expect(missing.status).toBe(404);
+  });
+
+  it("manages bounded Employee memory with revision conflicts and content-free audit", async () => {
+    const store = createTestStore();
+    const employee = await store.createBot({
+      name: "Memory Worker",
+      role: "Retain reviewed operating preferences",
+      computerProfile: "none",
+    });
+    const otherEmployee = await store.createBot({
+      name: "Other Worker",
+      role: "Prove memory ownership isolation",
+      computerProfile: "none",
+    });
+    const app = createTestApp({ store });
+
+    const unauthenticated = await app.request(`/api/v1/bots/${employee.id}/memories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({}),
+    });
+    expect(unauthenticated.status).toBe(401);
+
+    const cookie = await login(app);
+    const created = await app.request(`/api/v1/bots/${employee.id}/memories`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        kind: "semantic",
+        title: "Report preference",
+        content: "Lead with a concise summary.",
+        sensitivity: "internal",
+        portability: "owner-selectable",
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = (await created.json()) as {
+      memory: EmployeeMemory;
+      event: EmployeeMemoryEvent;
+    };
+    expect(createdBody).toMatchObject({
+      memory: { botId: employee.id, revision: 1, title: "Report preference" },
+      event: { action: "created", revision: 1, actor: "owner" },
+    });
+    expect(JSON.stringify(createdBody.event)).not.toContain("Lead with a concise summary.");
+
+    const crossEmployee = await app.request(
+      `/api/v1/bots/${otherEmployee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "PATCH",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 1, content: "Cross-employee overwrite" }),
+      },
+    );
+    expect(crossEmployee.status).toBe(404);
+
+    const updated = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "PATCH",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 1, content: "Lead with the outcome." }),
+      },
+    );
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      memory: { revision: 2, content: "Lead with the outcome." },
+      event: { action: "updated", revision: 2, changedFields: ["content"] },
+    });
+
+    const staleUpdate = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "PATCH",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 1, content: "Overwrite stale state" }),
+      },
+    );
+    expect(staleUpdate.status).toBe(409);
+
+    const unreviewedDelete = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "DELETE",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 2, ownerReviewed: false }),
+      },
+    );
+    expect(unreviewedDelete.status).toBe(422);
+
+    const deleted = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "DELETE",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 2, ownerReviewed: true }),
+      },
+    );
+    expect(deleted.status).toBe(200);
+    const deletedBody = (await deleted.json()) as { event: EmployeeMemoryEvent };
+    expect(deletedBody.event).toMatchObject({ action: "deleted", revision: 3 });
+    expect(JSON.stringify(deletedBody.event)).not.toContain("Lead with the outcome.");
+    expect(JSON.stringify(deletedBody.event)).not.toContain("Report preference");
+
+    const profile = await store.getEmployeeProfile(employee.id);
+    expect(profile.memories).toEqual([]);
+    expect(profile.memoryEvents.map((event) => event.action)).toEqual([
+      "deleted",
+      "updated",
+      "created",
+    ]);
   });
 
   it("keeps learned skills pending until the Owner reviews an auditable transition", async () => {
@@ -1498,6 +1611,8 @@ function createTestStore(): ControlPlaneStore {
   const evolution: EmployeeEvolutionEvent[] = [];
   const skillAssignments: EmployeeSkill[] = [];
   const skillOwners = new Map<string, string>();
+  const memories: EmployeeMemory[] = [];
+  const memoryEvents: EmployeeMemoryEvent[] = [];
   const progress: RunProgress[] = [];
   const importReceipts = new Map<
     string,
@@ -1522,7 +1637,8 @@ function createTestStore(): ControlPlaneStore {
         employee: bot,
         evolution: evolution.filter((event) => event.botId === botId),
         skills: skillAssignments.filter((skill) => skillOwners.get(skill.id) === botId),
-        memories: [],
+        memories: memories.filter((memory) => memory.botId === botId),
+        memoryEvents: memoryEvents.filter((event) => event.botId === botId).toReversed(),
         records: {
           runs: employeeRuns,
           approvals: approvals.filter((approval) => approval.botId === botId),
@@ -1819,6 +1935,95 @@ function createTestStore(): ControlPlaneStore {
       };
       evolution.push(event);
       return { skill, evolution: event };
+    },
+    async createEmployeeMemory(botId, input) {
+      if (!bots.some((bot) => bot.id === botId)) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      const now = new Date().toISOString();
+      const memory: EmployeeMemory = {
+        id: id(),
+        botId,
+        ...input,
+        provenance: { source: "owner", actor: "owner" },
+        revision: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const event: EmployeeMemoryEvent = {
+        id: id(),
+        botId,
+        memoryId: memory.id,
+        action: "created",
+        revision: 1,
+        changedFields: ["kind", "title", "content", "sensitivity", "portability"],
+        actor: "owner",
+        createdAt: now,
+      };
+      memories.push(memory);
+      memoryEvents.push(event);
+      return { memory, event };
+    },
+    async updateEmployeeMemory(botId, memoryId, input) {
+      const memory = memories.find(
+        (candidate) => candidate.botId === botId && candidate.id === memoryId,
+      );
+      if (memory === undefined) throw new StoreNotFoundError("Employee memory not found.");
+      if (memory.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The memory changed while it was being edited. Reload and review the current value.",
+        );
+      }
+      const changedFields: EmployeeMemoryEvent["changedFields"] = [];
+      for (const field of ["kind", "title", "content", "sensitivity", "portability"] as const) {
+        const value = input[field];
+        if (value !== undefined && value !== memory[field]) {
+          changedFields.push(field);
+          (memory as Record<typeof field, unknown>)[field] = value;
+        }
+      }
+      if (changedFields.length === 0) {
+        throw new StoreValidationError("At least one memory field must change.");
+      }
+      memory.revision += 1;
+      memory.updatedAt = new Date().toISOString();
+      const event: EmployeeMemoryEvent = {
+        id: id(),
+        botId,
+        memoryId,
+        action: "updated",
+        revision: memory.revision,
+        changedFields,
+        actor: "owner",
+        createdAt: memory.updatedAt,
+      };
+      memoryEvents.push(event);
+      return { memory, event };
+    },
+    async deleteEmployeeMemory(botId, memoryId, input) {
+      const index = memories.findIndex(
+        (candidate) => candidate.botId === botId && candidate.id === memoryId,
+      );
+      const memory = memories[index];
+      if (memory === undefined) throw new StoreNotFoundError("Employee memory not found.");
+      if (memory.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The memory changed before deletion. Reload and review the current value.",
+        );
+      }
+      memories.splice(index, 1);
+      const event: EmployeeMemoryEvent = {
+        id: id(),
+        botId,
+        memoryId,
+        action: "deleted",
+        revision: memory.revision + 1,
+        changedFields: [],
+        actor: "owner",
+        createdAt: new Date().toISOString(),
+      };
+      memoryEvents.push(event);
+      return { memoryId, event };
     },
     async createChannel(input: CreateChannelInput) {
       const channel: Channel = {

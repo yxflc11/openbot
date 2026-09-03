@@ -98,6 +98,56 @@ try {
     evidence: [],
     ownerReviewed: true,
   });
+  const [sensitiveMemoryWrite] = await Promise.allSettled([
+    store.createEmployeeMemory(source.id, {
+      kind: "secret-reference",
+      title: "Credential value must be rejected",
+      content: "api_key=super-secret-value",
+      sensitivity: "restricted",
+      portability: "never",
+    }),
+  ]);
+  if (sensitiveMemoryWrite.status !== "rejected") {
+    throw new Error("Employee memory accepted a credential-like value.");
+  }
+  const createdMemory = await store.createEmployeeMemory(source.id, {
+    kind: "semantic",
+    title: "Disposable database preference",
+    content: "Return the outcome before supporting evidence.",
+    sensitivity: "internal",
+    portability: "owner-selectable",
+  });
+  const concurrentMemoryUpdates = await Promise.allSettled([
+    store.updateEmployeeMemory(source.id, createdMemory.memory.id, {
+      expectedRevision: 1,
+      content: "Return the outcome and then supporting evidence.",
+    }),
+    store.updateEmployeeMemory(source.id, createdMemory.memory.id, {
+      expectedRevision: 1,
+      content: "This concurrent overwrite must lose.",
+    }),
+  ]);
+  const successfulMemoryUpdates = concurrentMemoryUpdates.filter(
+    (item) => item.status === "fulfilled",
+  );
+  const failedMemoryUpdates = concurrentMemoryUpdates.filter((item) => item.status === "rejected");
+  if (successfulMemoryUpdates.length !== 1 || failedMemoryUpdates.length !== 1) {
+    throw new Error("Concurrent Employee memory updates did not reject one stale revision.");
+  }
+  const updatedMemory = successfulMemoryUpdates[0].value.memory;
+  await store.deleteEmployeeMemory(source.id, createdMemory.memory.id, {
+    expectedRevision: updatedMemory.revision,
+    ownerReviewed: true,
+  });
+  const memoryProfile = await store.getEmployeeProfile(source.id);
+  if (
+    memoryProfile.memories.length !== 0 ||
+    memoryProfile.memoryEvents.length !== 3 ||
+    memoryProfile.memoryEvents[0]?.action !== "deleted" ||
+    JSON.stringify(memoryProfile.memoryEvents).includes("supporting evidence")
+  ) {
+    throw new Error("Employee memory deletion or content-free audit verification failed.");
+  }
   const employeeTemplate = buildEmployeeTemplate(await store.getEmployeeProfile(source.id));
   const packageDigest = employeeTemplatePackageDigest(employeeTemplate.document);
   const idempotencyKey = randomUUID();
@@ -147,9 +197,7 @@ try {
   if (importedEmployeeId !== undefined) {
     await first.client`delete from employee_import_receipts where employee_id = ${importedEmployeeId}`;
   }
-  const employeeIds = [sourceEmployeeId, importedEmployeeId].filter(
-    (value) => value !== undefined,
-  );
+  const employeeIds = [sourceEmployeeId, importedEmployeeId].filter((value) => value !== undefined);
   if (employeeIds.length > 0) {
     await first.client`delete from run_events where bot_id = any(${employeeIds})`;
     await first.client`delete from bots where id = any(${employeeIds})`;
