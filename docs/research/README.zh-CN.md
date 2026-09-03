@@ -33,3 +33,5 @@ Hermes/Kubernetes 的冲突语义，只开放说明性字段。
 从现有摘要绑定的隔离预览中看清员工简介。
 [可迁移员工技能披露](portable-employee-skill-disclosure.md)随后采用 Agent Skills 与 OpenClaw 的
 审核边界，在所有导入技能仍被禁用时显示技能说明与依赖。
+[员工导出内容预览](employee-export-content-preview.md)补齐发送方边界：下载前先看清将要离开
+Server 的完整说明性资料和所选技能元数据。

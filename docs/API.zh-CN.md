@@ -215,8 +215,11 @@ Node、Provider、路由、审批策略或主机授权。完整技能目录将�
 
 ## 导出安全员工模板
 
-`GET /api/v1/bots/:botId/export/preview` 先返回将要包含的职责、说明性简介、已验证技能、所需能力、校验和、
-明确排除项和阻止原因。v1 默认模板不包含任何记忆，也不包含来源员工 ID、所有权、Run、
+`GET /api/v1/bots/:botId/export/preview` 与下载共用同一个规范包构建结果。返回值的 `employee`
+投影会精确列出模板选中的名称、职责、可选说明性简介和外观；有序的 `skills` 投影会逐项列出
+每个已验证技能的 slug、名称、Agent Skills 说明、版本、请求能力和依赖 slug。`employeeName`
+仅作为 `employee.name` 的 v1 弃用兼容别名继续保留。预览同时返回校验和、明确排除项和阻止原因。
+v1 默认模板不包含任何记忆，也不包含来源员工 ID、所有权、Run、
 进化历史、决策、产物、审批、Node 身份、主机绑定、凭证、Session 或能力授权。
 
 `GET /api/v1/bots/:botId/export` 只在预览没有阻止项时返回模板。默认媒体类型为

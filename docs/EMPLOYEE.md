@@ -162,7 +162,10 @@ Import always shows a preview:
 The implemented template path now follows those boundaries for identity-free packages: activation
 repeats validation, requires the exact reviewed package id and canonical digest, requires explicit
 Owner acceptance for an unsigned source, creates a fresh local identity, and records an immutable
-idempotent receipt. Before that confirmation, the quarantine view shows the Employee name, role,
+idempotent receipt. On the sending side, export preview is derived from the exact package builder
+used by download and shows the selected role, optional biography, appearance, and each verified
+skill with its description, version, requested capabilities, and dependencies. Before activation,
+the receiving quarantine view shows the Employee name, role,
 optional biography, skills, requested capabilities, publisher trust, compatible hosts, and
 zero-authority boundary. The biography is untrusted descriptive text and grants nothing. This path
 does not implement authenticated ownership transfer or optional-memory selection.
@@ -209,8 +212,9 @@ Implemented on the `feat/cross-platform-employees` development line:
 - a Hermes-inspired evolution archive with exact type filters, a truthful dated cutoff, stable
   newest-first presentation, and inspectable event/source/evidence identifiers;
 - structured Run progress presented as decision summaries rather than private chain-of-thought;
-- an authenticated export preview and checksum-protected JSON template containing only role,
-  descriptive biography, appearance, execution preference, and verified skills;
+- an authenticated, same-builder export preview and checksum-protected JSON template containing
+  only role, descriptive biography, appearance, execution preference, and verified skills; the
+  sender can inspect the exact profile and selected skill metadata before download;
 - structural exclusion of identity, authority, memory, and work history, plus blocking checks for
   credential-like text, private keys, and user-specific local paths;
 - a 2 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill

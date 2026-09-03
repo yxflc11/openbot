@@ -7,6 +7,7 @@ import type {
 import { useEffect, useRef, useState } from "react";
 import { activateEmployeeImport, type ApiError, previewEmployeeImport } from "../api";
 import { CloseIcon } from "./Icons";
+import { PortableProfileSummaryCard, PortableSkillList } from "./PortableEmployeeReview";
 import { RobotAvatar } from "./RobotAvatar";
 import { useModalDialog } from "./useModalDialog";
 
@@ -247,28 +248,12 @@ export function ImportPreviewDetails({
         </strong>
       </section>
 
-      <section className="import-profile-summary" aria-labelledby="import-profile-summary-title">
-        <h3 id="import-profile-summary-title">员工资料</h3>
-        <dl>
-          <div>
-            <dt>职责</dt>
-            <dd>{preview.employee.role}</dd>
-          </div>
-          <div>
-            <dt>简介</dt>
-            <dd>{preview.employee.description || "模板未提供简介。"}</dd>
-          </div>
-          <div>
-            <dt>请求能力</dt>
-            <dd>
-              {preview.requestedCapabilities.length > 0
-                ? preview.requestedCapabilities.join("、")
-                : "无"}
-            </dd>
-          </div>
-        </dl>
-        <p>这些内容只用于说明员工，不会授予技能、电脑或账号权限。</p>
-      </section>
+      <PortableProfileSummaryCard
+        employee={preview.employee}
+        requestedCapabilities={preview.requestedCapabilities}
+        headingId="import-profile-summary-title"
+        note="这些内容只用于说明员工，不会授予技能、电脑或账号权限。"
+      />
 
       <section className="import-quarantine-grid">
         <ImportBoundary label="完整性" value={preview.integrity.valid ? "校验通过" : "校验失败"} />
@@ -289,42 +274,11 @@ export function ImportPreviewDetails({
       <div className="import-preview-columns">
         <section>
           <h3>技能与能力</h3>
-          {preview.skills.length > 0 ? (
-            <ul className="import-skill-list">
-              {preview.skills.map((skill) => (
-                <li key={skill.slug}>
-                  <div className="import-skill-heading">
-                    <div>
-                      <strong>{skill.name}</strong>
-                      <span>
-                        {skill.slug} · {skill.version}
-                      </span>
-                    </div>
-                    <small>禁用，待审核</small>
-                  </div>
-                  <p>{skill.description}</p>
-                  <dl>
-                    <div>
-                      <dt>请求能力</dt>
-                      <dd>
-                        {skill.requiredCapabilities.length > 0
-                          ? skill.requiredCapabilities.join("、")
-                          : "无"}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>依赖技能</dt>
-                      <dd>
-                        {skill.dependencySlugs.length > 0 ? skill.dependencySlugs.join("、") : "无"}
-                      </dd>
-                    </div>
-                  </dl>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="import-empty">模板没有技能。</p>
-          )}
+          <PortableSkillList
+            skills={preview.skills}
+            stateLabel="禁用，待审核"
+            emptyLabel="模板没有技能。"
+          />
         </section>
 
         <section>

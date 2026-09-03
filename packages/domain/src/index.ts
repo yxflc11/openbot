@@ -301,12 +301,31 @@ export interface EmployeeExportExclusion {
   reason: string;
 }
 
+/** Descriptive, untrusted Employee data selected for a portable template. */
+export type PortableEmployeeProfileSummary = Pick<Bot, "name" | "role" | "appearance"> & {
+  description?: string;
+};
+
+/** Metadata-only skill selected for a portable template; it contains no executable bundle. */
+export interface PortableEmployeeSkillSummary {
+  slug: string;
+  name: string;
+  /** Required Agent Skills discovery metadata; still untrusted package content. */
+  description: string;
+  version: string;
+  requiredCapabilities: string[];
+  dependencySlugs: string[];
+}
+
 /** Owner-facing summary of exactly what a default employee template will contain. */
 export interface EmployeeExportPreview {
   format: "openbot.employee/v1";
   kind: "template";
   fileName: string;
   generatedAt: string;
+  employee: PortableEmployeeProfileSummary;
+  skills: PortableEmployeeSkillSummary[];
+  /** @deprecated Use `employee.name`; retained through the v1 preview compatibility window. */
   employeeName: string;
   verifiedSkillCount: number;
   requestedCapabilities: string[];
@@ -341,20 +360,9 @@ export interface EmployeeImportPreview {
   format: "openbot.employee/v1";
   packageId: string;
   generatedAt: string;
-  employee: Pick<Bot, "name" | "role" | "appearance"> & {
-    /** Untrusted, descriptive package content. It never grants authority. */
-    description?: string;
-  };
+  employee: PortableEmployeeProfileSummary;
   recommendedExecutionProfile: Bot["computerProfile"];
-  skills: Array<{
-    slug: string;
-    name: string;
-    /** Required Agent Skills discovery metadata; still untrusted package content. */
-    description: string;
-    version: string;
-    requiredCapabilities: string[];
-    dependencySlugs: string[];
-  }>;
+  skills: PortableEmployeeSkillSummary[];
   requestedCapabilities: string[];
   integrity: {
     algorithm: "sha256";

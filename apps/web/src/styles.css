@@ -4078,6 +4078,7 @@ select:focus-visible {
   min-width: 0;
 }
 .export-preview-columns h3,
+.export-skill-review h3,
 .export-findings h3 {
   margin: 0 0 10px;
   color: #30363d;
@@ -4345,7 +4346,7 @@ select:focus-visible {
   margin: 0 0 10px;
   font-size: 11px;
 }
-.import-skill-list,
+.portable-skill-list,
 .import-host-list,
 .import-issues ul {
   display: grid;
@@ -4354,7 +4355,7 @@ select:focus-visible {
   padding: 0;
   list-style: none;
 }
-.import-skill-list li,
+.portable-skill-list li,
 .import-host-list li {
   display: grid;
   gap: 12px;
@@ -4366,27 +4367,27 @@ select:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
-.import-skill-list div,
+.portable-skill-list div,
 .import-host-list li {
   min-width: 0;
 }
-.import-skill-heading {
+.portable-skill-heading {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 10px;
 }
-.import-skill-list strong,
-.import-skill-list span,
+.portable-skill-list strong,
+.portable-skill-list span,
 .import-host-list strong,
 .import-host-list span {
   display: block;
 }
-.import-skill-list strong,
+.portable-skill-list strong,
 .import-host-list strong {
   font-size: 10px;
 }
-.import-skill-list span,
+.portable-skill-list span,
 .import-host-list span {
   overflow: hidden;
   margin-top: 3px;
@@ -4395,82 +4396,82 @@ select:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.import-skill-heading small {
+.portable-skill-heading small {
   color: #7b5425;
   background: #fff7e8;
   font-size: 8px;
   white-space: nowrap;
 }
-.import-skill-list p,
-.import-skill-list dl,
-.import-skill-list dd {
+.portable-skill-list p,
+.portable-skill-list dl,
+.portable-skill-list dd {
   margin: 0;
 }
-.import-skill-list p {
+.portable-skill-list p {
   color: #4d5761;
   font-size: 9px;
   line-height: 1.5;
 }
-.import-skill-list dl {
+.portable-skill-list dl {
   display: grid;
   gap: 5px;
   padding-top: 8px;
   border-top: 1px solid #eceef0;
 }
-.import-skill-list dl > div {
+.portable-skill-list dl > div {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
   gap: 8px;
 }
-.import-skill-list dt,
-.import-skill-list dd {
+.portable-skill-list dt,
+.portable-skill-list dd {
   font-size: 8px;
   line-height: 1.45;
 }
-.import-skill-list dt {
+.portable-skill-list dt {
   color: #858d96;
 }
-.import-skill-list dd {
+.portable-skill-list dd {
   overflow-wrap: anywhere;
   color: #59636e;
 }
-.import-profile-summary {
+.portable-profile-summary {
   padding: 13px 14px;
   border: 1px solid #d9dde2;
   border-radius: 8px;
   background: #fafbfc;
 }
-.import-profile-summary h3,
-.import-profile-summary dl,
-.import-profile-summary dd,
-.import-profile-summary p {
+.portable-profile-summary h3,
+.portable-profile-summary dl,
+.portable-profile-summary dd,
+.portable-profile-summary p {
   margin: 0;
 }
-.import-profile-summary h3 {
+.portable-profile-summary h3 {
   margin-bottom: 10px;
   font-size: 11px;
 }
-.import-profile-summary dl {
+.portable-profile-summary dl {
   display: grid;
   gap: 8px;
 }
-.import-profile-summary dl > div {
+.portable-profile-summary dl > div {
   display: grid;
   grid-template-columns: 70px minmax(0, 1fr);
   gap: 10px;
 }
-.import-profile-summary dt {
+.portable-profile-summary dt {
   color: #7a828b;
   font-size: 9px;
 }
-.import-profile-summary dd {
+.portable-profile-summary dd {
   overflow-wrap: anywhere;
   color: #343b43;
   font-size: 9px;
   line-height: 1.5;
   white-space: pre-wrap;
 }
-.import-profile-summary p {
+.portable-profile-summary p {
   margin-top: 10px;
   padding-top: 9px;
   border-top: 1px solid #e2e5e8;

@@ -146,6 +146,8 @@ export function buildEmployeeTemplate(
       kind: payload.kind,
       fileName: `${portableFileStem(profile.employee.name)}.openbot-employee${options.publisherKeyId === undefined ? "" : ".dsse"}.json`,
       generatedAt: payload.generatedAt,
+      employee: portableEmployeeSummary(payload.employee),
+      skills: payload.skills.map(portableSkillSummary),
       employeeName: payload.employee.name,
       verifiedSkillCount: payload.skills.length,
       requestedCapabilities,
@@ -515,27 +517,9 @@ export function inspectEmployeeTemplate(
     format: payload.format,
     packageId: payload.packageId,
     generatedAt: payload.generatedAt,
-    employee: {
-      name: payload.employee.name,
-      role: payload.employee.role,
-      ...(payload.employee.description === undefined
-        ? {}
-        : { description: payload.employee.description }),
-      ...(payload.employee.appearance === undefined
-        ? {}
-        : { appearance: payload.employee.appearance }),
-    },
+    employee: portableEmployeeSummary(payload.employee),
     recommendedExecutionProfile: payload.configuration.recommendedExecutionProfile,
-    skills: payload.skills.map(
-      ({ slug, name, description, version, requiredCapabilities, dependencySlugs }) => ({
-        slug,
-        name,
-        description,
-        version,
-        requiredCapabilities,
-        dependencySlugs,
-      }),
-    ),
+    skills: payload.skills.map(portableSkillSummary),
     requestedCapabilities: declaredCapabilities,
     integrity: {
       algorithm: "sha256",
@@ -650,6 +634,26 @@ function decodeDsseBase64(value: string): Buffer {
     throw new TypeError("Invalid DSSE base64 encoding.");
   }
   return decoded;
+}
+
+function portableEmployeeSummary(employee: EmployeeTemplatePayload["employee"]) {
+  return {
+    name: employee.name,
+    role: employee.role,
+    ...(employee.description === undefined ? {} : { description: employee.description }),
+    ...(employee.appearance === undefined ? {} : { appearance: employee.appearance }),
+  };
+}
+
+function portableSkillSummary(skill: EmployeeTemplatePayload["skills"][number]) {
+  return {
+    slug: skill.slug,
+    name: skill.name,
+    description: skill.description,
+    version: skill.version,
+    requiredCapabilities: skill.requiredCapabilities,
+    dependencySlugs: skill.dependencySlugs,
+  };
 }
 
 function canonicalJson(value: unknown): string {

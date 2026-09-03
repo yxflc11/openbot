@@ -221,8 +221,12 @@ Node, route work, alter approval policy, or grant tools.
 
 ## Employee export, import, and activation
 
-Export preview lists the role, descriptive biography, verified skills, capability requests,
-checksum, exclusions, and blockers. The v1 template structurally excludes source identity,
+Export preview is generated from the same canonical package build that download uses. Its
+`employee` projection contains the exact name, role, optional descriptive biography, and appearance
+selected for the template; its ordered `skills` projection contains every selected verified skill's
+slug, name, Agent Skills description, version, capability requests, and dependency slugs.
+`employeeName` remains a deprecated v1 compatibility alias for `employee.name`. The preview also
+lists the checksum, exclusions, and blockers. The v1 template structurally excludes source identity,
 ownership, all memories, Runs, evolution,
 decisions, artifacts, approvals, Node identity, host binding, credentials, sessions, and authority.
 Free text is scanned for credential-like values, bearer tokens, private keys, and local paths.

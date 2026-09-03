@@ -39,6 +39,21 @@ describe("employee template package", () => {
     expect(result.preview).toMatchObject({
       blocked: false,
       employeeName: "Ops",
+      employee: {
+        name: "Ops",
+        role: "Browser operations",
+        description: "Navigate approved sites and return evidence-backed outcomes.",
+      },
+      skills: [
+        {
+          slug: "browse-web",
+          name: "Browse web",
+          description: "Navigate approved websites.",
+          version: "1.0.0",
+          requiredCapabilities: ["browser"],
+          dependencySlugs: [],
+        },
+      ],
       hostAuthority: "none",
       identityOnImport: "new",
       includedMemoryCount: 0,

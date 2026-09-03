@@ -45,3 +45,5 @@ activation.
 The [Portable Employee skill disclosure](portable-employee-skill-disclosure.md) then applies the
 Agent Skills and OpenClaw review boundary so descriptions and dependencies are visible while every
 imported skill remains disabled.
+The [Employee export content preview](employee-export-content-preview.md) applies the corresponding
+sender-side rule: the exact profile and selected skill metadata are visible before download.

@@ -2,6 +2,7 @@ import type { Bot, EmployeeExportExclusion, EmployeeExportPreview } from "@openb
 import { useEffect, useState } from "react";
 import { type ApiError, downloadEmployeeTemplate, getEmployeeExportPreview } from "../api";
 import { CloseIcon } from "./Icons";
+import { PortableProfileSummaryCard, PortableSkillList } from "./PortableEmployeeReview";
 import { RobotAvatar } from "./RobotAvatar";
 import { useModalDialog } from "./useModalDialog";
 
@@ -107,7 +108,7 @@ export function ExportEmployeeDialog({
   );
 }
 
-function ExportPreviewDetails({ preview }: { preview: EmployeeExportPreview }) {
+export function ExportPreviewDetails({ preview }: { preview: EmployeeExportPreview }) {
   return (
     <div className="export-preview-body">
       <section className={`export-safety-summary ${preview.blocked ? "blocked" : "safe"}`}>
@@ -118,6 +119,13 @@ function ExportPreviewDetails({ preview }: { preview: EmployeeExportPreview }) {
             : "可下载内容只包含角色、外观、执行偏好与已验证技能。"}
         </span>
       </section>
+
+      <PortableProfileSummaryCard
+        employee={preview.employee}
+        requestedCapabilities={preview.requestedCapabilities}
+        headingId="export-profile-summary-title"
+        note="这些说明性内容会写入模板，但不会携带来源身份或电脑权限。"
+      />
 
       <div className="export-preview-columns">
         <section>
@@ -158,6 +166,15 @@ function ExportPreviewDetails({ preview }: { preview: EmployeeExportPreview }) {
           </ul>
         </section>
       </div>
+
+      <section className="export-skill-review">
+        <h3>将包含的已验证技能</h3>
+        <PortableSkillList
+          skills={preview.skills}
+          stateLabel="已验证，将包含"
+          emptyLabel="没有已验证技能会进入模板。"
+        />
+      </section>
 
       {preview.findings.length > 0 ? (
         <section className="export-findings">
