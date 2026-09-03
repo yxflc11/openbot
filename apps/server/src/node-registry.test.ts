@@ -91,13 +91,33 @@ describe("node enrollment", () => {
           nodeId: "linux-node",
           name: "Linux worker",
           platform: "linux",
+          osVersion: "6.8.0",
+          architecture: "x64",
+          deviceClass: "server",
+          isolation: "dedicated-host",
+          trustTier: "dedicated",
           capabilities: ["browser", "shell", "screenshot"],
+          capabilityManifest: [
+            { id: "browser.observe", version: 1, providerId: "docker", constraints: {} },
+            { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
+          ],
           maxConcurrentRuns: 1,
           token: "foundation-token",
           sentAt: new Date().toISOString(),
         }),
       );
       await waitFor(() => registry.list().length === 1);
+      expect(registry.list()[0]).toMatchObject({
+        platform: "linux",
+        architecture: "x64",
+        deviceClass: "server",
+        isolation: "dedicated-host",
+        trustTier: "dedicated",
+        capabilityManifest: [
+          { id: "browser.observe", version: 1, providerId: "docker" },
+          { id: "screen.capture", version: 1, providerId: "docker" },
+        ],
+      });
 
       const runId = "00000000-0000-4000-8000-000000000001";
       const result = await registry.offerRun("linux-node", {

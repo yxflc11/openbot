@@ -25,6 +25,10 @@
 | `POST` | `/api/v1/bots` | 创建 Bot |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
 
+在线 Node 投影包含 `platform`、`osVersion`、`architecture`、`deviceClass`、`isolation`、
+`trustTier`、旧版 `capabilities` 和版本化 `capabilityManifest`。当前路由仍使用旧版能力 id；
+manifest 用于兼容性展示和后续策略迁移，本身不授予执行权限。
+
 ## 本地 Owner 会话
 
 登录请求：

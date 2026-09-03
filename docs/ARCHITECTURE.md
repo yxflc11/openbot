@@ -177,7 +177,15 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - Node 凭证不能登录 Web，也不能访问其他 Node；
 - 所有消息绑定 connection、node、run 和 sequence。
 
-协议 `0.5.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、`approval.request`、`approval.resolved`、completed/failed、持久化后 settled 与 cancel。`run.frame` 只接受有界 PNG，Server 验证 Run 与 Node 的运行绑定后更新内存中的 latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 Artifact Storage。审批请求绑定 Run、Bot、Node、动作、目标指纹和过期时间，但尚未签发独立的 capability lease。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
+协议 `0.6.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、
+`approval.request`、`approval.resolved`、completed/failed、持久化后 settled 与 cancel。
+`node.hello` 现在明确上报 Windows/macOS/Linux 等平台、系统版本、架构、设备类型、隔离状态、
+信任等级和版本化 capability manifest；旧字符串能力暂时保留给现有确定性路由，不能把 manifest
+当成授权。`run.frame` 只接受有界 PNG，Server 验证 Run 与 Node 的运行绑定后更新内存中的
+latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 Artifact Storage。审批请求
+绑定 Run、Bot、Node、动作、目标指纹和过期时间，但尚未签发独立的 capability lease。开发阶段
+仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放
+是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
 
 ## 5. Provider contract
 
@@ -195,7 +203,7 @@ health / version
 
 | Provider | 运行位置 | 用途 |
 | --- | --- | --- |
-| Docker | Linux/macOS Node | 隔离浏览器、Shell、文件 |
+| Docker | Windows/Linux/macOS Node | 通过隔离运行时提供浏览器、Shell、文件 |
 | Browser | Windows/Linux/macOS Node | 跨平台 DOM/URL/表单语义，优先交互路径 |
 | Windows UIA | Windows Node | Windows 原生软件，默认观察优先 |
 | Cua | macOS Node | macOS 原生 App，默认观察优先 |

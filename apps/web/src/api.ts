@@ -592,10 +592,29 @@ function isExecutionNodeProjection(value: unknown): value is ExecutionNode {
     "name" in value &&
     typeof value.name === "string" &&
     "platform" in value &&
-    (value.platform === "linux" || value.platform === "macos" || value.platform === "unknown") &&
+    ["linux", "windows", "macos", "android", "ios", "freebsd", "unknown"].includes(
+      String(value.platform),
+    ) &&
+    "osVersion" in value &&
+    typeof value.osVersion === "string" &&
+    "architecture" in value &&
+    ["x64", "arm64", "armv7", "riscv64", "unknown"].includes(String(value.architecture)) &&
+    "deviceClass" in value &&
+    ["server", "desktop", "mobile", "vm", "container", "edge", "unknown"].includes(
+      String(value.deviceClass),
+    ) &&
+    "isolation" in value &&
+    ["dedicated-host", "user-session", "vm", "container", "managed-device", "unknown"].includes(
+      String(value.isolation),
+    ) &&
+    "trustTier" in value &&
+    ["development", "dedicated", "managed"].includes(String(value.trustTier)) &&
     "capabilities" in value &&
     Array.isArray(value.capabilities) &&
     value.capabilities.every((item) => typeof item === "string") &&
+    "capabilityManifest" in value &&
+    Array.isArray(value.capabilityManifest) &&
+    value.capabilityManifest.every(isCapabilityDescriptorProjection) &&
     "activeRunIds" in value &&
     Array.isArray(value.activeRunIds) &&
     value.activeRunIds.every((item) => typeof item === "string") &&
@@ -605,6 +624,25 @@ function isExecutionNodeProjection(value: unknown): value is ExecutionNode {
     typeof value.connectedAt === "string" &&
     "lastSeenAt" in value &&
     typeof value.lastSeenAt === "string"
+  );
+}
+
+function isCapabilityDescriptorProjection(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "version" in value &&
+    typeof value.version === "number" &&
+    Number.isInteger(value.version) &&
+    value.version >= 1 &&
+    "providerId" in value &&
+    typeof value.providerId === "string" &&
+    "constraints" in value &&
+    typeof value.constraints === "object" &&
+    value.constraints !== null &&
+    !Array.isArray(value.constraints)
   );
 }
 

@@ -47,6 +47,7 @@ describe("node run offers", () => {
 
     const receivedTypes: string[] = [];
     let advertisedCapabilities: string[] = [];
+    let advertisedManifest: string[] = [];
     let resolveCompletion: (() => void) | undefined;
     const completion = new Promise<void>((resolve) => {
       resolveCompletion = resolve;
@@ -56,6 +57,10 @@ describe("node run offers", () => {
       displayName: "Test computer",
       platforms: ["linux", "macos"],
       capabilities: ["browser", "screenshot"],
+      capabilityManifest: [
+        { id: "browser.observe", version: 1, providerId: "docker", constraints: {} },
+        { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
+      ],
       async execute(_context, input, reportProgress, reportFrame, requestApproval) {
         expect(input.instruction).toBe(offer.instruction);
         reportProgress({ stage: "navigate", message: "Opening test page" });
@@ -99,6 +104,9 @@ describe("node run offers", () => {
 
         if (message.type === "node.hello") {
           advertisedCapabilities = message.capabilities;
+          advertisedManifest = message.capabilityManifest.map(
+            (capability) => `${capability.id}@${capability.version}`,
+          );
           send(socket, {
             type: "server.ack",
             protocolVersion,
@@ -155,6 +163,7 @@ describe("node run offers", () => {
       await withTimeout(completion);
 
       expect(advertisedCapabilities).toEqual(["browser", "screenshot"]);
+      expect(advertisedManifest).toEqual(["browser.observe@1", "screen.capture@1"]);
       expect(receivedTypes).toEqual([
         "node.hello",
         "run.accept",

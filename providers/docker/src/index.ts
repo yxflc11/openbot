@@ -21,8 +21,12 @@ export function createDockerProvider(options: DockerProviderOptions): ComputerPr
   return {
     id: "docker",
     displayName: "CopilotKit/OpenBot agent-computer",
-    platforms: ["linux", "macos"],
+    platforms: ["linux", "windows", "macos"],
     capabilities: ["browser", "screenshot"],
+    capabilityManifest: [
+      { id: "browser.observe", version: 1, providerId: "docker", constraints: {} },
+      { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
+    ],
     async execute(context, input, report, reportFrame) {
       const target = extractNavigationTarget(input);
       await assertNavigationAllowed(target, options.allowPrivateHosts === true, resolveHost);

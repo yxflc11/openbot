@@ -1,6 +1,44 @@
 import { z } from "zod";
 
-export const protocolVersion = "0.5.0" as const;
+export const protocolVersion = "0.6.0" as const;
+
+export const nodePlatformSchema = z.enum([
+  "linux",
+  "windows",
+  "macos",
+  "android",
+  "ios",
+  "freebsd",
+  "unknown",
+]);
+export type NodePlatform = z.infer<typeof nodePlatformSchema>;
+
+export const nodeArchitectureSchema = z.enum(["x64", "arm64", "armv7", "riscv64", "unknown"]);
+export type NodeArchitecture = z.infer<typeof nodeArchitectureSchema>;
+
+export const nodeDeviceClassSchema = z.enum([
+  "server",
+  "desktop",
+  "mobile",
+  "vm",
+  "container",
+  "edge",
+  "unknown",
+]);
+export type NodeDeviceClass = z.infer<typeof nodeDeviceClassSchema>;
+
+export const nodeIsolationSchema = z.enum([
+  "dedicated-host",
+  "user-session",
+  "vm",
+  "container",
+  "managed-device",
+  "unknown",
+]);
+export type NodeIsolation = z.infer<typeof nodeIsolationSchema>;
+
+export const nodeTrustTierSchema = z.enum(["development", "dedicated", "managed"]);
+export type NodeTrustTier = z.infer<typeof nodeTrustTierSchema>;
 
 export const nodeCapabilitySchema = z.enum([
   "browser",
@@ -13,13 +51,54 @@ export const nodeCapabilitySchema = z.enum([
 
 export type NodeCapability = z.infer<typeof nodeCapabilitySchema>;
 
+export const versionedCapabilityIdSchema = z.enum([
+  "browser.observe",
+  "browser.input",
+  "screen.capture",
+  "desktop.observe",
+  "desktop.input",
+  "shell.execute",
+  "filesystem.read",
+  "filesystem.write",
+  "computer.takeover",
+  "vm.manage",
+  "code.execute",
+]);
+export type VersionedCapabilityId = z.infer<typeof versionedCapabilityIdSchema>;
+
+const capabilityConstraintValueSchema = z.union([
+  z.string().max(256),
+  z.number().finite(),
+  z.boolean(),
+]);
+
+/** A versioned capability claim. Server policy still decides whether a Run may use it. */
+export const nodeCapabilityDescriptorSchema = z
+  .object({
+    id: versionedCapabilityIdSchema,
+    version: z.number().int().min(1).max(100),
+    providerId: z.string().trim().min(1).max(80),
+    constraints: z
+      .record(z.string().trim().min(1).max(64), capabilityConstraintValueSchema)
+      .refine((value) => Object.keys(value).length <= 16, "Too many capability constraints.")
+      .default({}),
+  })
+  .strict();
+export type NodeCapabilityDescriptor = z.infer<typeof nodeCapabilityDescriptorSchema>;
+
 export const nodeHelloSchema = z.object({
   type: z.literal("node.hello"),
   protocolVersion: z.literal(protocolVersion),
   nodeId: z.string().min(1),
   name: z.string().min(1),
-  platform: z.enum(["linux", "macos", "unknown"]),
+  platform: nodePlatformSchema,
+  osVersion: z.string().trim().min(1).max(160).default("unknown"),
+  architecture: nodeArchitectureSchema.default("unknown"),
+  deviceClass: nodeDeviceClassSchema.default("unknown"),
+  isolation: nodeIsolationSchema.default("unknown"),
+  trustTier: nodeTrustTierSchema.default("development"),
   capabilities: z.array(nodeCapabilitySchema),
+  capabilityManifest: z.array(nodeCapabilityDescriptorSchema).max(32).default([]),
   maxConcurrentRuns: z.number().int().min(1).max(16),
   token: z.string().min(1),
   sentAt: z.string().datetime(),

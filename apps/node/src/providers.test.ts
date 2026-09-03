@@ -1,6 +1,11 @@
 import { nodeEnvSchema } from "@openbot/config";
 import { describe, expect, it } from "vitest";
-import { availableCapabilities, configuredProviders, providerForProfile } from "./providers.js";
+import {
+  availableCapabilities,
+  availableCapabilityManifest,
+  configuredProviders,
+  providerForProfile,
+} from "./providers.js";
 
 const baseEnv = {
   OPENBOT_NODE_ID: "test-node",
@@ -14,6 +19,7 @@ describe("configured Node providers", () => {
 
     expect(providers).toEqual([]);
     expect(availableCapabilities(providers)).toEqual([]);
+    expect(availableCapabilityManifest(providers)).toEqual([]);
   });
 
   it("advertises only the configured Docker computer capabilities", () => {
@@ -27,6 +33,10 @@ describe("configured Node providers", () => {
 
     expect(providers.map((provider) => provider.id)).toEqual(["docker"]);
     expect(availableCapabilities(providers)).toEqual(["browser", "screenshot"]);
+    expect(availableCapabilityManifest(providers).map((item) => item.id)).toEqual([
+      "browser.observe",
+      "screen.capture",
+    ]);
     expect(providerForProfile(providers, "docker-linux")?.id).toBe("docker");
     expect(providerForProfile(providers, "macos-cua")).toBeUndefined();
   });

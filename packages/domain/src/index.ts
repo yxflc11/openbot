@@ -1,3 +1,12 @@
+import type {
+  NodeArchitecture,
+  NodeCapabilityDescriptor,
+  NodeDeviceClass,
+  NodeIsolation,
+  NodePlatform,
+  NodeTrustTier,
+} from "@openbot/protocol";
+
 export type EntityId = string;
 
 export type BotStatus =
@@ -59,8 +68,14 @@ export interface Bot {
 export interface ExecutionNode {
   id: EntityId;
   name: string;
-  platform: "linux" | "macos" | "unknown";
+  platform: NodePlatform;
+  osVersion: string;
+  architecture: NodeArchitecture;
+  deviceClass: NodeDeviceClass;
+  isolation: NodeIsolation;
+  trustTier: NodeTrustTier;
   capabilities: string[];
+  capabilityManifest: NodeCapabilityDescriptor[];
   activeRunIds: EntityId[];
   maxConcurrentRuns: number;
   connectedAt: string;

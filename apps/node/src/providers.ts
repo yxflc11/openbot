@@ -1,8 +1,8 @@
-import { platform } from "node:os";
 import type { NodeEnv } from "@openbot/config";
 import { createDockerProvider } from "@openbot/provider-docker";
 import type { ComputerProvider } from "@openbot/provider-sdk";
-import type { NodeCapability } from "@openbot/protocol";
+import type { NodeCapability, NodeCapabilityDescriptor } from "@openbot/protocol";
+import { detectWorkerHost } from "./host.js";
 
 export function configuredProviders(env: NodeEnv): ComputerProvider[] {
   const providers: ComputerProvider[] = [];
@@ -18,12 +18,28 @@ export function configuredProviders(env: NodeEnv): ComputerProvider[] {
       }),
     );
   }
-  const currentPlatform = platform() === "darwin" ? "macos" : "linux";
+  const currentPlatform = detectWorkerHost().platform;
   return providers.filter((provider) => provider.platforms.includes(currentPlatform));
 }
 
 export function availableCapabilities(providers: ComputerProvider[]): NodeCapability[] {
   return Array.from(new Set(providers.flatMap((provider) => provider.capabilities))).sort();
+}
+
+export function availableCapabilityManifest(
+  providers: ComputerProvider[],
+): NodeCapabilityDescriptor[] {
+  const descriptors = new Map<string, NodeCapabilityDescriptor>();
+  for (const descriptor of providers.flatMap((provider) => provider.capabilityManifest)) {
+    const key = `${descriptor.id}@${descriptor.version}:${descriptor.providerId}`;
+    descriptors.set(key, descriptor);
+  }
+  return Array.from(descriptors.values()).sort(
+    (left, right) =>
+      left.id.localeCompare(right.id) ||
+      left.version - right.version ||
+      left.providerId.localeCompare(right.providerId),
+  );
 }
 
 export function providerForProfile(

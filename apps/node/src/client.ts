@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { hostname, platform } from "node:os";
+import { hostname } from "node:os";
 import type { NodeEnv } from "@openbot/config";
 import type { ApprovalOutcome, ComputerProvider, PreparedAction } from "@openbot/provider-sdk";
 import {
@@ -12,7 +12,13 @@ import {
   serverMessageSchema,
 } from "@openbot/protocol";
 import WebSocket from "ws";
-import { availableCapabilities, configuredProviders, providerForProfile } from "./providers.js";
+import { detectWorkerHost } from "./host.js";
+import {
+  availableCapabilities,
+  availableCapabilityManifest,
+  configuredProviders,
+  providerForProfile,
+} from "./providers.js";
 
 const heartbeatIntervalMs = 10_000;
 const reconnectDelayMs = 2_000;
@@ -62,14 +68,15 @@ export class OpenBotNodeClient {
     this.#socket = socket;
 
     socket.on("open", () => {
-      const currentPlatform = platform() === "darwin" ? "macos" : "linux";
+      const host = detectWorkerHost();
       const hello: NodeMessage = {
         type: "node.hello",
         protocolVersion,
         nodeId: this.#env.OPENBOT_NODE_ID,
         name: hostname(),
-        platform: currentPlatform,
+        ...host,
         capabilities: availableCapabilities(this.#providers),
+        capabilityManifest: availableCapabilityManifest(this.#providers),
         maxConcurrentRuns: this.#env.OPENBOT_NODE_MAX_CONCURRENT_RUNS,
         token: this.#env.OPENBOT_NODE_TOKEN,
         sentAt: new Date().toISOString(),

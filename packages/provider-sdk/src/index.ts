@@ -1,4 +1,4 @@
-import type { NodeCapability } from "@openbot/protocol";
+import type { NodeCapability, NodeCapabilityDescriptor, NodePlatform } from "@openbot/protocol";
 
 export interface ProviderContext {
   nodeId: string;
@@ -67,8 +67,9 @@ export interface ProviderFrame {
 export interface ComputerProvider {
   id: string;
   displayName: string;
-  platforms: Array<"linux" | "macos">;
+  platforms: NodePlatform[];
   capabilities: NodeCapability[];
+  capabilityManifest: NodeCapabilityDescriptor[];
   execute?(
     context: ProviderContext,
     input: ProviderRunInput,

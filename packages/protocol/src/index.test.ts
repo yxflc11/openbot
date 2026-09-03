@@ -17,15 +17,53 @@ describe("node protocol", () => {
       type: "node.hello",
       protocolVersion,
       nodeId: "node-1",
-      name: "Linux worker",
-      platform: "linux",
+      name: "Windows worker",
+      platform: "windows",
+      osVersion: "10.0.26100",
+      architecture: "arm64",
+      deviceClass: "desktop",
+      isolation: "dedicated-host",
+      trustTier: "dedicated",
       capabilities: ["browser", "shell", "screenshot"],
+      capabilityManifest: [
+        {
+          id: "browser.observe",
+          version: 1,
+          providerId: "playwright",
+          constraints: { engine: "chromium", displays: 1 },
+        },
+      ],
       maxConcurrentRuns: 1,
       token: "development-token",
       sentAt: new Date().toISOString(),
     });
 
     expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({
+      platform: "windows",
+      architecture: "arm64",
+      deviceClass: "desktop",
+      trustTier: "dedicated",
+    });
+  });
+
+  it("rejects malformed versioned capability claims", () => {
+    const result = nodeMessageSchema.safeParse({
+      type: "node.hello",
+      protocolVersion,
+      nodeId: "node-1",
+      name: "Unsafe worker",
+      platform: "windows",
+      capabilities: ["browser"],
+      capabilityManifest: [
+        { id: "desktop.superuser", version: 0, providerId: "unsafe", constraints: {} },
+      ],
+      maxConcurrentRuns: 1,
+      token: "development-token",
+      sentAt: new Date().toISOString(),
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("rejects unknown capabilities", () => {
