@@ -68,12 +68,15 @@ export class RunDispatcher {
   readonly #workspace: WorkspacePublisher | undefined;
   // Preserve protocol order per Run without serializing independent Runs or Nodes.
   readonly #runMessageTails = new Map<string, Promise<void>>();
-  #draining = false;
+  // Node lifecycle listeners are not part of a Run tail but still write authoritative state.
+  readonly #listenerTasks = new Set<Promise<void>>();
+  #dispatchPromise: Promise<void> | undefined;
   #drainAgain = false;
   #stopped = true;
-  #unsubscribeAvailable?: () => void;
-  #unsubscribeUnavailable?: () => void;
-  #unsubscribeRunMessage?: () => void;
+  #stopPromise: Promise<void> | undefined;
+  #unsubscribeAvailable: (() => void) | undefined;
+  #unsubscribeUnavailable: (() => void) | undefined;
+  #unsubscribeRunMessage: (() => void) | undefined;
 
   constructor(
     store: DispatchStore,
@@ -92,12 +95,15 @@ export class RunDispatcher {
   }
 
   async start(): Promise<void> {
+    if (!this.#stopped || this.#stopPromise !== undefined) {
+      throw new Error("RunDispatcher instances cannot be restarted.");
+    }
     this.#stopped = false;
     this.#unsubscribeAvailable = this.#nodes.onAvailable((node) => {
-      void this.#handleNodeAvailable(node).catch(reportDispatchError);
+      this.#trackListener(this.#handleNodeAvailable(node));
     });
     this.#unsubscribeUnavailable = this.#nodes.onUnavailable((node) => {
-      void this.#handleNodeUnavailable(node).catch(reportDispatchError);
+      this.#trackListener(this.#handleNodeUnavailable(node));
     });
     this.#unsubscribeRunMessage = this.#nodes.onRunMessage((node, message) => {
       this.#enqueueRunMessage(node, message);
@@ -111,12 +117,17 @@ export class RunDispatcher {
     await this.dispatchQueued();
   }
 
-  stop(): void {
+  stop(): Promise<void> {
+    if (this.#stopPromise !== undefined) return this.#stopPromise;
     this.#stopped = true;
     this.#unsubscribeAvailable?.();
     this.#unsubscribeUnavailable?.();
     this.#unsubscribeRunMessage?.();
-    this.#runMessageTails.clear();
+    this.#unsubscribeAvailable = undefined;
+    this.#unsubscribeUnavailable = undefined;
+    this.#unsubscribeRunMessage = undefined;
+    this.#stopPromise = this.#drainInFlight();
+    return this.#stopPromise;
   }
 
   enqueue(run: Run): void {
@@ -156,25 +167,31 @@ export class RunDispatcher {
 
   async dispatchQueued(): Promise<void> {
     if (this.#stopped) return;
-    if (this.#draining) {
+    if (this.#dispatchPromise !== undefined) {
       // Coalesce concurrent wakeups instead of running overlapping dispatch loops.
       this.#drainAgain = true;
+      await this.#dispatchPromise;
       return;
     }
 
-    this.#draining = true;
+    const dispatch = this.#drainQueued();
+    this.#dispatchPromise = dispatch;
     try {
-      do {
-        this.#drainAgain = false;
-        const queued = await this.#store.listDispatchableRuns();
-        for (const run of queued) {
-          if (this.#stopped) return;
-          await this.#offer(run);
-        }
-      } while (this.#drainAgain && !this.#stopped);
+      await dispatch;
     } finally {
-      this.#draining = false;
+      if (this.#dispatchPromise === dispatch) this.#dispatchPromise = undefined;
     }
+  }
+
+  async #drainQueued(): Promise<void> {
+    do {
+      this.#drainAgain = false;
+      const queued = await this.#store.listDispatchableRuns();
+      for (const run of queued) {
+        if (this.#stopped) return;
+        await this.#offer(run);
+      }
+    } while (this.#drainAgain && !this.#stopped);
   }
 
   async #offer(run: Run): Promise<void> {
@@ -228,6 +245,7 @@ export class RunDispatcher {
   }
 
   #enqueueRunMessage(node: ExecutionNode, message: NodeRunMessage): void {
+    if (this.#stopped) return;
     const previous = this.#runMessageTails.get(message.runId) ?? Promise.resolve();
     const next = previous
       .then(() => this.#handleRunMessage(node, message))
@@ -238,6 +256,22 @@ export class RunDispatcher {
         this.#runMessageTails.delete(message.runId);
       }
     });
+  }
+
+  #trackListener(work: Promise<void>): void {
+    const handled = work.catch(reportDispatchError);
+    this.#listenerTasks.add(handled);
+    void handled.finally(() => this.#listenerTasks.delete(handled));
+  }
+
+  async #drainInFlight(): Promise<void> {
+    const pending = [
+      this.#dispatchPromise,
+      ...this.#listenerTasks.values(),
+      ...this.#runMessageTails.values(),
+    ].filter((work): work is Promise<void> => work !== undefined);
+    await Promise.all(pending);
+    this.#runMessageTails.clear();
   }
 
   async #handleRunMessage(node: ExecutionNode, message: NodeRunMessage): Promise<void> {

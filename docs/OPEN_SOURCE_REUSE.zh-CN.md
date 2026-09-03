@@ -56,6 +56,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | Artifact 原子文件写入 | [`npm/write-file-atomic` 8.0.0](https://github.com/npm/write-file-atomic/tree/v8.0.0) | ISC | 直接使用发布依赖完成 fsync、原子 rename、同目标串行化和失败临时文件清理，不再本地维护这些机制。最终文件仍为 `0600`；没有复制上游源码。 |
 | 不可信 PNG 校验候选 | [`image-js/fast-png` 8.0.0](https://github.com/image-js/fast-png/tree/v8.0.0) 与 [`sharp` 0.35.0](https://github.com/lovell/sharp/tree/v0.35.0) | MIT；Apache-2.0 | 完整解码和归一化暂缓。`fast-png` 没有输入像素资源上限；`sharp` 有上限，但原生包必须先通过 Server 的 Linux x64/arm64 打包矩阵。当前签名检查明确不代表 PNG 完整有效。 |
 | Node 协议输入校验 | [Zod 4.5.4 `e8e206fa`](https://github.com/colinhacks/zod/tree/e8e206fa33ac5fe7ce20a2beb12d57b1cb3df653)、[OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035) 与 [MCP TypeScript SDK `5119ee7f`](https://github.com/modelcontextprotocol/typescript-sdk/tree/5119ee7fd7790e335a3fb60ef36f85334e2a6326) | MIT；文档 CC BY-SA 4.0；MIT | 复用现有固定版本的 Zod 实现严格消息与字段边界，并采用 OWASP 的白名单和范围原则。OpenBot 只保留协议特有的有界审批证据遍历；MCP 仅作协议校验先例，不共享 Node 权威语义。没有复制上游源码。 |
+| Server 有界停机 | [Node.js HTTP 文档 `2645dc73`](https://github.com/nodejs/node/blob/2645dc73720b1b4f27c49f395d3c66025ce126cc/doc/api/http.md)、[`@hono/node-server` `73c03adf`](https://github.com/honojs/node-server/tree/73c03adfb01928fcd5f5b20faebd5d692f83fc93)、[Fastify 生命周期文档 `af079bd4`](https://github.com/fastify/fastify/blob/af079bd4c60c3cbebedc7640517d7288468fb5eb/docs/Reference/Server.md) 与 [`@godaddy/terminus` `aea2f6de`](https://github.com/godaddy/terminus/tree/aea2f6de06dbc9f631dd4ac8a21b91c052add3ce) | MIT | 复用 Hono 已返回的 Node 原生 close/空闲连接/强制关闭生命周期；本地只补 OpenBot 调度尾任务排空。Terminus 无法观察 Server 权威 Run 提交，因此不新增依赖。没有复制上游源码。 |
 | 登录限速候选 | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) 与 [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | 延期采用。没有经过认证的代理契约时，两者都不能建立可信远程身份。当前小型限速器明确仅属部署级保护；未来适配器必须处理 IPv4/IPv6、共享存储和 fail-closed。 |
 | 办公室可视化 | 项目所有者提供的腾讯 Marvis 产品图片 | 未找到可复用源码许可证 | 只作视觉启发，不引入 Marvis 代码或资源；办公室继续作为延期插件。 |
 
@@ -67,7 +68,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | 现有代码边界 | 覆盖状态 | 审查结果 |
 | --- | --- | --- |
 | 员工领域、个人页、进化、技能、记忆和员工包原语 | 已审查 | 已记录 Hermes、Agent Skills、OpenClaw、DSSE、Sigstore、in-toto、WAI-ARIA 与 React Spectrum；README 和员工规范明确标注进化来源。 |
-| Server 浏览器会话、Origin、实时投影和文件产物 | 已审查 | 已记录 Hono/OWASP、Hono streaming、`write-file-atomic` 与 PNG 解码候选；分布式登录身份和完整 PNG 归一化仍是公开缺口。 |
+| Server 浏览器会话、Origin、实时投影、文件产物和进程停机 | 已审查 | 已记录 Hono/OWASP、Hono streaming、Node/Hono 停机、`write-file-atomic` 与 PNG 解码候选。已接受的调度工作会在 PostgreSQL 关闭前排空；分布式登录身份和完整 PNG 归一化仍是公开缺口。 |
 | Node 协议、能力路由、存活和配置 | 已审查 | 已记录 MCP/OCI conformance、`ws`、Kubernetes/Nomad、SPIFFE/Tailscale 和严格 Zod 输入；单 Node 身份仍待实现。 |
 | Provider SDK 与当前 Docker 浏览器适配器 | 已审查 | 已记录 CopilotKit/OpenBot `agent-computer`、Cua、MCP conformance、OCI 和平台声明等级；原生 Provider 只能按证据宣称。 |
 | GitHub 贡献与 CI | 已审查 | 复用 Issue Form 和 RFC/KEP 证据结构；现有 checkout/setup Action 已固定到审查过的 commit，并关闭 checkout 凭证持久化。 |
@@ -105,6 +106,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - 仓库指令、功能调研模板、未来 ADR 检查和带测试的 PR 正文门禁，要求行为变化在合入前提供
   固定上游、许可证、复用选择、本地差集和源码引入证据。
 - 现有 CI 中的 GitHub Action 已固定到完整 commit，checkout 不再保留仓库凭证。
+- Server 停机现在会停止新调度、排空已接收的 Node 消息和进行中的 HTTP 请求、单独关闭已升级的
+  Node socket，最后再关闭 PostgreSQL。空闲连接立即关闭，其余 HTTP 连接拥有经过测试的 10 秒宽限期。
 
 ## 尚未解决
 

@@ -84,6 +84,8 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 - Session 默认 12 小时过期，支持主动撤销。非 loopback Origin 必须使用 HTTPS 并启用 Secure Cookie，否则 Server 启动失败；HTTPS 会话使用 `__Host-` 前缀 Cookie 和 HSTS。审批等高风险操作仍需要后续增加重新验证或设备绑定。
 - 控制面复用 Hono 的维护中安全响应头中间件。每个 SSE 订阅的待发送事件固定为最多 128 项；溢出会终止连接，客户端必须从数据库权威快照恢复，不能静默跳过控制事件。
 - Server 签发的 view/control/upload token 都绑定用户、run、node、用途和 TTL。
+- 收到停机信号后，Server 先停止新调度并排空已接受的 Node 消息和 HTTP 请求，再关闭 PostgreSQL；
+  空闲 HTTP 连接立即关闭，其余连接最多等待 10 秒。WebSocket 等升级连接由各自 registry 显式关闭。
 - 备份加密并定期在另一台机器验证恢复。
 
 ### Node

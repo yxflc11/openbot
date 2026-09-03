@@ -109,7 +109,7 @@ describe("run dispatcher", () => {
     expect(run).toMatchObject({ status: "assigned", nodeId: "linux-node" });
     expect(confirmed).toEqual([run.id]);
     expect(events).toHaveLength(1);
-    dispatcher.stop();
+    await dispatcher.stop();
   });
 
   it("leaves a run queued when no Node satisfies its fixed profile", async () => {
@@ -169,7 +169,7 @@ describe("run dispatcher", () => {
 
     expect(offered).toBe(false);
     expect(run.status).toBe("queued");
-    dispatcher.stop();
+    await dispatcher.stop();
   });
 
   it("requeues an accepted run when the Node disappears before confirmation", async () => {
@@ -239,7 +239,7 @@ describe("run dispatcher", () => {
     expect(run.nodeId).toBeUndefined();
     expect(requeueCalls).toBe(2);
     expect(projectedStatuses).toEqual(["queued"]);
-    dispatcher.stop();
+    await dispatcher.stop();
   });
 
   it("starts an assigned run and durably completes it before releasing Node capacity", async () => {
@@ -447,7 +447,98 @@ describe("run dispatcher", () => {
       "waiting_approval",
       "completed",
     ]);
-    dispatcher.stop();
+    await dispatcher.stop();
+  });
+
+  it("drains accepted Node messages and ignores new ones after stop", async () => {
+    let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
+    let releaseProgress: (() => void) | undefined;
+    let progressWrites = 0;
+    const progressBlocked = new Promise<void>((resolve) => {
+      releaseProgress = resolve;
+    });
+    const dispatcher = new RunDispatcher(
+      {
+        async listDispatchableRuns() {
+          return [];
+        },
+        async getRunningRunForNode() {
+          return undefined;
+        },
+        async appendRunProgress() {
+          progressWrites += 1;
+          await progressBlocked;
+          return undefined;
+        },
+        async completeRun() {
+          return undefined;
+        },
+        async failRun() {
+          return undefined;
+        },
+        async failRunningRuns() {
+          return [];
+        },
+        async assignRun() {
+          return undefined;
+        },
+        async requeueAssignedRuns() {
+          return [];
+        },
+        async startRun() {
+          return undefined;
+        },
+        async upsertNode() {},
+        async markNodeOffline() {},
+      },
+      {
+        list: () => [],
+        onAvailable: () => () => undefined,
+        onUnavailable: () => () => undefined,
+        onRunMessage: (handler) => {
+          runHandler = handler;
+          return () => undefined;
+        },
+        offerRun: async () => ({ status: "unavailable" }),
+        confirmRun: () => false,
+        startRun: () => false,
+        settleRun: () => undefined,
+        cancelRun: () => undefined,
+      },
+      { publish: () => undefined },
+      artifactStorage,
+    );
+    await dispatcher.start();
+
+    const progress: NodeRunMessage = {
+      type: "run.progress",
+      protocolVersion,
+      nodeId: linuxNode.id,
+      runId: queuedRun().id,
+      stage: "persist",
+      message: "正在保存结果",
+      occurredAt: new Date().toISOString(),
+    };
+    runHandler?.(linuxNode, progress);
+    await waitFor(() => progressWrites === 1);
+
+    const firstStop = dispatcher.stop();
+    expect(dispatcher.stop()).toBe(firstStop);
+    let stopped = false;
+    void firstStop.then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+
+    runHandler?.(linuxNode, progress);
+    await Promise.resolve();
+    expect(progressWrites).toBe(1);
+
+    releaseProgress?.();
+    await firstStop;
+    expect(stopped).toBe(true);
+    await expect(dispatcher.start()).rejects.toThrow("cannot be restarted");
   });
 });
 

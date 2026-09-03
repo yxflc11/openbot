@@ -1,19 +1,21 @@
-import { serve } from "@hono/node-server";
 import type { Server as HttpServer } from "node:http";
+import { serve } from "@hono/node-server";
 import { serverEnvSchema } from "@openbot/config";
 import { createDatabase } from "@openbot/db";
 import { createApp } from "./app.js";
 import { FileArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import { closeHttpServer } from "./http-shutdown.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
+import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
 import { RunDispatcher } from "./run-dispatcher.js";
 import { RunFrameStore } from "./run-frame-store.js";
-import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 const env = serverEnvSchema.parse(process.env);
+const HTTP_SHUTDOWN_GRACE_MS = 10_000;
 const database = createDatabase(env.OPENBOT_DATABASE_URL);
 await database.migrate();
 const nodeRegistry = new NodeRegistry(env.OPENBOT_NODE_TOKEN);
@@ -76,20 +78,44 @@ const server = serve(
 const httpServer = server as HttpServer;
 nodeRegistry.attach(httpServer);
 
-function shutdown(signal: string): void {
-  console.info(`Received ${signal}; shutting down.`);
-  for (const unsubscribe of unsubscribeNodeEvents) unsubscribe();
-  dispatcher.stop();
-  nodeRegistry.close();
-  httpServer.close(async (error) => {
-    await database.close();
-    if (error !== undefined) {
-      console.error(error);
-      process.exitCode = 1;
-    }
-  });
-  httpServer.closeAllConnections();
+let shutdownPromise: Promise<void> | undefined;
+
+function shutdown(signal: string): Promise<void> {
+  if (shutdownPromise !== undefined) return shutdownPromise;
+  shutdownPromise = shutdownOnce(signal);
+  return shutdownPromise;
 }
 
-process.once("SIGINT", () => shutdown("SIGINT"));
-process.once("SIGTERM", () => shutdown("SIGTERM"));
+async function shutdownOnce(signal: string): Promise<void> {
+  console.info(`Received ${signal}; shutting down.`);
+  for (const unsubscribe of unsubscribeNodeEvents) unsubscribe();
+
+  const httpDrain = closeHttpServer(httpServer, HTTP_SHUTDOWN_GRACE_MS);
+  const dispatcherDrain = dispatcher.stop();
+  nodeRegistry.close();
+
+  const [dispatcherResult, httpResult] = await Promise.allSettled([dispatcherDrain, httpDrain]);
+  const [databaseResult] = await Promise.allSettled([database.close()]);
+
+  const errors: unknown[] = [];
+  if (dispatcherResult.status === "rejected") errors.push(dispatcherResult.reason);
+  if (httpResult.status === "rejected") {
+    errors.push(httpResult.reason);
+  } else if (httpResult.value.forced) {
+    console.warn(
+      `HTTP connections exceeded the ${HTTP_SHUTDOWN_GRACE_MS}ms shutdown grace period and were closed.`,
+    );
+  }
+  if (databaseResult.status === "rejected") errors.push(databaseResult.reason);
+  if (errors.length > 0) throw new AggregateError(errors, "OpenBot Server shutdown failed.");
+}
+
+function requestShutdown(signal: string): void {
+  void shutdown(signal).catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+process.once("SIGINT", () => requestShutdown("SIGINT"));
+process.once("SIGTERM", () => requestShutdown("SIGTERM"));
