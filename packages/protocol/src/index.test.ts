@@ -9,6 +9,7 @@ import {
   employeeTemplatePackageSchema,
   loginInputSchema,
   nodeMessageSchema,
+  providerConformanceReportSchema,
   protocolVersion,
   runEventSchema,
   runOfferSchema,
@@ -424,5 +425,84 @@ describe("employee skill commands", () => {
         ownerReviewed: true,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("Provider conformance reports", () => {
+  const report = {
+    format: "openbot.provider-conformance/v1",
+    generatedAt: "2026-09-04T00:00:00.000Z",
+    protocolVersion,
+    suite: { name: "openbot-provider", version: "1.0.0", stage: "declaration" },
+    provider: {
+      id: "browser-driver",
+      displayName: "Browser driver",
+      version: "0.1.0",
+      executionStatus: "declaration-only",
+    },
+    target: {
+      platform: "linux",
+      architecture: "x64",
+      osVersion: "6.8.0",
+      evidenceLevel: "simulated",
+    },
+    checks: [
+      {
+        id: "provider.declaration",
+        name: "Provider declaration",
+        description: "Static metadata is valid.",
+        status: "success",
+        severity: "required",
+        timestamp: "2026-09-04T00:00:00.000Z",
+        references: [],
+        evidence: [],
+      },
+    ],
+    baseline: { expectedFailures: [], unexpectedFailures: [], staleEntries: [] },
+    summary: {
+      success: 1,
+      failure: 0,
+      warning: 0,
+      skipped: 0,
+      info: 0,
+      total: 1,
+      expectedFailureEntries: 0,
+      conformant: true,
+      baselineCurrent: true,
+    },
+  } as const;
+
+  it("accepts a self-consistent bounded report", () => {
+    expect(providerConformanceReportSchema.safeParse(report).success).toBe(true);
+  });
+
+  it("rejects edited summaries and required checks hidden as skipped", () => {
+    expect(
+      providerConformanceReportSchema.safeParse({
+        ...report,
+        summary: { ...report.summary, failure: 1, conformant: false },
+      }).success,
+    ).toBe(false);
+    expect(
+      providerConformanceReportSchema.safeParse({
+        ...report,
+        checks: [{ ...report.checks[0], status: "skipped" }],
+        summary: {
+          ...report.summary,
+          success: 0,
+          skipped: 1,
+          conformant: false,
+          baselineCurrent: false,
+        },
+        baseline: {
+          expectedFailures: [],
+          unexpectedFailures: ["provider.declaration"],
+          staleEntries: [],
+        },
+      }).success,
+    ).toBe(false);
+    expect(providerConformanceReportSchema.safeParse({ ...report, supported: true }).success).toBe(
+      false,
+    );
   });
 });

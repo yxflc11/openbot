@@ -22,12 +22,17 @@
 - **验收：**fixture 缺少警告/链接时必定失败，输出具体文件与缺少契约，不调用机器翻译。
 - **不包含：**判断译文文采或自动改写翻译。
 
-## 中级：机器可读 Provider 报告
+## 中级：Provider 一致性 runner
 
-- **结果：**Provider 输出绑定精确平台、架构、Provider/协议版本与场景集的有界 JSON 报告。
-- **路径：**`packages/provider-sdk`、`docs/PROVIDER_CONFORMANCE.md`。
-- **先调研：**固定版本的 MCP Conformance 与 OCI 合规报告模式。
-- **验收：**严格 schema、明确预期失败、确定性 fixture；不支持行为会降低等级，不能自我认证。
+- **已有基础：**`openbot.provider-conformance/v1`、严格 schema、预期失败语义、确定性构建器和
+  单元 fixture 已实现。
+- **结果：**独立 runner 执行 Provider 场景集，发布带可复现隔离或真实设备证据的有界 JSON
+  报告。
+- **路径：**新 runner 包、`packages/provider-sdk`、Provider 集成测试和 `.github/workflows`。
+- **先调研：**[开源复用审查](OPEN_SOURCE_REUSE.zh-CN.md)已固定的 MCP、Kubernetes、OCI 来源，
+  以及当前仍维护的 runner 库。
+- **验收：**复用共享构建器；Artifact 不含原始秘密；明确预期失败；过期/陈旧基线失败；确定性
+  fixture；不能自我认证。
 - **不包含：**托管认证服务或真实设备 CI 集群。
 
 ## 中级：Agent Skills 隔离检查 Worker

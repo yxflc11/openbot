@@ -150,7 +150,7 @@ Provider 请使用专门 Issue 表单，不要用能力声明代替真实设备�
 
 1. `Skills: validate quarantined SKILL.md directories with the official skills-ref worker`
 2. `Skills: add bounded proposal expiry, supersession, notification, and full-diff review`
-3. `Conformance: emit machine-readable Provider reports with explicit expected failures`
+3. `Conformance runner: execute scenarios and publish the implemented machine-readable reports`
 4. `Provider CI: run hermetic and real-device Windows, macOS, and Linux matrices`
 5. `Security: implement Owner publisher-key storage, rotation, revocation, and signed HTTP export`
 6. `Import: add explicit Owner review receipts before activation`

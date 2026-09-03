@@ -46,6 +46,10 @@ routing. External code executes behind the Server policy boundary and a typed Pr
 
 Audit date: 2026-09-04. Commit pins are research baselines, not automatic dependencies.
 
+This table is also the retroactive review ledger for non-trivial code already present on this
+branch. A feature that is not mapped here, in an ADR, or in its issue is blocked from further
+expansion until its upstream and license review is recorded.
+
 | OpenBot area | Researched source | License | Decision and current status |
 | --- | --- | --- | --- |
 | Employee evolution and learning graph | [NousResearch/hermes-agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d), especially `agent/learning_graph.py` and its skills/memory model | MIT | Adopt the product concepts: skills and memory are distinct, learned skills have provenance and usage evidence, and the profile visualizes their relationships. OpenBot's TypeScript/PostgreSQL implementation is local; no Hermes source has been copied. |
@@ -56,6 +60,7 @@ Audit date: 2026-09-04. Commit pins are research baselines, not automatic depend
 | Cross-platform computer use | [Cua `986b6f25`](https://github.com/trycua/cua/tree/986b6f257b1afddef0cbd4815bb2744eab7eadba) | MIT; optional components have separate terms | Plan a Provider integration for Windows, macOS, and Linux. Do not enable optional AGPL or model components without a separate distribution review. |
 | Provider conformance scenarios | [MCP Conformance `74edef34`](https://github.com/modelcontextprotocol/conformance/tree/74edef34d674f563537be8c6587cebaa58e830ca) | License transition: new code Apache-2.0, remaining historical code MIT, documentation CC-BY-4.0 | Adopt named executable scenarios, version-frozen requirements, visible expected failures, and independent checks on both ends of a connection. OpenBot uses local Vitest fixtures for its own protocol; no MCP code or documentation has been copied. |
 | Platform conformance claims | [OCI runtime-spec `6999a89a`](https://github.com/opencontainers/runtime-spec/tree/6999a89a76a0329f440d5740497bedb9dd431297) | Apache-2.0 | Adopt the principle that conformance is scoped to an explicit OS/architecture and that a failed required behavior blocks the claim. OpenBot does not implement or copy the OCI runtime contract here. |
+| Conformance evidence packaging | [CNCF Kubernetes Conformance `6fc6e660`](https://github.com/cncf/k8s-conformance/tree/6fc6e66092075b7443c9259629b607c15b7876b9) and [OCI runtime-tools `8a4db579`](https://github.com/opencontainers/runtime-tools/tree/8a4db579f5c88af5a0d036fad34bddc9c1f703f3) | Apache-2.0 | Adapt explicit product/target metadata, human-reproducible evidence, machine-readable results, and platform-scoped validation. OpenBot defines a bounded JSON report rather than adopting JUnit or TAP as its public Provider contract; no upstream code is copied. |
 | Agent/UI event protocol candidate | [AG-UI `faee4b13`](https://github.com/ag-ui-protocol/ag-ui/tree/faee4b13eabee191d9974f6b19a91b5668268995) | MIT | Evaluated for future agent-to-user event interoperability. Deferred: current work is the security-sensitive Server/Worker Host protocol, not an agent UI transport migration. No dependency or source was added. |
 | Accessible profile navigation and modal review | [WAI-ARIA APG `7e4034b2`](https://github.com/w3c/aria-practices/tree/7e4034b262bc0d25332e330d8a582aaf34113829), [React Spectrum `50279a10`](https://github.com/adobe/react-spectrum/tree/50279a10ab998572e240e44aa36f84a15c7c4f99), and [WCAG technique H102](https://www.w3.org/WAI/WCAG22/Techniques/html/H102) | W3C Software and Document License; Apache-2.0 | Adopt the standard tab roles/keyboard model and the native modal dialog lifecycle. Keep a thin local React bridge because these fixed controls do not justify a second component/style stack. No upstream source was copied. |
 | Contributor intake and review evidence | [OpenClaw `41344e0b`](https://github.com/openclaw/openclaw/tree/41344e0b7dbd5629f797c535c985fd87a323abe5), [Hermes Agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d), [MCP `d4a6fc63`](https://github.com/modelcontextprotocol/modelcontextprotocol/tree/d4a6fc63648798ad6dc6daab6f79e73c9df14699), and [GitHub Issue Forms](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms) | MIT; Apache-2.0/CC-BY-4.0; documentation reference | Adapt issue-first routing, priority guidance, platform evidence, structured forms, and AI-assistance disclosure to OpenBot's security boundaries. No template text or source was copied. |
@@ -84,6 +89,9 @@ Audit date: 2026-09-04. Commit pins are research baselines, not automatic depend
   advertised as executable.
 - Named Windows, macOS, and Linux routing scenarios distinguish simulated contract coverage from
   real-device support. See [Provider conformance](PROVIDER_CONFORMANCE.md).
+- Provider reports now use a strict shared schema and deterministic builder. They bind results to
+  an exact target and keep expected failures visible, expiring, and non-conformant; they contain no
+  field that can self-grant a support or certification label.
 - Employee profile tabs now expose the WAI-ARIA relationships and horizontal keyboard behavior;
   create/import/export dialogs use native modality, Escape handling, focus containment, and focus
   restoration. See [Accessibility baseline](ACCESSIBILITY.md).
@@ -98,8 +106,12 @@ Audit date: 2026-09-04. Commit pins are research baselines, not automatic depend
   provenance, signature, and static-analysis checks.
 - The official `skills-ref` validator requires Python 3.11+. Integration should run in an isolated
   inspection Worker, not inside the authoritative Server process.
-- Provider integrations still need hermetic execution suites, machine-readable reports, and
+- Provider integrations still need a standalone scenario runner, hermetic execution suites, and
   repeatable real-device CI before a platform is marked supported or certified.
+- `npm audit --omit=dev` reports zero production vulnerabilities. The full audit reports four
+  moderate findings in the development-only `drizzle-kit -> @esbuild-kit/esm-loader -> esbuild`
+  path. OpenBot does not expose Drizzle Studio, and will not apply npm's breaking forced downgrade;
+  the migration tooling must be upgraded or replaced after an upstream review.
 - Accessibility still needs real screen-reader, forced-colors, zoom/reflow, and custom-overlay
   evidence before OpenBot can make a conformance claim.
 

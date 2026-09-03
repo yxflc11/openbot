@@ -1,20 +1,7 @@
 import { z } from "zod";
+import { nodeArchitectureSchema, nodePlatformSchema, protocolVersion } from "./node-metadata.js";
 
-export const protocolVersion = "0.7.0" as const;
-
-export const nodePlatformSchema = z.enum([
-  "linux",
-  "windows",
-  "macos",
-  "android",
-  "ios",
-  "freebsd",
-  "unknown",
-]);
-export type NodePlatform = z.infer<typeof nodePlatformSchema>;
-
-export const nodeArchitectureSchema = z.enum(["x64", "arm64", "armv7", "riscv64", "unknown"]);
-export type NodeArchitecture = z.infer<typeof nodeArchitectureSchema>;
+export * from "./node-metadata.js";
 
 export const nodeDeviceClassSchema = z.enum([
   "server",
@@ -654,3 +641,5 @@ export const dsseEnvelopeSchema = z
 export type DsseEnvelope = z.infer<typeof dsseEnvelopeSchema>;
 
 export const employeeTemplateDssePayloadType = "application/vnd.openbot.employee.v1+json" as const;
+
+export * from "./provider-conformance.js";

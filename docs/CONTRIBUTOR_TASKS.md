@@ -28,14 +28,18 @@ claim at the lowest level proven by tests.
   translation; prints the exact file and missing contract.
 - **Out of scope:** judging prose quality or modifying translations automatically.
 
-## Intermediate: machine-readable Provider report
+## Intermediate: Provider conformance runner
 
-- **Outcome:** a Provider can publish a bounded JSON conformance report tied to an exact platform,
-  architecture, Provider version, protocol version, and scenario set.
-- **Start in:** `packages/provider-sdk`, `docs/PROVIDER_CONFORMANCE.md`.
-- **Research first:** pinned MCP Conformance and OCI conformance report patterns.
-- **Acceptance:** strict schema; explicit expected failures; deterministic fixture; unsupported
-  behavior lowers the support level; no self-certification.
+- **Available foundation:** `openbot.provider-conformance/v1`, its strict schema, expected-failure
+  semantics, deterministic builder, and unit fixtures are implemented.
+- **Outcome:** a standalone runner executes a Provider scenario set and publishes the bounded JSON
+  report with reproducible hermetic or real-device evidence.
+- **Start in:** a new runner package, `packages/provider-sdk`, Provider integration tests, and
+  `.github/workflows`.
+- **Research first:** the pinned MCP, Kubernetes, and OCI entries in
+  [Open-source reuse](OPEN_SOURCE_REUSE.md), plus current maintained runner libraries.
+- **Acceptance:** consumes the shared builder; no raw secrets in artifacts; explicit expected
+  failures; expired/stale baselines fail; deterministic fixture; no self-certification.
 - **Out of scope:** a hosted certification authority or real-device CI fleet.
 
 ## Intermediate: Agent Skills quarantine worker
