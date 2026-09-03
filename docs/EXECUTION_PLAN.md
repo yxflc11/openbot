@@ -27,12 +27,13 @@ The development line already contains:
 - WAI-ARIA-based employee profile tabs and native modal focus behavior for create/import/export
   flows, with desktop and phone browser evidence.
 
-The current browser Provider is still read-only. Native desktop control, package activation, and
-production Node trust are not part of this baseline.
+The current browser Provider is still read-only. Native desktop control and production Node trust
+are not part of this baseline.
 
 The codebase now also contains experimental Owner-managed encrypted Ed25519 keys, explicit
-public-key trust, rotation/revocation, DSSE signed export, and verified quarantine preview. Native
-keyrings, KMS, public trust distribution, and reviewed activation remain future adapters.
+public-key trust, rotation/revocation, DSSE signed export, verified quarantine preview, and reviewed
+fresh-identity activation. Native keyrings, KMS, public trust distribution, selective cloning, and
+ownership transfer remain future adapters.
 
 ## Continuous execution schedule
 
@@ -56,7 +57,8 @@ tests, hardening, or the next slice.
 2. Treat a Worker Host capability claim as metadata, never as permission.
 3. Keep export, local clone, and ownership transfer as separate operations.
 4. Parse portable packages with strict schemas and verify integrity before displaying their content.
-5. Import preview is read-only. Activation is a later, explicit Owner-approved command.
+5. Import preview is read-only. Activation is a separate explicit Owner-reviewed command bound to
+   the reviewed package id and digest.
 6. Imported skills start disabled and cannot bind a Worker Host automatically.
 7. Never export credentials, sessions, cookies, Node identity, leases, approvals, private memory,
    raw screenshots, or machine-local paths by default.
@@ -72,12 +74,12 @@ tests, hardening, or the next slice.
 
 The next order is:
 
-1. reviewed import activation with a fresh Employee id and disabled skills;
+1. package-family updates and registry distribution;
 2. memory retention, deletion, and selective portable memory;
 3. single-use capability leases after approval;
 4. Windows, macOS, and Linux native Provider conformance;
 5. native keyring/KMS and public publisher-trust adapters;
-6. local cloning and authenticated ownership transfer;
+6. selective local cloning and authenticated ownership transfer;
 7. optional office visualization plugin after the core channel workflow is mature.
 
 ## Contribution lanes

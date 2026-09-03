@@ -109,6 +109,7 @@ export const employeeSkills = pgTable(
       .notNull()
       .references(() => skills.id, { onDelete: "cascade" }),
     state: text("state").notNull().default("candidate"),
+    source: text("source").notNull().default("manual"),
     confidence: integer("confidence").notNull().default(0),
     evidence: jsonb("evidence").notNull().default([]),
     acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
@@ -121,7 +122,57 @@ export const employeeSkills = pgTable(
       "employee_skills_state_valid",
       sql`${table.state} IN ('candidate', 'verified', 'suspended', 'revoked')`,
     ),
+    check(
+      "employee_skills_source_valid",
+      sql`${table.source} IN ('built-in', 'installed', 'learned', 'imported', 'manual')`,
+    ),
     check("employee_skills_confidence_valid", sql`${table.confidence} BETWEEN 0 AND 100`),
+  ],
+);
+
+export const employeeImportReceipts = pgTable(
+  "employee_import_receipts",
+  {
+    id: text("id").primaryKey(),
+    packageId: text("package_id").notNull(),
+    packageDigest: text("package_digest").notNull(),
+    employeeId: text("employee_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "restrict" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    signatureStatus: text("signature_status").notNull(),
+    publisherKeyId: text("publisher_key_id"),
+    reviewedBy: text("reviewed_by").notNull(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull(),
+    importedSkillCount: integer("imported_skill_count").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("employee_import_receipts_package_idx").on(table.packageId),
+    uniqueIndex("employee_import_receipts_idempotency_idx").on(table.idempotencyKey),
+    index("employee_import_receipts_employee_idx").on(table.employeeId),
+    check(
+      "employee_import_receipts_package_digest_valid",
+      sql`length(${table.packageDigest}) = 64`,
+    ),
+    check(
+      "employee_import_receipts_request_fingerprint_valid",
+      sql`length(${table.requestFingerprint}) = 64`,
+    ),
+    check(
+      "employee_import_receipts_signature_status_valid",
+      sql`${table.signatureStatus} IN ('unsigned', 'dsse')`,
+    ),
+    check(
+      "employee_import_receipts_publisher_valid",
+      sql`(${table.signatureStatus} = 'unsigned' AND ${table.publisherKeyId} IS NULL) OR (${table.signatureStatus} = 'dsse' AND length(btrim(${table.publisherKeyId})) > 0)`,
+    ),
+    check("employee_import_receipts_reviewer_valid", sql`${table.reviewedBy} = 'owner'`),
+    check(
+      "employee_import_receipts_skill_count_valid",
+      sql`${table.importedSkillCount} BETWEEN 0 AND 256`,
+    ),
   ],
 );
 

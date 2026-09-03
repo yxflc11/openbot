@@ -108,7 +108,7 @@ describe("employee template package", () => {
       importedSkillState: "disabled-pending-review",
       hostAuthority: "none",
       memoryCount: 0,
-      canActivate: false,
+      canActivate: true,
     });
   });
 

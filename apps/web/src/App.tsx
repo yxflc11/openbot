@@ -525,7 +525,20 @@ function AuthenticatedWorkspace({
         />
       ) : null}
       {employeeImportOpen ? (
-        <ImportEmployeeDialog onClose={() => setEmployeeImportOpen(false)} />
+        <ImportEmployeeDialog
+          onClose={() => setEmployeeImportOpen(false)}
+          onActivated={(result) => {
+            setEmployeeImportOpen(false);
+            setSelectedChannelId(undefined);
+            setSelectedEmployeeId(result.employee.id);
+            void refresh();
+            showNotice(
+              result.replayed
+                ? `${result.employee.name} 的导入结果已恢复。`
+                : `${result.employee.name} 已激活，技能仍需逐项审核。`,
+            );
+          }}
+        />
       ) : null}
       {notice ? (
         <div className="toast" role="status">

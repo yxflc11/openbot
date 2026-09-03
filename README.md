@@ -59,7 +59,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, automated recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
-| Employee profile | Seven-view profile, safe template export, quarantined import inspection, Owner-reviewed skill metadata, and experimental Owner-managed DSSE signed export/import | Native keyring/KMS and public trust adapters, executable Agent Skills bundles, memory controls, reviewed activation, cloning, and ownership transfer |
+| Employee profile | Seven-view profile, safe template export, quarantined import inspection, reviewed activation with a fresh identity and immutable receipt, Owner-reviewed skill metadata, and experimental Owner-managed DSSE signing | Native keyring/KMS and public trust adapters, executable Agent Skills bundles, memory controls, selective cloning, registry distribution, and ownership transfer |
 | Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Proof-of-possession identity, mTLS, rotation, replay protection, native keyring adapters, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
@@ -74,11 +74,12 @@ and back. The table deliberately separates working code from planned capabilitie
 - Node enrollment is individually revocable, but the current credential is still a bearer secret
   stored in an Owner-only file. It is not yet proof-of-possession identity, mTLS, or native-keyring
   storage and must stay behind WSS and a trusted private network.
-- It does not yet propose or execute learned skills autonomously, edit memory, activate imported
-  employee packages, clone employees, or transfer ownership.
+- It does not yet propose or execute learned skills autonomously, edit memory, selectively clone
+  employee experience, distribute packages through a registry, or transfer ownership.
 - Employee export remains unsigned by default. An operator can enable experimental DSSE signing
   with an encrypted filesystem keyring, offline rotation/revocation, and explicit public-key trust;
-  every import still remains a read-only quarantine preview with no memory or host authority.
+  import activation still requires an exact preview digest, explicit Owner review, a fresh local
+  identity, and candidate-only skills with no memory or host authority.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
 - The optional office visualization is not part of the current product navigation or Web build.
 
@@ -207,7 +208,7 @@ outcomes rather than add an isolated demo.
 | M0 — Local control plane | Channels, Bots, authentication, persistence, and audit run without a proprietary cloud service. The foundation is available today. |
 | M1 — Server/Node loop | A replaceable Node receives a browser task and returns progress and a screenshot. The read-only vertical slice is available; safe interaction remains active work. |
 | M2 — Remote control and approval | Mobile access, signed single-use approvals, notifications, and exclusive human takeover. Persisted approval decisions are available; leases and takeover are next. |
-| M3 — Portable employees | Profile, evolution ledger, skill graph, typed memory, and safe employee templates. |
+| M3 — Portable employees | Profile, evolution ledger, skill graph, typed memory, safe templates, and reviewed new-identity activation. |
 | M4 — Native Worker Hosts | Windows, macOS, and Linux Providers use one capability and approval contract. |
 | M5 — Multi-Bot operations | Structured handoffs, routines, durable queues, coder Providers, and authenticated employee transfer. |
 | M6 — Distribution | Managed mobile devices, reproducible installers, signed releases, SBOMs, upgrades, backup, and recovery. |

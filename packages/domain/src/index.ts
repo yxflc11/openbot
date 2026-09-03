@@ -253,7 +253,7 @@ export interface EmployeeImportIssue {
   locations: string[];
 }
 
-/** A read-only, quarantined projection. Creating a local Employee is a separate future command. */
+/** A read-only, quarantined projection. Activation is a separate Owner-reviewed command. */
 export interface EmployeeImportPreview {
   format: "openbot.employee/v1";
   packageId: string;
@@ -271,6 +271,8 @@ export interface EmployeeImportPreview {
   integrity: {
     algorithm: "sha256";
     valid: boolean;
+    /** Digest of the canonical, schema-valid package reviewed by the Owner. */
+    digest: string;
   };
   signature:
     | {
@@ -295,10 +297,30 @@ export interface EmployeeImportPreview {
     importedSkillState: "disabled-pending-review";
     hostAuthority: "none";
     memoryCount: 0;
-    canActivate: false;
+    canActivate: boolean;
   };
   issues: EmployeeImportIssue[];
   blocked: boolean;
+}
+
+/** Immutable evidence that one reviewed portable package created one local Employee. */
+export interface EmployeeImportReceipt {
+  id: EntityId;
+  packageId: string;
+  packageDigest: string;
+  employeeId: EntityId;
+  signatureStatus: "unsigned" | "dsse";
+  publisherKeyId?: string | undefined;
+  reviewedBy: "owner";
+  reviewedAt: string;
+  importedSkillCount: number;
+  createdAt: string;
+}
+
+export interface EmployeeImportActivationResult {
+  employee: Bot;
+  receipt: EmployeeImportReceipt;
+  replayed: boolean;
 }
 
 export interface ExecutionNode {

@@ -1,30 +1,56 @@
-import type { Bot, EmployeeImportIssue, EmployeeImportPreview } from "@openbot/domain";
+import type {
+  Bot,
+  EmployeeImportActivationResult,
+  EmployeeImportIssue,
+  EmployeeImportPreview,
+} from "@openbot/domain";
 import { useEffect, useRef, useState } from "react";
-import { type ApiError, previewEmployeeImport } from "../api";
+import { activateEmployeeImport, type ApiError, previewEmployeeImport } from "../api";
 import { CloseIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 import { useModalDialog } from "./useModalDialog";
 
-export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
+const employeePackageAccept =
+  ".json,application/json,application/vnd.openbot.employee+json,application/vnd.openbot.employee.dsse+json";
+
+export function ImportEmployeeDialog({
+  onClose,
+  onActivated,
+}: {
+  onClose(): void;
+  onActivated(result: EmployeeImportActivationResult): void;
+}) {
   const [preview, setPreview] = useState<EmployeeImportPreview>();
+  const [file, setFile] = useState<File>();
   const [fileName, setFileName] = useState<string>();
+  const [employeeName, setEmployeeName] = useState("");
+  const [ownerReviewed, setOwnerReviewed] = useState(false);
+  const [allowUnsigned, setAllowUnsigned] = useState(false);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const idempotencyKey = useRef(crypto.randomUUID());
   const requestController = useRef<AbortController | undefined>(undefined);
   const { dialogRef, closeDialog } = useModalDialog(onClose);
 
   useEffect(() => () => requestController.current?.abort(), []);
 
-  async function inspect(file: File) {
+  async function inspect(selectedFile: File) {
     requestController.current?.abort();
     const controller = new AbortController();
     requestController.current = controller;
-    setFileName(file.name);
+    setFileName(selectedFile.name);
+    setFile(selectedFile);
     setPreview(undefined);
+    setOwnerReviewed(false);
+    setAllowUnsigned(false);
     setError(undefined);
     setLoading(true);
+    idempotencyKey.current = crypto.randomUUID();
     try {
-      setPreview(await previewEmployeeImport(file, controller.signal));
+      const result = await previewEmployeeImport(selectedFile, controller.signal);
+      setPreview(result);
+      setEmployeeName(result.employee.name);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(importErrorMessage(cause));
@@ -32,6 +58,40 @@ export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
       if (!controller.signal.aborted) setLoading(false);
     }
   }
+
+  async function activate() {
+    if (
+      file === undefined ||
+      preview === undefined ||
+      preview.blocked ||
+      !ownerReviewed ||
+      (preview.signature.status === "unsigned" && !allowUnsigned)
+    ) {
+      return;
+    }
+    setActivating(true);
+    setError(undefined);
+    try {
+      const result = await activateEmployeeImport(file, preview, {
+        employeeName,
+        allowUnsigned,
+        idempotencyKey: idempotencyKey.current,
+      });
+      onActivated(result);
+    } catch (cause) {
+      setError(importErrorMessage(cause));
+    } finally {
+      setActivating(false);
+    }
+  }
+
+  const activationReady =
+    preview !== undefined &&
+    !preview.blocked &&
+    preview.quarantine.canActivate &&
+    ownerReviewed &&
+    employeeName.trim().length > 0 &&
+    (preview.signature.status === "dsse" || allowUnsigned);
 
   return (
     <div className="dialog-backdrop">
@@ -42,8 +102,8 @@ export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
       >
         <header className="dialog-header">
           <div>
-            <h2 id="import-title">检查员工模板</h2>
-            <p>文件只在隔离预览中解析；本阶段不会创建或激活员工。</p>
+            <h2 id="import-title">检查并激活员工</h2>
+            <p>先在隔离区检查，再由你确认创建一个没有电脑权限的新员工。</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭" onClick={closeDialog}>
             <CloseIcon />
@@ -51,7 +111,16 @@ export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
         </header>
 
         {preview ? (
-          <ImportPreviewDetails preview={preview} fileName={fileName ?? "员工模板"} />
+          <ImportPreviewDetails
+            preview={preview}
+            fileName={fileName ?? "员工模板"}
+            employeeName={employeeName}
+            ownerReviewed={ownerReviewed}
+            allowUnsigned={allowUnsigned}
+            onEmployeeNameChange={setEmployeeName}
+            onOwnerReviewedChange={setOwnerReviewed}
+            onAllowUnsignedChange={setAllowUnsigned}
+          />
         ) : (
           <ImportDropZone fileName={fileName} loading={loading} onInspect={inspect} />
         )}
@@ -64,24 +133,32 @@ export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
 
         <footer className="import-dialog-footer">
           <div>
-            <strong>只读隔离预览</strong>
-            <span>不写入 Bot、技能、记忆、主机绑定或权限。</span>
+            <strong>新身份，零权限</strong>
+            <span>技能先禁用；不导入记忆、记录、主机绑定或凭证。</span>
           </div>
           {preview || error ? (
             <label className="secondary-button import-file-button">
               选择其他文件
               <input
                 type="file"
-                accept=".json,application/json,application/vnd.openbot.employee+json"
+                accept={employeePackageAccept}
                 onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void inspect(file);
+                  const selectedFile = event.target.files?.[0];
+                  if (selectedFile) void inspect(selectedFile);
                 }}
               />
             </label>
           ) : null}
-          <button className="primary-button" type="button" onClick={closeDialog}>
-            完成检查
+          <button className="secondary-button" type="button" onClick={closeDialog}>
+            取消
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={!activationReady || activating}
+            onClick={() => void activate()}
+          >
+            {activating ? "正在激活…" : preview?.blocked ? "激活已阻止" : "激活员工"}
           </button>
         </footer>
       </dialog>
@@ -106,18 +183,18 @@ function ImportDropZone({
       <h3>{loading ? "正在检查模板" : "选择员工模板"}</h3>
       <p>
         {loading
-          ? `正在验证 ${fileName ?? "文件"} 的 schema、校验和与兼容性…`
-          : "支持不超过 1 MiB 的 openbot.employee/v1 JSON。未知字段会直接拒绝。"}
+          ? `正在验证 ${fileName ?? "文件"} 的结构、签名、校验和与兼容性…`
+          : "支持不超过 2 MiB 的 openbot.employee/v1 或 DSSE JSON。未知字段会直接拒绝。"}
       </p>
       {!loading ? (
         <label className="primary-button import-file-button">
           选择文件
           <input
             type="file"
-            accept=".json,application/json,application/vnd.openbot.employee+json"
+            accept={employeePackageAccept}
             onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void onInspect(file);
+              const selectedFile = event.target.files?.[0];
+              if (selectedFile) void onInspect(selectedFile);
             }}
           />
         </label>
@@ -131,9 +208,21 @@ function ImportDropZone({
 function ImportPreviewDetails({
   preview,
   fileName,
+  employeeName,
+  ownerReviewed,
+  allowUnsigned,
+  onEmployeeNameChange,
+  onOwnerReviewedChange,
+  onAllowUnsignedChange,
 }: {
   preview: EmployeeImportPreview;
   fileName: string;
+  employeeName: string;
+  ownerReviewed: boolean;
+  allowUnsigned: boolean;
+  onEmployeeNameChange(value: string): void;
+  onOwnerReviewedChange(value: boolean): void;
+  onAllowUnsignedChange(value: boolean): void;
 }) {
   const employee: Bot = {
     id: `preview:${preview.packageId}`,
@@ -154,14 +243,21 @@ function ImportPreviewDetails({
           <p>{employee.role}</p>
         </div>
         <strong className={preview.blocked ? "blocked" : "ready"}>
-          {preview.blocked ? "需要处理" : "结构检查通过"}
+          {preview.blocked ? "需要处理" : "隔离检查通过"}
         </strong>
       </section>
 
       <section className="import-quarantine-grid">
         <ImportBoundary label="完整性" value={preview.integrity.valid ? "校验通过" : "校验失败"} />
-        <ImportBoundary label="签名" value="未签名 / 不受信任" />
-        <ImportBoundary label="导入身份" value="必须生成新 ID" />
+        <ImportBoundary
+          label="签名"
+          value={
+            preview.signature.status === "dsse"
+              ? `已信任 · ${preview.signature.keyid}`
+              : "未签名 / 不受信任"
+          }
+        />
+        <ImportBoundary label="导入身份" value="生成新 ID" />
         <ImportBoundary label="电脑权限" value="无" />
         <ImportBoundary label="技能初始状态" value="禁用，等待审核" />
         <ImportBoundary label="记忆" value="0" />
@@ -208,7 +304,9 @@ function ImportPreviewDetails({
             </ul>
           ) : (
             <p className="import-empty">
-              {preview.compatibility.hostRequired ? "没有满足全部要求的在线主机。" : "无需工作主机。"}
+              {preview.compatibility.hostRequired
+                ? "没有满足全部要求的在线主机。"
+                : "无需工作主机。"}
             </p>
           )}
           {preview.compatibility.missingCapabilities.length > 0 ? (
@@ -233,10 +331,47 @@ function ImportPreviewDetails({
         </section>
       ) : (
         <section className="import-review-note">
-          <strong>可以进入人工审核，但还不能激活</strong>
-          <span>激活命令、签名信任和本地权限授予将在后续阶段独立实现。</span>
+          <strong>可以由 Owner 激活</strong>
+          <span>激活只创建新身份和候选技能，不授予任何电脑或账号权限。</span>
         </section>
       )}
+
+      {!preview.blocked ? (
+        <section className="import-activation-review" aria-labelledby="activation-review-title">
+          <div>
+            <h3 id="activation-review-title">人工确认</h3>
+            <p>
+              摘要 {preview.integrity.digest.slice(0, 12)}… 将写入收据；文件改变后必须重新检查。
+            </p>
+          </div>
+          <label className="import-name-field">
+            <span>新员工名称</span>
+            <input
+              value={employeeName}
+              maxLength={64}
+              onChange={(event) => onEmployeeNameChange(event.target.value)}
+            />
+          </label>
+          <label className="import-review-check">
+            <input
+              type="checkbox"
+              checked={ownerReviewed}
+              onChange={(event) => onOwnerReviewedChange(event.target.checked)}
+            />
+            <span>我已核对员工资料、技能、兼容主机和零权限边界。</span>
+          </label>
+          {preview.signature.status === "unsigned" ? (
+            <label className="import-review-check import-unsigned-check">
+              <input
+                type="checkbox"
+                checked={allowUnsigned}
+                onChange={(event) => onAllowUnsignedChange(event.target.checked)}
+              />
+              <span>我理解发布者身份无法验证，仍要激活这个未签名模板。</span>
+            </label>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -266,10 +401,17 @@ function issueLabel(issue: EmployeeImportIssue): string {
 function importErrorMessage(cause: unknown): string {
   const error = cause as ApiError;
   const translations: Record<string, string> = {
-    "Employee package must not exceed 1 MiB.": "员工模板不能超过 1 MiB。",
+    "Employee package must not exceed 2 MiB.": "员工模板不能超过 2 MiB。",
     "Employee package must be valid JSON.": "员工模板必须是有效的 JSON 文件。",
     "Employee package does not match a supported format.":
       "模板格式不受支持，或文件包含未声明字段。",
+    "Employee activation is blocked until every preview issue is resolved.":
+      "模板仍有阻止项，不能激活。",
+    "Unsigned Employee activation requires explicit Owner risk acceptance.":
+      "请先确认你愿意承担未签名模板的来源风险。",
+    "The Employee package changed after preview. Review the current package before activating it.":
+      "文件在预览后发生了变化，请重新检查。",
+    "This Employee package was already activated.": "这个员工包已经激活过。",
   };
-  return translations[error.message] ?? error.message ?? "无法检查员工模板。";
+  return translations[error.message] ?? error.message ?? "无法检查或激活员工模板。";
 }

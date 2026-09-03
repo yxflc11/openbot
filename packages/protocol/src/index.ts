@@ -695,7 +695,7 @@ export const employeeTemplatePackageSchema = z
 
 export type EmployeeTemplatePackage = z.infer<typeof employeeTemplatePackageSchema>;
 
-/** The current HTTP import route accepts only standalone, explicitly unsigned templates. */
+/** Standalone packages must be explicitly unsigned; signed documents travel inside DSSE. */
 export const unsignedEmployeeTemplatePackageSchema = employeeTemplatePackageSchema.refine(
   (document) => document.payload.signature.status === "unsigned",
   {
@@ -737,6 +737,21 @@ export const dsseEnvelopeSchema = z
 export type DsseEnvelope = z.infer<typeof dsseEnvelopeSchema>;
 
 export const employeeTemplateDssePayloadType = "application/vnd.openbot.employee.v1+json" as const;
+
+/** Binds activation to the exact package and review result previously shown to the Owner. */
+export const activateEmployeeImportInputSchema = z
+  .object({
+    package: z.union([unsignedEmployeeTemplatePackageSchema, dsseEnvelopeSchema]),
+    expectedPackageId: z.string().uuid(),
+    expectedDigest: z.string().regex(/^[a-f0-9]{64}$/),
+    ownerReviewed: z.literal(true),
+    allowUnsigned: z.boolean(),
+    idempotencyKey: z.string().uuid(),
+    employeeName: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict();
+
+export type ActivateEmployeeImportInput = z.infer<typeof activateEmployeeImportInputSchema>;
 
 /** Bound approval evidence before it can become a durable audit record. */
 function isBoundedJsonValue(root: unknown): boolean {

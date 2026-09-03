@@ -72,6 +72,9 @@ reuse ledger.
 11. The trust store is local policy. Cross-user trust enrollment, key endorsement, TUF continuity,
     Sigstore identity/transparency, native keyrings, and KMS are future adapters.
 
+ADR-0025 later adds a separate Owner-reviewed activation command. It does not change this decision:
+signature verification and preview themselves remain read-only and never grant authority.
+
 ## Consequences
 
 - A copied Employee can prove it was signed by a key the receiving Server already trusts, but it

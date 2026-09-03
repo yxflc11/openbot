@@ -8,6 +8,7 @@ import type {
   CreateEmployeeSkillInput,
   CreateMessageInput,
   EmployeeEvolutionEvent,
+  EmployeeImportActivationResult,
   EmployeeProfile,
   EmployeeSkill,
   ExecutionNode,
@@ -753,12 +754,143 @@ describe("server app", () => {
     });
   });
 
+  it("activates an Owner-reviewed package once with a fresh identity and safe replay", async () => {
+    const store = createTestStore();
+    const source = await store.createBot({
+      name: "Portable Analyst",
+      role: "Read-only analysis",
+      computerProfile: "none",
+    });
+    const app = createTestApp({ store });
+    const cookie = await login(app);
+    const downloaded = await app.request(`/api/v1/bots/${source.id}/export`, {
+      headers: { Cookie: cookie },
+    });
+    const employeePackage = employeeTemplatePackageSchema.parse(await downloaded.json());
+    const previewed = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(employeePackage),
+    });
+    const previewBody = (await previewed.json()) as {
+      preview: {
+        packageId: string;
+        integrity: { digest: string };
+        quarantine: { canActivate: boolean };
+      };
+    };
+    expect(previewBody.preview.quarantine.canActivate).toBe(true);
+
+    const idempotencyKey = "00000000-0000-4000-8000-000000000701";
+    const activationBody = {
+      package: employeePackage,
+      expectedPackageId: previewBody.preview.packageId,
+      expectedDigest: previewBody.preview.integrity.digest,
+      ownerReviewed: true,
+      allowUnsigned: true,
+      idempotencyKey,
+      employeeName: "Portable Analyst Copy",
+    };
+
+    const unsignedNotAccepted = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...activationBody, allowUnsigned: false }),
+    });
+    expect(unsignedNotAccepted.status).toBe(422);
+
+    const changedDigest = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...activationBody, expectedDigest: "0".repeat(64) }),
+    });
+    expect(changedDigest.status).toBe(409);
+
+    const activated = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(activationBody),
+    });
+    expect(activated.status).toBe(201);
+    const activation = (await activated.json()) as EmployeeImportActivationResult;
+    expect(activation).toMatchObject({
+      employee: {
+        name: "Portable Analyst Copy",
+        role: "Read-only analysis",
+        computerProfile: "none",
+      },
+      receipt: {
+        packageId: employeePackage.payload.packageId,
+        packageDigest: previewBody.preview.integrity.digest,
+        signatureStatus: "unsigned",
+        reviewedBy: "owner",
+        importedSkillCount: 0,
+      },
+      replayed: false,
+    });
+    expect(activation.employee.id).not.toBe(source.id);
+
+    const replayed = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(activationBody),
+    });
+    expect(replayed.status).toBe(200);
+    expect(await replayed.json()).toMatchObject({
+      employee: { id: activation.employee.id },
+      receipt: { id: activation.receipt.id },
+      replayed: true,
+    });
+
+    const changedReplay = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...activationBody, employeeName: "Different Copy" }),
+    });
+    expect(changedReplay.status).toBe(409);
+
+    const duplicatePackage = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        ...activationBody,
+        idempotencyKey: "00000000-0000-4000-8000-000000000702",
+      }),
+    });
+    expect(duplicatePackage.status).toBe(409);
+
+    const importedProfile = await store.getEmployeeProfile(activation.employee.id);
+    expect(importedProfile.memories).toEqual([]);
+    expect(importedProfile.skills).toEqual([]);
+    expect(importedProfile.evolution).toEqual([
+      expect.objectContaining({ type: "imported", source: "import" }),
+    ]);
+  });
+
   it("exports DSSE and accepts only a signature from configured publisher trust", async () => {
     const store = createTestStore();
     const bot = await store.createBot({
       name: "Portable Ops",
       role: "Browser and operations",
       computerProfile: "docker-linux",
+    });
+    const candidate = await store.createEmployeeSkill(bot.id, {
+      slug: "browse-web",
+      name: "Browse the web",
+      description: "Navigate public pages and collect read-only evidence.",
+      version: "1.0.0",
+      source: "installed",
+      requiredCapabilities: ["browser"],
+      dependencySkillIds: [],
+      evidence: [],
+      reason: "Installed for portability test.",
+    });
+    await store.updateEmployeeSkillState(bot.id, candidate.skill.id, {
+      state: "verified",
+      confidence: 90,
+      reason: "Reviewed for portability test.",
+      evidence: [],
+      ownerReviewed: true,
     });
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const employeePublisher = {
@@ -768,7 +900,11 @@ describe("server app", () => {
       verify: (input: unknown) =>
         verifyEmployeeTemplateEnvelope(input, [{ keyid: "owner-key-1", publicKey }]),
     };
-    const app = createTestApp({ store, employeePublisher });
+    const app = createTestApp({
+      store,
+      employeePublisher,
+      listNodes: () => [createCompatibleBrowserNode()],
+    });
     const cookie = await login(app);
 
     const previewResponse = await app.request(`/api/v1/bots/${bot.id}/export/preview`, {
@@ -795,9 +931,49 @@ describe("server app", () => {
       body: JSON.stringify(envelope),
     });
     expect(importResponse.status).toBe(200);
-    expect(await importResponse.json()).toMatchObject({
+    const signedPreview = (await importResponse.json()) as {
+      preview: {
+        packageId: string;
+        integrity: { digest: string };
+        signature: { status: "dsse"; trusted: true; keyid: string };
+      };
+    };
+    expect(signedPreview).toMatchObject({
       preview: { signature: { status: "dsse", trusted: true, keyid: "owner-key-1" } },
     });
+
+    const activated = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        package: envelope,
+        expectedPackageId: signedPreview.preview.packageId,
+        expectedDigest: signedPreview.preview.integrity.digest,
+        ownerReviewed: true,
+        allowUnsigned: false,
+        idempotencyKey: "00000000-0000-4000-8000-000000000703",
+        employeeName: "Portable Ops Copy",
+      }),
+    });
+    expect(activated.status).toBe(201);
+    const signedActivation = (await activated.json()) as EmployeeImportActivationResult;
+    expect(signedActivation).toMatchObject({
+      employee: { name: "Portable Ops Copy" },
+      receipt: {
+        signatureStatus: "dsse",
+        publisherKeyId: "owner-key-1",
+        importedSkillCount: 1,
+      },
+    });
+    const importedProfile = await store.getEmployeeProfile(signedActivation.employee.id);
+    expect(importedProfile.skills).toEqual([
+      expect.objectContaining({
+        slug: "browse-web",
+        source: "imported",
+        state: "candidate",
+        confidence: 0,
+      }),
+    ]);
 
     const untrustedApp = createTestApp({
       store,
@@ -1134,6 +1310,29 @@ describe("server app", () => {
   });
 });
 
+function createCompatibleBrowserNode(): ExecutionNode {
+  const now = new Date().toISOString();
+  return {
+    id: "browser-node",
+    name: "Browser worker",
+    platform: "linux",
+    osVersion: "test",
+    architecture: "x64",
+    deviceClass: "server",
+    isolation: "container",
+    trustTier: "development",
+    capabilities: ["browser", "screenshot"],
+    capabilityManifest: [
+      { id: "browser.observe", version: 1, providerId: "test", constraints: {} },
+      { id: "screen.capture", version: 1, providerId: "test", constraints: {} },
+    ],
+    activeRunIds: [],
+    maxConcurrentRuns: 1,
+    connectedAt: now,
+    lastSeenAt: now,
+  };
+}
+
 function createTestApp({
   store,
   dispatchRun,
@@ -1300,6 +1499,11 @@ function createTestStore(): ControlPlaneStore {
   const skillAssignments: EmployeeSkill[] = [];
   const skillOwners = new Map<string, string>();
   const progress: RunProgress[] = [];
+  const importReceipts = new Map<
+    string,
+    { fingerprint: string; result: EmployeeImportActivationResult }
+  >();
+  const activatedPackageIds = new Set<string>();
   let nextId = 0;
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
 
@@ -1399,6 +1603,105 @@ function createTestStore(): ControlPlaneStore {
         createdAt: bot.createdAt,
       });
       return bot;
+    },
+    async activateEmployeeImport(input) {
+      const employeeName = input.employeeName ?? input.document.payload.employee.name;
+      const fingerprint = JSON.stringify({
+        packageId: input.document.payload.packageId,
+        packageDigest: input.packageDigest,
+        employeeName,
+        signature: input.signature,
+      });
+      const replay = importReceipts.get(input.idempotencyKey);
+      if (replay !== undefined) {
+        if (replay.fingerprint !== fingerprint) {
+          throw new StoreConflictError(
+            "This idempotency key was already used for a different Employee import.",
+          );
+        }
+        return { ...replay.result, replayed: true };
+      }
+      if (activatedPackageIds.has(input.document.payload.packageId)) {
+        throw new StoreConflictError("This Employee package was already activated.");
+      }
+      if (bots.some((bot) => bot.name === employeeName)) {
+        throw new StoreConflictError("The Employee name already exists.");
+      }
+      const now = new Date().toISOString();
+      const bot: Bot = {
+        id: id(),
+        name: employeeName,
+        role: input.document.payload.employee.role,
+        status: "idle",
+        computerProfile: input.document.payload.configuration.recommendedExecutionProfile,
+        ...(input.document.payload.employee.appearance === undefined
+          ? {}
+          : { appearance: input.document.payload.employee.appearance }),
+        createdAt: now,
+      };
+      bots.push(bot);
+      const importedSkills = new Map<string, EmployeeSkill>();
+      for (const portableSkill of input.document.payload.skills) {
+        const skill: EmployeeSkill = {
+          id: id(),
+          slug: portableSkill.slug,
+          name: portableSkill.name,
+          description: portableSkill.description,
+          version: portableSkill.version,
+          source: "imported",
+          state: "candidate",
+          confidence: 0,
+          requiredCapabilities: portableSkill.requiredCapabilities,
+          dependencyIds: [],
+          evidence: [{ kind: "import", id: input.document.payload.packageId }],
+          acquiredAt: now,
+          updatedAt: now,
+        };
+        importedSkills.set(skill.slug, skill);
+        skillAssignments.push(skill);
+        skillOwners.set(skill.id, bot.id);
+      }
+      for (const portableSkill of input.document.payload.skills) {
+        const skill = importedSkills.get(portableSkill.slug);
+        if (skill === undefined) throw new Error("Imported skill was not resolved.");
+        skill.dependencyIds = portableSkill.dependencySlugs.map((slug) => {
+          const dependency = importedSkills.get(slug);
+          if (dependency === undefined) throw new Error("Imported dependency was not resolved.");
+          return dependency.id;
+        });
+      }
+      evolution.push({
+        id: id(),
+        botId: bot.id,
+        type: "imported",
+        title: "Employee imported",
+        summary: `${bot.name} was activated from an Owner-reviewed portable package.`,
+        source: "import",
+        sourceId: input.document.payload.packageId,
+        evidence: [{ kind: "import", id: input.document.payload.packageId }],
+        createdAt: now,
+      });
+      const result: EmployeeImportActivationResult = {
+        employee: bot,
+        receipt: {
+          id: id(),
+          packageId: input.document.payload.packageId,
+          packageDigest: input.packageDigest,
+          employeeId: bot.id,
+          signatureStatus: input.signature.status,
+          ...(input.signature.status === "dsse"
+            ? { publisherKeyId: input.signature.trustedPublisherKeyId }
+            : {}),
+          reviewedBy: "owner",
+          reviewedAt: input.reviewedAt,
+          importedSkillCount: input.document.payload.skills.length,
+          createdAt: now,
+        },
+        replayed: false,
+      };
+      activatedPackageIds.add(input.document.payload.packageId);
+      importReceipts.set(input.idempotencyKey, { fingerprint, result });
+      return result;
     },
     async createEmployeeSkill(botId: string, input: CreateEmployeeSkillInput) {
       if (!bots.some((bot) => bot.id === botId)) {

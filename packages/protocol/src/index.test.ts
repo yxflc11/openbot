@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  activateEmployeeImportInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
   createEmployeeSkillInputSchema,
@@ -447,6 +448,25 @@ describe("portable employee format", () => {
           signature: { status: "dsse", algorithm: "ed25519", keyid: "owner-key" },
         },
       }).success,
+    ).toBe(false);
+  });
+
+  it("binds activation to explicit Owner review, digest, and idempotency", () => {
+    const input = {
+      package: employeePackage,
+      expectedPackageId: employeePackage.payload.packageId,
+      expectedDigest: "b".repeat(64),
+      ownerReviewed: true,
+      allowUnsigned: true,
+      idempotencyKey: "00000000-0000-4000-8000-000000000700",
+      employeeName: "Ops Copy",
+    };
+    expect(activateEmployeeImportInputSchema.safeParse(input).success).toBe(true);
+    expect(
+      activateEmployeeImportInputSchema.safeParse({ ...input, ownerReviewed: false }).success,
+    ).toBe(false);
+    expect(
+      activateEmployeeImportInputSchema.safeParse({ ...input, unexpectedAuthority: true }).success,
     ).toBe(false);
   });
 });

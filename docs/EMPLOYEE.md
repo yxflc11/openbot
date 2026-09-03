@@ -136,6 +136,12 @@ Import always shows a preview:
 5. assign a new local identity unless this is an authenticated transfer;
 6. keep all imported skills disabled until policy validation finishes.
 
+The implemented template path now follows those boundaries for identity-free packages: activation
+repeats validation, requires the exact reviewed package id and canonical digest, requires explicit
+Owner acceptance for an unsigned source, creates a fresh local identity, and records an immutable
+idempotent receipt. It does not implement authenticated ownership transfer or optional-memory
+selection.
+
 An employee package carries knowledge and configuration. It never carries authority to a computer.
 The receiving owner must explicitly bind it to a Worker Host and grant a local policy profile.
 
@@ -176,7 +182,11 @@ Implemented on the `feat/cross-platform-employees` development line:
 - a 2 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill
   dependency/capability consistency, sensitive text, and connected Worker Host compatibility;
 - a read-only quarantine projection that cannot create an Employee, activate a skill, persist
-  memory, bind a host, or grant authority.
+  memory, bind a host, or grant authority;
+- an authenticated activation command that revalidates the package and current-host compatibility,
+  binds the exact preview digest, creates a fresh Employee identity in one PostgreSQL transaction,
+  imports every skill as `candidate` with confidence `0`, and writes an immutable idempotency
+  receipt without granting host authority;
 - strict Owner-authenticated commands that add Agent Skills-compatible metadata as a `candidate`
   and explicitly verify, suspend, or permanently revoke it while appending evolution evidence;
 - conditional state updates that reject concurrent review races and never change Worker Host
@@ -186,12 +196,13 @@ Implemented on the `feat/cross-platform-employees` development line:
 
 HTTP export is unsigned and memory-free by default. An experimental Owner filesystem keyring now
 supports encrypted Ed25519 private-key storage, explicit public-key trust, rotation, revocation,
-signed DSSE export, and verified quarantine preview. It does not provide global publisher identity,
-automatic revocation distribution, native keyring/KMS custody, or reviewed activation. See the
+signed DSSE export, verified quarantine preview, and reviewed activation. It does not provide global
+publisher identity, automatic revocation distribution, native keyring/KMS custody, registry
+installation, selective-memory cloning, or ownership transfer. See the
 [signing runbook](EMPLOYEE_SIGNING.md). The skill learning/verification workflow currently covers metadata review only;
 autonomous skill proposals, executable Agent Skills archives, full-diff review, memory editing and
-retention controls, reviewed activation, cloning, and authenticated
-ownership transfer are not implemented yet. Their data and authority boundaries are defined here
+retention controls, selective cloning, and authenticated ownership transfer are not implemented
+yet. Their data and authority boundaries are defined here
 so contributors can add them without coupling employee knowledge to Worker Host access.
 
 ## Acceptance criteria

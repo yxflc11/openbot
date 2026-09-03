@@ -3874,9 +3874,73 @@ select:focus-visible {
 .import-review-note span {
   font-size: 9px;
 }
+.import-activation-review {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d9dde2;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+.import-activation-review h3,
+.import-activation-review p {
+  margin: 0;
+}
+.import-activation-review h3 {
+  font-size: 11px;
+}
+.import-activation-review p {
+  margin-top: 4px;
+  color: #7a828b;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.import-name-field {
+  display: grid;
+  gap: 5px;
+}
+.import-name-field span {
+  color: #68717b;
+  font-size: 9px;
+}
+.import-name-field input {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #d5dae0;
+  border-radius: 7px;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  font-size: 10px;
+}
+.import-name-field input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+.import-review-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  color: #4f5963;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.import-review-check input {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.import-unsigned-check {
+  padding: 9px 10px;
+  border: 1px solid #edc8a3;
+  border-radius: 7px;
+  color: #7c4b20;
+  background: #fff9f2;
+}
 .import-dialog-footer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 9px;
   padding: 16px 26px 20px;

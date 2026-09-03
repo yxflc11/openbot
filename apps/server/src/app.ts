@@ -9,6 +9,7 @@ import type {
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import {
+  activateEmployeeImportInputSchema,
   approvalDecisionInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
@@ -42,6 +43,7 @@ import {
 } from "./control-plane-store.js";
 import {
   buildEmployeeTemplate,
+  employeeTemplatePackageDigest,
   type EmployeeTemplateEnvelopeVerification,
   inspectEmployeeTemplate,
 } from "./employee-package.js";
@@ -555,6 +557,60 @@ export function createApp(dependencies: AppDependencies) {
     });
   });
 
+  app.post("/api/v1/employees/import/activate", async (context) => {
+    const input = await parseRequest(
+      context.req.raw,
+      activateEmployeeImportInputSchema,
+      maxEmployeeActivationRequestBytes,
+    );
+    const employeePackage = parseEmployeePackageValue(
+      input.package,
+      dependencies.employeePublisher,
+    );
+    const preview = inspectEmployeeTemplate(
+      employeePackage.document,
+      dependencies.listNodes(),
+      employeePackage.trustedKeyId === undefined
+        ? {}
+        : { trustedKeyId: employeePackage.trustedKeyId },
+    );
+    if (
+      preview.packageId !== input.expectedPackageId ||
+      preview.integrity.digest !== input.expectedDigest
+    ) {
+      throw new StoreConflictError(
+        "The Employee package changed after preview. Review the current package before activating it.",
+      );
+    }
+    if (preview.blocked || !preview.quarantine.canActivate) {
+      throw new StoreValidationError(
+        "Employee activation is blocked until every preview issue is resolved.",
+      );
+    }
+    if (preview.signature.status === "unsigned" && !input.allowUnsigned) {
+      throw new StoreValidationError(
+        "Unsigned Employee activation requires explicit Owner risk acceptance.",
+      );
+    }
+
+    const result = await dependencies.store.activateEmployeeImport({
+      document: employeePackage.document,
+      packageDigest: employeeTemplatePackageDigest(employeePackage.document),
+      idempotencyKey: input.idempotencyKey,
+      ...(input.employeeName === undefined ? {} : { employeeName: input.employeeName }),
+      signature:
+        employeePackage.trustedKeyId === undefined
+          ? { status: "unsigned" }
+          : {
+              status: "dsse",
+              trustedPublisherKeyId: employeePackage.trustedKeyId,
+            },
+      reviewedBy: "owner",
+      reviewedAt: new Date().toISOString(),
+    });
+    return context.json(result, result.replayed ? 200 : 201);
+  });
+
   app.post("/api/v1/bots", async (context) => {
     const input = await parseRequest(context.req.raw, createBotInputSchema);
     const bot = await dependencies.store.createBot(input);
@@ -724,6 +780,7 @@ function requireNodeIdentity(
 }
 
 const maxEmployeePackageBytes = 2 * 1024 * 1024;
+const maxEmployeeActivationRequestBytes = maxEmployeePackageBytes + maximumApiRequestBytes;
 
 async function parseEmployeePackageRequest(
   request: Request,
@@ -745,6 +802,13 @@ async function parseEmployeePackageRequest(
   } catch {
     throw new RequestValidationError("Employee package must be valid JSON.", {});
   }
+  return parseEmployeePackageValue(value, publisher);
+}
+
+function parseEmployeePackageValue(
+  value: unknown,
+  publisher: AppDependencies["employeePublisher"],
+): { document: EmployeeTemplatePackage; trustedKeyId?: string } {
   const parsed = unsignedEmployeeTemplatePackageSchema.safeParse(value);
   if (parsed.success) return { document: parsed.data };
 

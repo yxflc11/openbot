@@ -13,6 +13,8 @@ import type {
   EmployeeDecisionTrace,
   EmployeeEvidenceReference,
   EmployeeEvolutionEvent,
+  EmployeeImportActivationResult,
+  EmployeeImportReceipt,
   EmployeeMemory,
   EmployeeProfile,
   EmployeeSkill,
@@ -31,6 +33,7 @@ import {
   channelBots,
   channels,
   employeeEvolutionEvents,
+  employeeImportReceipts,
   employeeMemories,
   employeeSkills,
   messages,
@@ -40,9 +43,10 @@ import {
   skillDependencies,
   skills,
 } from "@openbot/db";
-import { and, asc, count, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type {
   ArtifactRecord,
+  ActivateEmployeeImportCommand,
   ControlPlaneStore,
   PersistedCounts,
   RequestApprovalInput,
@@ -361,6 +365,259 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     return toBot(bot);
   }
 
+  async activateEmployeeImport(
+    input: ActivateEmployeeImportCommand,
+  ): Promise<EmployeeImportActivationResult> {
+    const payload = input.document.payload;
+    const employeeName = input.employeeName ?? payload.employee.name;
+    const requestFingerprint = employeeImportRequestFingerprint(input, employeeName);
+
+    try {
+      return await this.#db.transaction(async (transaction) => {
+        const importLockKeys = [
+          `employee-import:idempotency:${input.idempotencyKey}`,
+          `employee-import:package:${payload.packageId}`,
+        ].sort();
+        for (const lockKey of importLockKeys) {
+          await transaction.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`,
+          );
+        }
+
+        const [idempotentReceipt] = await transaction
+          .select({ receipt: employeeImportReceipts, employee: bots })
+          .from(employeeImportReceipts)
+          .innerJoin(bots, eq(employeeImportReceipts.employeeId, bots.id))
+          .where(eq(employeeImportReceipts.idempotencyKey, input.idempotencyKey))
+          .limit(1);
+        if (idempotentReceipt !== undefined) {
+          if (idempotentReceipt.receipt.requestFingerprint !== requestFingerprint) {
+            throw new StoreConflictError(
+              "This idempotency key was already used for a different Employee import.",
+            );
+          }
+          return {
+            employee: toBot(idempotentReceipt.employee),
+            receipt: toEmployeeImportReceipt(idempotentReceipt.receipt),
+            replayed: true,
+          };
+        }
+
+        const existingPackage = await transaction
+          .select({ id: employeeImportReceipts.id })
+          .from(employeeImportReceipts)
+          .where(eq(employeeImportReceipts.packageId, payload.packageId))
+          .limit(1);
+        if (existingPackage.length > 0) {
+          throw new StoreConflictError("This Employee package was already activated.");
+        }
+
+        const now = new Date();
+        const reviewedAt = new Date(input.reviewedAt);
+        const employeeRow = {
+          id: randomUUID(),
+          name: employeeName,
+          role: payload.employee.role,
+          status: "idle" as const,
+          computerProfile: payload.configuration.recommendedExecutionProfile,
+          configuration:
+            payload.employee.appearance === undefined
+              ? {}
+              : { appearance: payload.employee.appearance },
+          createdAt: now,
+          updatedAt: now,
+        };
+        await transaction.insert(bots).values(employeeRow);
+
+        const skillBySlug = new Map<string, typeof skills.$inferSelect>();
+        const insertedSkillIds = new Set<string>();
+        for (const portableSkill of payload.skills) {
+          const insertedRows = await transaction
+            .insert(skills)
+            .values({
+              id: randomUUID(),
+              slug: portableSkill.slug,
+              name: portableSkill.name,
+              description: portableSkill.description,
+              version: portableSkill.version,
+              source: "imported",
+              requiredCapabilities: portableSkill.requiredCapabilities,
+              metadata: { format: "agentskills.io" },
+              createdAt: now,
+              updatedAt: now,
+            })
+            .onConflictDoNothing({ target: [skills.slug, skills.version] })
+            .returning();
+          const insertedSkill = insertedRows[0];
+          const [resolvedSkill] =
+            insertedSkill === undefined
+              ? await transaction
+                  .select()
+                  .from(skills)
+                  .where(
+                    and(
+                      eq(skills.slug, portableSkill.slug),
+                      eq(skills.version, portableSkill.version),
+                    ),
+                  )
+                  .limit(1)
+              : [insertedSkill];
+          if (resolvedSkill === undefined) {
+            throw new StoreConflictError("The skill definition changed during Employee import.");
+          }
+          if (
+            resolvedSkill.name !== portableSkill.name ||
+            resolvedSkill.description !== portableSkill.description ||
+            !sameStringSet(
+              toStringArray(resolvedSkill.requiredCapabilities),
+              portableSkill.requiredCapabilities,
+            )
+          ) {
+            throw new StoreConflictError(
+              `Skill ${portableSkill.slug}@${portableSkill.version} already identifies a different definition.`,
+            );
+          }
+          skillBySlug.set(portableSkill.slug, resolvedSkill);
+          if (insertedSkill !== undefined) insertedSkillIds.add(insertedSkill.id);
+        }
+
+        for (const portableSkill of payload.skills) {
+          const skill = skillBySlug.get(portableSkill.slug);
+          if (skill === undefined) {
+            throw new StoreValidationError(
+              `Imported skill ${portableSkill.slug} was not resolved.`,
+            );
+          }
+          const dependencyIds = portableSkill.dependencySlugs.map((dependencySlug) => {
+            const dependency = skillBySlug.get(dependencySlug);
+            if (dependency === undefined) {
+              throw new StoreValidationError(
+                `Imported skill dependency ${dependencySlug} was not resolved.`,
+              );
+            }
+            return dependency.id;
+          });
+          if (insertedSkillIds.has(skill.id)) {
+            if (dependencyIds.length > 0) {
+              await transaction.insert(skillDependencies).values(
+                dependencyIds.map((dependencyId) => ({
+                  skillId: skill.id,
+                  dependsOnSkillId: dependencyId,
+                })),
+              );
+            }
+          } else {
+            const dependencyRows = await transaction
+              .select({ id: skillDependencies.dependsOnSkillId })
+              .from(skillDependencies)
+              .where(eq(skillDependencies.skillId, skill.id));
+            if (
+              !sameStringSet(
+                dependencyRows.map((row) => row.id),
+                dependencyIds,
+              )
+            ) {
+              throw new StoreConflictError(
+                `Skill ${portableSkill.slug}@${portableSkill.version} has a different dependency graph.`,
+              );
+            }
+          }
+        }
+
+        if (payload.skills.length > 0) {
+          await transaction.insert(employeeSkills).values(
+            payload.skills.map((portableSkill) => {
+              const skill = skillBySlug.get(portableSkill.slug);
+              if (skill === undefined) {
+                throw new StoreValidationError(
+                  `Imported skill ${portableSkill.slug} was not resolved.`,
+                );
+              }
+              return {
+                botId: employeeRow.id,
+                skillId: skill.id,
+                state: "candidate",
+                source: "imported",
+                confidence: 0,
+                evidence: [
+                  {
+                    kind: "import",
+                    id: payload.packageId,
+                    label: "Reviewed Employee package",
+                  },
+                ],
+                acquiredAt: now,
+                updatedAt: now,
+              };
+            }),
+          );
+        }
+
+        await transaction.insert(employeeEvolutionEvents).values({
+          id: randomUUID(),
+          botId: employeeRow.id,
+          type: "imported",
+          title: "Employee imported",
+          summary: `${employeeRow.name} was activated from an Owner-reviewed portable package.`,
+          source: "import",
+          sourceId: payload.packageId,
+          evidence: [{ kind: "import", id: payload.packageId, label: input.packageDigest }],
+          createdAt: now,
+        });
+        await transaction.insert(runEvents).values({
+          id: randomUUID(),
+          botId: employeeRow.id,
+          type: "BOT_IMPORTED",
+          payload: {
+            packageId: payload.packageId,
+            packageDigest: input.packageDigest,
+            importedSkillCount: payload.skills.length,
+          },
+          createdAt: now,
+        });
+
+        const receiptRows = await transaction
+          .insert(employeeImportReceipts)
+          .values({
+            id: randomUUID(),
+            packageId: payload.packageId,
+            packageDigest: input.packageDigest,
+            employeeId: employeeRow.id,
+            idempotencyKey: input.idempotencyKey,
+            requestFingerprint,
+            signatureStatus: input.signature.status,
+            publisherKeyId:
+              input.signature.status === "dsse" ? input.signature.trustedPublisherKeyId : null,
+            reviewedBy: input.reviewedBy,
+            reviewedAt,
+            importedSkillCount: payload.skills.length,
+            createdAt: now,
+          })
+          .returning();
+        const receipt = receiptRows[0];
+        if (receipt === undefined) throw new Error("Employee import receipt was not created.");
+
+        return {
+          employee: toBot(employeeRow),
+          receipt: toEmployeeImportReceipt(receipt),
+          replayed: false,
+        };
+      });
+    } catch (error) {
+      if (
+        error instanceof StoreConflictError ||
+        error instanceof StoreNotFoundError ||
+        error instanceof StoreValidationError
+      ) {
+        throw error;
+      }
+      translateDatabaseError(
+        error,
+        "The Employee name, package, or idempotency key already exists.",
+      );
+    }
+  }
+
   async createEmployeeSkill(
     botId: string,
     input: CreateEmployeeSkillInput,
@@ -472,6 +729,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           botId,
           skillId: skillRow.id,
           state: "candidate",
+          source: input.source,
           confidence: 0,
           evidence: input.evidence,
           acquiredAt: now,
@@ -1425,7 +1683,7 @@ function toEmployeeSkill(
     name: skill.name,
     description: skill.description,
     version: skill.version,
-    source: skill.source as EmployeeSkill["source"],
+    source: assignment.source as EmployeeSkill["source"],
     state: assignment.state as EmployeeSkill["state"],
     confidence: assignment.confidence,
     requiredCapabilities: toStringArray(skill.requiredCapabilities),
@@ -1558,6 +1816,41 @@ function approvalTargetFingerprint(input: RequestApprovalInput): string {
     .update("\0")
     .update(JSON.stringify(input.beforeState))
     .digest("hex");
+}
+
+function employeeImportRequestFingerprint(
+  input: ActivateEmployeeImportCommand,
+  employeeName: string,
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        packageId: input.document.payload.packageId,
+        packageDigest: input.packageDigest,
+        employeeName,
+        signatureStatus: input.signature.status,
+        publisherKeyId:
+          input.signature.status === "dsse" ? input.signature.trustedPublisherKeyId : null,
+      }),
+    )
+    .digest("hex");
+}
+
+function toEmployeeImportReceipt(
+  row: typeof employeeImportReceipts.$inferSelect,
+): EmployeeImportReceipt {
+  return {
+    id: row.id,
+    packageId: row.packageId,
+    packageDigest: row.packageDigest,
+    employeeId: row.employeeId,
+    signatureStatus: row.signatureStatus as EmployeeImportReceipt["signatureStatus"],
+    ...(row.publisherKeyId === null ? {} : { publisherKeyId: row.publisherKeyId }),
+    reviewedBy: "owner",
+    reviewedAt: row.reviewedAt.toISOString(),
+    importedSkillCount: row.importedSkillCount,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 function translateDatabaseError(error: unknown, conflictMessage: string): never {

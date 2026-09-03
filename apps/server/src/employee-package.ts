@@ -225,6 +225,11 @@ export function verifyEmployeeTemplateChecksum(document: EmployeeTemplatePackage
   return actual === document.integrity.digest;
 }
 
+/** Stable digest of the complete validated package used to bind preview and activation. */
+export function employeeTemplatePackageDigest(document: EmployeeTemplatePackage): string {
+  return createHash("sha256").update(canonicalJson(document)).digest("hex");
+}
+
 /**
  * Wraps the exact serialized employee package bytes in a DSSE v1 envelope. This primitive does not
  * create or persist owner keys; callers must obtain an Ed25519 signing key from a separate key
@@ -548,7 +553,11 @@ export function inspectEmployeeTemplate(
       }),
     ),
     requestedCapabilities: declaredCapabilities,
-    integrity: { algorithm: "sha256", valid: verifyEmployeeTemplateChecksum(document) },
+    integrity: {
+      algorithm: "sha256",
+      valid: verifyEmployeeTemplateChecksum(document),
+      digest: employeeTemplatePackageDigest(document),
+    },
     signature:
       payload.signature.status === "dsse"
         ? { status: "dsse", trusted: true, keyid: payload.signature.keyid }
@@ -564,7 +573,7 @@ export function inspectEmployeeTemplate(
       importedSkillState: "disabled-pending-review",
       hostAuthority: "none",
       memoryCount: 0,
-      canActivate: false,
+      canActivate: issues.length === 0,
     },
     issues,
     blocked: issues.length > 0,

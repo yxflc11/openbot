@@ -6,8 +6,10 @@ OpenBot can sign the existing identity-free `openbot.employee/v1` template with 
 Ed25519 key. The result is a DSSE envelope. A receiving Server accepts that envelope only when its
 local trust store already contains the publisher public key.
 
-This feature is experimental. A verified package is still a read-only quarantine preview. It
-cannot create an Employee, enable a skill, copy memory, bind a Worker Host, or grant authority.
+This feature is experimental. Verification first produces a read-only quarantine preview. An
+authenticated Owner may then activate the exact reviewed digest as a fresh local Employee; every
+skill remains a disabled candidate. Activation cannot copy memory, bind a Worker Host, or grant
+authority.
 
 ## Initialize the local publisher
 

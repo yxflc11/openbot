@@ -11,13 +11,14 @@ M2 第一切片已完成：Node/provider 可发送结构化 `approval.request`�
 M3 基础切片已完成：员工进化事件、版本化技能、技能依赖和分类记忆已经落库；七视图员工主页
 可以从 Bot 列表、频道成员和消息作者进入。安全模板导出已有严格 schema、默认排除项、疑似敏感
 文本阻止、SHA-256 校验和 Owner 鉴权下载。只读导入预览也已完成严格 schema、2 MiB 上限、
-完整性与技能语义检查、敏感文本检查和在线主机兼容报告；它不能创建员工或获得工作主机权限。
+完整性与技能语义检查、敏感文本检查和在线主机兼容报告。审核后激活会绑定预览摘要、生成新身份、
+把技能保持候选禁用并写入不可变幂等收据；它不会导入记忆、绑定主机或获得工作主机权限。
 当前 HTTP 模板默认未签名且不含记忆。实验性的 Owner 文件密钥库已经完成加密 PKCS#8 保存、
 显式公钥信任、轮换、撤销，以及 DSSE/Ed25519 签名导出和验签后隔离预览；公钥指纹必须带外核对，
 任何包都不能自授信任或携带权限。Agent Skills
 兼容的技能元数据现在只能先成为候选，再由登录 Owner 验证、暂停或永久撤销；每次变化都会追加
 进化事件，不会改变主机权限。下一步是系统钥匙串/KMS/TUF 信任适配、可执行技能目录的隔离检查、
-完整 diff 审核，以及签名后的导入审核与激活设计。
+完整 diff 审核、注册表分发、选择性复制和认证所有权转移。
 
 ## 当前持续目标的执行顺序
 
@@ -153,8 +154,8 @@ Provider 请使用专门 Issue 表单，不要用能力声明代替真实设备�
 2. `Skills: add bounded proposal expiry, supersession, notification, and full-diff review`
 3. `Conformance runner: execute scenarios and publish the implemented machine-readable reports`
 4. `Provider CI: run hermetic and real-device Windows, macOS, and Linux matrices`
-5. `Security: implement Owner publisher-key storage, rotation, revocation, and signed HTTP export`
-6. `Import: add explicit Owner review receipts before activation`
+5. `Employee registry: distribute publisher trust, revocation, and package updates`
+6. `Import: add package-family update and selective local clone semantics`
 7. `Memory: add retention, redaction, deletion, and selective export controls`
 8. `Node identity: add proof-of-possession, rotation, native keyrings, and replay protection`
 9. `Approval: issue single-use capability leases bound to target fingerprints`

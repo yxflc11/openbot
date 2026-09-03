@@ -11,6 +11,7 @@ import type {
   CreateChannelInput,
   CreateMessageInput,
   EmployeeExportPreview,
+  EmployeeImportActivationResult,
   EmployeeImportPreview,
   EmployeeProfile,
   ExecutionNode,
@@ -142,8 +143,8 @@ export async function previewEmployeeImport(
   file: File,
   signal?: AbortSignal,
 ): Promise<EmployeeImportPreview> {
-  if (file.size > 1024 * 1024) {
-    throw new ApiError("员工模板不能超过 1 MiB。", 422);
+  if (file.size > 2 * 1024 * 1024) {
+    throw new ApiError("员工模板不能超过 2 MiB。", 422);
   }
   const result = await request<{ preview: EmployeeImportPreview }>(
     "/api/v1/employees/import/preview",
@@ -155,6 +156,39 @@ export async function previewEmployeeImport(
     },
   );
   return result.preview;
+}
+
+export async function activateEmployeeImport(
+  file: File,
+  preview: EmployeeImportPreview,
+  input: {
+    employeeName: string;
+    allowUnsigned: boolean;
+    idempotencyKey: string;
+  },
+): Promise<EmployeeImportActivationResult> {
+  if (file.size > 2 * 1024 * 1024) {
+    throw new ApiError("员工模板不能超过 2 MiB。", 422);
+  }
+  let employeePackage: unknown;
+  try {
+    employeePackage = JSON.parse(await file.text());
+  } catch {
+    throw new ApiError("员工模板必须是有效的 JSON 文件。", 422);
+  }
+  return request<EmployeeImportActivationResult>("/api/v1/employees/import/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      package: employeePackage,
+      expectedPackageId: preview.packageId,
+      expectedDigest: preview.integrity.digest,
+      ownerReviewed: true,
+      allowUnsigned: input.allowUnsigned,
+      idempotencyKey: input.idempotencyKey,
+      employeeName: input.employeeName,
+    }),
+  });
 }
 
 export async function decideApproval(

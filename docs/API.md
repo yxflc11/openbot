@@ -29,6 +29,7 @@
 | `GET` | `/api/v1/bots/:botId/export/preview` | 预览默认脱敏员工模板及全部排除项 |
 | `GET` | `/api/v1/bots/:botId/export` | 下载通过安全检查的员工模板 JSON |
 | `POST` | `/api/v1/employees/import/preview` | 在隔离区严格检查员工模板，不写入任何员工数据 |
+| `POST` | `/api/v1/employees/import/activate` | 重新检查 Owner 已确认的模板并原子创建一个零权限新员工 |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
 | `GET` | `/api/v1/node-identities` | Owner 读取安全的已登记 Node 元数据；不返回令牌或凭证摘要 |
 | `POST` | `/api/v1/nodes/enrollment-tokens` | Owner 为准确 Node id 创建短时单次登记令牌 |
@@ -165,11 +166,34 @@ Server 会拒绝启动而不是退回无签名模式。使用方法见[员工包
 技能 slug 与依赖、技能实际能力和顶层能力声明是否一致、疑似敏感文本，以及当前在线工作主机
 能否满足执行配置和全部能力。
 
-成功响应只是一份 `quarantine.active: true` 的只读投影。`quarantine.canActivate` 固定为 `false`，
-`createsNewIdentity` 固定为 `true`，`importedSkillState` 固定为
-`disabled-pending-review`，`hostAuthority` 固定为 `none`。该接口不写入 Bot、技能、记忆、Node
-绑定或权限；即使 `blocked: false` 且 `signature.trusted: true`，也只表示签名来源和内容完整性
-通过并可以进入人工审核，不表示员工已导入或已获得运行权限。
+成功响应只是一份 `quarantine.active: true` 的只读投影。没有阻止项时
+`quarantine.canActivate` 为 `true`；`createsNewIdentity` 固定为 `true`，
+`importedSkillState` 固定为 `disabled-pending-review`，`hostAuthority` 固定为 `none`。该接口
+不写入 Bot、技能、记忆、Node 绑定或权限。`integrity.digest` 是严格解析后员工包的规范摘要，
+客户端必须在激活时原样提交。
+
+`POST /api/v1/employees/import/activate` 接受如下 JSON：
+
+```json
+{
+  "package": {},
+  "expectedPackageId": "uuid-from-preview",
+  "expectedDigest": "sha256-from-preview",
+  "ownerReviewed": true,
+  "allowUnsigned": false,
+  "idempotencyKey": "new-request-uuid",
+  "employeeName": "Optional local name"
+}
+```
+
+Server 会对 `package` 重复执行同一套严格解析、签名验证、校验和、敏感文本和当前主机兼容性
+检查。包 ID 或摘要与预览不一致时返回 `409`；任一检查阻止时返回 `422`。未签名包只有在
+`allowUnsigned: true` 时才能激活。成功后，单个 PostgreSQL 事务会生成新的员工 ID，复制职责、
+外观和推荐执行配置，把所有技能作为 `candidate`、置信度 `0` 导入，追加 `imported` 进化事件，
+并写入不可变收据。不会导入记忆、历史、凭证、Session、Node 绑定、能力授权或其他权限。
+
+同一个幂等键和同一请求可以安全重试并返回原收据；同一键对应不同请求或同一 `packageId` 再次
+激活会返回 `409`。若要在同一 Server 再复制一次，来源端必须导出带新 `packageId` 的新模板。
 
 ## 创建频道
 

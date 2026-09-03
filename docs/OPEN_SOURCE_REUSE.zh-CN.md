@@ -38,7 +38,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | 员工进化与学习图谱 | [NousResearch/hermes-agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d)，重点参考 `agent/learning_graph.py` 的技能/记忆模型 | MIT | 采用“技能与记忆分离、学习技能保留来源和使用证据、个人页展示关系”的产品思想。OpenBot 的 TypeScript/PostgreSQL 实现为本地代码，没有复制 Hermes 源码。 |
 | 技能写入审核 | [Hermes write-approval gate](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/tools/write_approval.py) | MIT | 将待审核语义适配为 Server 记录：新技能只能是候选，登录 Owner 才能验证、暂停或撤销。完整 diff 和队列生命周期仍待实现。 |
 | 可迁移技能格式 | [Agent Skills 规范 `69ef37e9`](https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379) 与 `skills-ref` | 代码 Apache-2.0；文档 CC-BY-4.0 | 采用开放标准，不自创技能包。当前元数据已采用其名称和简介限制；尚未实现可执行 `SKILL.md` 归档和官方校验器接入。 |
-| 第三方技能安全 | [OpenClaw `428fa8e0`](https://github.com/openclaw/openclaw/tree/428fa8e0d3dac835628f6ac6466bb65ce175b249) 的技能隔离与扫描说明 | MIT | 采用第三方内容默认不可信、激活前检查、路径约束和明确授权。现有员工包检查只读，不能激活导入内容。 |
+| 第三方技能安全 | [OpenClaw `428fa8e0`](https://github.com/openclaw/openclaw/tree/428fa8e0d3dac835628f6ac6466bb65ce175b249) 的技能隔离与扫描说明 | MIT | 采用第三方内容默认不可信、激活前检查、路径约束和明确授权。员工包技能只会作为禁用候选导入。 |
+| 审核后激活员工 | [Backstage `v1.51.0`](https://github.com/backstage/backstage/tree/v1.51.0)、[Kubernetes `v1.36.2` API dry-run](https://github.com/kubernetes/website/blob/main/content/en/docs/reference/using-api/api-concepts.md) 与 [OpenClaw `v2026.7.1-2`](https://github.com/openclaw/openclaw/tree/v2026.7.1-2) | Apache-2.0；Apache-2.0；MIT | 采用“预览 → 审核 → 创建”、无副作用预览和第三方技能默认不可信。OpenBot 只实现自己的包摘要绑定、新身份、PostgreSQL 原子收据和候选技能赋值；没有复制上游源码。见[调研证据](research/reviewed-employee-import-activation.md)。 |
 | 浏览器电脑 | [CopilotKit/OpenBot `agent-computer` `257c1280`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer) | MIT | 通过薄 Provider 使用其 Token HTTP 接口，上游进程独立运行，不复制控制面。 |
 | 跨平台电脑操作 | [Cua `986b6f25`](https://github.com/trycua/cua/tree/986b6f257b1afddef0cbd4815bb2744eab7eadba) | MIT；可选组件另有许可证 | 计划用于 Windows、macOS、Linux Provider；未经独立分发审查不启用可选 AGPL 或模型组件。 |
 | Provider 一致性场景 | [MCP Conformance `74edef34`](https://github.com/modelcontextprotocol/conformance/tree/74edef34d674f563537be8c6587cebaa58e830ca) | 许可证迁移中：新代码 Apache-2.0，剩余历史代码 MIT，文档 CC-BY-4.0 | 采用具名可执行场景、按版本冻结要求、显式预期失败和连接两端分别检查的方式。OpenBot 使用本地 Vitest 编写自身协议 fixture，没有复制 MCP 代码或文档。 |
@@ -87,7 +88,10 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - 验证必须由已登录 Owner 明确审核，产生只追加进化事件，且不能修改工作主机能力、策略或授权。
 - 并发创建和状态变更以冲突失败，不会静默覆盖审核。
 - 当前证据快照有界，完整审核原因继续保存在不可变进化事件中。
-- 员工导入继续执行校验和、严格 schema、只读和隔离规则。
+- 员工预览继续执行校验和、严格 schema、只读和隔离规则。激活会重复检查、绑定人工审核过的摘要、
+  要求单独接受未签名风险、生成新身份并保存不可变幂等收据。
+- 技能来源属于员工赋值而不是共享技能定义，因此复用完全相同的定义时，导入赋值仍会明确显示为
+  `imported`。
 - Server 已有覆盖实际导入字节的 DSSE/Ed25519 签名验签链路，并增加实验性的加密文件密钥库、
   离线轮换/撤销、外部公钥显式信任、签名导出和验签后隔离预览。系统钥匙串、KMS、公开身份与
   信任分发仍是独立适配器。

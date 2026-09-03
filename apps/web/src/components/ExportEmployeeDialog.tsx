@@ -1,10 +1,6 @@
 import type { Bot, EmployeeExportExclusion, EmployeeExportPreview } from "@openbot/domain";
 import { useEffect, useState } from "react";
-import {
-  type ApiError,
-  downloadEmployeeTemplate,
-  getEmployeeExportPreview,
-} from "../api";
+import { type ApiError, downloadEmployeeTemplate, getEmployeeExportPreview } from "../api";
 import { CloseIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 import { useModalDialog } from "./useModalDialog";
@@ -183,7 +179,11 @@ function ExportPreviewDetails({ preview }: { preview: EmployeeExportPreview }) {
           <strong>SHA-256 校验</strong>
         </div>
         <code title={preview.checksum}>{preview.checksum}</code>
-        <p>当前 v1 模板尚未签名；导入端必须隔离检查，并保持技能禁用直到本地审核完成。</p>
+        <p>
+          {preview.signatureStatus === "dsse"
+            ? `此模板将由发布密钥 ${preview.publisherKeyId ?? "未知"} 签名；接收端仍须显式信任并审核。`
+            : "当前 Server 未配置发布密钥，模板会明确标记为未签名；接收端必须单独接受风险。"}
+        </p>
       </section>
     </div>
   );

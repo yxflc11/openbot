@@ -63,16 +63,17 @@ claim at the lowest level proven by tests.
   and public identity/transparency without changing the DSSE package contract.
 - **Still out of scope:** activation or ownership transfer.
 
-## Advanced: reviewed Employee activation
+## Delivered baseline: reviewed Employee activation
 
-- **Outcome:** a quarantined preview can become a new local Employee only through an explicit Owner
-  command and immutable review receipt.
+- **Delivered:** a quarantined preview becomes a new local Employee only through an exact digest,
+  explicit Owner command, candidate-only skills, and immutable idempotent receipt.
 - **Start in:** `apps/server`, `packages/db`, `apps/web`.
-- **Research first:** supply-chain review queues and transactional import patterns.
-- **Acceptance:** fresh Employee id; imported skills disabled; no memory or Worker Host binding;
-  idempotency key; audit receipt; concurrent/replayed activation fails closed.
-- **Out of scope:** publisher trust automation, cloning an existing local identity, or ownership
-  transfer.
+- **Research baseline:** Backstage preview/review/create, Kubernetes dry-run, and OpenClaw
+  default-untrusted skills; see ADR-0025.
+- **Remaining contribution:** package-family updates, registry distribution, selective-memory clone,
+  richer receipt inspection, and authenticated ownership transfer.
+- **Preserve:** fresh Employee id; imported skills disabled; no memory or Worker Host binding;
+  idempotent exact replay; changed or duplicate activation fails closed.
 
 ## Advanced: proof-of-possession Node identity
 

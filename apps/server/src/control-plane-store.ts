@@ -11,6 +11,7 @@ import type {
   CreateEmployeeSkillInput,
   CreateMessageInput,
   EmployeeProfile,
+  EmployeeImportActivationResult,
   EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
@@ -19,6 +20,7 @@ import type {
   SubmitTaskResult,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
+import type { EmployeeTemplatePackage } from "@openbot/protocol";
 
 export interface RequestApprovalInput {
   requestId: string;
@@ -47,6 +49,16 @@ export interface PersistedCounts {
   activeRuns: number;
 }
 
+export interface ActivateEmployeeImportCommand {
+  document: EmployeeTemplatePackage;
+  packageDigest: string;
+  idempotencyKey: string;
+  employeeName?: string | undefined;
+  signature: { status: "unsigned" } | { status: "dsse"; trustedPublisherKeyId: string };
+  reviewedBy: "owner";
+  reviewedAt: string;
+}
+
 export interface ControlPlaneStore {
   channelExists(channelId: string): Promise<boolean>;
   listChannels(): Promise<Channel[]>;
@@ -62,6 +74,9 @@ export interface ControlPlaneStore {
   getRunningRunForNode(runId: string, nodeId: string): Promise<Run | undefined>;
   getCounts(): Promise<PersistedCounts>;
   createBot(input: CreateBotInput): Promise<Bot>;
+  activateEmployeeImport(
+    input: ActivateEmployeeImportCommand,
+  ): Promise<EmployeeImportActivationResult>;
   createEmployeeSkill(
     botId: string,
     input: CreateEmployeeSkillInput,
