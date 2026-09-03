@@ -82,7 +82,9 @@ export function MobileNavigation({
               <div className="mobile-list-row" key={node.id}>
                 <NodeIcon />
                 <span className="mobile-list-label">{node.name}</span>
-                <small>在线</small>
+                <small>
+                  {node.activeRunIds.length}/{node.maxConcurrentRuns} 任务
+                </small>
               </div>
             ))
           )}

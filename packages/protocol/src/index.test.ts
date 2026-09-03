@@ -7,6 +7,8 @@ import {
   nodeMessageSchema,
   protocolVersion,
   runEventSchema,
+  runOfferSchema,
+  serverMessageSchema,
 } from "./index.js";
 
 describe("node protocol", () => {
@@ -18,6 +20,7 @@ describe("node protocol", () => {
       name: "Linux worker",
       platform: "linux",
       capabilities: ["browser", "shell", "screenshot"],
+      maxConcurrentRuns: 1,
       token: "development-token",
       sentAt: new Date().toISOString(),
     });
@@ -33,11 +36,43 @@ describe("node protocol", () => {
       name: "Unsafe worker",
       platform: "linux",
       capabilities: ["root-access"],
+      maxConcurrentRuns: 1,
       token: "development-token",
       sentAt: new Date().toISOString(),
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("validates the two-phase run assignment messages", () => {
+    const offer = {
+      type: "run.offer",
+      protocolVersion,
+      offerId: "00000000-0000-4000-8000-000000000001",
+      runId: "00000000-0000-4000-8000-000000000002",
+      channelId: "00000000-0000-4000-8000-000000000003",
+      botId: "00000000-0000-4000-8000-000000000004",
+      title: "打开测试页并截图",
+      executionProfile: "docker-linux",
+      requiredCapabilities: ["browser", "screenshot"],
+      sentAt: new Date().toISOString(),
+    };
+
+    expect(runOfferSchema.safeParse(offer).success).toBe(true);
+    expect(serverMessageSchema.safeParse(offer).success).toBe(true);
+    expect(
+      nodeMessageSchema.safeParse({
+        type: "run.accept",
+        protocolVersion,
+        nodeId: "linux-node",
+        offerId: offer.offerId,
+        runId: offer.runId,
+        acceptedAt: new Date().toISOString(),
+      }).success,
+    ).toBe(true);
+    expect(
+      runOfferSchema.safeParse({ ...offer, requiredCapabilities: ["root-access"] }).success,
+    ).toBe(false);
   });
 });
 

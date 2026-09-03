@@ -43,6 +43,13 @@
       "when": 1788844800000,
       "tag": "0005_global_runs_index",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788931200000,
+      "tag": "0006_run_assignment",
+      "breakpoints": true
     }
   ]
 }

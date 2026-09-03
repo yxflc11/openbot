@@ -2,10 +2,10 @@ import type { Bot } from "@openbot/domain";
 
 export type ChannelBotCandidate = Pick<Bot, "id" | "name" | "role">;
 
-export function selectChannelAssignee(
-  candidates: ChannelBotCandidate[],
+export function selectChannelAssignee<Candidate extends ChannelBotCandidate>(
+  candidates: Candidate[],
   requestedBotId?: string,
-): ChannelBotCandidate | undefined {
+): Candidate | undefined {
   if (requestedBotId !== undefined) {
     return candidates.find((candidate) => candidate.id === requestedBotId);
   }

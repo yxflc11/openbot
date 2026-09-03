@@ -5,6 +5,7 @@ import { NodeIcon } from "./Icons";
 export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
   const activeRuns = workspace.runs.filter(isActiveRun);
   const botById = new Map(workspace.bots.map((bot) => [bot.id, bot]));
+  const nodeById = new Map(workspace.nodes.map((node) => [node.id, node]));
   return (
     <aside className="context-rail" aria-label="运行状态">
       <h2>运行状态</h2>
@@ -31,11 +32,14 @@ export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
         ) : (
           activeRuns.slice(0, 4).map((run) => {
             const bot = botById.get(run.botId);
+            const node = run.nodeId === undefined ? undefined : nodeById.get(run.nodeId);
             return (
               <article className="rail-run" key={run.id}>
                 <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
                 <strong>{run.title}</strong>
-                <small>{bot?.name ?? "未知 Bot"}</small>
+                <small>
+                  {bot?.name ?? "未知 Bot"} · {node?.name ?? "等待节点"}
+                </small>
               </article>
             );
           })
@@ -78,7 +82,8 @@ function NodeRow({ node }: { node: ExecutionNode }) {
       <div>
         <strong>{node.name}</strong>
         <small>
-          {node.platform} · {node.capabilities.length} 项能力
+          {node.platform} · {node.activeRunIds.length}/{node.maxConcurrentRuns} 任务 ·{" "}
+          {node.capabilities.length} 项能力
         </small>
       </div>
       <em>在线</em>

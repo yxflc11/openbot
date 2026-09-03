@@ -17,6 +17,8 @@
       <string>wss://replace-with-server/ws/nodes</string>
       <key>OPENBOT_NODE_TOKEN</key>
       <string>replace-with-enrollment-token</string>
+      <key>OPENBOT_NODE_MAX_CONCURRENT_RUNS</key>
+      <string>1</string>
     </dict>
     <key>KeepAlive</key>
     <true/>

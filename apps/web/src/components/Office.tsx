@@ -1,4 +1,4 @@
-import type { Bot, Channel, Run } from "@openbot/domain";
+import type { Bot, Channel, ExecutionNode, Run } from "@openbot/domain";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
@@ -6,14 +6,16 @@ import { RobotAvatar } from "./RobotAvatar";
 interface OfficeProps {
   bots: Bot[];
   channels: Channel[];
+  nodes: ExecutionNode[];
   runs: Run[];
   onCreateBot(): void;
   onCreateChannel(): void;
 }
 
-export function Office({ bots, channels, runs, onCreateBot, onCreateChannel }: OfficeProps) {
+export function Office({ bots, channels, nodes, runs, onCreateBot, onCreateChannel }: OfficeProps) {
   const activeRunByBot = indexActiveRunsByBot(runs);
   const channelById = new Map(channels.map((channel) => [channel.id, channel]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
   return (
     <main className="workspace-main">
       <header className="workspace-header">
@@ -46,6 +48,7 @@ export function Office({ bots, channels, runs, onCreateBot, onCreateChannel }: O
                 bot={bot}
                 run={run}
                 channel={run === undefined ? undefined : channelById.get(run.channelId)}
+                node={run?.nodeId === undefined ? undefined : nodeById.get(run.nodeId)}
                 key={bot.id}
               />
             );
@@ -91,10 +94,12 @@ function BotStation({
   bot,
   run,
   channel,
+  node,
 }: {
   bot: Bot;
   run: Run | undefined;
   channel: Channel | undefined;
+  node: ExecutionNode | undefined;
 }) {
   const status = run
     ? runStatusLabel(run.status)
@@ -124,7 +129,11 @@ function BotStation({
         ) : null}
         <dl>
           <dt>{run ? "所属频道" : "绑定电脑"}</dt>
-          <dd>{run ? (channel?.name ?? "未知频道") : profileLabel(bot.computerProfile)}</dd>
+          <dd>
+            {run
+              ? `${channel?.name ?? "未知频道"}${node ? ` · ${node.name}` : ""}`
+              : profileLabel(bot.computerProfile)}
+          </dd>
         </dl>
       </div>
     </article>

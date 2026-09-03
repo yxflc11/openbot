@@ -3,15 +3,21 @@ import type { Server as HttpServer } from "node:http";
 import { serverEnvSchema } from "@openbot/config";
 import { createDatabase } from "@openbot/db";
 import { createApp } from "./app.js";
+import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
+import { RunDispatcher } from "./run-dispatcher.js";
 import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
 
 const env = serverEnvSchema.parse(process.env);
 const database = createDatabase(env.OPENBOT_DATABASE_URL);
 await database.migrate();
 const nodeRegistry = new NodeRegistry(env.OPENBOT_NODE_TOKEN);
+const realtime = new ChannelRealtimeHub();
+const store = new PostgresControlPlaneStore(database.db);
+const dispatcher = new RunDispatcher(store, nodeRegistry, realtime);
+await dispatcher.start();
 const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
   ownerName: env.OPENBOT_OWNER_NAME,
   ownerPassword: env.OPENBOT_OWNER_PASSWORD,
@@ -20,9 +26,11 @@ const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
 const app = createApp({
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,
   auth,
+  dispatchRun: (run) => dispatcher.enqueue(run),
   listNodes: () => nodeRegistry.list(),
+  realtime,
   secureCookies: env.OPENBOT_SECURE_COOKIES,
-  store: new PostgresControlPlaneStore(database.db),
+  store,
 });
 
 const server = serve(
@@ -42,6 +50,7 @@ nodeRegistry.attach(httpServer);
 
 function shutdown(signal: string): void {
   console.info(`Received ${signal}; shutting down.`);
+  dispatcher.stop();
   nodeRegistry.close();
   httpServer.close(async (error) => {
     await database.close();

@@ -89,6 +89,8 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 
 - Node 主动建立 WSS/mTLS 连接，不接受公网入站控制。
 - 每个 Node 使用独立可吊销身份；enrollment token 只能使用一次。
+- `run.accept` 只表示能力与容量校验通过，不授予执行权；只有 Server 持久化条件认领并返回 `run.assigned` 后才能占用任务槽位。
+- 当前 M1 开发切片仍使用部署级共享启动令牌，不具备独立身份和单节点吊销能力，只允许可信私网测试；完成 enrollment、轮换和吊销前不得暴露到不受信任网络。
 - Node 不能读取其他 Node、Server 数据库或全局凭证。
 - Docker supervisor、Cua 和 Lume 只监听 loopback/Unix socket。
 - 人接管必须持有 Server 签发的独占 control lease。

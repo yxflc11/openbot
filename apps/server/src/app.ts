@@ -2,6 +2,7 @@ import type {
   BootstrapSummary,
   ChannelRealtimeEvent,
   ExecutionNode,
+  Run,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import {
@@ -33,6 +34,7 @@ import {
 export interface AppDependencies {
   allowedOrigins: string[];
   auth: OwnerAuthService;
+  dispatchRun?: (run: Run) => void;
   listNodes: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
   secureCookies: boolean;
@@ -72,7 +74,7 @@ export function createApp(dependencies: AppDependencies) {
     context.json({
       ok: true,
       service: "openbot-server",
-      phase: "m0",
+      phase: "m1",
       time: new Date().toISOString(),
     }),
   );
@@ -117,7 +119,7 @@ export function createApp(dependencies: AppDependencies) {
     const persistedCounts = await dependencies.store.getCounts();
     const summary: BootstrapSummary = {
       project: "openbot",
-      phase: "m0",
+      phase: "m1",
       counts: {
         ...persistedCounts,
         connectedNodes: nodes.length,
@@ -226,7 +228,7 @@ export function createApp(dependencies: AppDependencies) {
               event: event.type,
               ...(event.type === "message.created"
                 ? { id: event.message.id }
-                : event.type === "run.created"
+                : event.type === "run.created" || event.type === "run.updated"
                   ? { id: event.run.id }
                   : {}),
               data: JSON.stringify(event),
@@ -253,6 +255,7 @@ export function createApp(dependencies: AppDependencies) {
       channelId: result.run.channelId,
       run: result.run,
     });
+    dependencies.dispatchRun?.(result.run);
     return context.json(result, 201);
   });
 

@@ -5,12 +5,13 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
+  ExecutionNode,
   Message,
   Run,
   SubmitTaskResult,
 } from "@openbot/domain";
-import { bots, channelBots, channels, messages, runEvents, runs } from "@openbot/db";
-import { asc, count, desc, eq, inArray } from "drizzle-orm";
+import { bots, channelBots, channels, messages, nodes, runEvents, runs } from "@openbot/db";
+import { and, asc, count, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { ControlPlaneStore, PersistedCounts } from "./control-plane-store.js";
 import {
   StoreConflictError,
@@ -21,7 +22,7 @@ import { selectChannelAssignee } from "./task-routing.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
 
-const activeRunStatuses = ["queued", "running", "waiting_approval", "blocked"];
+const activeRunStatuses = ["queued", "assigned", "running", "waiting_approval", "blocked"];
 
 export class PostgresControlPlaneStore implements ControlPlaneStore {
   readonly #db: Database;
@@ -98,6 +99,16 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     }
 
     const rows = await this.#db.select().from(runs).orderBy(desc(runs.createdAt)).limit(50);
+    return rows.map(toRun);
+  }
+
+  async listDispatchableRuns(limit = 50): Promise<Run[]> {
+    const rows = await this.#db
+      .select()
+      .from(runs)
+      .where(and(eq(runs.status, "queued"), isNull(runs.nodeId), ne(runs.executionProfile, "none")))
+      .orderBy(asc(runs.createdAt), asc(runs.id))
+      .limit(limit);
     return rows.map(toRun);
   }
 
@@ -220,6 +231,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     };
     const runId = randomUUID();
     let selectedBotId: string | undefined;
+    let selectedExecutionProfile: Bot["computerProfile"] | undefined;
 
     await this.#db.transaction(async (transaction) => {
       const channelRows = await transaction
@@ -232,7 +244,12 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       }
 
       const candidates = await transaction
-        .select({ id: bots.id, name: bots.name, role: bots.role })
+        .select({
+          id: bots.id,
+          name: bots.name,
+          role: bots.role,
+          computerProfile: bots.computerProfile,
+        })
         .from(channelBots)
         .innerJoin(bots, eq(channelBots.botId, bots.id))
         .where(eq(channelBots.channelId, channelId))
@@ -246,6 +263,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         );
       }
       selectedBotId = assignee.id;
+      selectedExecutionProfile = assignee.computerProfile as Bot["computerProfile"];
 
       await transaction.insert(messages).values(message);
       await transaction.insert(runs).values({
@@ -253,6 +271,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         channelId,
         botId: assignee.id,
         sourceMessageId: message.id,
+        executionProfile: assignee.computerProfile,
         title: taskTitle(input.content),
         status: "queued",
         createdAt: now,
@@ -271,12 +290,18 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           channelId,
           botId: assignee.id,
           type: "RUN_CREATED",
-          payload: { sourceMessageId: message.id, title: taskTitle(input.content) },
+          payload: {
+            sourceMessageId: message.id,
+            title: taskTitle(input.content),
+            executionProfile: assignee.computerProfile,
+          },
         },
       ]);
     });
 
-    if (selectedBotId === undefined) throw new Error("Task assignee was not selected.");
+    if (selectedBotId === undefined || selectedExecutionProfile === undefined) {
+      throw new Error("Task assignee was not selected.");
+    }
     return {
       message: toMessage(message),
       run: {
@@ -284,12 +309,105 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         channelId,
         botId: selectedBotId,
         sourceMessageId: message.id,
+        executionProfile: selectedExecutionProfile,
         title: taskTitle(input.content),
         status: "queued",
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
       },
     };
+  }
+
+  async assignRun(runId: string, nodeId: string): Promise<Run | undefined> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const [updated] = await transaction
+        .update(runs)
+        .set({ nodeId, status: "assigned", updatedAt: now })
+        .where(and(eq(runs.id, runId), eq(runs.status, "queued"), isNull(runs.nodeId)))
+        .returning();
+      if (updated === undefined) return undefined;
+
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        runId: updated.id,
+        channelId: updated.channelId,
+        botId: updated.botId,
+        nodeId,
+        type: "RUN_ASSIGNED",
+        payload: { executionProfile: updated.executionProfile },
+      });
+      return toRun(updated);
+    });
+  }
+
+  async requeueAssignedRuns(nodeId?: string): Promise<Run[]> {
+    const now = new Date();
+    return this.#db.transaction(async (transaction) => {
+      const condition =
+        nodeId === undefined
+          ? eq(runs.status, "assigned")
+          : and(eq(runs.status, "assigned"), eq(runs.nodeId, nodeId));
+      const updated = await transaction
+        .update(runs)
+        .set({ nodeId: null, status: "queued", updatedAt: now })
+        .where(condition)
+        .returning();
+      if (updated.length === 0) return [];
+
+      await transaction.insert(runEvents).values(
+        updated.map((run) => ({
+          id: randomUUID(),
+          runId: run.id,
+          channelId: run.channelId,
+          botId: run.botId,
+          nodeId: nodeId ?? run.nodeId,
+          type: "RUN_REQUEUED",
+          payload: { reason: nodeId === undefined ? "server-recovery" : "node-unavailable" },
+        })),
+      );
+      return updated.map(toRun);
+    });
+  }
+
+  async upsertNode(node: ExecutionNode): Promise<void> {
+    const connectedAt = new Date(node.connectedAt);
+    const lastSeenAt = new Date(node.lastSeenAt);
+    const now = new Date();
+    await this.#db
+      .insert(nodes)
+      .values({
+        id: node.id,
+        name: node.name,
+        platform: node.platform,
+        capabilities: node.capabilities,
+        maxConcurrentRuns: node.maxConcurrentRuns,
+        status: "online",
+        connectedAt,
+        lastSeenAt,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: nodes.id,
+        set: {
+          name: node.name,
+          platform: node.platform,
+          capabilities: node.capabilities,
+          maxConcurrentRuns: node.maxConcurrentRuns,
+          status: "online",
+          connectedAt,
+          lastSeenAt,
+          updatedAt: now,
+        },
+      });
+  }
+
+  async markNodeOffline(nodeId: string): Promise<void> {
+    await this.#db
+      .update(nodes)
+      .set({ status: "offline", lastSeenAt: new Date(), updatedAt: new Date() })
+      .where(eq(nodes.id, nodeId));
   }
 
   async joinBotToChannel(channelId: string, botId: string): Promise<Channel> {
@@ -373,6 +491,7 @@ function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
       ? {}
       : { sourceMessageId: row.sourceMessageId }),
     ...(row.nodeId === null || row.nodeId === undefined ? {} : { nodeId: row.nodeId }),
+    executionProfile: row.executionProfile as Run["executionProfile"],
     title: row.title,
     status: row.status as Run["status"],
     createdAt: (row.createdAt ?? new Date()).toISOString(),

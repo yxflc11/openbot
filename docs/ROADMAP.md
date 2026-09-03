@@ -2,9 +2,9 @@
 
 ## 当前进度
 
-M0 第五切片正在推进：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、排队任务、结构化事件和 Owner Session 会真实落库；Web 可以本地登录、创建 Bot、创建频道、把 Bot 加入频道、提交频道任务，并在频道、桌面办公室和手机列表中读取同一份数据；频道 SSE、多浏览器即时同步、断线检测和自动重连已跑通。任务会由 Server 确定性地选择频道成员，消息、Run 与事件在同一事务中保存。
+M1 第一切片正在推进：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、任务、结构化事件和 Owner Session 会真实落库；Web 可以本地登录、创建 Bot、创建频道、把 Bot 加入频道、提交频道任务，并在频道、桌面办公室和手机列表中读取同一份数据。频道 SSE、多浏览器即时同步、断线检测和自动重连已跑通。任务先由 Server 确定性地选择频道成员，再以 Bot 固定的 execution profile 匹配有容量的 Node。
 
-M0 尚未完成的是共享记忆、完整 policy 与 audit 页面，以及 Run 后续状态的恢复。当前只完成 thread/message 到 queued Run 的基础投影，还没有向 Node 派发或执行任务。后续审批、Node 与屏幕事件会沿用同一认证与投影边界。
+Node 已通过出站 WebSocket 上报能力和并发容量；两阶段 offer/accept/confirm、数据库条件认领、`assigned` 实时投影、节点断线回队和 Server 重启恢复已通过真实链路验证。当前仍只完成“安全接单”，尚未执行 provider、回传日志/截图/产物或处理外部副作用。M0 仍缺共享记忆、完整 policy 与 audit 页面；M1 下一切片接 Docker browser provider 与可恢复的执行状态机。
 
 ## Spike — 决定是否正式 fork CopilotKit/OpenBot
 
@@ -41,8 +41,9 @@ M0 尚未完成的是共享记忆、完整 policy 与 audit 页面，以及 Run 
 
 ### 交付
 
-- Node enrollment、WSS 长连接、心跳、吊销。
-- capability registry 与 deterministic router。
+- Node enrollment、WSS 长连接、心跳、吊销（当前为共享启动令牌，独立身份与吊销待补）。
+- capability registry 与 deterministic router（首个切片已完成）。
+- 两阶段任务分配、并发容量和断线/重启回队（首个切片已完成）。
 - Docker browser provider。
 - run、屏幕、日志和产物回传。
 - Run Inspector 的 Computer、Progress、Team 与 Artifacts 实时投影。

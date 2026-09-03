@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const protocolVersion = "0.1.0" as const;
+export const protocolVersion = "0.2.0" as const;
 
 export const nodeCapabilitySchema = z.enum([
   "browser",
@@ -20,6 +20,7 @@ export const nodeHelloSchema = z.object({
   name: z.string().min(1),
   platform: z.enum(["linux", "macos", "unknown"]),
   capabilities: z.array(nodeCapabilitySchema),
+  maxConcurrentRuns: z.number().int().min(1).max(16),
   token: z.string().min(1),
   sentAt: z.string().datetime(),
 });
@@ -28,13 +29,34 @@ export const nodeHeartbeatSchema = z.object({
   type: z.literal("node.heartbeat"),
   protocolVersion: z.literal(protocolVersion),
   nodeId: z.string().min(1),
-  activeRunIds: z.array(z.string()),
+  activeRunIds: z.array(z.string().uuid()).max(16),
   sentAt: z.string().datetime(),
+});
+
+export const runAcceptSchema = z.object({
+  type: z.literal("run.accept"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  offerId: z.string().uuid(),
+  runId: z.string().uuid(),
+  acceptedAt: z.string().datetime(),
+});
+
+export const runRejectSchema = z.object({
+  type: z.literal("run.reject"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  offerId: z.string().uuid(),
+  runId: z.string().uuid(),
+  reason: z.string().trim().min(1).max(500),
+  rejectedAt: z.string().datetime(),
 });
 
 export const nodeMessageSchema = z.discriminatedUnion("type", [
   nodeHelloSchema,
   nodeHeartbeatSchema,
+  runAcceptSchema,
+  runRejectSchema,
 ]);
 
 export type NodeMessage = z.infer<typeof nodeMessageSchema>;
@@ -49,12 +71,54 @@ export const serverAckSchema = z.object({
 
 export type ServerAck = z.infer<typeof serverAckSchema>;
 
+export const runOfferSchema = z.object({
+  type: z.literal("run.offer"),
+  protocolVersion: z.literal(protocolVersion),
+  offerId: z.string().uuid(),
+  runId: z.string().uuid(),
+  channelId: z.string().uuid(),
+  botId: z.string().uuid(),
+  title: z.string().trim().min(1).max(80),
+  executionProfile: z.enum(["docker-linux", "macos-cua", "lume-vm", "coder"]),
+  requiredCapabilities: z.array(nodeCapabilitySchema).min(1),
+  sentAt: z.string().datetime(),
+});
+
+export type RunOffer = z.infer<typeof runOfferSchema>;
+
+export const runAssignedSchema = z.object({
+  type: z.literal("run.assigned"),
+  protocolVersion: z.literal(protocolVersion),
+  runId: z.string().uuid(),
+  nodeId: z.string().min(1),
+  assignedAt: z.string().datetime(),
+});
+
+export const runCancelSchema = z.object({
+  type: z.literal("run.cancel"),
+  protocolVersion: z.literal(protocolVersion),
+  runId: z.string().uuid(),
+  reason: z.string().trim().min(1).max(500),
+  cancelledAt: z.string().datetime(),
+});
+
+export const serverMessageSchema = z.discriminatedUnion("type", [
+  serverAckSchema,
+  runOfferSchema,
+  runAssignedSchema,
+  runCancelSchema,
+]);
+
+export type ServerMessage = z.infer<typeof serverMessageSchema>;
+
 export const runEventTypeSchema = z.enum([
   "CHANNEL_CREATED",
   "BOT_CREATED",
   "BOT_JOINED_CHANNEL",
   "MESSAGE_CREATED",
   "RUN_CREATED",
+  "RUN_ASSIGNED",
+  "RUN_REQUEUED",
   "RUN_PLAN_UPDATED",
   "NODE_BOUND",
   "APPROVAL_REQUESTED",

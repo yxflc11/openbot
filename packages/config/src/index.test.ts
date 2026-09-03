@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serverEnvSchema } from "./index.js";
+import { nodeEnvSchema, serverEnvSchema } from "./index.js";
 
 const required = {
   OPENBOT_NODE_TOKEN: "node-token",
@@ -34,6 +34,25 @@ describe("server environment", () => {
       serverEnvSchema.safeParse({
         ...required,
         OPENBOT_OWNER_PASSWORD: "replace-with-a-long-random-owner-password",
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("node environment", () => {
+  it("bounds the advertised concurrency", () => {
+    expect(
+      nodeEnvSchema.parse({
+        OPENBOT_NODE_ID: "linux-node",
+        OPENBOT_NODE_TOKEN: "node-token",
+        OPENBOT_NODE_MAX_CONCURRENT_RUNS: "2",
+      }).OPENBOT_NODE_MAX_CONCURRENT_RUNS,
+    ).toBe(2);
+    expect(
+      nodeEnvSchema.safeParse({
+        OPENBOT_NODE_ID: "linux-node",
+        OPENBOT_NODE_TOKEN: "node-token",
+        OPENBOT_NODE_MAX_CONCURRENT_RUNS: "17",
       }).success,
     ).toBe(false);
   });

@@ -155,7 +155,7 @@ export function subscribeToChannelEvents(
     if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
     try {
       const payload: unknown = JSON.parse(event.data);
-      if (isRunCreatedEvent(payload, channelId)) {
+      if (isRunProjectionEvent(payload, channelId)) {
         markLive();
         handlers.onRun(payload.run);
       }
@@ -186,6 +186,7 @@ export function subscribeToChannelEvents(
     nextSource.addEventListener("heartbeat", markLive);
     nextSource.addEventListener("message.created", onMessage);
     nextSource.addEventListener("run.created", onRun);
+    nextSource.addEventListener("run.updated", onRun);
   };
 
   handlers.onState("connecting");
@@ -219,12 +220,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function isRunCreatedEvent(
+function isRunProjectionEvent(
   value: unknown,
   channelId: string,
-): value is Extract<ChannelRealtimeEvent, { type: "run.created" }> {
+): value is Extract<ChannelRealtimeEvent, { type: "run.created" | "run.updated" }> {
   if (typeof value !== "object" || value === null) return false;
-  if (!("type" in value) || value.type !== "run.created") return false;
+  if (!("type" in value) || (value.type !== "run.created" && value.type !== "run.updated")) {
+    return false;
+  }
   if (!("channelId" in value) || value.channelId !== channelId) return false;
   if (!("run" in value) || typeof value.run !== "object" || value.run === null) return false;
   return (

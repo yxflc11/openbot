@@ -8,7 +8,7 @@ import type {
   Message,
   Run,
 } from "@openbot/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
   StoreNotFoundError,
@@ -27,12 +27,12 @@ import { selectChannelAssignee } from "./task-routing.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
-  it("reports M0 health", async () => {
+  it("reports M1 health", async () => {
     const app = createTestApp({ store: createTestStore() });
     const response = await app.request("/health");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ ok: true, phase: "m0" });
+    expect(await response.json()).toMatchObject({ ok: true, phase: "m1" });
   });
 
   it("reports an anonymous session and protects control-plane data", async () => {
@@ -100,6 +100,8 @@ describe("server app", () => {
           name: "Linux worker",
           platform: "linux",
           capabilities: ["browser"],
+          activeRunIds: [],
+          maxConcurrentRuns: 1,
           connectedAt: "2026-01-01T00:00:00.000Z",
           lastSeenAt: "2026-01-01T00:00:00.000Z",
         },
@@ -185,7 +187,8 @@ describe("server app", () => {
       description: "日常任务",
       botIds: [bot.id],
     });
-    const app = createTestApp({ store });
+    const dispatchRun = vi.fn();
+    const app = createTestApp({ dispatchRun, store });
     const cookie = await login(app);
 
     const created = await app.request(`/api/v1/channels/${channel.id}/messages`, {
@@ -203,6 +206,9 @@ describe("server app", () => {
         status: "queued",
       },
     });
+    expect(dispatchRun).toHaveBeenCalledWith(
+      expect.objectContaining({ botId: bot.id, executionProfile: "docker-linux" }),
+    );
 
     const listed = await app.request(`/api/v1/channels/${channel.id}/messages`, {
       headers: { Cookie: cookie },
@@ -367,10 +373,12 @@ describe("server app", () => {
 
 function createTestApp({
   store,
+  dispatchRun,
   listNodes = () => [],
   realtime,
 }: {
   store: ControlPlaneStore;
+  dispatchRun?: (run: Run) => void;
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
 }) {
@@ -382,6 +390,7 @@ function createTestApp({
   return createApp({
     allowedOrigins: [testOrigin],
     auth,
+    ...(dispatchRun === undefined ? {} : { dispatchRun }),
     listNodes,
     ...(realtime === undefined ? {} : { realtime }),
     secureCookies: false,
@@ -465,6 +474,14 @@ function createTestStore(): ControlPlaneStore {
       }
       return channelId === undefined ? runs : runs.filter((run) => run.channelId === channelId);
     },
+    async listDispatchableRuns(limit = 50) {
+      return runs
+        .filter(
+          (run) =>
+            run.status === "queued" && run.nodeId === undefined && run.executionProfile !== "none",
+        )
+        .slice(0, limit);
+    },
     async getCounts() {
       return { bots: bots.length, channels: channels.length, activeRuns: runs.length };
     },
@@ -516,6 +533,7 @@ function createTestStore(): ControlPlaneStore {
         channelId,
         botId: assignee.id,
         sourceMessageId: message.id,
+        executionProfile: assignee.computerProfile,
         title: input.content,
         status: "queued",
         createdAt: new Date().toISOString(),
@@ -524,6 +542,29 @@ function createTestStore(): ControlPlaneStore {
       runs.push(run);
       return { message, run };
     },
+    async assignRun(runId: string, nodeId: string) {
+      const run = runs.find((item) => item.id === runId);
+      if (run === undefined || run.status !== "queued" || run.nodeId !== undefined) {
+        return undefined;
+      }
+      run.nodeId = nodeId;
+      run.status = "assigned";
+      run.updatedAt = new Date().toISOString();
+      return run;
+    },
+    async requeueAssignedRuns(nodeId?: string) {
+      const requeued = runs.filter(
+        (run) => run.status === "assigned" && (nodeId === undefined || run.nodeId === nodeId),
+      );
+      for (const run of requeued) {
+        delete run.nodeId;
+        run.status = "queued";
+        run.updatedAt = new Date().toISOString();
+      }
+      return requeued;
+    },
+    async upsertNode() {},
+    async markNodeOffline() {},
     async joinBotToChannel(channelId: string, botId: string) {
       const channel = channels.find((item) => item.id === channelId);
       if (channel === undefined) {

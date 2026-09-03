@@ -4,7 +4,7 @@
 
 OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
 
-当前状态：**M0 第五切片推进中：PostgreSQL 持久化、单 Owner 本地登录、频道/Bot 管理、Node 状态、Marvis 式办公室、本地频道消息、多设备实时同步，以及消息到排队任务的持久化投影已跑通。**
+当前状态：**M1 第一切片推进中：在 M0 的本地控制面之上，排队任务已能按固定 execution profile 匹配在线 Node，经“offer → accept → 数据库认领 → confirm”握手进入 `assigned`；并发上限、节点断线回队和 Server 重启恢复已跑通。真正的 provider 执行、日志、截图与产物回传尚未接入。**
 
 ## 产品公式
 
@@ -172,14 +172,14 @@ npm run db:up
 npm run dev
 ```
 
-随后打开 `http://localhost:5173`。Server 启动时会自动执行已提交的 PostgreSQL migration；`apps/node` 会使用根目录 `.env` 中的登记令牌主动连接 Server。停止本地数据库可运行 `npm run db:stop`。提交代码前运行：
+随后打开 `http://localhost:5173`。Server 启动时会自动执行已提交的 PostgreSQL migration；`apps/node` 会使用根目录 `.env` 中的登记令牌主动连接 Server，并以 `OPENBOT_NODE_MAX_CONCURRENT_RUNS` 声明并发容量。停止本地数据库可运行 `npm run db:stop`。提交代码前运行：
 
 ```bash
 npm run check
 npm audit
 ```
 
-此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、排队任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），并同步出现在频道、办公室与右栏；真正向 Node 派发执行、审批和远程接管仍将按 M1–M2 逐步接入。
+此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后，频道、办公室和右栏同步显示“已分配”及节点负载。当前 `assigned` 只表示任务槽位已确认，不表示 provider 已执行；审批、截图、产物和远程接管仍将按 M1–M2 逐步接入。
 
 生产环境必须使用 HTTPS，把 `OPENBOT_SECURE_COOKIES` 设为 `true`，并让 `OPENBOT_ALLOWED_ORIGINS` 只包含实际 Web/PWA 地址。Owner 密码至少 12 个字符，建议使用密码管理器生成的长随机值。
 
@@ -200,6 +200,7 @@ npm audit
 - [ADR-0006：频道实时传输采用 REST + SSE](docs/decisions/0006-channel-realtime-sse.md)
 - [ADR-0007：单 Owner 本地认证与数据库会话](docs/decisions/0007-local-owner-auth.md)
 - [ADR-0008：频道消息到持久化任务](docs/decisions/0008-channel-task-runs.md)
+- [ADR-0009：两阶段 Node 任务分配](docs/decisions/0009-two-phase-node-assignment.md)
 - [声明式配置草案](examples/openbot.example.yaml)
 
 ## 开源注意事项

@@ -39,6 +39,7 @@ export const nodeEnvSchema = z.object({
   OPENBOT_NODE_ID: z.string().min(1),
   OPENBOT_NODE_SERVER_URL: z.string().url().default("ws://localhost:3001/ws/nodes"),
   OPENBOT_NODE_TOKEN: z.string().min(1),
+  OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

@@ -93,6 +93,7 @@ flowchart LR
 - 用户频道输入在一个短事务中同时产生 message、queued Run、`MESSAGE_CREATED` 和 `RUN_CREATED`；
 - 显式 assignee 必须属于频道；未指定时由 Server 优先选择 Chief，再稳定回退到 roster 首位成员；
 - Run 使用唯一 `source_message_id` 追溯来源，Client 与模型不能自行扩大频道成员边界；
+- Run 在创建时固化 Bot 的 execution profile；后续只能由 Server 路由到兼容节点；
 - AG-UI event stream；
 - WebSocket/SSE 多设备同步；
 - Bot memory 的可插拔存储；
@@ -121,6 +122,8 @@ agent policy ∩ task requirements ∩ online node capabilities
 
 模型可以描述任务需求，但不能选择未授权节点或扩大 profile。
 
+当前分配流程使用两阶段握手：Server 先向候选 Node 发 `run.offer`，Node 只验证能力和本地容量并回复 accept/reject；Server 再用短数据库事务条件更新仍为 `queued` 且尚未绑定节点的 Run，成功后发送 `run.assigned` confirm。外部网络等待不占用数据库事务，条件更新保证多个调度器不能同时认领同一 Run。未完成 confirm、节点断线或 Server 重启时，尚未执行的 `assigned` Run 会回队。
+
 ### Action Gateway
 
 延续 CopilotKit/OpenBot 的“决定和审计先于执行”，再增加跨 Node 的 capability lease：
@@ -138,7 +141,7 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 ### 控制消息
 
 - `node.hello` / `node.heartbeat` / `node.capabilities_changed`
-- `run.offer` / `run.accept` / `run.reject`
+- `run.offer` / `run.accept` / `run.reject` / `run.assigned`
 - `run.cancel` / `run.status` / `run.result`
 - `approval.lease` / `approval.revoke`
 - `control.acquire` / `control.release`
@@ -158,6 +161,8 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - Server 可单独吊销一个 Node；
 - Node 凭证不能登录 Web，也不能访问其他 Node；
 - 所有消息绑定 connection、node、run 和 sequence。
+
+协议 `0.2.0` 已实现 `node.hello`、heartbeat、offer/accept/reject、assigned confirm 与 cancel。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
 
 ## 5. Provider contract
 

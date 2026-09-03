@@ -1,4 +1,4 @@
-# 本地 API（M0）
+# 本地 API（M0 + M1）
 
 所有接口由 OpenBot Server 提供，开发环境默认地址为 `http://localhost:3001`。除健康检查、会话状态和登录外，所有 `/api/v1` 接口都要求有效的本地 Owner Session。Server 不应直接暴露到公网；远程使用优先通过 Tailscale 与 HTTPS。
 
@@ -72,7 +72,9 @@
 
 若传入 `botId`，Server 只接受频道 roster 内的 Bot；未传入时确定性地优先选择名称或职责为 Chief/总管/协调/调度的成员，否则选择 roster 中稳定排序的首位成员。空频道和越权指定均返回 `422`。模型与 Client 不能绕过这条成员边界。
 
-成功响应包含 `{ message, run }`。Server 随后向频道 SSE 订阅者依次发布 `message.created` 与 `run.created`；Web 分别按消息 ID 和 Run ID 合并快照与实时事件，因此刷新、重连和并发写入不会产生重复投影。当前 Run 只进入持久化队列，实际 Node 调度将在 M1 接入。
+成功响应包含 `{ message, run }`。Server 随后向频道 SSE 订阅者依次发布 `message.created` 与 `run.created`；Web 分别按消息 ID 和 Run ID 合并快照与实时事件，因此刷新、重连和并发写入不会产生重复投影。
+
+Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，不会在运行中由 Client、模型或 Node 改写。若存在兼容且未满载的在线 Node，Server 会通过版本化 WebSocket 协议发出 offer；Node 接受、Server 在短事务中条件认领成功并发送 confirm 后，Run 才进入 `assigned`。节点断线或 Server 丢失内存确认时，尚未执行的 `assigned` Run 会回到 `queued`。当前流程只完成任务槽位分配，尚未启动 provider，也没有产生外部副作用。
 
 ## 订阅频道事件
 
@@ -83,9 +85,10 @@
 | `channel.ready` | `{ type, channelId, occurredAt }` | 确认订阅已建立 |
 | `message.created` | `{ type, channelId, message }` | 投影一条已持久化的频道消息 |
 | `run.created` | `{ type, channelId, run }` | 投影一条已持久化的排队任务 |
+| `run.updated` | `{ type, channelId, run }` | 投影任务分配、回队等持久化状态变化 |
 | `heartbeat` | ISO 时间字符串 | 检测代理或 Server 形成的半开连接 |
 
-Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主动关闭连接，并以 2 秒间隔重连。每次收到 `channel.ready` 后，Web 都会重新读取最近历史并按消息 ID 合并，以补齐断线期间写入的数据。SSE 只承担 Server 到浏览器的下行投影；创建消息等命令继续使用 REST。
+Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主动关闭连接，并以 2 秒间隔重连。每次收到 `channel.ready` 后，Web 都会重新读取最近历史，并按实体 ID 与 `updatedAt` 合并消息和 Run，以补齐断线期间写入的数据且不让旧 REST 快照覆盖较新的 SSE 状态。SSE 只承担 Server 到浏览器的下行投影；创建消息等命令继续使用 REST。Node 在线状态目前仍随 workspace 刷新读取，全局 Node realtime 尚未接入。
 
 当前 realtime hub 是单 Server 进程内广播。需要运行多个 Server 副本时，必须先换成 PostgreSQL `LISTEN/NOTIFY`、Redis Streams 或 NATS 等共享事件总线，不能依赖进程内 fan-out。
 

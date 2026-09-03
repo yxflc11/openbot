@@ -1,6 +1,7 @@
 import {
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -63,16 +64,23 @@ export const channelBots = pgTable(
   ],
 );
 
-export const nodes = pgTable("nodes", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  platform: text("platform").notNull(),
-  capabilities: jsonb("capabilities").notNull().default([]),
-  status: text("status").notNull().default("offline"),
-  connectedAt: timestamp("connected_at", { withTimezone: true }),
-  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
-  ...timestamps,
-});
+export const nodes = pgTable(
+  "nodes",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    platform: text("platform").notNull(),
+    capabilities: jsonb("capabilities").notNull().default([]),
+    maxConcurrentRuns: integer("max_concurrent_runs").notNull().default(1),
+    status: text("status").notNull().default("offline"),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    check("nodes_max_concurrent_runs_valid", sql`${table.maxConcurrentRuns} BETWEEN 1 AND 16`),
+  ],
+);
 
 export const messages = pgTable(
   "messages",
@@ -107,6 +115,7 @@ export const runs = pgTable(
       onDelete: "set null",
     }),
     nodeId: text("node_id").references(() => nodes.id),
+    executionProfile: text("execution_profile").notNull().default("none"),
     title: text("title").notNull(),
     status: text("status").notNull().default("queued"),
     ...timestamps,
@@ -117,13 +126,22 @@ export const runs = pgTable(
     index("runs_bot_idx").on(table.botId),
     index("runs_node_idx").on(table.nodeId),
     index("runs_status_created_idx").on(table.status, table.createdAt),
+    index("runs_dispatch_queue_idx")
+      .on(table.createdAt, table.id)
+      .where(
+        sql`${table.status} = 'queued' AND ${table.nodeId} IS NULL AND ${table.executionProfile} <> 'none'`,
+      ),
     uniqueIndex("runs_source_message_idx")
       .on(table.sourceMessageId)
       .where(sql`${table.sourceMessageId} IS NOT NULL`),
     check("runs_title_not_blank", sql`length(btrim(${table.title})) > 0`),
     check(
       "runs_status_valid",
-      sql`${table.status} IN ('queued', 'running', 'waiting_approval', 'blocked', 'completed', 'failed', 'cancelled')`,
+      sql`${table.status} IN ('queued', 'assigned', 'running', 'waiting_approval', 'blocked', 'completed', 'failed', 'cancelled')`,
+    ),
+    check(
+      "runs_execution_profile_valid",
+      sql`${table.executionProfile} IN ('none', 'docker-linux', 'macos-cua', 'lume-vm', 'coder')`,
     ),
   ],
 );

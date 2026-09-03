@@ -12,6 +12,7 @@ export type BotStatus =
 
 export type RunStatus =
   | "queued"
+  | "assigned"
   | "running"
   | "waiting_approval"
   | "blocked"
@@ -41,6 +42,8 @@ export interface ExecutionNode {
   name: string;
   platform: "linux" | "macos" | "unknown";
   capabilities: string[];
+  activeRunIds: EntityId[];
+  maxConcurrentRuns: number;
   connectedAt: string;
   lastSeenAt: string;
 }
@@ -51,6 +54,7 @@ export interface Run {
   botId: EntityId;
   sourceMessageId?: EntityId;
   nodeId?: EntityId;
+  executionProfile: Bot["computerProfile"];
   title: string;
   status: RunStatus;
   createdAt: string;
@@ -96,11 +100,16 @@ export type ChannelRealtimeEvent =
       type: "run.created";
       channelId: EntityId;
       run: Run;
+    }
+  | {
+      type: "run.updated";
+      channelId: EntityId;
+      run: Run;
     };
 
 export interface BootstrapSummary {
   project: "openbot";
-  phase: "foundation" | "m0";
+  phase: "foundation" | "m0" | "m1";
   counts: {
     channels: number;
     bots: number;

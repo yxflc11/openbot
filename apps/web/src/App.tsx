@@ -24,7 +24,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
 import { Office } from "./components/Office";
 import { Sidebar } from "./components/Sidebar";
-import { isActiveRun, mergeRuns } from "./run-state";
+import { isActiveRun, mergeRuns, projectRunOnNodes } from "./run-state";
 
 type Dialog = "bot" | "channel" | undefined;
 
@@ -114,11 +114,13 @@ function AuthenticatedWorkspace({
     setWorkspace((current) => {
       if (current === undefined) return current;
       const previous = current.runs.find((item) => item.id === run.id);
-      const activeRunDelta =
-        Number(isActiveRun(run)) - Number(previous !== undefined && isActiveRun(previous));
       const runs = mergeRuns(current.runs, [run]);
+      const projected = runs.find((item) => item.id === run.id) ?? run;
+      const activeRunDelta =
+        Number(isActiveRun(projected)) - Number(previous !== undefined && isActiveRun(previous));
       return {
         ...current,
+        nodes: projectRunOnNodes(current.nodes, previous, projected),
         runs,
         counts: {
           ...current.counts,
@@ -222,6 +224,7 @@ function AuthenticatedWorkspace({
         <Office
           bots={workspace.bots}
           channels={workspace.channels}
+          nodes={workspace.nodes}
           runs={workspace.runs}
           onCreateBot={() => setDialog("bot")}
           onCreateChannel={() => setDialog("channel")}
