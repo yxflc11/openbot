@@ -7,7 +7,7 @@ import {
   type RealtimeConnectionState,
   subscribeToChannelEvents,
 } from "../api";
-import { isActiveRun, mergeRuns, runStatusLabel } from "../run-state";
+import { indexActiveRunsByBot, isActiveRun, mergeRuns, runStatusLabel } from "../run-state";
 import { BotIcon, HashIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -53,6 +53,7 @@ export function ChannelWorkspace({
   const [sending, setSending] = useState(false);
   const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
   const messageList = useRef<HTMLDivElement>(null);
+  const activeRunByBot = indexActiveRunsByBot(runs);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -182,16 +183,21 @@ export function ChannelWorkspace({
           </div>
         ) : (
           <div className="member-list">
-            {members.map((bot) => (
-              <article key={bot.id}>
-                <RobotAvatar bot={bot} compact />
-                <div className="member-copy">
-                  <strong>{bot.name}</strong>
-                  <span className="member-role">{bot.role}</span>
-                </div>
-                <small>待命</small>
-              </article>
-            ))}
+            {members.map((bot) => {
+              const activeRun = activeRunByBot.get(bot.id);
+              return (
+                <article key={bot.id}>
+                  <RobotAvatar bot={bot} compact status={activeRun?.status ?? bot.status} />
+                  <div className="member-copy">
+                    <strong>{bot.name}</strong>
+                    <span className="member-role">{bot.role}</span>
+                  </div>
+                  <small className={activeRun ? "active" : ""}>
+                    {activeRun ? runStatusLabel(activeRun.status) : "待命"}
+                  </small>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -230,7 +236,7 @@ export function ChannelWorkspace({
                       aria-label={`查看任务：${run.title}`}
                       onClick={() => onInspectRun(run.id)}
                     >
-                      {assignee ? <RobotAvatar bot={assignee} compact /> : null}
+                      {assignee ? <RobotAvatar bot={assignee} compact status={run.status} /> : null}
                       <span className="run-row-copy">
                         <strong>{run.title}</strong>
                         <small>{latestProgress?.message ?? assignee?.name ?? "未知 Bot"}</small>

@@ -109,7 +109,7 @@ function BotStation({
   return (
     <article className="bot-station">
       <div className="station-visual">
-        <RobotAvatar bot={bot} />
+        <RobotAvatar bot={bot} status={run?.status ?? bot.status} />
         <span className="desk-screen" aria-hidden="true" />
       </div>
       <div className="station-meta">

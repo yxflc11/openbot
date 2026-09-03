@@ -88,7 +88,7 @@ export function Sidebar({
               const run = activeRunByBot.get(bot.id);
               return (
                 <div className="sidebar-row bot-row" key={bot.id}>
-                  <RobotAvatar bot={bot} compact />
+                  <RobotAvatar bot={bot} compact status={run?.status ?? bot.status} />
                   <span>{bot.name}</span>
                   <small className="bot-state">
                     <span

@@ -87,7 +87,7 @@ export function RunInspector({
           <section className="inspector-assignment" aria-label="任务分配">
             <div>
               {bot ? (
-                <RobotAvatar bot={bot} compact />
+                <RobotAvatar bot={bot} compact status={run.status} />
               ) : (
                 <span className="assignment-placeholder">O</span>
               )}

@@ -68,7 +68,7 @@ export function MobileNavigation({
                 const run = activeRunByBot.get(bot.id);
                 return (
                   <div className="mobile-list-row" key={bot.id}>
-                    <RobotAvatar bot={bot} compact />
+                    <RobotAvatar bot={bot} compact status={run?.status ?? bot.status} />
                     <span className="mobile-list-label">{bot.name}</span>
                     <small>{run ? runStatusLabel(run.status) : "待命"}</small>
                   </div>
