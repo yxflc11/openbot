@@ -3,6 +3,7 @@ import type {
   BootstrapSummary,
   ChannelRealtimeEvent,
   ExecutionNode,
+  NodeIdentitySummary,
   Run,
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
@@ -61,7 +62,7 @@ export interface AppDependencies {
   auth: OwnerAuthService;
   dispatchRun?: (run: Run) => void;
   listNodes: () => ExecutionNode[];
-  nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "revoke">;
+  nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "list" | "revoke">;
   disconnectNode?: (nodeId: string) => boolean;
   realtime?: ChannelRealtimeHub;
   resolveApproval?: (resolution: ApprovalResolution) => void | Promise<void>;
@@ -178,7 +179,11 @@ export function createApp(dependencies: AppDependencies) {
       exchangeNodeEnrollmentInputSchema,
       maximumNodeIdentityRequestBytes,
     );
-    return context.json(await identity.enroll(input), 201);
+    const result = await identity.enroll(input);
+    // Re-enrollment rotates the durable credential. Terminate any session that authenticated with
+    // the previous value so it cannot remain live until its next reconnect.
+    dependencies.disconnectNode?.(result.nodeId);
+    return context.json(result, 201);
   });
 
   app.get("/api/v1/bootstrap", async (context) => {
@@ -523,6 +528,27 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.get("/api/v1/nodes", (context) => context.json({ nodes: dependencies.listNodes() }));
+
+  app.get("/api/v1/node-identities", async (context) => {
+    const connectedById = new Map(dependencies.listNodes().map((node) => [node.id, node]));
+    const identities: NodeIdentitySummary[] = (
+      await requireNodeIdentity(dependencies.nodeIdentity).list()
+    ).map((identity) => {
+      const node = connectedById.get(identity.nodeId);
+      return {
+        nodeId: identity.nodeId,
+        status: identity.revokedAt === null ? "active" : "revoked",
+        connected: node !== undefined,
+        enrolledAt: identity.enrolledAt.toISOString(),
+        ...(identity.lastAuthenticatedAt === null
+          ? {}
+          : { lastAuthenticatedAt: identity.lastAuthenticatedAt.toISOString() }),
+        ...(identity.revokedAt === null ? {} : { revokedAt: identity.revokedAt.toISOString() }),
+        ...(node === undefined ? {} : { node }),
+      };
+    });
+    return context.json({ identities });
+  });
 
   app.post("/api/v1/nodes/enrollment-tokens", async (context) => {
     const identity = requireNodeIdentity(dependencies.nodeIdentity);

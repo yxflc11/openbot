@@ -51,9 +51,17 @@ try {
   if (!(await identity.authenticate(verificationNodeId, enrolled.credential))) {
     throw new Error("Issued Node credential did not authenticate.");
   }
+  const listed = (await identity.list()).find((item) => item.nodeId === verificationNodeId);
+  if (listed === undefined || listed.revokedAt !== null || listed.lastAuthenticatedAt === null) {
+    throw new Error("Enrolled Node metadata was not projected from PostgreSQL.");
+  }
   await identity.revoke(verificationNodeId);
   if (await identity.authenticate(verificationNodeId, enrolled.credential)) {
     throw new Error("Revoked Node credential still authenticated.");
+  }
+  const revoked = (await identity.list()).find((item) => item.nodeId === verificationNodeId);
+  if (revoked?.revokedAt === null || revoked?.revokedAt === undefined) {
+    throw new Error("Revoked Node metadata was not projected from PostgreSQL.");
   }
   console.info(`Database verification passed with ${result.migrations} applied migrations.`);
 } finally {

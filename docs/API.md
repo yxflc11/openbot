@@ -30,6 +30,7 @@
 | `GET` | `/api/v1/bots/:botId/export` | 下载通过安全检查的员工模板 JSON |
 | `POST` | `/api/v1/employees/import/preview` | 在隔离区严格检查员工模板，不写入任何员工数据 |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
+| `GET` | `/api/v1/node-identities` | Owner 读取安全的已登记 Node 元数据；不返回令牌或凭证摘要 |
 | `POST` | `/api/v1/nodes/enrollment-tokens` | Owner 为准确 Node id 创建短时单次登记令牌 |
 | `POST` | `/api/v1/nodes/enroll` | Node 用单次令牌换取独立凭证；唯一无需 Owner Session 的 `/api/v1` 接口 |
 | `POST` | `/api/v1/nodes/:nodeId/revoke` | Owner 吊销一台 Node 并断开其在线连接 |

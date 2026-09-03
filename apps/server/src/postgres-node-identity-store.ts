@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { nodeCredentials, nodeEnrollmentTokens, nodeIdentityEvents } from "@openbot/db";
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import type {
   ExchangeNodeEnrollmentRecord,
   NodeIdentityStore,
@@ -106,6 +106,18 @@ export class PostgresNodeIdentityStore implements NodeIdentityStore {
       )
       .returning({ nodeId: nodeCredentials.nodeId });
     return authenticated.length === 1;
+  }
+
+  listCredentials() {
+    return this.#db
+      .select({
+        nodeId: nodeCredentials.nodeId,
+        enrolledAt: nodeCredentials.enrolledAt,
+        lastAuthenticatedAt: nodeCredentials.lastAuthenticatedAt,
+        revokedAt: nodeCredentials.revokedAt,
+      })
+      .from(nodeCredentials)
+      .orderBy(desc(nodeCredentials.updatedAt));
   }
 
   async revokeCredential(nodeId: string, now: Date): Promise<boolean> {

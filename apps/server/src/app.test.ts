@@ -135,6 +135,8 @@ describe("server app", () => {
       body: JSON.stringify({ nodeId: "linux-node" }),
     });
     expect(anonymousIssue.status).toBe(401);
+    const anonymousList = await app.request("/api/v1/node-identities");
+    expect(anonymousList.status).toBe(401);
 
     const cookie = await login(app);
     const issued = await app.request("/api/v1/nodes/enrollment-tokens", {
@@ -157,6 +159,24 @@ describe("server app", () => {
       nodeId: "linux-node",
       credential: expect.stringMatching(/^obn_/),
     });
+    expect(disconnectNode).toHaveBeenCalledWith("linux-node");
+    disconnectNode.mockClear();
+
+    const identities = await app.request("/api/v1/node-identities", {
+      headers: { Cookie: cookie },
+    });
+    expect(identities.status).toBe(200);
+    const identityBody = await identities.json();
+    expect(identityBody).toEqual({
+      identities: [
+        expect.objectContaining({
+          nodeId: "linux-node",
+          status: "active",
+          connected: false,
+        }),
+      ],
+    });
+    expect(JSON.stringify(identityBody)).not.toMatch(/credential|digest|token/i);
 
     const replay = await app.request("/api/v1/nodes/enroll", {
       method: "POST",
@@ -178,6 +198,19 @@ describe("server app", () => {
     });
     expect(revoked.status).toBe(204);
     expect(disconnectNode).toHaveBeenCalledWith("linux-node");
+
+    const revokedIdentities = await app.request("/api/v1/node-identities", {
+      headers: { Cookie: cookie },
+    });
+    expect(await revokedIdentities.json()).toEqual({
+      identities: [
+        expect.objectContaining({
+          nodeId: "linux-node",
+          status: "revoked",
+          connected: false,
+        }),
+      ],
+    });
   });
 
   it("rejects mutations without a trusted Origin", async () => {
@@ -1078,7 +1111,10 @@ function createMemoryNodeIdentityStore(): NodeIdentityStore {
     string,
     { nodeId: string; tokenDigest: string; expiresAt: Date; consumedAt?: Date }
   >();
-  const credentials = new Map<string, { digest: string; revokedAt?: Date }>();
+  const credentials = new Map<
+    string,
+    { digest: string; enrolledAt: Date; lastAuthenticatedAt?: Date; revokedAt?: Date }
+  >();
   return {
     async replaceEnrollmentToken(record) {
       for (const enrollment of enrollments.values()) {
@@ -1099,18 +1135,33 @@ function createMemoryNodeIdentityStore(): NodeIdentityStore {
         return false;
       }
       enrollment.consumedAt = record.enrolledAt;
-      credentials.set(record.nodeId, { digest: record.credentialDigest });
+      credentials.set(record.nodeId, {
+        digest: record.credentialDigest,
+        enrolledAt: record.enrolledAt,
+      });
       return true;
     },
-    async authenticateCredential(nodeId, credentialDigest) {
+    async authenticateCredential(nodeId, credentialDigest, now) {
       const credential = credentials.get(nodeId);
-      return credential?.revokedAt === undefined && credential?.digest === credentialDigest;
+      if (credential?.revokedAt !== undefined || credential?.digest !== credentialDigest) {
+        return false;
+      }
+      credential.lastAuthenticatedAt = now;
+      return true;
     },
     async revokeCredential(nodeId, now) {
       const credential = credentials.get(nodeId);
       if (credential === undefined || credential.revokedAt !== undefined) return false;
       credential.revokedAt = now;
       return true;
+    },
+    async listCredentials() {
+      return Array.from(credentials, ([nodeId, credential]) => ({
+        nodeId,
+        enrolledAt: credential.enrolledAt,
+        lastAuthenticatedAt: credential.lastAuthenticatedAt ?? null,
+        revokedAt: credential.revokedAt ?? null,
+      }));
     },
   };
 }

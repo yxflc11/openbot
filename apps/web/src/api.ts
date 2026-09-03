@@ -12,9 +12,11 @@ import type {
   CreateMessageInput,
   EmployeeExportPreview,
   EmployeeImportPreview,
-  ExecutionNode,
   EmployeeProfile,
+  ExecutionNode,
   Message,
+  NodeEnrollmentToken,
+  NodeIdentitySummary,
   Run,
   RunFrame,
   RunProgress,
@@ -68,6 +70,31 @@ export function subscribeToUnauthorized(handler: () => void): () => void {
 
 export async function getWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
   return request<WorkspaceSnapshot>("/api/v1/workspace", signal ? { signal } : undefined);
+}
+
+export async function listNodeIdentities(signal?: AbortSignal): Promise<NodeIdentitySummary[]> {
+  const result = await request<{ identities: NodeIdentitySummary[] }>(
+    "/api/v1/node-identities",
+    signal ? { signal } : undefined,
+  );
+  return result.identities;
+}
+
+export async function createNodeEnrollmentToken(
+  nodeId: string,
+  expiresInSeconds = 600,
+): Promise<NodeEnrollmentToken> {
+  return request<NodeEnrollmentToken>("/api/v1/nodes/enrollment-tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nodeId, expiresInSeconds }),
+  });
+}
+
+export async function revokeNodeIdentity(nodeId: string): Promise<void> {
+  await request<void>(`/api/v1/nodes/${encodeURIComponent(nodeId)}/revoke`, {
+    method: "POST",
+  });
 }
 
 export async function getEmployeeProfile(

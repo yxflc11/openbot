@@ -311,6 +311,24 @@ export interface ExecutionNode {
   lastSeenAt: string;
 }
 
+/** Safe Owner-facing identity metadata. Credential digests never cross the Server boundary. */
+export interface NodeIdentitySummary {
+  nodeId: EntityId;
+  status: "active" | "revoked";
+  connected: boolean;
+  enrolledAt: string;
+  lastAuthenticatedAt?: string | undefined;
+  revokedAt?: string | undefined;
+  node?: ExecutionNode | undefined;
+}
+
+/** A short-lived bootstrap value returned only by the issuance command. */
+export interface NodeEnrollmentToken {
+  nodeId: EntityId;
+  token: string;
+  expiresAt: string;
+}
+
 export interface Run {
   id: EntityId;
   channelId: EntityId;

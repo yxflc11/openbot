@@ -11,7 +11,7 @@ OpenBot 工作主机主动连接 Server。每台 Node 先用一个短时、单�
 ## 登记一台 Node
 
 1. 配置 `OPENBOT_OWNER_PASSWORD`，启动 PostgreSQL 与 Server。
-2. 在可信 Server 主机上，为准确的 Node id 创建令牌：
+2. 登录 Web，从侧栏打开**节点**，为准确的 Node id 创建令牌。可信 Server 主机也提供同一 CLI 操作：
 
    ```bash
    npm run node:enrollment-token -- office-linux-01
@@ -33,6 +33,9 @@ OpenBot 工作主机主动连接 Server。每台 Node 先用一个短时、单�
 凭证文件使用原子写入，在 POSIX 系统上权限为 `0600`。OpenBot 会拒绝符号链接、非普通文件、过大
 文件、格式错误的包和签发给其他 Node id 的凭证。
 
+Owner 弹窗只列出安全的有效/已吊销身份元数据，不返回凭证摘要；在线状态与实时 Node 连接投影合并。
+配对令牌只保留在当前打开的弹窗中，关闭后不能再次读取。
+
 无状态环境可以直接用 `OPENBOT_NODE_CREDENTIAL` 注入已登记凭证。它是密钥注入接口，不能提交到
 Git，也不能放入员工包。`OPENBOT_NODE_CREDENTIAL_PATH` 可以把文件放到运维方控制的 secret volume。
 
@@ -42,7 +45,7 @@ Git，也不能放入员工包。`OPENBOT_NODE_CREDENTIAL_PATH` 可以把文件�
 审计事件，并断开匹配的在线 Node。吊销后应删除或隔离旧的本地凭证文件。
 
 要重新登记同一个 Node id，创建新令牌，并在不加载旧凭证的情况下启动 Node。新凭证会替换已吊销
-记录，所有旧值继续无效。
+记录，并立即断开仍使用旧凭证的会话；所有旧值继续无效。
 
 ## 运维规则
 

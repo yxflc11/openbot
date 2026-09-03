@@ -36,6 +36,7 @@ import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
 import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
+import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import {
@@ -47,7 +48,7 @@ import {
   projectRunOnNodes,
 } from "./run-state";
 
-type Dialog = "bot" | "channel" | undefined;
+type Dialog = "bot" | "channel" | "node" | undefined;
 
 export function App() {
   const [session, setSession] = useState<AuthSessionSnapshot>();
@@ -412,6 +413,7 @@ function AuthenticatedWorkspace({
         onSelectBot={openEmployee}
         onCreateBot={() => setDialog("bot")}
         onCreateChannel={() => setDialog("channel")}
+        onManageNodes={() => setDialog("node")}
         onLogout={onLogout}
       />
 
@@ -472,6 +474,10 @@ function AuthenticatedWorkspace({
           setMobilePanel(undefined);
           setDialog("channel");
         }}
+        onManageNodes={() => {
+          setMobilePanel(undefined);
+          setDialog("node");
+        }}
         onSelectChannel={selectChannel}
         onSelectBot={openEmployee}
       />
@@ -504,6 +510,9 @@ function AuthenticatedWorkspace({
           onClose={() => setDialog(undefined)}
           onCreate={handleCreateChannel}
         />
+      ) : null}
+      {dialog === "node" ? (
+        <NodeManagerDialog onlineNodes={workspace.nodes} onClose={() => setDialog(undefined)} />
       ) : null}
       {employeeExportOpen && employeeProfile ? (
         <ExportEmployeeDialog

@@ -13,7 +13,8 @@ every non-loopback connection, and use a dedicated OS account for the Node.
 ## Enroll a Node
 
 1. Configure `OPENBOT_OWNER_PASSWORD` and start PostgreSQL and the Server.
-2. On the trusted Server host, issue a token for the exact Node id:
+2. Sign in to the Web app, open **Nodes** in the sidebar, and create a token for the exact Node id.
+   The trusted Server host also exposes the same operation through the CLI:
 
    ```bash
    npm run node:enrollment-token -- office-linux-01
@@ -38,6 +39,10 @@ Issuing a replacement invalidates the previous unused token for that Node. The c
 atomically written and uses mode `0600` on POSIX systems. OpenBot refuses symlinks, non-regular
 files, oversized files, malformed packages, and credentials issued for another Node id.
 
+The Owner dialog lists active and revoked identities without returning credential digests. Its
+online state is reconciled with the live Node connection projection. The pairing token is held only
+in the open dialog and cannot be retrieved after it is closed.
+
 For an ephemeral environment, `OPENBOT_NODE_CREDENTIAL` may provide the enrolled credential
 directly. Treat this as a secret-injection integration point, not a value to commit or place in an
 Employee package. `OPENBOT_NODE_CREDENTIAL_PATH` can move the file to an operator-controlled
@@ -50,7 +55,8 @@ persisted credential, appends an identity audit event, and disconnects a matchin
 Delete or quarantine the old local credential file after revocation.
 
 To pair the same Node id again, issue a fresh enrollment token and start it without the revoked
-credential. A new credential replaces the revoked record; old values remain invalid.
+credential. A new credential replaces the revoked record, immediately disconnects a session using
+the previous credential, and leaves all old values invalid.
 
 ## Operational rules
 

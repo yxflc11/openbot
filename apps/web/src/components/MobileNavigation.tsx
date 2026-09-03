@@ -1,7 +1,7 @@
 import type { Approval, ApprovalDecision, Bot, Channel, Run } from "@openbot/domain";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { ApprovalCard } from "./ApprovalCard";
-import { ApprovalIcon, BotIcon, HashIcon, PlusIcon } from "./Icons";
+import { ApprovalIcon, BotIcon, HashIcon, NodeIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 export type MobilePanel = "channels" | "bots" | "approvals" | undefined;
@@ -16,6 +16,7 @@ export function MobileNavigation({
   onDecideApproval,
   onCreateBot,
   onCreateChannel,
+  onManageNodes,
   onSelectChannel,
   onSelectBot,
 }: {
@@ -28,6 +29,7 @@ export function MobileNavigation({
   onDecideApproval(approvalId: string, decision: ApprovalDecision): Promise<void>;
   onCreateBot(): void;
   onCreateChannel(): void;
+  onManageNodes(): void;
   onSelectChannel(channelId: string): void;
   onSelectBot(botId: string): void;
 }) {
@@ -115,6 +117,10 @@ export function MobileNavigation({
         <button type="button" onClick={() => onPanel("approvals")}>
           <ApprovalIcon />
           <span>审批{pendingApprovals.length > 0 ? ` ${pendingApprovals.length}` : ""}</span>
+        </button>
+        <button type="button" onClick={onManageNodes}>
+          <NodeIcon />
+          <span>主机</span>
         </button>
       </nav>
     </>

@@ -50,10 +50,10 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 领域 | 当前已经可用 | 下一步 |
 | --- | --- | --- |
 | 控制平面 | 本地 Owner 认证、带漂移检查的 PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、自动恢复工具和多用户信任模型 |
-| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
+| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、工作主机管理、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
 | 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查、由 Owner 审核的技能元数据，以及经过测试的 DSSE 签名/验证原语 | 发布者密钥生命周期、签名导出/导入接口、可执行 Agent Skills 包、记忆控制、审核后激活、复制和转移 |
-| Node 协议 | 出站 WebSocket 登记、一次性 enrollment、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 持有证明身份、mTLS、轮换、防重放、系统密钥库适配和真实设备一致性报告 |
+| Node 协议 | 出站 WebSocket 登记、Owner 界面配对/列表/吊销、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 持有证明身份、mTLS、轮换、防重放、系统密钥库适配和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
 | Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 跨平台浏览器、Windows、macOS、Linux 桌面、受管理 Android 和隔离编码 Provider |
@@ -105,7 +105,7 @@ npm run dev:server
 npm run dev:web
 ```
 
-Server 运行后，为这台 Node 创建一个短时、单次登记令牌：
+登录 Web 后，从侧栏打开**节点**即可创建短时、单次配对令牌。Server 主机上的 CLI 提供同一操作：
 
 ```bash
 npm run node:enrollment-token -- local-development-node

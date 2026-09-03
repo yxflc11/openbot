@@ -76,6 +76,12 @@ describe("Node identity service", () => {
     expect(await identity.authenticate("first", first.credential)).toBe(false);
     expect(await identity.authenticate("second", second.credential)).toBe(true);
     await expect(identity.revoke("first")).rejects.toThrow(NodeIdentityNotFoundError);
+    expect(await identity.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: "first", revokedAt: expect.any(Date) }),
+        expect.objectContaining({ nodeId: "second", revokedAt: null }),
+      ]),
+    );
   });
 });
 
@@ -127,6 +133,14 @@ function memoryNodeIdentityStore(): NodeIdentityStore & {
       if (credential === undefined || credential.revokedAt !== undefined) return false;
       credential.revokedAt = revokedAt;
       return true;
+    },
+    async listCredentials() {
+      return Array.from(credentials, ([nodeId, credential]) => ({
+        nodeId,
+        enrolledAt: new Date("2026-09-04T00:00:00.000Z"),
+        lastAuthenticatedAt: credential.lastAuthenticatedAt ?? null,
+        revokedAt: credential.revokedAt ?? null,
+      }));
     },
   };
 }

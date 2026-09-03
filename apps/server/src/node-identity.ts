@@ -20,11 +20,19 @@ export interface ExchangeNodeEnrollmentRecord {
   enrolledAt: Date;
 }
 
+export interface StoredNodeIdentity {
+  nodeId: string;
+  enrolledAt: Date;
+  lastAuthenticatedAt: Date | null;
+  revokedAt: Date | null;
+}
+
 export interface NodeIdentityStore {
   replaceEnrollmentToken(record: StoredNodeEnrollmentToken): Promise<void>;
   exchangeEnrollmentToken(record: ExchangeNodeEnrollmentRecord): Promise<boolean>;
   authenticateCredential(nodeId: string, credentialDigest: string, now: Date): Promise<boolean>;
   revokeCredential(nodeId: string, now: Date): Promise<boolean>;
+  listCredentials(): Promise<StoredNodeIdentity[]>;
 }
 
 export interface IssuedNodeEnrollmentToken {
@@ -88,6 +96,10 @@ export class NodeIdentityService {
       digestNodeSecret("credential", credential),
       this.#now(),
     );
+  }
+
+  list(): Promise<StoredNodeIdentity[]> {
+    return this.#store.listCredentials();
   }
 
   async revoke(nodeId: string): Promise<void> {
