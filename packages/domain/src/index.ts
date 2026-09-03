@@ -253,6 +253,15 @@ export interface EmployeeProfile {
   };
 }
 
+export type EmployeeProfileSection =
+  | "identity"
+  | "evolution"
+  | "skills"
+  | "memory"
+  | "records"
+  | "configuration"
+  | "portability";
+
 export type EmployeeExportFindingCode =
   | "credential-like-content"
   | "private-key-content"
@@ -566,6 +575,13 @@ export type WorkspaceRealtimeEvent =
       type: "run.updated";
       run: Run;
       artifacts?: Artifact[];
+    }
+  | {
+      /** Content-free invalidation. The authenticated profile endpoint remains authoritative. */
+      type: "employee.profile.changed";
+      botId: EntityId;
+      sections: EmployeeProfileSection[];
+      occurredAt: string;
     };
 
 export interface BootstrapSummary {

@@ -180,7 +180,9 @@ the same Employee.
 The state command accepts `verified`, `suspended`, or `revoked`. Every transition requires a
 non-empty reason and literal `ownerReviewed: true`; verification also requires confidence from 1
 through 100. Revocation is terminal. Concurrent transitions return `409` instead of overwriting
-the earlier review.
+the earlier review. The Employee profile now exposes the stored description, source, version,
+required host-capability names, dependencies, and evidence references before showing only the
+transitions valid from the current state. Permanent revocation uses a separate confirmation form.
 
 ```json
 {
@@ -281,10 +283,14 @@ Channel SSE emits `channel.ready`, `message.created`, `run.created`, `run.update
 frames, reconnects after two seconds, reloads recent history, and merges entities by id and
 `updatedAt`.
 
-Workspace SSE emits `workspace.ready`, `node.upserted`, `node.removed`, `run.updated`, and
-`approval.updated`. It owns cross-channel status; channel SSE owns one channel's conversation and
-Run details. This is a single-Server in-process broadcast. Multi-Server deployment first requires
-a reviewed shared event and queue system.
+Workspace SSE emits `workspace.ready`, `node.upserted`, `node.removed`, `run.updated`,
+`approval.updated`, and `employee.profile.changed`. The Employee event contains only `botId`, a
+non-empty allowlisted `sections` array, and `occurredAt`; it is a content-free invalidation hint.
+A Client viewing that Employee reloads the authenticated profile aggregate instead of treating SSE
+as profile state. The Client also reloads the selected profile after `workspace.ready`, so reconnect
+recovers missed mutations. Workspace SSE owns cross-channel status; channel SSE owns one channel's
+conversation and Run details. This is a single-Server in-process broadcast. Multi-Server deployment
+first requires a reviewed shared event and queue system.
 
 Artifact and frame endpoints use the Owner Session, return `private, no-store`, and set
 `X-Content-Type-Options: nosniff`. The Web Client never receives the internal storage key. Frames

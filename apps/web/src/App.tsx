@@ -11,7 +11,7 @@ import type {
   RunProgress,
   WorkspaceSnapshot,
 } from "@openbot/domain";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createBot,
   createChannel,
@@ -136,6 +136,7 @@ function AuthenticatedWorkspace({
   const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile>();
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
   const [employeeProfileError, setEmployeeProfileError] = useState<string>();
+  const selectedEmployeeIdRef = useRef<string | undefined>(undefined);
   const [employeeExportOpen, setEmployeeExportOpen] = useState(false);
   const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const [framesByRun, setFramesByRun] = useState<Map<string, RunFrame>>(() => new Map());
@@ -235,6 +236,7 @@ function AuthenticatedWorkspace({
   }, []);
 
   useEffect(() => {
+    selectedEmployeeIdRef.current = selectedEmployeeId;
     if (selectedEmployeeId === undefined) {
       setEmployeeProfile(undefined);
       setEmployeeProfileError(undefined);
@@ -274,6 +276,12 @@ function AuthenticatedWorkspace({
         );
         // Reconcile any events missed while the browser was disconnected.
         void refresh();
+        const selectedEmployee = selectedEmployeeIdRef.current;
+        if (selectedEmployee !== undefined) void loadEmployeeProfile(selectedEmployee);
+      },
+      onEmployeeProfileChanged(botId, sections) {
+        if (sections.includes("identity")) void refresh();
+        if (selectedEmployeeIdRef.current === botId) void loadEmployeeProfile(botId);
       },
       onNode(node) {
         setWorkspace((current) => {
@@ -312,7 +320,7 @@ function AuthenticatedWorkspace({
       onRun: projectRun,
       onState: setWorkspaceRealtimeState,
     });
-  }, [projectRun, refresh, workspaceReady]);
+  }, [loadEmployeeProfile, projectRun, refresh, workspaceReady]);
 
   async function handleCreateBot(input: CreateBotInput) {
     const bot = await createBot(input);

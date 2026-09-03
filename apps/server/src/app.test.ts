@@ -17,6 +17,7 @@ import type {
   Message,
   Run,
   RunProgress,
+  WorkspaceRealtimeEvent,
 } from "@openbot/domain";
 import {
   dsseEnvelopeSchema,
@@ -332,6 +333,17 @@ describe("server app", () => {
     expect(updated).toContain(`id: ${run.id}`);
     expect(updated).toContain('"status":"completed"');
 
+    workspaceRealtime.publish({
+      type: "employee.profile.changed",
+      botId: run.botId,
+      sections: ["memory"],
+      occurredAt: "2026-09-04T00:03:00.000Z",
+    });
+    const employeeChanged = new TextDecoder().decode((await reader?.read())?.value);
+    expect(employeeChanged).toContain("event: employee.profile.changed");
+    expect(employeeChanged).toContain(`id: ${run.botId}`);
+    expect(employeeChanged).not.toContain("content");
+
     await reader?.cancel();
     controller.abort();
   });
@@ -406,7 +418,10 @@ describe("server app", () => {
   });
 
   it("creates a Bot through the validated API", async () => {
-    const app = createTestApp({ store: createTestStore() });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store: createTestStore(), workspaceRealtime });
     const cookie = await login(app);
     const response = await app.request("/api/v1/bots", {
       method: "POST",
@@ -434,6 +449,12 @@ describe("server app", () => {
         appearance: { head: "cat", body: "cape", mobility: "hover" },
       },
     });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        sections: ["identity", "evolution", "configuration"],
+      }),
+    ]);
   });
 
   it("returns an authenticated, evidence-oriented employee profile", async () => {
@@ -504,7 +525,10 @@ describe("server app", () => {
       role: "Prove memory ownership isolation",
       computerProfile: "none",
     });
-    const app = createTestApp({ store });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, workspaceRealtime });
 
     const unauthenticated = await app.request(`/api/v1/bots/${employee.id}/memories`, {
       method: "POST",
@@ -601,6 +625,23 @@ describe("server app", () => {
       "updated",
       "created",
     ]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["memory"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["memory"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["memory"],
+      }),
+    ]);
   });
 
   it("keeps learned skills pending until the Owner reviews an auditable transition", async () => {
@@ -627,7 +668,10 @@ describe("server app", () => {
       connectedAt: "2026-09-04T00:00:00.000Z",
       lastSeenAt: "2026-09-04T00:00:00.000Z",
     };
-    const app = createTestApp({ store, listNodes: () => [node] });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, listNodes: () => [node], workspaceRealtime });
 
     const unauthenticated = await app.request(`/api/v1/bots/${bot.id}/skills`, {
       method: "POST",
@@ -745,6 +789,23 @@ describe("server app", () => {
       },
     );
     expect(restoreRevoked.status).toBe(409);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: bot.id,
+        sections: ["skills", "evolution"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: bot.id,
+        sections: ["skills", "evolution"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: bot.id,
+        sections: ["skills", "evolution"],
+      }),
+    ]);
   });
 
   it("previews and downloads an identity-free employee template", async () => {
@@ -874,7 +935,10 @@ describe("server app", () => {
       role: "Read-only analysis",
       computerProfile: "none",
     });
-    const app = createTestApp({ store });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, workspaceRealtime });
     const cookie = await login(app);
     const downloaded = await app.request(`/api/v1/bots/${source.id}/export`, {
       headers: { Cookie: cookie },
@@ -977,6 +1041,13 @@ describe("server app", () => {
     expect(importedProfile.skills).toEqual([]);
     expect(importedProfile.evolution).toEqual([
       expect.objectContaining({ type: "imported", source: "import" }),
+    ]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: activation.employee.id,
+        sections: ["identity", "evolution", "skills", "configuration", "portability"],
+      }),
     ]);
   });
 

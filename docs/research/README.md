@@ -30,4 +30,8 @@ made them unsuitable. It must not be used to avoid attribution or license review
 
 Accepted records include [Owner-managed Employee memory](owner-managed-employee-memory.md), which
 attributes the evolution/memory direction to Hermes and compares Letta, Mem0, and LangMem before
-selecting the existing OpenBot PostgreSQL boundary.
+selecting the existing OpenBot PostgreSQL boundary, and
+[Employee profile realtime invalidation](employee-profile-realtime-invalidation.md), which reuses
+the current Hono SSE transport while keeping profile content behind authenticated REST. The
+[Owner skill review surface](owner-skill-review-surface.md) then maps the already-authoritative
+skill lifecycle into an inspectable profile workflow without installing executable code.

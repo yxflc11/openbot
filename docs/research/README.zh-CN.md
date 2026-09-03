@@ -22,3 +22,7 @@ OpenBot 的每项行为变化都要先证明已经调研维护中的开源代码
 
 已接受记录包括 [Owner 管理员工记忆](owner-managed-employee-memory.md)：明确将进化/记忆方向
 归因于 Hermes，并在选择 OpenBot 现有 PostgreSQL 边界前比较 Letta、Mem0 与 LangMem。
+另见[员工档案实时失效通知](employee-profile-realtime-invalidation.md)：它复用现有 Hono SSE，
+同时让档案正文继续只通过鉴权 REST 获取。
+随后，[Owner 技能审核界面](owner-skill-review-surface.md)把已有的权威技能生命周期映射成可检查
+的档案流程，但不会安装可执行代码。

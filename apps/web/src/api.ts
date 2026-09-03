@@ -18,6 +18,8 @@ import type {
   EmployeeMemoryDeletionResult,
   EmployeeMemoryMutationResult,
   EmployeeProfile,
+  EmployeeProfileSection,
+  EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
   NodeEnrollmentToken,
@@ -27,6 +29,7 @@ import type {
   RunProgress,
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
+  UpdateEmployeeSkillStateInput,
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
@@ -152,6 +155,21 @@ export async function deleteEmployeeMemory(
     `/api/v1/bots/${encodeURIComponent(botId)}/memories/${encodeURIComponent(memoryId)}`,
     {
       method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function updateEmployeeSkillState(
+  botId: string,
+  skillId: string,
+  input: UpdateEmployeeSkillStateInput,
+): Promise<EmployeeSkillMutationResult> {
+  return request<EmployeeSkillMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/skills/${encodeURIComponent(skillId)}/state`,
+    {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
     },
@@ -401,6 +419,7 @@ export function subscribeToChannelEvents(
 
 export function subscribeToWorkspaceEvents(handlers: {
   onApproval(approval: Approval, run: Run): void;
+  onEmployeeProfileChanged(botId: string, sections: EmployeeProfileSection[]): void;
   onNode(node: ExecutionNode): void;
   onNodeRemoved(nodeId: string): void;
   onReady(nodes: ExecutionNode[]): void;
@@ -442,6 +461,12 @@ export function subscribeToWorkspaceEvents(handlers: {
     markLive();
     handlers.onApproval(payload.approval, payload.run);
   };
+  const onEmployeeProfileChanged = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isEmployeeProfileChangedEvent(payload)) return;
+    markLive();
+    handlers.onEmployeeProfileChanged(payload.botId, payload.sections);
+  };
   const onRun = (event: Event) => {
     const payload = parseEventPayload(event);
     if (!isWorkspaceRunUpdatedEvent(payload)) return;
@@ -472,6 +497,7 @@ export function subscribeToWorkspaceEvents(handlers: {
     nextSource.addEventListener("node.upserted", onNode);
     nextSource.addEventListener("node.removed", onNodeRemoved);
     nextSource.addEventListener("approval.updated", onApproval);
+    nextSource.addEventListener("employee.profile.changed", onEmployeeProfileChanged);
     nextSource.addEventListener("run.updated", onRun);
   };
 
@@ -720,6 +746,51 @@ function isWorkspaceRunUpdatedEvent(
       value.artifacts === undefined ||
       (Array.isArray(value.artifacts) && value.artifacts.every(isArtifactProjection)))
   );
+}
+
+const employeeProfileSections = new Set<EmployeeProfileSection>([
+  "identity",
+  "evolution",
+  "skills",
+  "memory",
+  "records",
+  "configuration",
+  "portability",
+]);
+
+export function isEmployeeProfileChangedEvent(
+  value: unknown,
+): value is Extract<WorkspaceRealtimeEvent, { type: "employee.profile.changed" }> {
+  if (typeof value !== "object" || value === null) return false;
+  const keys = Object.keys(value);
+  if (
+    keys.length !== 4 ||
+    !keys.every((key) => ["type", "botId", "sections", "occurredAt"].includes(key))
+  ) {
+    return false;
+  }
+  if (
+    !("type" in value) ||
+    value.type !== "employee.profile.changed" ||
+    !("botId" in value) ||
+    typeof value.botId !== "string" ||
+    !("sections" in value) ||
+    !Array.isArray(value.sections) ||
+    value.sections.length === 0 ||
+    value.sections.length > employeeProfileSections.size ||
+    !value.sections.every(
+      (section): section is EmployeeProfileSection =>
+        typeof section === "string" &&
+        employeeProfileSections.has(section as EmployeeProfileSection),
+    ) ||
+    new Set(value.sections).size !== value.sections.length ||
+    !("occurredAt" in value) ||
+    typeof value.occurredAt !== "string" ||
+    !Number.isFinite(Date.parse(value.occurredAt))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function isApprovalProjection(value: unknown): value is Approval {

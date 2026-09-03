@@ -161,6 +161,9 @@ The receiving owner must explicitly bind it to a Worker Host and grant a local p
 - Worker Hosts receive only Run-scoped context and short-lived capabilities.
 - Owners can inspect, edit, and delete Employee memory; memory export and category-wide retention
   policies remain planned.
+- Connected Web Clients receive a content-free profile invalidation after committed Employee
+  mutations and reload the selected profile from the authenticated Server aggregate. Reconnect also
+  reloads the selected profile, so another device's changes do not require a manual refresh.
 - Audit records needed to explain security decisions are retained separately from portable memory.
 - Shared skills preserve authorship, source URL, license, and integrity metadata.
 - Transfer and deletion are explicit lifecycle events and cannot be inferred from file download.
@@ -201,6 +204,9 @@ Implemented on the `feat/cross-platform-employees` development line:
   receipt without granting host authority;
 - strict Owner-authenticated commands that add Agent Skills-compatible metadata as a `candidate`
   and explicitly verify, suspend, or permanently revoke it while appending evolution evidence;
+- an Owner skill-review surface that exposes description, provenance, dependencies, required host
+  capabilities, and evidence references, limits actions to valid transitions, records a reason and
+  confidence, and separates terminal revocation from the first click;
 - conditional state updates that reject concurrent review races and never change Worker Host
   capability claims or policy grants;
 - strict Owner-only memory create/update/delete commands with bounded fields, credential-value

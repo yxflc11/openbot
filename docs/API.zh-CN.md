@@ -176,7 +176,8 @@ Token 与私钥会被阻止；只能保存 `vault://operations/email` 这类不�
 `POST /api/v1/bots/:botId/skills/:skillId/state` 接受 `verified`、`suspended` 或 `revoked`。
 每次变更必须包含非空原因和字面值 `ownerReviewed: true`；鉴权 Session 证明请求者就是当前单
 Owner。验证还需要 1–100 的 `confidence`，并再次确认全部依赖仍为已验证。撤销是终止状态，
-不能恢复；并发审核以 `409` 失败，不会后写覆盖先写。
+不能恢复；并发审核以 `409` 失败，不会后写覆盖先写。员工主页会先展示保存的说明、来源、版本、
+所需主机能力名称、依赖与证据引用，再只显示当前状态允许的变更；永久撤销使用单独确认表单。
 
 ```json
 {
@@ -295,7 +296,7 @@ Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，
 
 Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主动关闭连接，并以 2 秒间隔重连。每次收到 `channel.ready` 后，Web 都会重新读取最近历史，并按实体 ID 与 `updatedAt` 合并消息和 Run，以补齐断线期间写入的数据且不让旧 REST 快照覆盖较新的 SSE 状态。SSE 只承担 Server 到浏览器的下行投影；创建消息等命令继续使用 REST。
 
-`GET /api/v1/workspace/events` 使用独立的全局 SSE。首帧 `workspace.ready` 包含当前在线 Node 权威快照，之后发送 `node.upserted`、`node.removed`、`run.updated` 与 `approval.updated`；Web 因此不需要刷新就能看到远程机器、办公室任务和待审批动作变化。频道事件仍负责单频道消息、进度与画面，Workspace 事件负责跨频道总览。
+`GET /api/v1/workspace/events` 使用独立的全局 SSE。首帧 `workspace.ready` 包含当前在线 Node 权威快照，之后发送 `node.upserted`、`node.removed`、`run.updated`、`approval.updated` 与 `employee.profile.changed`。员工事件只包含 `botId`、非空白名单 `sections` 和 `occurredAt`，不携带记忆正文、技能证据或权限；正在查看这名员工的 Web 会重新读取鉴权档案聚合，而不会把 SSE 当成档案真相。重连收到 `workspace.ready` 后也会刷新当前员工，以补齐断线期间的变化。频道事件仍负责单频道消息、进度与画面，Workspace 事件负责跨频道总览。
 
 审批决定正文为 `{ "decision": "approve" }` 或 `{ "decision": "reject" }`。Server 只接受 `pending` 状态且未过期的审批；每个审批只能决定一次，重复请求返回 `409`。批准会把 Run 恢复为 `running` 并把决定送回发起请求的 Node，拒绝或过期会把 Run 标记为 `blocked` 并取消 Node 执行。当前握手尚未签发独立、可验证的一次性 capability lease，因此只允许可信私网测试 provider 使用。
 

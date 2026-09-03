@@ -2,6 +2,7 @@ import type {
   ApprovalResolution,
   BootstrapSummary,
   ChannelRealtimeEvent,
+  EmployeeProfileSection,
   ExecutionNode,
   NodeIdentitySummary,
   Run,
@@ -297,7 +298,9 @@ export function createApp(dependencies: AppDependencies) {
                           ? event.nodeId
                           : event.type === "approval.updated"
                             ? event.approval.id
-                            : event.run.id,
+                            : event.type === "run.updated"
+                              ? event.run.id
+                              : event.botId,
                   }),
               data: JSON.stringify(event),
             });
@@ -491,43 +494,53 @@ export function createApp(dependencies: AppDependencies) {
 
   app.post("/api/v1/bots/:botId/skills", async (context) => {
     const input = await parseRequest(context.req.raw, createEmployeeSkillInputSchema);
-    const result = await dependencies.store.createEmployeeSkill(context.req.param("botId"), input);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.createEmployeeSkill(botId, input);
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);
     return context.json(result, 201);
   });
 
   app.post("/api/v1/bots/:botId/skills/:skillId/state", async (context) => {
     const input = await parseRequest(context.req.raw, updateEmployeeSkillStateInputSchema);
+    const botId = context.req.param("botId");
     const result = await dependencies.store.updateEmployeeSkillState(
-      context.req.param("botId"),
+      botId,
       context.req.param("skillId"),
       input,
     );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);
     return context.json(result);
   });
 
   app.post("/api/v1/bots/:botId/memories", async (context) => {
     const input = await parseRequest(context.req.raw, createEmployeeMemoryInputSchema);
-    const result = await dependencies.store.createEmployeeMemory(context.req.param("botId"), input);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.createEmployeeMemory(botId, input);
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
     return context.json(result, 201);
   });
 
   app.patch("/api/v1/bots/:botId/memories/:memoryId", async (context) => {
     const input = await parseRequest(context.req.raw, updateEmployeeMemoryInputSchema);
+    const botId = context.req.param("botId");
     const result = await dependencies.store.updateEmployeeMemory(
-      context.req.param("botId"),
+      botId,
       context.req.param("memoryId"),
       input,
     );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
     return context.json(result);
   });
 
   app.delete("/api/v1/bots/:botId/memories/:memoryId", async (context) => {
     const input = await parseRequest(context.req.raw, deleteEmployeeMemoryInputSchema);
+    const botId = context.req.param("botId");
     const result = await dependencies.store.deleteEmployeeMemory(
-      context.req.param("botId"),
+      botId,
       context.req.param("memoryId"),
       input,
     );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
     return context.json(result);
   });
 
@@ -637,12 +650,26 @@ export function createApp(dependencies: AppDependencies) {
       reviewedBy: "owner",
       reviewedAt: new Date().toISOString(),
     });
+    if (!result.replayed) {
+      publishEmployeeProfileChanged(workspaceRealtime, result.employee.id, [
+        "identity",
+        "evolution",
+        "skills",
+        "configuration",
+        "portability",
+      ]);
+    }
     return context.json(result, result.replayed ? 200 : 201);
   });
 
   app.post("/api/v1/bots", async (context) => {
     const input = await parseRequest(context.req.raw, createBotInputSchema);
     const bot = await dependencies.store.createBot(input);
+    publishEmployeeProfileChanged(workspaceRealtime, bot.id, [
+      "identity",
+      "evolution",
+      "configuration",
+    ]);
     return context.json({ bot }, 201);
   });
 
@@ -728,6 +755,19 @@ export function createApp(dependencies: AppDependencies) {
 }
 
 const channelHeartbeatMs = 15_000;
+
+function publishEmployeeProfileChanged(
+  realtime: Pick<WorkspaceRealtimeHub, "publish">,
+  botId: string,
+  sections: readonly [EmployeeProfileSection, ...EmployeeProfileSection[]],
+): void {
+  realtime.publish({
+    type: "employee.profile.changed",
+    botId,
+    sections: [...sections],
+    occurredAt: new Date().toISOString(),
+  });
+}
 
 function isMutation(method: string): boolean {
   return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";

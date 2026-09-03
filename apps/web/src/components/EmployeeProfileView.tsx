@@ -2,6 +2,7 @@ import type { CreateEmployeeMemoryInput, EmployeeMemory, EmployeeProfile } from 
 import { type FormEvent, useId, useRef, useState } from "react";
 import { createEmployeeMemory, deleteEmployeeMemory, updateEmployeeMemory } from "../api";
 import { runStatusLabel } from "../run-state";
+import { EmployeeSkillReview } from "./EmployeeSkillReview";
 import { RobotAvatar } from "./RobotAvatar";
 
 export type ProfileTab =
@@ -130,7 +131,7 @@ export function EmployeeProfileView({
       >
         {tab === "overview" ? <Overview profile={profile} /> : null}
         {tab === "evolution" ? <Evolution profile={profile} /> : null}
-        {tab === "skills" ? <Skills profile={profile} /> : null}
+        {tab === "skills" ? <Skills profile={profile} onProfileChanged={onProfileChanged} /> : null}
         {tab === "live" ? <LiveWork profile={profile} /> : null}
         {tab === "memory" ? (
           <EmployeeMemoryPanel profile={profile} onProfileChanged={onProfileChanged} />
@@ -190,13 +191,19 @@ function Evolution({ profile }: { profile: EmployeeProfile }) {
   );
 }
 
-function Skills({ profile }: { profile: EmployeeProfile }) {
+function Skills({
+  profile,
+  onProfileChanged,
+}: {
+  profile: EmployeeProfile;
+  onProfileChanged(): Promise<void>;
+}) {
   return (
     <ProfileSection
       title="技能图谱"
       description="候选技能必须通过确定性测试或人工审核，才能成为已验证技能。"
     >
-      <SkillGraph profile={profile} expanded />
+      <EmployeeSkillReview profile={profile} onProfileChanged={onProfileChanged} />
     </ProfileSection>
   );
 }
@@ -638,19 +645,13 @@ function EvolutionTimeline({ events }: { events: EmployeeProfile["evolution"] })
   );
 }
 
-function SkillGraph({
-  profile,
-  expanded = false,
-}: {
-  profile: EmployeeProfile;
-  expanded?: boolean;
-}) {
+function SkillGraph({ profile }: { profile: EmployeeProfile }) {
   if (profile.skills.length === 0) {
     return <EmployeeEmpty title="还没有技能" copy="学习到的技能会先以候选状态出现。" />;
   }
-  const skills = expanded ? profile.skills : profile.skills.slice(0, 6);
+  const skills = profile.skills.slice(0, 6);
   return (
-    <div className={`employee-skill-graph ${expanded ? "expanded" : ""}`}>
+    <div className="employee-skill-graph">
       <RobotAvatar bot={profile.employee} compact className="employee-skill-avatar" />
       <div>
         {skills.map((skill) => (
