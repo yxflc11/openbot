@@ -157,6 +157,57 @@ describe("employee template package", () => {
     });
   });
 
+  it("preserves the reviewed profile and skill inventory across export and import", () => {
+    const profile = createProfile();
+    profile.skills.push({
+      id: "verified-dependent-skill-id",
+      slug: "summarize-page",
+      name: "Summarize page",
+      description: "Summarize evidence collected from an approved page.",
+      version: "2.1.0",
+      source: "learned",
+      state: "verified",
+      confidence: 0.9,
+      requiredCapabilities: ["screenshot", "browser"],
+      dependencyIds: ["verified-skill-id"],
+      evidence: [{ kind: "manual", id: "summary-review" }],
+      acquiredAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    const exported = buildEmployeeTemplate(profile, { generatedAt: timestamp, packageId });
+    const imported = inspectEmployeeTemplate(exported.document, [
+      {
+        id: "node-1",
+        name: "Linux worker",
+        platform: "linux",
+        osVersion: "6.8",
+        architecture: "x64",
+        deviceClass: "server",
+        isolation: "container",
+        trustTier: "development",
+        capabilities: ["browser", "screenshot"],
+        capabilityManifest: [],
+        activeRunIds: [],
+        maxConcurrentRuns: 1,
+        connectedAt: timestamp,
+        lastSeenAt: timestamp,
+      },
+    ]);
+
+    expect(imported.employee).toEqual(exported.preview.employee);
+    expect(imported.skills).toEqual(exported.preview.skills);
+    expect(imported.requestedCapabilities).toEqual(exported.preview.requestedCapabilities);
+    expect(imported.skills).toEqual([
+      expect.objectContaining({ slug: "browse-web", dependencySlugs: [] }),
+      expect.objectContaining({
+        slug: "summarize-page",
+        requiredCapabilities: ["browser", "screenshot"],
+        dependencySlugs: ["browse-web"],
+      }),
+    ]);
+  });
+
   it("keeps older v1 packages without a biography reviewable", () => {
     const { document } = buildEmployeeTemplate(createProfile(), {
       generatedAt: timestamp,

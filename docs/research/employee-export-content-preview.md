@@ -70,8 +70,9 @@
 ## Verification plan
 
 - Automated tests: export builder returns the exact role, optional biography, appearance, and
-  verified skill summaries in deterministic package order; the Web preview renders those fields,
-  exclusions, checksum, and signature status.
+  verified skill summaries in deterministic package order; a package round trip proves the import
+  quarantine projects the same profile, skills, dependencies, and capability set; the Web preview
+  renders those fields, exclusions, checksum, and signature status.
 - Negative and fail-closed tests: candidate/suspended/revoked skills remain absent; secret-like
   profile or skill content blocks download; zero verified skills and absent biography render
   truthful empty states.
