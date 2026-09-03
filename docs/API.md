@@ -19,6 +19,7 @@
 | `GET` | `/api/v1/channels/:channelId/runs` | 读取频道最近 50 个任务 |
 | `GET` | `/api/v1/channels/:channelId/events` | 订阅频道实时事件（SSE） |
 | `GET` | `/api/v1/artifacts/:artifactId/content` | 鉴权读取任务产物；当前仅 PNG 截图 |
+| `GET` | `/api/v1/runs/:runId/frame` | 鉴权读取任务最新临时画面；不持久化 |
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
@@ -76,7 +77,7 @@
 
 成功响应包含 `{ message, run }`。Server 随后向频道 SSE 订阅者依次发布 `message.created` 与 `run.created`；Web 分别按消息 ID 和 Run ID 合并快照与实时事件，因此刷新、重连和并发写入不会产生重复投影。
 
-Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，不会在运行中由 Client、模型或 Node 改写。若存在兼容且未满载的在线 Node，Server 会通过版本化 WebSocket 协议发出 offer；Node 接受、Server 在短事务中条件认领成功并发送 confirm 后，Run 进入 `assigned`。Node 再请求启动，Server 条件更新为 `running` 后才发 `run.start`；进度写入结构化事件并实时投影到频道，成功结果和 Artifact 元数据在同一数据库事务中落库，随后 Server 发 `run.settled` 释放节点容量。
+Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，不会在运行中由 Client、模型或 Node 改写。若存在兼容且未满载的在线 Node，Server 会通过版本化 WebSocket 协议发出 offer；Node 接受、Server 在短事务中条件认领成功并发送 confirm 后，Run 进入 `assigned`。Node 再请求启动，Server 条件更新为 `running` 后才发 `run.start`；进度写入结构化事件并实时投影到频道，最新画面只进入受限内存缓存，成功结果和 Artifact 元数据在同一数据库事务中落库，随后 Server 发 `run.settled` 释放节点容量。
 
 尚未执行的 `assigned` Run 在节点断线或 Server 恢复时回到 `queued`；已经 `running` 的 Run 则明确失败，不会在外部副作用未知时自动重跑。当前 Docker provider 只接受任务正文中的一个明确 HTTP(S) URL，只执行 `/navigate` 与 `/screenshot`，不点击、不填写、不提交。截图正文保存在 Server 文件存储，数据库只保存引用、SHA-256、大小和元数据。
 
@@ -91,6 +92,7 @@ Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，
 | `run.created` | `{ type, channelId, run }` | 投影一条已持久化的排队任务 |
 | `run.updated` | `{ type, channelId, run, artifacts? }` | 投影分配、运行、完成、失败和新产物 |
 | `run.progress` | `{ type, channelId, progress }` | 投影已持久化的执行阶段和说明 |
+| `run.frame` | `{ type, channelId, frame }` | 投影最新临时画面的版本、尺寸和时间；不含图片正文 |
 | `heartbeat` | ISO 时间字符串 | 检测代理或 Server 形成的半开连接 |
 
 Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主动关闭连接，并以 2 秒间隔重连。每次收到 `channel.ready` 后，Web 都会重新读取最近历史，并按实体 ID 与 `updatedAt` 合并消息和 Run，以补齐断线期间写入的数据且不让旧 REST 快照覆盖较新的 SSE 状态。SSE 只承担 Server 到浏览器的下行投影；创建消息等命令继续使用 REST。
@@ -99,7 +101,7 @@ Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主�
 
 当前 realtime hub 是单 Server 进程内广播。需要运行多个 Server 副本时，必须先换成 PostgreSQL `LISTEN/NOTIFY`、Redis Streams 或 NATS 等共享事件总线，不能依赖进程内 fan-out。
 
-Artifact 内容接口使用同一个 Owner Session，响应为 `private, no-store` 并带 `X-Content-Type-Options: nosniff`。Web 不接收或暴露实际 `storage_key`；没有登录的浏览器不能读取截图。
+Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `private, no-store` 并带 `X-Content-Type-Options: nosniff`。Web 不接收或暴露实际 `storage_key`；没有登录的浏览器不能读取截图。临时画面限制为 PNG 和 2 MiB，Server 最多保留 16 个 Run 的最新帧，每帧默认 2 分钟后过期；SSE 只发送元数据，图片由浏览器按 revision 单独读取。
 
 ## 错误约定
 

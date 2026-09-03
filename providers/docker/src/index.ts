@@ -23,7 +23,7 @@ export function createDockerProvider(options: DockerProviderOptions): ComputerPr
     displayName: "CopilotKit/OpenBot agent-computer",
     platforms: ["linux", "macos"],
     capabilities: ["browser", "screenshot"],
-    async execute(context, input, report) {
+    async execute(context, input, report, reportFrame) {
       const target = extractNavigationTarget(input);
       await assertNavigationAllowed(target, options.allowPrivateHosts === true, resolveHost);
 
@@ -49,6 +49,16 @@ export function createDockerProvider(options: DockerProviderOptions): ComputerPr
         context.signal,
       );
       const artifact = screenshotArtifact(input, screenshot);
+      reportFrame?.({
+        mediaType: "image/png",
+        base64: artifact.base64,
+        ...(typeof screenshot.width === "number" ? { width: screenshot.width } : {}),
+        ...(typeof screenshot.height === "number" ? { height: screenshot.height } : {}),
+        capturedAt:
+          typeof screenshot.capturedAt === "string"
+            ? screenshot.capturedAt
+            : new Date().toISOString(),
+      });
       return {
         ok: true,
         summary: `已打开 ${navigation.title || navigation.url} 并截取画面。`,

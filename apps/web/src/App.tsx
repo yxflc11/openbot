@@ -4,6 +4,7 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   Run,
+  RunFrame,
   RunProgress,
   WorkspaceSnapshot,
 } from "@openbot/domain";
@@ -122,6 +123,7 @@ function AuthenticatedWorkspace({
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [selectedRunId, setSelectedRunId] = useState<string>();
+  const [framesByRun, setFramesByRun] = useState<Map<string, RunFrame>>(() => new Map());
   const [workspaceRealtimeState, setWorkspaceRealtimeState] =
     useState<RealtimeConnectionState>("connecting");
   const closeInspector = useCallback(() => setSelectedRunId(undefined), []);
@@ -153,6 +155,21 @@ function AuthenticatedWorkspace({
         ? current
         : { ...current, progress: mergeProgress(current.progress, [progress]) },
     );
+  }, []);
+
+  const projectFrame = useCallback((frame: RunFrame) => {
+    setFramesByRun((current) => {
+      const previous = current.get(frame.runId);
+      if (previous !== undefined && previous.revision >= frame.revision) return current;
+      const next = new Map(current);
+      next.delete(frame.runId);
+      next.set(frame.runId, frame);
+      if (next.size > 50) {
+        const oldest = next.keys().next().value as string | undefined;
+        if (oldest !== undefined) next.delete(oldest);
+      }
+      return next;
+    });
   }, []);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -306,6 +323,7 @@ function AuthenticatedWorkspace({
           progress={workspace.progress}
           onJoin={handleJoinBot}
           onInspectRun={setSelectedRunId}
+          onFrame={projectFrame}
           onProgress={projectProgress}
           onRun={projectRun}
         />
@@ -354,6 +372,7 @@ function AuthenticatedWorkspace({
           bot={workspace.bots.find((bot) => bot.id === selectedRun.botId)}
           node={workspace.nodes.find((node) => node.id === selectedRun.nodeId)}
           progress={workspace.progress.filter((item) => item.runId === selectedRun.id)}
+          liveFrame={framesByRun.get(selectedRun.id)}
           run={selectedRun}
           onClose={closeInspector}
         />

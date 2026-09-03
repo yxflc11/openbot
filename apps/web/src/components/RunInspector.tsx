@@ -1,4 +1,4 @@
-import type { Artifact, Bot, ExecutionNode, Run, RunProgress } from "@openbot/domain";
+import type { Artifact, Bot, ExecutionNode, Run, RunFrame, RunProgress } from "@openbot/domain";
 import { useEffect, useRef } from "react";
 import { runStatusLabel } from "../run-state";
 import { CloseIcon, NodeIcon } from "./Icons";
@@ -7,6 +7,7 @@ import { RobotAvatar } from "./RobotAvatar";
 export function RunInspector({
   artifacts,
   bot,
+  liveFrame,
   node,
   progress,
   run,
@@ -14,6 +15,7 @@ export function RunInspector({
 }: {
   artifacts: Artifact[];
   bot: Bot | undefined;
+  liveFrame: RunFrame | undefined;
   node: ExecutionNode | undefined;
   progress: RunProgress[];
   run: Run;
@@ -56,6 +58,27 @@ export function RunInspector({
         </header>
 
         <div className="inspector-body">
+          {liveFrame ? (
+            <section className="inspector-section live-frame-section">
+              <header>
+                <h3>执行画面</h3>
+                <span className={run.status === "running" ? "live" : "recent"}>
+                  <i />
+                  {run.status === "running" ? "实时" : "最后画面"}
+                </span>
+              </header>
+              <div className="live-frame">
+                <img
+                  src={`/api/v1/runs/${run.id}/frame?revision=${liveFrame.revision}`}
+                  alt={`${run.title} 的执行画面`}
+                />
+              </div>
+              <p className="frame-meta">
+                {frameDimensions(liveFrame)} · {formatTime(liveFrame.capturedAt)} · 临时内存画面
+              </p>
+            </section>
+          ) : null}
+
           <section className="inspector-section">
             <h3>任务</h3>
             <p className="instruction-copy">{run.instruction}</p>
@@ -203,6 +226,12 @@ function formatTime(value: string): string {
 function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   return `${(value / 1024).toFixed(value >= 10 * 1024 ? 0 : 1)} KB`;
+}
+
+function frameDimensions(frame: RunFrame): string {
+  return frame.width !== undefined && frame.height !== undefined
+    ? `${frame.width} × ${frame.height}`
+    : formatBytes(frame.sizeBytes);
 }
 
 const stageLabels: Record<string, string> = {

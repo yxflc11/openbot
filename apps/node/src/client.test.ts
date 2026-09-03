@@ -56,9 +56,18 @@ describe("node run offers", () => {
       displayName: "Test computer",
       platforms: ["linux", "macos"],
       capabilities: ["browser", "screenshot"],
-      async execute(_context, input, reportProgress) {
+      async execute(_context, input, reportProgress, reportFrame) {
         expect(input.instruction).toBe(offer.instruction);
         reportProgress({ stage: "navigate", message: "Opening test page" });
+        reportFrame?.({
+          mediaType: "image/png",
+          base64: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]).toString(
+            "base64",
+          ),
+          width: 1280,
+          height: 800,
+          capturedAt: "2026-09-03T00:00:00.000Z",
+        });
         return { ok: true, summary: "Page opened and captured", artifacts: [] };
       },
     };
@@ -130,6 +139,7 @@ describe("node run offers", () => {
         "run.accept",
         "run.start_request",
         "run.progress",
+        "run.frame",
         "run.completed",
       ]);
     } finally {

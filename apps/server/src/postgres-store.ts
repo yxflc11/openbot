@@ -164,6 +164,15 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     return rows.map(toRun);
   }
 
+  async getRunningRunForNode(runId: string, nodeId: string): Promise<Run | undefined> {
+    const [row] = await this.#db
+      .select()
+      .from(runs)
+      .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "running")))
+      .limit(1);
+    return row === undefined ? undefined : toRun(row);
+  }
+
   async getCounts(): Promise<PersistedCounts> {
     const [channelCount, botCount, activeRunCount] = await Promise.all([
       this.#db.select({ value: count() }).from(channels),

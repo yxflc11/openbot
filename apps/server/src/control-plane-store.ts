@@ -38,6 +38,7 @@ export interface ControlPlaneStore {
   listArtifacts(runId?: string): Promise<Artifact[]>;
   getArtifact(artifactId: string): Promise<ArtifactRecord | undefined>;
   listDispatchableRuns(limit?: number): Promise<Run[]>;
+  getRunningRunForNode(runId: string, nodeId: string): Promise<Run | undefined>;
   getCounts(): Promise<PersistedCounts>;
   createBot(input: CreateBotInput): Promise<Bot>;
   createChannel(input: CreateChannelInput): Promise<Channel>;

@@ -1,4 +1,4 @@
-import type { Artifact, Bot, Channel, Message, Run, RunProgress } from "@openbot/domain";
+import type { Artifact, Bot, Channel, Message, Run, RunFrame, RunProgress } from "@openbot/domain";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   createMessage,
@@ -18,6 +18,7 @@ export function ChannelWorkspace({
   progress,
   onJoin,
   onInspectRun,
+  onFrame,
   onProgress,
   onRun,
 }: {
@@ -27,6 +28,7 @@ export function ChannelWorkspace({
   progress: RunProgress[];
   onJoin(botId: string): Promise<void>;
   onInspectRun(runId: string): void;
+  onFrame(frame: RunFrame): void;
   onProgress(progress: RunProgress): void;
   onRun(run: Run, artifacts?: Artifact[]): void;
 }) {
@@ -79,6 +81,7 @@ export function ChannelWorkspace({
       onMessage(message) {
         setMessages((current) => mergeMessages(current, [message]));
       },
+      onFrame,
       onProgress,
       onRun(run, projectedArtifacts) {
         setRuns((current) => mergeRuns(current, [run]));
@@ -95,7 +98,7 @@ export function ChannelWorkspace({
       controller.abort();
       unsubscribe();
     };
-  }, [channel.id, onProgress, onRun]);
+  }, [channel.id, onFrame, onProgress, onRun]);
 
   useEffect(() => {
     if (messages.length > 0) {

@@ -76,6 +76,30 @@ describe("node protocol", () => {
     ).toBe(false);
     expect(
       nodeMessageSchema.safeParse({
+        type: "run.frame",
+        protocolVersion,
+        nodeId: "linux-node",
+        runId: offer.runId,
+        mediaType: "image/png",
+        base64: "iVBORw0KGgo=",
+        width: 1280,
+        height: 800,
+        capturedAt: new Date().toISOString(),
+      }).success,
+    ).toBe(true);
+    expect(
+      nodeMessageSchema.safeParse({
+        type: "run.frame",
+        protocolVersion,
+        nodeId: "linux-node",
+        runId: offer.runId,
+        mediaType: "image/png",
+        base64: "a".repeat(2_800_001),
+        capturedAt: new Date().toISOString(),
+      }).success,
+    ).toBe(false);
+    expect(
+      nodeMessageSchema.safeParse({
         type: "run.completed",
         protocolVersion,
         nodeId: "linux-node",

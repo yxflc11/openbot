@@ -5,6 +5,7 @@ import {
   type NodeCapability,
   type NodeMessage,
   protocolVersion,
+  runFrameSchema,
   type RunOffer,
   serverMessageSchema,
 } from "@openbot/protocol";
@@ -204,6 +205,24 @@ export class OpenBotNodeClient {
             message: progress.message.slice(0, 500),
             occurredAt: new Date().toISOString(),
           });
+        },
+        (frame) => {
+          const message = runFrameSchema.safeParse({
+            type: "run.frame",
+            protocolVersion,
+            nodeId: this.#env.OPENBOT_NODE_ID,
+            runId,
+            mediaType: frame.mediaType,
+            base64: frame.base64,
+            ...(frame.width === undefined ? {} : { width: frame.width }),
+            ...(frame.height === undefined ? {} : { height: frame.height }),
+            capturedAt: frame.capturedAt,
+          });
+          if (message.success) {
+            this.#send(message.data);
+          } else {
+            console.warn("Provider emitted an invalid or oversized live frame; frame skipped.");
+          }
         },
       );
       if (controller.signal.aborted) return;

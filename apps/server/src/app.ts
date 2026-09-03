@@ -33,6 +33,7 @@ import {
   type ControlPlaneStore,
 } from "./control-plane-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
+import type { RunFrameStore } from "./run-frame-store.js";
 
 export interface AppDependencies {
   allowedOrigins: string[];
@@ -41,6 +42,7 @@ export interface AppDependencies {
   dispatchRun?: (run: Run) => void;
   listNodes: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
+  runFrames?: Pick<RunFrameStore, "get">;
   secureCookies: boolean;
   store: ControlPlaneStore;
   workspaceRealtime?: WorkspaceRealtimeHub;
@@ -263,6 +265,20 @@ export function createApp(dependencies: AppDependencies) {
     });
   });
 
+  app.get("/api/v1/runs/:runId/frame", (context) => {
+    const stored = dependencies.runFrames?.get(context.req.param("runId"));
+    if (stored === undefined) throw new StoreNotFoundError("Live frame not found.");
+    return new Response(stored.bytes, {
+      headers: {
+        "Cache-Control": "private, no-store",
+        "Content-Length": String(stored.bytes.byteLength),
+        "Content-Type": stored.frame.mediaType,
+        ETag: `"run-frame-${stored.frame.revision}"`,
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
+
   app.get("/api/v1/channels/:channelId/events", async (context) => {
     const channelId = context.req.param("channelId");
     if (!(await dependencies.store.channelExists(channelId))) {
@@ -317,7 +333,9 @@ export function createApp(dependencies: AppDependencies) {
                   ? { id: event.run.id }
                   : event.type === "run.progress"
                     ? { id: event.progress.id }
-                    : {}),
+                    : event.type === "run.frame"
+                      ? { id: `${event.frame.runId}:${event.frame.revision}` }
+                      : {}),
               data: JSON.stringify(event),
             });
             event = queued.shift();

@@ -1213,6 +1213,54 @@ select:focus-visible {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.live-frame-section > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.live-frame-section > header h3 {
+  margin: 0;
+}
+.live-frame-section > header span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7c838b;
+  font-size: 9px;
+  font-weight: 700;
+}
+.live-frame-section > header span i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a4aab1;
+}
+.live-frame-section > header span.live {
+  color: var(--green);
+}
+.live-frame-section > header span.live i {
+  background: var(--green);
+}
+.live-frame {
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border: 1px solid #d9dee4;
+  border-radius: 8px;
+  background: #11161c;
+}
+.live-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.frame-meta {
+  margin: 8px 0 0;
+  color: #9298a0;
+  font-size: 9px;
+}
 .instruction-copy {
   margin: 0;
   color: #30353b;

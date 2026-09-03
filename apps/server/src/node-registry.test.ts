@@ -57,6 +57,19 @@ describe("node enrollment", () => {
       if (parsed.data.type === "run.start") {
         client.send(
           JSON.stringify({
+            type: "run.frame",
+            protocolVersion,
+            nodeId: "linux-node",
+            runId: parsed.data.runId,
+            mediaType: "image/png",
+            base64: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]).toString(
+              "base64",
+            ),
+            capturedAt: new Date().toISOString(),
+          }),
+        );
+        client.send(
+          JSON.stringify({
             type: "run.completed",
             protocolVersion,
             nodeId: "linux-node",
@@ -104,6 +117,7 @@ describe("node enrollment", () => {
       await waitFor(() => runtimeMessages.some((message) => message.type === "run.start_request"));
       expect(registry.startRun("linux-node", runId)).toBe(true);
       await waitFor(() => runtimeMessages.some((message) => message.type === "run.completed"));
+      expect(runtimeMessages.some((message) => message.type === "run.frame")).toBe(true);
       registry.settleRun("linux-node", runId, "completed");
       await waitFor(() => received.some((message) => message.type === "run.settled"));
       expect(registry.list()[0]?.activeRunIds).toEqual([]);

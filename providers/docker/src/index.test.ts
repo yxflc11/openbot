@@ -1,4 +1,4 @@
-import type { ProviderRunInput } from "@openbot/provider-sdk";
+import type { ProviderFrame, ProviderRunInput } from "@openbot/provider-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { createDockerProvider } from "./index.js";
 
@@ -44,8 +44,14 @@ describe("CopilotKit agent-computer adapter", () => {
       resolveHost: async () => ["203.0.113.10"],
     });
     const progress: string[] = [];
+    const frames: ProviderFrame[] = [];
 
-    const result = await provider.execute?.(context, input, (event) => progress.push(event.stage));
+    const result = await provider.execute?.(
+      context,
+      input,
+      (event) => progress.push(event.stage),
+      (frame) => frames.push(frame),
+    );
 
     expect(result).toMatchObject({
       ok: true,
@@ -53,6 +59,15 @@ describe("CopilotKit agent-computer adapter", () => {
       artifacts: [{ name: "页面截图.png", mediaType: "image/png" }],
     });
     expect(progress).toEqual(["navigate", "screenshot"]);
+    expect(frames).toEqual([
+      {
+        mediaType: "image/png",
+        base64: onePixelPng,
+        width: 1280,
+        height: 800,
+        capturedAt: "2026-09-03T00:00:00.000Z",
+      },
+    ]);
     expect(fetcher).toHaveBeenNthCalledWith(
       1,
       "http://127.0.0.1:4100/navigate",

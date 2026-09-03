@@ -10,6 +10,7 @@ import type {
   ExecutionNode,
   Message,
   Run,
+  RunFrame,
   RunProgress,
   SubmitTaskResult,
   WorkspaceRealtimeEvent,
@@ -123,6 +124,7 @@ export function subscribeToChannelEvents(
   channelId: string,
   handlers: {
     onMessage(message: Message): void;
+    onFrame(frame: RunFrame): void;
     onProgress(progress: RunProgress): void;
     onRun(run: Run, artifacts: Artifact[]): void;
     onReady(): void;
@@ -183,6 +185,18 @@ export function subscribeToChannelEvents(
       // Ignore malformed frames and keep the stream available for the next valid event.
     }
   };
+  const onFrame = (event: Event) => {
+    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
+    try {
+      const payload: unknown = JSON.parse(event.data);
+      if (isRunFrameProjectionEvent(payload, channelId)) {
+        markLive();
+        handlers.onFrame(payload.frame);
+      }
+    } catch {
+      // Ignore malformed frames and keep the stream available for the next valid event.
+    }
+  };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
     source?.close();
@@ -208,6 +222,7 @@ export function subscribeToChannelEvents(
     nextSource.addEventListener("run.created", onRun);
     nextSource.addEventListener("run.updated", onRun);
     nextSource.addEventListener("run.progress", onProgress);
+    nextSource.addEventListener("run.frame", onFrame);
   };
 
   handlers.onState("connecting");
@@ -364,6 +379,45 @@ function isRunProgressProjectionEvent(
     value.channelId === channelId &&
     "progress" in value &&
     isRunProgressProjection(value.progress, channelId)
+  );
+}
+
+function isRunFrameProjectionEvent(
+  value: unknown,
+  channelId: string,
+): value is Extract<ChannelRealtimeEvent, { type: "run.frame" }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "run.frame" &&
+    "channelId" in value &&
+    value.channelId === channelId &&
+    "frame" in value &&
+    isRunFrameProjection(value.frame, channelId)
+  );
+}
+
+function isRunFrameProjection(value: unknown, channelId: string): value is RunFrame {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "runId" in value &&
+    typeof value.runId === "string" &&
+    "channelId" in value &&
+    value.channelId === channelId &&
+    "nodeId" in value &&
+    typeof value.nodeId === "string" &&
+    "revision" in value &&
+    typeof value.revision === "number" &&
+    Number.isSafeInteger(value.revision) &&
+    value.revision > 0 &&
+    "mediaType" in value &&
+    value.mediaType === "image/png" &&
+    "sizeBytes" in value &&
+    typeof value.sizeBytes === "number" &&
+    "capturedAt" in value &&
+    typeof value.capturedAt === "string"
   );
 }
 

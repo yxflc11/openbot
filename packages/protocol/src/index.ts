@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const protocolVersion = "0.3.0" as const;
+export const protocolVersion = "0.4.0" as const;
 
 export const nodeCapabilitySchema = z.enum([
   "browser",
@@ -70,6 +70,22 @@ export const runProgressSchema = z.object({
   occurredAt: z.string().datetime(),
 });
 
+export const runFrameSchema = z.object({
+  type: z.literal("run.frame"),
+  protocolVersion: z.literal(protocolVersion),
+  nodeId: z.string().min(1),
+  runId: z.string().uuid(),
+  mediaType: z.literal("image/png"),
+  base64: z
+    .string()
+    .min(12)
+    .max(2_800_000)
+    .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  width: z.number().int().positive().max(20_000).optional(),
+  height: z.number().int().positive().max(20_000).optional(),
+  capturedAt: z.string().datetime(),
+});
+
 const screenshotMetadataSchema = z
   .object({
     width: z.number().int().positive().max(20_000).optional(),
@@ -118,6 +134,7 @@ export const nodeMessageSchema = z.discriminatedUnion("type", [
   runRejectSchema,
   runStartRequestSchema,
   runProgressSchema,
+  runFrameSchema,
   runCompletedSchema,
   runFailedSchema,
 ]);

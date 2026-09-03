@@ -84,6 +84,18 @@ export interface RunProgress {
   createdAt: string;
 }
 
+export interface RunFrame {
+  runId: EntityId;
+  channelId: EntityId;
+  nodeId: EntityId;
+  revision: number;
+  mediaType: "image/png";
+  sizeBytes: number;
+  width?: number;
+  height?: number;
+  capturedAt: string;
+}
+
 export type MessageAuthorType = "human" | "bot" | "system";
 
 export interface Message {
@@ -134,6 +146,11 @@ export type ChannelRealtimeEvent =
       type: "run.progress";
       channelId: EntityId;
       progress: RunProgress;
+    }
+  | {
+      type: "run.frame";
+      channelId: EntityId;
+      frame: RunFrame;
     };
 
 export type WorkspaceRealtimeEvent =

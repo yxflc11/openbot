@@ -189,7 +189,7 @@ sequenceDiagram
 
 办公室、频道和移动端由同一份 Server 事件投影，不解析聊天文本猜状态：
 
-频道级 SSE 已投影 `MESSAGE_CREATED`、`RUN_CREATED`、`RUN_ASSIGNED`、`RUN_STARTED`、`RUN_PROGRESS`、`RUN_COMPLETED`、`RUN_FAILED` 与 `RUN_REQUEUED`，全局 Workspace SSE 投影 Node 上线、心跳容量和断开，REST 继续承担写命令。Web 按实体 ID、时间和状态版本合并历史快照与实时事件，把同一任务同步到频道任务卡、Bot 工位、右栏与 Inspector，并避免较旧的 REST 响应覆盖较新的 SSE 状态。Inspector 已显示任务原文、执行 Bot、Node、进度时间线、结果和 PNG Artifact；实时电脑画面和审批仍待接入。
+频道级 SSE 已投影 `MESSAGE_CREATED`、`RUN_CREATED`、`RUN_ASSIGNED`、`RUN_STARTED`、`RUN_PROGRESS`、`FRAME_UPDATED`、`RUN_COMPLETED`、`RUN_FAILED` 与 `RUN_REQUEUED`，全局 Workspace SSE 投影 Node 上线、心跳容量和断开，REST 继续承担写命令。Web 按实体 ID、时间和状态版本合并历史快照与实时事件，把同一任务同步到频道任务卡、Bot 工位、右栏与 Inspector，并避免较旧的 REST 响应覆盖较新的 SSE 状态。Inspector 已显示任务原文、执行 Bot、Node、进度时间线、最新临时画面、结果和 PNG Artifact；当前 Docker provider 每次截图产生一帧，连续画面和审批仍待接入。
 
 | 事件 | UI 投影 |
 | --- | --- |
@@ -206,7 +206,7 @@ sequenceDiagram
 | `RUN_PLAN_UPDATED` | 进度 |
 | `NODE_BOUND` | 工位电脑状态 |
 | `APPROVAL_REQUESTED` | Bot 警告、Attention 与频道审批卡 |
-| `FRAME_UPDATED` | Computer 预览 |
+| `FRAME_UPDATED` | Inspector 中的最新 Computer 预览；正文按 revision 鉴权读取 |
 | `ARTIFACT_CREATED` | Artifacts |
 | `RUN_BLOCKED` | 阻塞状态 |
 | `RUN_COMPLETED` | 完成反馈和结果 |

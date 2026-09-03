@@ -8,6 +8,7 @@ import type {
   Message,
   Run,
 } from "@openbot/domain";
+import { protocolVersion } from "@openbot/protocol";
 import { describe, expect, it, vi } from "vitest";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
@@ -19,6 +20,7 @@ import {
 } from "./control-plane-store.js";
 import { createApp, ownerSessionCookie } from "./app.js";
 import { OwnerAuthService } from "./owner-auth.js";
+import { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 import type {
   CreateOwnerSessionInput,
@@ -202,6 +204,34 @@ describe("server app", () => {
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("serves the latest authenticated live frame without persistence", async () => {
+    const runFrames = new RunFrameStore();
+    const runId = "00000000-0000-4000-8000-000000000011";
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    runFrames.publish("channel-1", {
+      type: "run.frame",
+      protocolVersion,
+      nodeId: "linux-node",
+      runId,
+      mediaType: "image/png",
+      base64: bytes.toString("base64"),
+      capturedAt: "2026-09-04T00:00:00.000Z",
+    });
+    const app = createTestApp({ runFrames, store: createTestStore() });
+
+    expect((await app.request(`/api/v1/runs/${runId}/frame`)).status).toBe(401);
+    const cookie = await login(app);
+    const response = await app.request(`/api/v1/runs/${runId}/frame`, {
+      headers: { Cookie: cookie },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(response.headers.get("etag")).toBe('"run-frame-1"');
     expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
   });
 
@@ -462,6 +492,25 @@ describe("server app", () => {
     expect(progressEvent).toContain("event: run.progress");
     expect(progressEvent).toContain("正在打开测试页");
 
+    realtime.publish({
+      type: "run.frame",
+      channelId: channel.id,
+      frame: {
+        runId: createdPayload.run.id,
+        channelId: channel.id,
+        nodeId: "linux-node",
+        revision: 1,
+        mediaType: "image/png",
+        sizeBytes: 128,
+        width: 1280,
+        height: 800,
+        capturedAt: "2026-09-04T00:01:01.000Z",
+      },
+    });
+    const frameEvent = new TextDecoder().decode((await reader?.read())?.value);
+    expect(frameEvent).toContain("event: run.frame");
+    expect(frameEvent).toContain('"revision":1');
+
     await reader?.cancel();
     controller.abort();
     unsubscribe();
@@ -484,6 +533,7 @@ function createTestApp({
   listNodes = () => [],
   realtime,
   artifactStorage,
+  runFrames,
   workspaceRealtime,
 }: {
   store: ControlPlaneStore;
@@ -491,6 +541,7 @@ function createTestApp({
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
   artifactStorage?: Pick<ArtifactStorage, "read">;
+  runFrames?: Pick<RunFrameStore, "get">;
   workspaceRealtime?: WorkspaceRealtimeHub;
 }) {
   const auth = new OwnerAuthService(createMemorySessionStore(), {
@@ -505,6 +556,7 @@ function createTestApp({
     ...(artifactStorage === undefined ? {} : { artifactStorage }),
     listNodes,
     ...(realtime === undefined ? {} : { realtime }),
+    ...(runFrames === undefined ? {} : { runFrames }),
     ...(workspaceRealtime === undefined ? {} : { workspaceRealtime }),
     secureCookies: false,
     store,
@@ -597,6 +649,11 @@ function createTestStore(): ControlPlaneStore {
             run.status === "queued" && run.nodeId === undefined && run.executionProfile !== "none",
         )
         .slice(0, limit);
+    },
+    async getRunningRunForNode(runId: string, nodeId: string) {
+      return runs.find(
+        (run) => run.id === runId && run.nodeId === nodeId && run.status === "running",
+      );
     },
     async getCounts() {
       return { bots: bots.length, channels: channels.length, activeRuns: runs.length };

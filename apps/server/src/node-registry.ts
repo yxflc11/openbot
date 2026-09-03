@@ -43,7 +43,9 @@ export type RunOfferResult =
 type NodeHandler = (node: ExecutionNode) => void;
 export type NodeRunMessage = Extract<
   NodeMessage,
-  { type: "run.start_request" | "run.progress" | "run.completed" | "run.failed" }
+  {
+    type: "run.start_request" | "run.progress" | "run.frame" | "run.completed" | "run.failed";
+  }
 >;
 type NodeRunHandler = (node: ExecutionNode, message: NodeRunMessage) => void;
 
@@ -312,6 +314,7 @@ export class NodeRegistry {
         if (
           message.type === "run.start_request" ||
           message.type === "run.progress" ||
+          message.type === "run.frame" ||
           message.type === "run.completed" ||
           message.type === "run.failed"
         ) {

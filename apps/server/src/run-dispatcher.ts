@@ -10,6 +10,7 @@ import type {
   RunOfferInput,
   RunOfferResult,
 } from "./node-registry.js";
+import type { RunFrameStore } from "./run-frame-store.js";
 
 type DispatchStore = Pick<
   ControlPlaneStore,
@@ -18,6 +19,7 @@ type DispatchStore = Pick<
   | "completeRun"
   | "failRun"
   | "failRunningRuns"
+  | "getRunningRunForNode"
   | "listDispatchableRuns"
   | "markNodeOffline"
   | "requeueAssignedRuns"
@@ -38,12 +40,15 @@ export interface NodeGateway {
 }
 
 type RunPublisher = Pick<ChannelRealtimeHub, "publish">;
+type FramePublisher = Pick<RunFrameStore, "publish">;
 
 export class RunDispatcher {
   readonly #store: DispatchStore;
   readonly #nodes: NodeGateway;
   readonly #realtime: RunPublisher;
   readonly #artifacts: ArtifactStorage;
+  readonly #frames: FramePublisher | undefined;
+  readonly #runMessageTails = new Map<string, Promise<void>>();
   #draining = false;
   #drainAgain = false;
   #stopped = true;
@@ -56,11 +61,13 @@ export class RunDispatcher {
     nodes: NodeRegistry | NodeGateway,
     realtime: RunPublisher,
     artifacts: ArtifactStorage,
+    frames?: FramePublisher,
   ) {
     this.#store = store;
     this.#nodes = nodes;
     this.#realtime = realtime;
     this.#artifacts = artifacts;
+    this.#frames = frames;
   }
 
   async start(): Promise<void> {
@@ -72,7 +79,7 @@ export class RunDispatcher {
       void this.#handleNodeUnavailable(node).catch(reportDispatchError);
     });
     this.#unsubscribeRunMessage = this.#nodes.onRunMessage((node, message) => {
-      void this.#handleRunMessage(node, message).catch(reportDispatchError);
+      this.#enqueueRunMessage(node, message);
     });
 
     const [requeued, failed] = await Promise.all([
@@ -88,6 +95,7 @@ export class RunDispatcher {
     this.#unsubscribeAvailable?.();
     this.#unsubscribeUnavailable?.();
     this.#unsubscribeRunMessage?.();
+    this.#runMessageTails.clear();
   }
 
   enqueue(run: Run): void {
@@ -165,6 +173,19 @@ export class RunDispatcher {
     await this.dispatchQueued();
   }
 
+  #enqueueRunMessage(node: ExecutionNode, message: NodeRunMessage): void {
+    const previous = this.#runMessageTails.get(message.runId) ?? Promise.resolve();
+    const next = previous
+      .then(() => this.#handleRunMessage(node, message))
+      .catch(reportDispatchError);
+    this.#runMessageTails.set(message.runId, next);
+    void next.finally(() => {
+      if (this.#runMessageTails.get(message.runId) === next) {
+        this.#runMessageTails.delete(message.runId);
+      }
+    });
+  }
+
   async #handleRunMessage(node: ExecutionNode, message: NodeRunMessage): Promise<void> {
     switch (message.type) {
       case "run.start_request": {
@@ -202,6 +223,16 @@ export class RunDispatcher {
             channelId: progress.channelId,
             progress,
           });
+        }
+        return;
+      }
+      case "run.frame": {
+        if (this.#frames === undefined) return;
+        const run = await this.#store.getRunningRunForNode(message.runId, node.id);
+        if (run === undefined) return;
+        const frame = this.#frames.publish(run.channelId, message);
+        if (frame !== undefined) {
+          this.#realtime.publish({ type: "run.frame", channelId: run.channelId, frame });
         }
         return;
       }

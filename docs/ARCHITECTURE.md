@@ -100,7 +100,7 @@ flowchart LR
 - reconnect cursor 与幂等写入；
 - 不依赖云 license 的完整启动模式。
 
-频道消息和 Run 使用频道 SSE；在线 Node 属于整个工作区，使用独立的 Workspace SSE。Workspace 订阅建立后先发送包含在线 Node 的权威快照，再发送 `node.upserted` / `node.removed` 增量，避免连接建立期间的竞态，也避免把全局机器拓扑复制到每个频道流。
+频道消息、Run 与最新画面元数据使用频道 SSE；在线 Node 属于整个工作区，使用独立的 Workspace SSE。Workspace 订阅建立后先发送包含在线 Node 的权威快照，再发送 `node.upserted` / `node.removed` 增量，避免连接建立期间的竞态，也避免把全局机器拓扑复制到每个频道流。画面正文通过鉴权 HTTP 端点按 revision 读取，不把 base64 图片复制进每个 SSE 订阅。
 
 ### Node Registry
 
@@ -146,7 +146,7 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 
 - `node.hello` / `node.heartbeat` / `node.capabilities_changed`
 - `run.offer` / `run.accept` / `run.reject` / `run.assigned`
-- `run.start_request` / `run.start` / `run.progress`
+- `run.start_request` / `run.start` / `run.progress` / `run.frame`
 - `run.completed` / `run.failed` / `run.settled` / `run.cancel`
 - `approval.lease` / `approval.revoke`
 - `control.acquire` / `control.release`
@@ -167,7 +167,7 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - Node 凭证不能登录 Web，也不能访问其他 Node；
 - 所有消息绑定 connection、node、run 和 sequence。
 
-协议 `0.3.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、completed/failed、持久化后 settled 与 cancel。小型 PNG 截图可在 completed 消息中有界传输；Server 验证类型、编码和大小后写入 Artifact Storage。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
+协议 `0.4.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、completed/failed、持久化后 settled 与 cancel。`run.frame` 只接受有界 PNG，Server 验证 Run 与 Node 的运行绑定后更新内存中的 latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 Artifact Storage。开发阶段仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放是进入不受信任网络前的硬门槛，不能把当前令牌称为完整节点身份。
 
 ## 5. Provider contract
 
@@ -199,7 +199,7 @@ Client 不直连 Node：
 1. Client 向 Server 请求查看指定 run/computer。
 2. Server 校验用户、频道、Bot 和 run 关系。
 3. Server 创建短时 view token。
-4. Node 经既有长连接或受控 WebRTC relay 回传屏幕。
+4. Node 经既有长连接或受控 WebRTC relay 回传屏幕；当前切片先实现 WebSocket latest-frame。
 5. 接管需要单独 control lease；同一电脑同时只有一个输入 owner。
 6. 人接管期间 Agent action fail closed，而不是排队。
 
@@ -217,7 +217,7 @@ Client 不直连 Node：
 - routine/work queue；
 - credential references。
 
-当前 PNG 截图进入 Server 本地文件存储，采用随机键、原子写入和 `0600` 文件权限；数据库只保存引用、大小、SHA-256 和 metadata。未来大产物可替换为 S3-compatible object store，而无需改变 Client 的鉴权读取接口。
+当前最终 PNG 截图进入 Server 本地文件存储，采用随机键、原子写入和 `0600` 文件权限；数据库只保存引用、大小、SHA-256 和 metadata。运行中的 latest-frame 不落库或文件，只在 Server 内存中限量、限时保留。未来大产物可替换为 S3-compatible object store，而无需改变 Client 的鉴权读取接口。
 
 ## 8. 部署形态
 

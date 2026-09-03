@@ -9,6 +9,7 @@ import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
 import { RunDispatcher } from "./run-dispatcher.js";
+import { RunFrameStore } from "./run-frame-store.js";
 import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
@@ -31,7 +32,8 @@ const unsubscribeNodeEvents = [
 ];
 const store = new PostgresControlPlaneStore(database.db);
 const artifactStorage = new FileArtifactStorage(env.OPENBOT_OBJECT_STORE_PATH);
-const dispatcher = new RunDispatcher(store, nodeRegistry, realtime, artifactStorage);
+const runFrames = new RunFrameStore();
+const dispatcher = new RunDispatcher(store, nodeRegistry, realtime, artifactStorage, runFrames);
 await dispatcher.start();
 const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
   ownerName: env.OPENBOT_OWNER_NAME,
@@ -45,6 +47,7 @@ const app = createApp({
   dispatchRun: (run) => dispatcher.enqueue(run),
   listNodes: () => nodeRegistry.list(),
   realtime,
+  runFrames,
   secureCookies: env.OPENBOT_SECURE_COOKIES,
   store,
   workspaceRealtime,

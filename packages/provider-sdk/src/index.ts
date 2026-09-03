@@ -41,6 +41,14 @@ export interface ProviderProgress {
   message: string;
 }
 
+export interface ProviderFrame {
+  mediaType: "image/png";
+  base64: string;
+  width?: number;
+  height?: number;
+  capturedAt: string;
+}
+
 export interface ComputerProvider {
   id: string;
   displayName: string;
@@ -50,6 +58,7 @@ export interface ComputerProvider {
     context: ProviderContext,
     input: ProviderRunInput,
     report: (progress: ProviderProgress) => void,
+    reportFrame?: (frame: ProviderFrame) => void,
   ): Promise<ProviderResult>;
   prepare?(context: ProviderContext, action: unknown): Promise<PreparedAction>;
   commit?(context: ProviderContext, prepared: PreparedAction): Promise<ProviderResult>;
