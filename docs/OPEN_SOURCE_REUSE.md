@@ -67,6 +67,8 @@ expansion until its upstream and license review is recorded.
 | Employee package authenticity | [DSSE `1d3370f6`](https://github.com/secure-systems-lab/dsse/tree/1d3370f62565bca041e97c8310b873ac340edc2e), [Sigstore JS `769a53d8`](https://github.com/sigstore/sigstore-js/tree/769a53d8713248a8bf49edfc2a5d1955b0dcc24d), and [in-toto Attestation `2dcd055e`](https://github.com/in-toto/attestation/tree/2dcd055e9f72e746687c306e35f4e59720ff45be) | Apache-2.0 | Adopt DSSE and pin `@sigstore/core` 4.0.1 for pre-authentication encoding. OpenBot implements only the package-specific Ed25519 key boundary and strict employee parsing. in-toto/Sigstore provenance and TUF-based distribution remain separate future adapters. No upstream source was copied. |
 | Browser control-plane security | [Hono `e2740d5a`](https://github.com/honojs/hono/tree/e2740d5a1bd0b4254e517e3af8b60789284bc7bd) and [OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035) | MIT; documentation CC BY-SA 4.0 | Reuse Hono 4.13.5 `secureHeaders`; apply OWASP's Secure/HttpOnly/SameSite, exact-Origin, TLS, and `__Host-` guidance. Remote misconfiguration now fails at startup. No upstream source or text was copied. |
 | Realtime overload recovery | [Hono streaming `e2740d5a`](https://github.com/honojs/hono/blob/e2740d5a1bd0b4254e517e3af8b60789284bc7bd/src/utils/stream.ts) | MIT | Keep Hono's backpressure-aware writer and add only the missing OpenBot per-subscriber policy: a 128-event bound, abort on overflow, and authoritative snapshot recovery. No upstream source was copied. |
+| Node channel authority and liveness | [`ws` 8.21.3 `c791e707`](https://github.com/websockets/ws/tree/c791e707eab3c13dd9a261d2479c3cc4a49a6fed), [Kubernetes node-heartbeat KEP `e849163a`](https://github.com/kubernetes/enhancements/blob/e849163ac4a0a5241ba626bd9a99820bf1dcd279/keps/sig-node/589-efficient-node-heartbeats/README.md), and [Nomad `482b49bf`](https://github.com/hashicorp/nomad/tree/482b49bf1aec006f089bcfc7e632d8f6ac303e5e) | MIT; Apache-2.0; MPL-2.0 | Reuse `ws` limits and ping/pong; separate liveness reports from Server-owned assignment state. Messages and enrollment time are bounded, duplicate hello is rejected, and silent sockets are terminated. No upstream source was copied. |
+| Future per-Node workload identity | [SPIFFE `99470b9a`](https://github.com/spiffe/spiffe/tree/99470b9abc825f14aa364dfa2c3b53b02ba5db5b) and [Tailscale `92ec1026`](https://github.com/tailscale/tailscale/tree/92ec102673bf46d72bab64b0a278b93c01a47f34) | Apache-2.0; BSD-3-Clause | Reviewed for proof-of-possession identity, rotation, and revocation. Deferred until OpenBot defines persisted one-time enrollment and an operator recovery path; the shared development token is not relabeled as production identity. |
 | Login rate-limit candidates | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) and [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | Deferred. Neither package can establish a trustworthy remote identity without an authenticated proxy contract. The current small limiter is documented as deployment-scoped; a later adapter must normalize IPv4/IPv6, use shared storage, and fail closed. |
 | Office visualization | Public Tencent Marvis product imagery supplied by the project owner | No reusable source-code license identified | Visual inspiration only. No Marvis code or assets are incorporated; the office remains a deferred optional plugin. |
 
@@ -100,6 +102,8 @@ expansion until its upstream and license review is recorded.
   restoration. See [Accessibility baseline](ACCESSIBILITY.md).
 - Browser sessions now fail closed for insecure remote origins, reuse Hono security headers, use a
   `__Host-` cookie under HTTPS, and bound every SSE subscriber with snapshot recovery.
+- Node WebSockets now have explicit payload and enrollment bounds, compression disabled, ping/pong
+  liveness, and fail-closed socket errors. A heartbeat cannot mutate Server-owned Run assignments.
 
 ## Known gaps from the audit
 
@@ -121,6 +125,9 @@ expansion until its upstream and license review is recorded.
   evidence before OpenBot can make a conformance claim.
 - Login throttling is not yet a trusted per-device or distributed boundary. Proxy identity,
   IPv4/IPv6 normalization, shared storage, and lockout-notification semantics remain open.
+- Node enrollment still uses one deployment-wide secret. One-time enrollment, per-Node
+  proof-of-possession identity, rotation, revocation, replay protection, and persisted
+  reconciliation remain open.
 
 ## Pull-request evidence
 

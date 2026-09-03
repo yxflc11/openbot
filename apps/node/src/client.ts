@@ -29,6 +29,7 @@ import {
 
 const heartbeatIntervalMs = 10_000;
 const reconnectDelayMs = 2_000;
+const maxServerMessageBytes = 1024 * 1024;
 
 export class OpenBotNodeClient {
   readonly #env: NodeEnv;
@@ -72,7 +73,12 @@ export class OpenBotNodeClient {
   }
 
   #connect(): void {
-    const socket = new WebSocket(this.#env.OPENBOT_NODE_SERVER_URL);
+    const socket = new WebSocket(this.#env.OPENBOT_NODE_SERVER_URL, {
+      // Server commands are small structured messages. Reject an unexpectedly large control frame.
+      maxPayload: maxServerMessageBytes,
+      // ws enables client compression by default; control messages do not justify its memory cost.
+      perMessageDeflate: false,
+    });
     this.#socket = socket;
 
     socket.on("open", () => {

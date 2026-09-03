@@ -25,6 +25,19 @@ interface PendingOffer {
   timeout: NodeJS.Timeout;
 }
 
+export interface NodeRegistryOptions {
+  offerTimeoutMs?: number;
+  enrollmentTimeoutMs?: number;
+  livenessIntervalMs?: number;
+  maxPayloadBytes?: number;
+}
+
+const DEFAULT_NODE_ENROLLMENT_TIMEOUT_MS = 10_000;
+const DEFAULT_NODE_LIVENESS_INTERVAL_MS = 30_000;
+// A completion can currently contain four base64 artifacts of up to 7,000,000 characters each.
+// Keep enough headroom for that documented protocol envelope while replacing ws's 100 MiB default.
+export const DEFAULT_NODE_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
+
 export interface RunOfferInput {
   runId: string;
   channelId: string;
@@ -61,16 +74,26 @@ export class NodeRegistry {
   readonly #nodes = new Map<string, ConnectedNode>();
   readonly #enrollmentToken: string;
   readonly #offerTimeoutMs: number;
+  readonly #enrollmentTimeoutMs: number;
+  readonly #livenessIntervalMs: number;
+  readonly #maxPayloadBytes: number;
   readonly #availableHandlers = new Set<NodeHandler>();
   readonly #updatedHandlers = new Set<NodeHandler>();
   readonly #unavailableHandlers = new Set<NodeHandler>();
   readonly #runHandlers = new Set<NodeRunHandler>();
   readonly #pendingOffers = new Map<string, PendingOffer>();
-  #gateway?: WebSocketServer;
+  readonly #socketLiveness = new WeakMap<WebSocket, boolean>();
+  #gateway: WebSocketServer | undefined;
+  #livenessTimer: NodeJS.Timeout | undefined;
 
-  constructor(enrollmentToken: string, options: { offerTimeoutMs?: number } = {}) {
+  constructor(enrollmentToken: string, options: NodeRegistryOptions = {}) {
     this.#enrollmentToken = enrollmentToken;
     this.#offerTimeoutMs = options.offerTimeoutMs ?? 10_000;
+    this.#enrollmentTimeoutMs =
+      options.enrollmentTimeoutMs ?? DEFAULT_NODE_ENROLLMENT_TIMEOUT_MS;
+    this.#livenessIntervalMs =
+      options.livenessIntervalMs ?? DEFAULT_NODE_LIVENESS_INTERVAL_MS;
+    this.#maxPayloadBytes = options.maxPayloadBytes ?? DEFAULT_NODE_MAX_PAYLOAD_BYTES;
   }
 
   list(): ExecutionNode[] {
@@ -241,7 +264,7 @@ export class NodeRegistry {
     try {
       node.socket.send(JSON.stringify(message));
     } catch {
-      // Heartbeat or disconnect reconciliation repairs the in-memory capacity projection.
+      // Server-owned assignment state remains authoritative until disconnect reconciliation.
     }
   }
 
@@ -269,8 +292,29 @@ export class NodeRegistry {
   }
 
   attach(server: HttpServer): void {
-    const gateway = new WebSocketServer({ noServer: true });
+    if (this.#gateway !== undefined) throw new Error("Node gateway is already attached.");
+    const gateway = new WebSocketServer({
+      noServer: true,
+      maxPayload: this.#maxPayloadBytes,
+      perMessageDeflate: false,
+    });
     this.#gateway = gateway;
+
+    this.#livenessTimer = setInterval(() => {
+      for (const socket of gateway.clients) {
+        if (this.#socketLiveness.get(socket) === false) {
+          socket.terminate();
+          continue;
+        }
+        this.#socketLiveness.set(socket, false);
+        try {
+          socket.ping();
+        } catch {
+          socket.terminate();
+        }
+      }
+    }, this.#livenessIntervalMs);
+    this.#livenessTimer.unref();
 
     server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       const url = new URL(request.url ?? "/", "http://openbot.local");
@@ -286,6 +330,14 @@ export class NodeRegistry {
 
     gateway.on("connection", (socket) => {
       let enrolledNodeId: string | undefined;
+      this.#socketLiveness.set(socket, true);
+      const enrollmentTimer = setTimeout(() => {
+        if (enrolledNodeId === undefined) socket.terminate();
+      }, this.#enrollmentTimeoutMs);
+      enrollmentTimer.unref();
+
+      socket.on("pong", () => this.#socketLiveness.set(socket, true));
+      socket.on("error", () => socket.terminate());
 
       socket.on("message", (raw: RawData) => {
         const parsed = nodeMessageSchema.safeParse(parseJson(raw.toString()));
@@ -300,18 +352,19 @@ export class NodeRegistry {
         const now = new Date().toISOString();
 
         if (message.type === "node.hello") {
+          if (enrolledNodeId !== undefined) {
+            sendAck(socket, false, "A connection may enroll only once.");
+            socket.close(1008, "already-enrolled");
+            return;
+          }
           if (!isEnrollmentTokenValid(message.token, this.#enrollmentToken)) {
             sendAck(socket, false, "Invalid enrollment token.");
             socket.close(1008, "invalid-token");
             return;
           }
-          if (enrolledNodeId !== undefined && enrolledNodeId !== message.nodeId) {
-            sendAck(socket, false, "A connection cannot change its Node identity.");
-            socket.close(1008, "identity-changed");
-            return;
-          }
 
           enrolledNodeId = message.nodeId;
+          clearTimeout(enrollmentTimer);
           const previous = this.#nodes.get(message.nodeId);
           if (previous !== undefined && previous.socket !== socket) {
             this.#disconnectNode(previous, "Node reconnected with a new socket.", false);
@@ -350,7 +403,7 @@ export class NodeRegistry {
 
         node.lastSeenAt = now;
         if (message.type === "node.heartbeat") {
-          node.activeRunIds = message.activeRunIds.slice(0, node.maxConcurrentRuns);
+          // Heartbeats report liveness. Only Server assignment methods may change capacity state.
           this.#emit(this.#updatedHandlers, node);
           sendAck(socket, true);
           return;
@@ -393,6 +446,7 @@ export class NodeRegistry {
       });
 
       socket.on("close", () => {
+        clearTimeout(enrollmentTimer);
         if (enrolledNodeId === undefined) return;
         const node = this.#nodes.get(enrolledNodeId);
         if (node !== undefined && node.socket === socket) {
@@ -403,11 +457,14 @@ export class NodeRegistry {
   }
 
   close(): void {
+    clearInterval(this.#livenessTimer);
+    this.#livenessTimer = undefined;
     for (const pending of this.#pendingOffers.values()) {
       pending.resolve({ status: "unavailable", reason: "Node gateway is shutting down." });
     }
     for (const socket of this.#gateway?.clients ?? []) socket.terminate();
     this.#gateway?.close();
+    this.#gateway = undefined;
     this.#nodes.clear();
   }
 
@@ -463,5 +520,10 @@ function sendAck(socket: WebSocket, accepted: boolean, reason?: string): void {
     receivedAt: new Date().toISOString(),
     ...(reason === undefined ? {} : { reason }),
   };
-  socket.send(JSON.stringify(message));
+  if (socket.readyState !== WebSocket.OPEN) return;
+  try {
+    socket.send(JSON.stringify(message));
+  } catch {
+    socket.terminate();
+  }
 }

@@ -54,7 +54,7 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 4. **审计先于执行。** Server Action Gateway 必须先写入 `requested/decision`，再向 Node 发放动作租约。
 5. **接管互斥。** 人在操作电脑时，Agent 输入必须被拒绝，不能排队偷偷补做。
 6. **密钥不可回读。** UI 只显示 configured/not configured；日志不显示原值。
-7. **宿主权限最小化。** Bot 使用标准 macOS 用户；控制面和执行面使用不同身份/目录。
+7. **宿主权限最小化。** Bot 使用工作主机上的专用标准用户；控制面和执行面使用不同身份/目录。
 8. **生产不拉 main。** 只部署固定版本和校验过的构建。
 9. **频道成员由 Server 校验。** Client 或模型指定的 assignee 只有在目标 Bot 已加入频道时才有效；未指定时只从该频道 roster 中确定性选择。
 
@@ -88,10 +88,16 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 
 ### Node
 
-- Node 主动建立 WSS/mTLS 连接，不接受公网入站控制。
-- 每个 Node 使用独立可吊销身份；enrollment token 只能使用一次。
+- 生产目标是 Node 主动建立 WSS/mTLS 连接，不接受公网入站控制；当前实现会按配置主动连接
+  WS/WSS，但尚未提供 mTLS。
+- 生产目标是每个 Node 使用独立可吊销身份，enrollment token 只能使用一次；当前共享令牌不满足
+  这一要求。
 - `run.accept` 只表示能力与容量校验通过，不授予执行权；只有 Server 持久化条件认领并返回 `run.assigned` 后才能占用任务槽位。
 - 当前 M1 开发切片仍使用部署级共享启动令牌，不具备独立身份和单节点吊销能力，只允许可信私网测试；完成 enrollment、轮换和吊销前不得暴露到不受信任网络。
+- 当前 Node 消息体限制为 32 MiB、未登记 socket 最多保留 10 秒，且每条连接只能登记一次。Server
+  每 30 秒发送 ping；未回应的连接会被清退并进入断线恢复。Node 心跳只报告存活，不能增加、释放或
+  结算 Server 权威任务槽位。详见
+  [ADR-0017](decisions/0017-node-channel-authority-and-liveness.md)。
 - Node 不能读取其他 Node、Server 数据库或全局凭证。
 - Docker supervisor、Cua 和 Lume 只监听 loopback/Unix socket。
 - 人接管必须持有 Server 签发的独占 control lease。

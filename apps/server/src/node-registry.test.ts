@@ -138,6 +138,20 @@ describe("node enrollment", () => {
       await waitFor(() => received.some((message) => message.type === "run.assigned"));
       expect(registry.list()[0]?.activeRunIds).toEqual([runId]);
       expect(nodeUpdates.at(-1)).toEqual([runId]);
+      const updateCount = nodeUpdates.length;
+      client.send(
+        JSON.stringify({
+          type: "node.heartbeat",
+          protocolVersion,
+          nodeId: "linux-node",
+          // A Worker Host reports local execution, but it cannot release Server-owned capacity.
+          activeRunIds: [],
+          sentAt: new Date().toISOString(),
+        }),
+      );
+      await waitFor(() => nodeUpdates.length > updateCount);
+      expect(registry.list()[0]?.activeRunIds).toEqual([runId]);
+      expect(nodeUpdates.at(-1)).toEqual([runId]);
       await waitFor(() => runtimeMessages.some((message) => message.type === "run.start_request"));
       expect(registry.startRun("linux-node", runId)).toBe(true);
       await waitFor(() => runtimeMessages.some((message) => message.type === "run.completed"));
@@ -154,12 +168,168 @@ describe("node enrollment", () => {
       await once(server, "close");
     }
   });
+
+  it("allows a socket to enroll exactly once", async () => {
+    const server = createServer();
+    const registry = new NodeRegistry("foundation-token", {
+      enrollmentTimeoutMs: 500,
+      livenessIntervalMs: 1_000,
+    });
+    registry.attach(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
+    try {
+      await once(client, "open");
+      client.send(JSON.stringify(nodeHello("linux-node")));
+      await waitFor(() => registry.list().length === 1);
+
+      const closed = once(client, "close");
+      client.send(JSON.stringify(nodeHello("linux-node")));
+      const [code, reason] = await closed;
+      expect(code).toBe(1008);
+      expect(reason.toString()).toBe("already-enrolled");
+      await waitFor(() => registry.list().length === 0);
+    } finally {
+      client.terminate();
+      registry.close();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("terminates sockets that do not enroll before the deadline", async () => {
+    const server = createServer();
+    const registry = new NodeRegistry("foundation-token", {
+      enrollmentTimeoutMs: 20,
+      livenessIntervalMs: 1_000,
+    });
+    registry.attach(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
+    try {
+      await once(client, "open");
+      await withTimeout(once(client, "close"));
+      expect(registry.list()).toEqual([]);
+    } finally {
+      client.terminate();
+      registry.close();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("terminates an enrolled socket that stops answering ping frames", async () => {
+    const server = createServer();
+    const registry = new NodeRegistry("foundation-token", {
+      enrollmentTimeoutMs: 500,
+      livenessIntervalMs: 20,
+    });
+    registry.attach(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`, {
+      autoPong: false,
+    });
+    const closed = once(client, "close");
+    try {
+      await once(client, "open");
+      client.send(JSON.stringify(nodeHello("silent-node")));
+      await waitFor(() => registry.list().length === 1);
+      await withTimeout(closed);
+      await waitFor(() => registry.list().length === 0);
+    } finally {
+      client.terminate();
+      registry.close();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("rejects messages above the configured Node protocol envelope", async () => {
+    const server = createServer();
+    const registry = new NodeRegistry("foundation-token", {
+      enrollmentTimeoutMs: 500,
+      livenessIntervalMs: 1_000,
+      maxPayloadBytes: 128,
+    });
+    registry.attach(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
+    try {
+      await once(client, "open");
+      const closed = once(client, "close");
+      client.send("x".repeat(129));
+      const [code] = await withTimeout(closed);
+      expect(code).toBe(1009);
+      expect(registry.list()).toEqual([]);
+    } finally {
+      client.terminate();
+      registry.close();
+      server.close();
+      await once(server, "close");
+    }
+  });
 });
+
+function nodeHello(nodeId: string) {
+  return {
+    type: "node.hello" as const,
+    protocolVersion,
+    nodeId,
+    name: `${nodeId} worker`,
+    platform: "linux" as const,
+    osVersion: "6.8.0",
+    architecture: "x64",
+    deviceClass: "server" as const,
+    isolation: "dedicated-host" as const,
+    trustTier: "dedicated" as const,
+    capabilities: ["browser", "shell", "screenshot"] as const,
+    capabilityManifest: [
+      { id: "browser.observe" as const, version: 1, providerId: "docker", constraints: {} },
+      { id: "screen.capture" as const, version: 1, providerId: "docker", constraints: {} },
+    ],
+    maxConcurrentRuns: 1,
+    token: "foundation-token",
+    sentAt: new Date().toISOString(),
+  };
+}
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!predicate()) {
     if (Date.now() >= deadline) throw new Error("Timed out waiting for Node gateway state.");
     await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs = 1000): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Timed out waiting for Node gateway event.")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
   }
 }

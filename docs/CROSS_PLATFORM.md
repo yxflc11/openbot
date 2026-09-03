@@ -63,6 +63,12 @@ Protocol `0.7.0` already declares:
 Provider package versions, screen/input transports, supported policy profiles, health details, and
 update channels remain planned. The handshake is an execution claim, not an authorization grant.
 
+The current development channel bounds enrollment and messages, verifies ping/pong liveness, and
+keeps Run assignments Server-owned. It still uses one deployment-wide token, so a host possessing
+that secret can claim another Node ID. Production identity, one-time enrollment, rotation,
+revocation, and replay protection remain planned; see
+[ADR-0017](decisions/0017-node-channel-authority-and-liveness.md).
+
 Bot configuration should select a capability policy, not an OS enum. It may optionally pin an
 employee to a specific host, but the model cannot change that pin or select another host.
 
