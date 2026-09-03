@@ -36,9 +36,28 @@ export function Office({ bots, channels, nodes, runs, onCreateBot, onCreateChann
 
       <section className="office-canvas" aria-label="Bot 办公室">
         <div className="office-room" aria-hidden="true">
-          <span className="window-line one" />
-          <span className="window-line two" />
-          <span className="plant">⌇</span>
+          <span className="office-window">
+            <i />
+            <i />
+          </span>
+          <span className="office-cabinet">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="office-picture">
+            <i />
+          </span>
+          <span className="office-board">
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="office-plant">
+            <i />
+            <i />
+            <i />
+          </span>
         </div>
         <div className="stations">
           {bots.slice(0, 3).map((bot) => {
@@ -55,11 +74,16 @@ export function Office({ bots, channels, nodes, runs, onCreateBot, onCreateChann
           })}
           {bots.length < 4 ? (
             <button className="empty-station" type="button" onClick={onCreateBot}>
-              <span className="empty-station-icon">
-                <PlusIcon />
+              <span className="empty-station-visual" aria-hidden="true">
+                <i />
               </span>
-              <strong>添加 Bot</strong>
-              <small>创建一名新的数字员工</small>
+              <span className="empty-station-copy">
+                <span className="empty-station-icon">
+                  <PlusIcon />
+                </span>
+                <strong>添加 Bot</strong>
+                <small>创建一名新的数字员工</small>
+              </span>
             </button>
           ) : null}
         </div>
@@ -107,10 +131,11 @@ function BotStation({
       ? "无电脑"
       : "待命";
   return (
-    <article className="bot-station">
+    <article className={`bot-station${run ? " is-active" : ""}`}>
       <div className="station-visual">
-        <RobotAvatar bot={bot} status={run?.status ?? bot.status} />
         <span className="desk-screen" aria-hidden="true" />
+        <span className="desk-chair" aria-hidden="true" />
+        <RobotAvatar bot={bot} status={run?.status ?? bot.status} />
       </div>
       <div className="station-meta">
         <div className="station-name">
