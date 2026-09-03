@@ -6,15 +6,18 @@ import type {
   CreateChannelInput,
   CreateMessageInput,
   Message,
+  Run,
+  SubmitTaskResult,
 } from "@openbot/domain";
 import { bots, channelBots, channels, messages, runEvents, runs } from "@openbot/db";
-import { count, desc, eq, inArray } from "drizzle-orm";
+import { asc, count, desc, eq, inArray } from "drizzle-orm";
 import type { ControlPlaneStore, PersistedCounts } from "./control-plane-store.js";
 import {
   StoreConflictError,
   StoreNotFoundError,
   StoreValidationError,
 } from "./control-plane-store.js";
+import { selectChannelAssignee } from "./task-routing.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
 
@@ -80,6 +83,22 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       .orderBy(desc(messages.createdAt))
       .limit(100);
     return rows.reverse().map(toMessage);
+  }
+
+  async listRuns(channelId?: string): Promise<Run[]> {
+    if (channelId !== undefined) {
+      await this.#requireChannel(channelId);
+      const rows = await this.#db
+        .select()
+        .from(runs)
+        .where(eq(runs.channelId, channelId))
+        .orderBy(desc(runs.createdAt))
+        .limit(50);
+      return rows.map(toRun);
+    }
+
+    const rows = await this.#db.select().from(runs).orderBy(desc(runs.createdAt)).limit(50);
+    return rows.map(toRun);
   }
 
   async getCounts(): Promise<PersistedCounts> {
@@ -189,7 +208,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     };
   }
 
-  async createMessage(channelId: string, input: CreateMessageInput): Promise<Message> {
+  async submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult> {
     const now = new Date();
     const message = {
       id: randomUUID(),
@@ -199,6 +218,8 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       content: input.content,
       createdAt: now,
     };
+    const runId = randomUUID();
+    let selectedBotId: string | undefined;
 
     await this.#db.transaction(async (transaction) => {
       const channelRows = await transaction
@@ -209,16 +230,66 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       if (channelRows.length === 0) {
         throw new StoreNotFoundError("Channel not found.");
       }
+
+      const candidates = await transaction
+        .select({ id: bots.id, name: bots.name, role: bots.role })
+        .from(channelBots)
+        .innerJoin(bots, eq(channelBots.botId, bots.id))
+        .where(eq(channelBots.channelId, channelId))
+        .orderBy(asc(channelBots.joinedAt), asc(bots.createdAt), asc(bots.id));
+      const assignee = selectChannelAssignee(candidates, input.botId);
+      if (assignee === undefined) {
+        throw new StoreValidationError(
+          input.botId === undefined
+            ? "Add a Bot to this channel before assigning a task."
+            : "The selected Bot is not a member of this channel.",
+        );
+      }
+      selectedBotId = assignee.id;
+
       await transaction.insert(messages).values(message);
-      await transaction.insert(runEvents).values({
-        id: randomUUID(),
+      await transaction.insert(runs).values({
+        id: runId,
         channelId,
-        type: "MESSAGE_CREATED",
-        payload: { messageId: message.id, authorType: message.authorType },
+        botId: assignee.id,
+        sourceMessageId: message.id,
+        title: taskTitle(input.content),
+        status: "queued",
+        createdAt: now,
+        updatedAt: now,
       });
+      await transaction.insert(runEvents).values([
+        {
+          id: randomUUID(),
+          channelId,
+          type: "MESSAGE_CREATED",
+          payload: { messageId: message.id, authorType: message.authorType },
+        },
+        {
+          id: randomUUID(),
+          runId,
+          channelId,
+          botId: assignee.id,
+          type: "RUN_CREATED",
+          payload: { sourceMessageId: message.id, title: taskTitle(input.content) },
+        },
+      ]);
     });
 
-    return toMessage(message);
+    if (selectedBotId === undefined) throw new Error("Task assignee was not selected.");
+    return {
+      message: toMessage(message),
+      run: {
+        id: runId,
+        channelId,
+        botId: selectedBotId,
+        sourceMessageId: message.id,
+        title: taskTitle(input.content),
+        status: "queued",
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+    };
   }
 
   async joinBotToChannel(channelId: string, botId: string): Promise<Channel> {
@@ -291,6 +362,26 @@ function toMessage(row: typeof messages.$inferSelect | typeof messages.$inferIns
     content: row.content,
     createdAt: (row.createdAt ?? new Date()).toISOString(),
   };
+}
+
+function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
+  return {
+    id: row.id,
+    channelId: row.channelId,
+    botId: row.botId,
+    ...(row.sourceMessageId === null || row.sourceMessageId === undefined
+      ? {}
+      : { sourceMessageId: row.sourceMessageId }),
+    ...(row.nodeId === null || row.nodeId === undefined ? {} : { nodeId: row.nodeId }),
+    title: row.title,
+    status: row.status as Run["status"],
+    createdAt: (row.createdAt ?? new Date()).toISOString(),
+    updatedAt: (row.updatedAt ?? new Date()).toISOString(),
+  };
+}
+
+function taskTitle(content: string): string {
+  return content.length <= 80 ? content : `${content.slice(0, 77)}...`;
 }
 
 function translateDatabaseError(error: unknown, conflictMessage: string): never {

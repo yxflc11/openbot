@@ -1,7 +1,10 @@
 import type { ExecutionNode, WorkspaceSnapshot } from "@openbot/domain";
+import { isActiveRun, runStatusLabel } from "../run-state";
 import { NodeIcon } from "./Icons";
 
 export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
+  const activeRuns = workspace.runs.filter(isActiveRun);
+  const botById = new Map(workspace.bots.map((bot) => [bot.id, bot]));
   return (
     <aside className="context-rail" aria-label="运行状态">
       <h2>运行状态</h2>
@@ -19,6 +22,24 @@ export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
           </span>
           <p>暂无待处理事项</p>
         </div>
+      </section>
+
+      <section className="rail-section runs-section">
+        <h3>当前任务</h3>
+        {activeRuns.length === 0 ? (
+          <p className="rail-empty">暂无执行中的任务</p>
+        ) : (
+          activeRuns.slice(0, 4).map((run) => {
+            const bot = botById.get(run.botId);
+            return (
+              <article className="rail-run" key={run.id}>
+                <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
+                <strong>{run.title}</strong>
+                <small>{bot?.name ?? "未知 Bot"}</small>
+              </article>
+            );
+          })
+        )}
       </section>
 
       <section className="rail-section nodes-section">

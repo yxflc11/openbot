@@ -1,11 +1,13 @@
-import type { Bot, Channel } from "@openbot/domain";
+import type { Bot, Channel, Run } from "@openbot/domain";
 import { useState } from "react";
+import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { BotIcon, HashIcon, OfficeIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
   bots: Bot[];
   channels: Channel[];
+  runs: Run[];
   ownerName: string;
   selectedChannelId?: string | undefined;
   onOffice(): void;
@@ -18,6 +20,7 @@ interface SidebarProps {
 export function Sidebar({
   bots,
   channels,
+  runs,
   ownerName,
   selectedChannelId,
   onOffice,
@@ -26,6 +29,7 @@ export function Sidebar({
   onCreateChannel,
   onLogout,
 }: SidebarProps) {
+  const activeRunByBot = indexActiveRunsByBot(runs);
   const [logoutError, setLogoutError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -80,16 +84,22 @@ export function Sidebar({
           {bots.length === 0 ? (
             <SidebarEmpty>还没有 Bot</SidebarEmpty>
           ) : (
-            bots.map((bot) => (
-              <div className="sidebar-row bot-row" key={bot.id}>
-                <RobotAvatar bot={bot} compact />
-                <span>{bot.name}</span>
-                <small className="bot-state">
-                  <span className="status-dot online" aria-hidden="true" />
-                  待命
-                </small>
-              </div>
-            ))
+            bots.map((bot) => {
+              const run = activeRunByBot.get(bot.id);
+              return (
+                <div className="sidebar-row bot-row" key={bot.id}>
+                  <RobotAvatar bot={bot} compact />
+                  <span>{bot.name}</span>
+                  <small className="bot-state">
+                    <span
+                      className={`status-dot ${run ? "active" : "online"}`}
+                      aria-hidden="true"
+                    />
+                    {run ? runStatusLabel(run.status) : "待命"}
+                  </small>
+                </div>
+              );
+            })
           )}
         </SidebarSection>
 

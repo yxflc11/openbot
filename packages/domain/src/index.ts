@@ -49,6 +49,7 @@ export interface Run {
   id: EntityId;
   channelId: EntityId;
   botId: EntityId;
+  sourceMessageId?: EntityId;
   nodeId?: EntityId;
   title: string;
   status: RunStatus;
@@ -90,6 +91,11 @@ export type ChannelRealtimeEvent =
       type: "message.created";
       channelId: EntityId;
       message: Message;
+    }
+  | {
+      type: "run.created";
+      channelId: EntityId;
+      run: Run;
     };
 
 export interface BootstrapSummary {
@@ -107,6 +113,7 @@ export interface WorkspaceSnapshot {
   channels: Channel[];
   bots: Bot[];
   nodes: ExecutionNode[];
+  runs: Run[];
   counts: BootstrapSummary["counts"];
 }
 
@@ -124,4 +131,10 @@ export interface CreateChannelInput {
 
 export interface CreateMessageInput {
   content: string;
+  botId?: EntityId | undefined;
+}
+
+export interface SubmitTaskResult {
+  message: Message;
+  run: Run;
 }

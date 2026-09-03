@@ -29,6 +29,20 @@
       "when": 1788672000000,
       "tag": "0003_local_owner_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788758400000,
+      "tag": "0004_channel_task_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788844800000,
+      "tag": "0005_global_runs_index",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import type {
   AuthSessionSnapshot,
   CreateBotInput,
   CreateChannelInput,
+  Run,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import { useCallback, useEffect, useState } from "react";
@@ -23,6 +24,7 @@ import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
 import { Office } from "./components/Office";
 import { Sidebar } from "./components/Sidebar";
+import { isActiveRun, mergeRuns } from "./run-state";
 
 type Dialog = "bot" | "channel" | undefined;
 
@@ -108,6 +110,24 @@ function AuthenticatedWorkspace({
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
 
+  const projectRun = useCallback((run: Run) => {
+    setWorkspace((current) => {
+      if (current === undefined) return current;
+      const previous = current.runs.find((item) => item.id === run.id);
+      const activeRunDelta =
+        Number(isActiveRun(run)) - Number(previous !== undefined && isActiveRun(previous));
+      const runs = mergeRuns(current.runs, [run]);
+      return {
+        ...current,
+        runs,
+        counts: {
+          ...current.counts,
+          activeRuns: Math.max(0, current.counts.activeRuns + activeRunDelta),
+        },
+      };
+    });
+  }, []);
+
   const refresh = useCallback(async (signal?: AbortSignal) => {
     setError(undefined);
     try {
@@ -181,6 +201,7 @@ function AuthenticatedWorkspace({
       <Sidebar
         bots={workspace.bots}
         channels={workspace.channels}
+        runs={workspace.runs}
         ownerName={ownerName}
         selectedChannelId={selectedChannel?.id}
         onOffice={() => setSelectedChannelId(undefined)}
@@ -191,11 +212,17 @@ function AuthenticatedWorkspace({
       />
 
       {selectedChannel ? (
-        <ChannelWorkspace channel={selectedChannel} bots={workspace.bots} onJoin={handleJoinBot} />
+        <ChannelWorkspace
+          channel={selectedChannel}
+          bots={workspace.bots}
+          onJoin={handleJoinBot}
+          onRun={projectRun}
+        />
       ) : (
         <Office
           bots={workspace.bots}
           channels={workspace.channels}
+          runs={workspace.runs}
           onCreateBot={() => setDialog("bot")}
           onCreateChannel={() => setDialog("channel")}
         />
@@ -208,6 +235,7 @@ function AuthenticatedWorkspace({
         bots={workspace.bots}
         channels={workspace.channels}
         nodes={workspace.nodes}
+        runs={workspace.runs}
         onPanel={setMobilePanel}
         onOffice={() => {
           setSelectedChannelId(undefined);

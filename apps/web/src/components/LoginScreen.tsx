@@ -29,7 +29,7 @@ export function LoginScreen({
     <main className="login-screen">
       <section className="login-card" aria-labelledby="login-title">
         <div className="login-robot" aria-hidden="true">
-          <img src="/robots/pixel-bot.png" alt="" />
+          <img src="/robots/pixel-bot.svg" alt="" />
         </div>
         <p className="login-eyebrow">SELF-HOSTED WORKSPACE</p>
         <h1 id="login-title">进入 OpenBot</h1>

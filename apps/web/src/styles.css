@@ -186,6 +186,9 @@ select:focus-visible {
 .status-dot.warning {
   background: var(--orange);
 }
+.status-dot.active {
+  background: var(--blue);
+}
 .system-nav {
   display: grid;
   gap: 3px;
@@ -488,6 +491,20 @@ select:focus-visible {
 .status-text.warning {
   color: var(--orange);
 }
+.status-text.active {
+  color: var(--blue);
+  font-weight: 650;
+}
+.station-task {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: -6px 0 12px 17px;
+  color: #343a42;
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .station-meta dl {
   margin: 0;
   padding-top: 12px;
@@ -623,6 +640,32 @@ select:focus-visible {
 .attention-empty p {
   margin: 8px 0 0;
   font-size: 12px;
+}
+.rail-empty {
+  margin: 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  color: #959ba2;
+  font-size: 11px;
+}
+.rail-run {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.rail-run strong {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rail-run small {
+  grid-column: 1;
+  color: #8b929a;
+  font-size: 10px;
 }
 .node-row {
   display: grid;
@@ -811,6 +854,83 @@ select:focus-visible {
 .realtime-state.retrying i {
   background: var(--orange);
 }
+.run-queue {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.run-queue > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+}
+.run-queue > header h3 {
+  margin: 0;
+  font-size: 12px;
+}
+.run-queue > header span {
+  color: #8b929a;
+  font-size: 10px;
+}
+.run-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 58px;
+  padding: 8px 0;
+  border-top: 1px solid #eceef1;
+}
+.run-row-copy {
+  min-width: 0;
+}
+.run-row-copy strong,
+.run-row-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.run-row-copy strong {
+  font-size: 12px;
+}
+.run-row-copy small {
+  margin-top: 4px;
+  color: #858c94;
+  font-size: 10px;
+}
+.run-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 5px;
+  color: #1956a6;
+  background: #eaf2ff;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.run-status.waiting_approval,
+.run-status.blocked {
+  color: #9a4d11;
+  background: #fff0e4;
+}
+.run-status.completed {
+  color: #18703d;
+  background: #e8f7ee;
+}
+.run-status.failed,
+.run-status.cancelled {
+  color: #7a3b36;
+  background: #f7eaea;
+}
+.rail-run .run-status {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
 .message-list {
   min-height: 260px;
   max-height: 380px;
@@ -916,6 +1036,11 @@ select:focus-visible {
 .message-composer textarea:focus {
   border-color: var(--blue);
   outline: 3px solid var(--blue-soft);
+}
+.message-composer textarea:disabled {
+  color: #8b929a;
+  background: #f0f2f4;
+  cursor: not-allowed;
 }
 .message-composer button {
   min-width: 76px;

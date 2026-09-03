@@ -1,15 +1,19 @@
-import type { Bot, Channel } from "@openbot/domain";
+import type { Bot, Channel, Run } from "@openbot/domain";
+import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface OfficeProps {
   bots: Bot[];
   channels: Channel[];
+  runs: Run[];
   onCreateBot(): void;
   onCreateChannel(): void;
 }
 
-export function Office({ bots, channels, onCreateBot, onCreateChannel }: OfficeProps) {
+export function Office({ bots, channels, runs, onCreateBot, onCreateChannel }: OfficeProps) {
+  const activeRunByBot = indexActiveRunsByBot(runs);
+  const channelById = new Map(channels.map((channel) => [channel.id, channel]));
   return (
     <main className="workspace-main">
       <header className="workspace-header">
@@ -35,9 +39,17 @@ export function Office({ bots, channels, onCreateBot, onCreateChannel }: OfficeP
           <span className="plant">⌇</span>
         </div>
         <div className="stations">
-          {bots.slice(0, 3).map((bot) => (
-            <BotStation bot={bot} key={bot.id} />
-          ))}
+          {bots.slice(0, 3).map((bot) => {
+            const run = activeRunByBot.get(bot.id);
+            return (
+              <BotStation
+                bot={bot}
+                run={run}
+                channel={run === undefined ? undefined : channelById.get(run.channelId)}
+                key={bot.id}
+              />
+            );
+          })}
           {bots.length < 4 ? (
             <button className="empty-station" type="button" onClick={onCreateBot}>
               <span className="empty-station-icon">
@@ -75,8 +87,20 @@ export function Office({ bots, channels, onCreateBot, onCreateChannel }: OfficeP
   );
 }
 
-function BotStation({ bot }: { bot: Bot }) {
-  const status = bot.computerProfile === "none" ? "未连接电脑" : "待命";
+function BotStation({
+  bot,
+  run,
+  channel,
+}: {
+  bot: Bot;
+  run: Run | undefined;
+  channel: Channel | undefined;
+}) {
+  const status = run
+    ? runStatusLabel(run.status)
+    : bot.computerProfile === "none"
+      ? "无电脑"
+      : "待命";
   return (
     <article className="bot-station">
       <div className="station-visual">
@@ -85,13 +109,22 @@ function BotStation({ bot }: { bot: Bot }) {
       </div>
       <div className="station-meta">
         <div className="station-name">
-          <span className={`status-dot ${status === "待命" ? "online" : "warning"}`} />
+          <span
+            className={`status-dot ${status === "待命" ? "online" : run ? "active" : "warning"}`}
+          />
           <strong>{bot.name}</strong>
         </div>
-        <span className={status === "待命" ? "status-text" : "status-text warning"}>{status}</span>
+        <span className={`status-text ${run ? "active" : status === "待命" ? "" : "warning"}`}>
+          {status}
+        </span>
+        {run ? (
+          <p className="station-task" title={run.title}>
+            {run.title}
+          </p>
+        ) : null}
         <dl>
-          <dt>绑定电脑</dt>
-          <dd>{profileLabel(bot.computerProfile)}</dd>
+          <dt>{run ? "所属频道" : "绑定电脑"}</dt>
+          <dd>{run ? (channel?.name ?? "未知频道") : profileLabel(bot.computerProfile)}</dd>
         </dl>
       </div>
     </article>
@@ -100,7 +133,7 @@ function BotStation({ bot }: { bot: Bot }) {
 
 function profileLabel(profile: Bot["computerProfile"]) {
   const labels: Record<Bot["computerProfile"], string> = {
-    none: "—",
+    none: "-",
     "docker-linux": "Docker Linux",
     "macos-cua": "macOS Cua",
     "lume-vm": "Lume VM",

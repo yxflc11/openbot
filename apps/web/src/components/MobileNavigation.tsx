@@ -1,4 +1,5 @@
-import type { Bot, Channel, ExecutionNode } from "@openbot/domain";
+import type { Bot, Channel, ExecutionNode, Run } from "@openbot/domain";
+import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { BotIcon, HashIcon, NodeIcon, OfficeIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -9,6 +10,7 @@ export function MobileNavigation({
   bots,
   channels,
   nodes,
+  runs,
   onPanel,
   onOffice,
   onCreateBot,
@@ -19,12 +21,14 @@ export function MobileNavigation({
   bots: Bot[];
   channels: Channel[];
   nodes: ExecutionNode[];
+  runs: Run[];
   onPanel(panel: MobilePanel): void;
   onOffice(): void;
   onCreateBot(): void;
   onCreateChannel(): void;
   onSelectChannel(channelId: string): void;
 }) {
+  const activeRunByBot = indexActiveRunsByBot(runs);
   return (
     <>
       {panel ? (
@@ -60,13 +64,16 @@ export function MobileNavigation({
                 <PlusIcon />
                 创建 Bot
               </button>
-              {bots.map((bot) => (
-                <div className="mobile-list-row" key={bot.id}>
-                  <RobotAvatar bot={bot} compact />
-                  <span className="mobile-list-label">{bot.name}</span>
-                  <small>待命</small>
-                </div>
-              ))}
+              {bots.map((bot) => {
+                const run = activeRunByBot.get(bot.id);
+                return (
+                  <div className="mobile-list-row" key={bot.id}>
+                    <RobotAvatar bot={bot} compact />
+                    <span className="mobile-list-label">{bot.name}</span>
+                    <small>{run ? runStatusLabel(run.status) : "待命"}</small>
+                  </div>
+                );
+              })}
             </>
           ) : nodes.length === 0 ? (
             <p className="mobile-empty">没有在线节点</p>

@@ -90,6 +90,17 @@ describe("control plane inputs", () => {
     expect(createMessageInputSchema.safeParse({ content: "   " }).success).toBe(false);
   });
 
+  it("accepts an optional Bot assignment for a channel task", () => {
+    const botId = "00000000-0000-4000-8000-000000000001";
+    expect(createMessageInputSchema.parse({ content: "  执行任务  ", botId })).toEqual({
+      content: "执行任务",
+      botId,
+    });
+    expect(
+      createMessageInputSchema.safeParse({ content: "执行任务", botId: "not-an-id" }).success,
+    ).toBe(false);
+  });
+
   it("bounds login input without normalizing the password", () => {
     expect(loginInputSchema.parse({ password: "  keep spaces  " })).toEqual({
       password: "  keep spaces  ",

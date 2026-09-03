@@ -4,7 +4,7 @@
 
 OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
 
-当前状态：**M0 第四切片推进中：PostgreSQL 持久化、单 Owner 本地登录、频道/Bot 管理、Node 状态、Marvis 式办公室、本地频道消息和多设备实时同步已跑通。**
+当前状态：**M0 第五切片推进中：PostgreSQL 持久化、单 Owner 本地登录、频道/Bot 管理、Node 状态、Marvis 式办公室、本地频道消息、多设备实时同步，以及消息到排队任务的持久化投影已跑通。**
 
 ## 产品公式
 
@@ -162,7 +162,7 @@ openbot/
 
 ## 本地启动
 
-要求：Node.js 22+、npm 10+ 和 Docker。当前控制面使用 PostgreSQL 保存频道、Bot、成员、消息和结构化事件。
+要求：Node.js 22+、npm 10+ 和 Docker。当前控制面使用 PostgreSQL 保存频道、Bot、成员、消息、排队任务和结构化事件。
 
 ```bash
 cp .env.example .env
@@ -179,7 +179,7 @@ npm run check
 npm audit
 ```
 
-此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步和节点登记；任务派发、审批和远程接管仍将按 M1–M2 逐步接入。
+此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、排队任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），并同步出现在频道、办公室与右栏；真正向 Node 派发执行、审批和远程接管仍将按 M1–M2 逐步接入。
 
 生产环境必须使用 HTTPS，把 `OPENBOT_SECURE_COOKIES` 设为 `true`，并让 `OPENBOT_ALLOWED_ORIGINS` 只包含实际 Web/PWA 地址。Owner 密码至少 12 个字符，建议使用密码管理器生成的长随机值。
 
@@ -199,6 +199,7 @@ npm audit
 - [ADR-0005：PostgreSQL 控制面](docs/decisions/0005-postgres-control-plane.md)
 - [ADR-0006：频道实时传输采用 REST + SSE](docs/decisions/0006-channel-realtime-sse.md)
 - [ADR-0007：单 Owner 本地认证与数据库会话](docs/decisions/0007-local-owner-auth.md)
+- [ADR-0008：频道消息到持久化任务](docs/decisions/0008-channel-task-runs.md)
 - [声明式配置草案](examples/openbot.example.yaml)
 
 ## 开源注意事项

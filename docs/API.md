@@ -14,7 +14,8 @@
 | `POST` | `/api/v1/channels` | 创建频道并原子加入初始 Bot |
 | `POST` | `/api/v1/channels/:channelId/bots` | 把已有 Bot 加入频道 |
 | `GET` | `/api/v1/channels/:channelId/messages` | 读取最近 100 条本地频道消息 |
-| `POST` | `/api/v1/channels/:channelId/messages` | 保存一条用户频道消息 |
+| `POST` | `/api/v1/channels/:channelId/messages` | 原子保存用户消息并创建排队任务 |
+| `GET` | `/api/v1/channels/:channelId/runs` | 读取频道最近 50 个任务 |
 | `GET` | `/api/v1/channels/:channelId/events` | 订阅频道实时事件（SSE） |
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
@@ -58,17 +59,20 @@
 
 频道与初始 roster 在同一数据库事务中写入；任一 Bot 不存在时整次创建失败。创建 Bot、创建频道和加入频道都会写入结构化事件，供后续 realtime、audit 和办公室状态投影使用。
 
-## 发送本地消息
+## 发送频道任务
 
 ```json
 {
-  "content": "打开测试页，填写表单但不要提交"
+  "content": "打开测试页，填写表单但不要提交",
+  "botId": "可选；必须是该频道成员的 Bot ID"
 }
 ```
 
-消息正文会先去除首尾空白，长度限制为 1–8000 个字符。当前接口只创建 `human` 消息；Bot 和系统消息将在 Run runtime 接入后由服务端写入。消息与 `MESSAGE_CREATED` 事件在同一数据库事务中保存。
+消息正文会先去除首尾空白，长度限制为 1–8000 个字符。一次请求会在同一数据库事务中创建 `human` 消息、状态为 `queued` 的 Run、`MESSAGE_CREATED` 和 `RUN_CREATED` 事件。Run 通过唯一的 `sourceMessageId` 关联来源消息，避免同一输入被投影为多个任务。
 
-消息写入成功后，Server 会向该频道的 SSE 订阅者发布 `message.created`。Web 在订阅就绪后读取历史，并把快照与实时事件按消息 ID 合并，因此刷新、重连和并发写入不会在界面中产生重复消息。
+若传入 `botId`，Server 只接受频道 roster 内的 Bot；未传入时确定性地优先选择名称或职责为 Chief/总管/协调/调度的成员，否则选择 roster 中稳定排序的首位成员。空频道和越权指定均返回 `422`。模型与 Client 不能绕过这条成员边界。
+
+成功响应包含 `{ message, run }`。Server 随后向频道 SSE 订阅者依次发布 `message.created` 与 `run.created`；Web 分别按消息 ID 和 Run ID 合并快照与实时事件，因此刷新、重连和并发写入不会产生重复投影。当前 Run 只进入持久化队列，实际 Node 调度将在 M1 接入。
 
 ## 订阅频道事件
 
@@ -78,6 +82,7 @@
 | --- | --- | --- |
 | `channel.ready` | `{ type, channelId, occurredAt }` | 确认订阅已建立 |
 | `message.created` | `{ type, channelId, message }` | 投影一条已持久化的频道消息 |
+| `run.created` | `{ type, channelId, run }` | 投影一条已持久化的排队任务 |
 | `heartbeat` | ISO 时间字符串 | 检测代理或 Server 形成的半开连接 |
 
 Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主动关闭连接，并以 2 秒间隔重连。每次收到 `channel.ready` 后，Web 都会重新读取最近历史并按消息 ID 合并，以补齐断线期间写入的数据。SSE 只承担 Server 到浏览器的下行投影；创建消息等命令继续使用 REST。

@@ -5,6 +5,8 @@ import type {
   CreateChannelInput,
   CreateMessageInput,
   Message,
+  Run,
+  SubmitTaskResult,
 } from "@openbot/domain";
 
 export interface PersistedCounts {
@@ -18,10 +20,11 @@ export interface ControlPlaneStore {
   listChannels(): Promise<Channel[]>;
   listBots(): Promise<Bot[]>;
   listMessages(channelId: string): Promise<Message[]>;
+  listRuns(channelId?: string): Promise<Run[]>;
   getCounts(): Promise<PersistedCounts>;
   createBot(input: CreateBotInput): Promise<Bot>;
   createChannel(input: CreateChannelInput): Promise<Channel>;
-  createMessage(channelId: string, input: CreateMessageInput): Promise<Message>;
+  submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult>;
   joinBotToChannel(channelId: string, botId: string): Promise<Channel>;
 }
 

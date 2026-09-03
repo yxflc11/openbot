@@ -1,11 +1,13 @@
-import type { Bot, Channel, Message } from "@openbot/domain";
+import type { Bot, Channel, Message, Run } from "@openbot/domain";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   createMessage,
   listMessages,
+  listRuns,
   type RealtimeConnectionState,
   subscribeToChannelEvents,
 } from "../api";
+import { isActiveRun, mergeRuns, runStatusLabel } from "../run-state";
 import { BotIcon, HashIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -13,16 +15,20 @@ export function ChannelWorkspace({
   channel,
   bots,
   onJoin,
+  onRun,
 }: {
   channel: Channel;
   bots: Bot[];
   onJoin(botId: string): Promise<void>;
+  onRun(run: Run): void;
 }) {
   const members = bots.filter((bot) => channel.botIds.includes(bot.id));
   const available = bots.filter((bot) => !channel.botIds.includes(bot.id));
+  const botsById = new Map(bots.map((bot) => [bot.id, bot]));
   const [botId, setBotId] = useState(available[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [runs, setRuns] = useState<Run[]>([]);
   const [messageText, setMessageText] = useState("");
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [messageError, setMessageError] = useState<string>();
@@ -33,10 +39,15 @@ export function ChannelWorkspace({
   useEffect(() => {
     const controller = new AbortController();
     let initialSync = true;
-    const syncMessages = async () => {
+    const syncChannel = async () => {
       try {
-        const items = await listMessages(channel.id, controller.signal);
-        setMessages((current) => mergeMessages(items, current));
+        const [messageItems, runItems] = await Promise.all([
+          listMessages(channel.id, controller.signal),
+          listRuns(channel.id, controller.signal),
+        ]);
+        setMessages((current) => mergeMessages(messageItems, current));
+        setRuns((current) => mergeRuns(runItems, current));
+        for (const run of runItems) onRun(run);
         setMessageError(undefined);
       } catch (cause: unknown) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
@@ -52,8 +63,12 @@ export function ChannelWorkspace({
       onMessage(message) {
         setMessages((current) => mergeMessages(current, [message]));
       },
+      onRun(run) {
+        setRuns((current) => mergeRuns(current, [run]));
+        onRun(run);
+      },
       onReady() {
-        void syncMessages();
+        void syncChannel();
       },
       onState: setRealtimeState,
     });
@@ -63,7 +78,7 @@ export function ChannelWorkspace({
       controller.abort();
       unsubscribe();
     };
-  }, [channel.id]);
+  }, [channel.id, onRun]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -89,8 +104,10 @@ export function ChannelWorkspace({
     setSending(true);
     setMessageError(undefined);
     try {
-      const message = await createMessage(channel.id, { content });
-      setMessages((current) => mergeMessages(current, [message]));
+      const result = await createMessage(channel.id, { content });
+      setMessages((current) => mergeMessages(current, [result.message]));
+      setRuns((current) => mergeRuns(current, [result.run]));
+      onRun(result.run);
       setMessageText("");
     } catch (cause) {
       setMessageError(cause instanceof Error ? cause.message : "消息未能保存。");
@@ -174,6 +191,30 @@ export function ChannelWorkspace({
           </div>
         </div>
 
+        {runs.length > 0 ? (
+          <section className="run-queue" aria-label="频道任务">
+            <header>
+              <h3>任务</h3>
+              <span>{runs.filter(isActiveRun).length} 个处理中</span>
+            </header>
+            <div>
+              {runs.slice(0, 5).map((run) => {
+                const assignee = botsById.get(run.botId);
+                return (
+                  <article className="run-row" key={run.id}>
+                    {assignee ? <RobotAvatar bot={assignee} compact /> : null}
+                    <span className="run-row-copy">
+                      <strong>{run.title}</strong>
+                      <small>{assignee?.name ?? "未知 Bot"}</small>
+                    </span>
+                    <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
         <div className="message-list" ref={messageList} aria-live="polite">
           {messagesLoading ? (
             <p className="conversation-status">正在读取本地消息…</p>
@@ -211,13 +252,18 @@ export function ChannelWorkspace({
               value={messageText}
               maxLength={8000}
               rows={2}
-              placeholder="例如：打开测试页，填写表单但不要提交…"
+              disabled={members.length === 0}
+              placeholder={
+                members.length === 0
+                  ? "先把一名 Bot 加入频道"
+                  : "例如：打开测试页，填写表单但不要提交…"
+              }
               onChange={(event) => setMessageText(event.target.value)}
             />
             <button
               className="primary-button"
               type="submit"
-              disabled={sending || messageText.trim().length === 0}
+              disabled={sending || members.length === 0 || messageText.trim().length === 0}
             >
               {sending ? "保存中…" : "发送"}
             </button>

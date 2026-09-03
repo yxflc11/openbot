@@ -6,10 +6,15 @@ import type {
   CreateMessageInput,
   ExecutionNode,
   Message,
+  Run,
 } from "@openbot/domain";
 import { describe, expect, it } from "vitest";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
-import { StoreNotFoundError, type ControlPlaneStore } from "./control-plane-store.js";
+import {
+  StoreNotFoundError,
+  StoreValidationError,
+  type ControlPlaneStore,
+} from "./control-plane-store.js";
 import { createApp, ownerSessionCookie } from "./app.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import type {
@@ -17,6 +22,7 @@ import type {
   OwnerSessionStore,
   StoredOwnerSession,
 } from "./session-store.js";
+import { selectChannelAssignee } from "./task-routing.js";
 
 const testOrigin = "http://localhost:5173";
 
@@ -169,10 +175,15 @@ describe("server app", () => {
 
   it("stores and lists a local channel message", async () => {
     const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Ops",
+      role: "日常运营",
+      computerProfile: "docker-linux",
+    });
     const channel = await store.createChannel({
       name: "运营中心",
       description: "日常任务",
-      botIds: [],
+      botIds: [bot.id],
     });
     const app = createTestApp({ store });
     const cookie = await login(app);
@@ -185,6 +196,12 @@ describe("server app", () => {
     expect(created.status).toBe(201);
     expect(await created.json()).toMatchObject({
       message: { channelId: channel.id, authorType: "human", content: "打开测试页并截图" },
+      run: {
+        channelId: channel.id,
+        botId: bot.id,
+        title: "打开测试页并截图",
+        status: "queued",
+      },
     });
 
     const listed = await app.request(`/api/v1/channels/${channel.id}/messages`, {
@@ -192,6 +209,79 @@ describe("server app", () => {
     });
     expect(await listed.json()).toMatchObject({
       messages: [{ content: "打开测试页并截图" }],
+    });
+
+    const listedRuns = await app.request(`/api/v1/channels/${channel.id}/runs`, {
+      headers: { Cookie: cookie },
+    });
+    expect(await listedRuns.json()).toMatchObject({
+      runs: [{ botId: bot.id, status: "queued", title: "打开测试页并截图" }],
+    });
+  });
+
+  it("rejects a task when the channel has no Bot", async () => {
+    const store = createTestStore();
+    const channel = await store.createChannel({
+      name: "空频道",
+      description: "还没有成员",
+      botIds: [],
+    });
+    const app = createTestApp({ store });
+    const cookie = await login(app);
+
+    const response = await app.request(`/api/v1/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ content: "现在执行任务" }),
+    });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: "Add a Bot to this channel before assigning a task.",
+    });
+  });
+
+  it("prefers Chief and rejects an explicit Bot outside the channel", async () => {
+    const store = createTestStore();
+    const ops = await store.createBot({
+      name: "Ops",
+      role: "日常运营",
+      computerProfile: "docker-linux",
+    });
+    const chief = await store.createBot({
+      name: "Chief",
+      role: "任务协调",
+      computerProfile: "none",
+    });
+    const outsider = await store.createBot({
+      name: "Coder",
+      role: "代码开发",
+      computerProfile: "docker-linux",
+    });
+    const channel = await store.createChannel({
+      name: "运营中心",
+      description: "日常任务",
+      botIds: [ops.id, chief.id],
+    });
+    const app = createTestApp({ store });
+    const cookie = await login(app);
+
+    const routed = await app.request(`/api/v1/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ content: "汇总今日任务" }),
+    });
+    expect(routed.status).toBe(201);
+    expect(await routed.json()).toMatchObject({ run: { botId: chief.id } });
+
+    const rejected = await app.request(`/api/v1/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ content: "绕过频道分派", botId: outsider.id }),
+    });
+    expect(rejected.status).toBe(422);
+    expect(await rejected.json()).toEqual({
+      error: "The selected Bot is not a member of this channel.",
     });
   });
 
@@ -207,15 +297,22 @@ describe("server app", () => {
 
   it("opens a channel event stream and publishes persisted messages", async () => {
     const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Ops",
+      role: "日常运营",
+      computerProfile: "docker-linux",
+    });
     const channel = await store.createChannel({
       name: "实时频道",
       description: "多设备同步",
-      botIds: [],
+      botIds: [bot.id],
     });
     const realtime = new ChannelRealtimeHub();
     const published: Message[] = [];
+    const publishedRuns: Run[] = [];
     const unsubscribe = realtime.subscribe(channel.id, (event) => {
       if (event.type === "message.created") published.push(event.message);
+      if (event.type === "run.created") publishedRuns.push(event.run);
     });
     const app = createTestApp({ realtime, store });
     const cookie = await login(app);
@@ -239,10 +336,18 @@ describe("server app", () => {
     });
     expect(created.status).toBe(201);
     expect(published).toMatchObject([{ channelId: channel.id, content: "同步给其他设备" }]);
+    expect(publishedRuns).toMatchObject([
+      { channelId: channel.id, botId: bot.id, status: "queued" },
+    ]);
     const messageChunk = await reader?.read();
     const messageEvent = new TextDecoder().decode(messageChunk?.value);
     expect(messageEvent).toContain("event: message.created");
     expect(messageEvent).toContain("同步给其他设备");
+    const runEvent = messageEvent.includes("event: run.created")
+      ? messageEvent
+      : new TextDecoder().decode((await reader?.read())?.value);
+    expect(runEvent).toContain("event: run.created");
+    expect(runEvent).toContain('"status":"queued"');
 
     await reader?.cancel();
     controller.abort();
@@ -334,6 +439,7 @@ function createTestStore(): ControlPlaneStore {
   const bots: Bot[] = [];
   const channels: Channel[] = [];
   const messages: Message[] = [];
+  const runs: Run[] = [];
   let nextId = 0;
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
 
@@ -353,8 +459,14 @@ function createTestStore(): ControlPlaneStore {
       }
       return messages.filter((message) => message.channelId === channelId);
     },
+    async listRuns(channelId?: string) {
+      if (channelId !== undefined && !channels.some((channel) => channel.id === channelId)) {
+        throw new StoreNotFoundError("Channel not found.");
+      }
+      return channelId === undefined ? runs : runs.filter((run) => run.channelId === channelId);
+    },
     async getCounts() {
-      return { bots: bots.length, channels: channels.length, activeRuns: 0 };
+      return { bots: bots.length, channels: channels.length, activeRuns: runs.length };
     },
     async createBot(input: CreateBotInput) {
       const bot: Bot = {
@@ -375,9 +487,21 @@ function createTestStore(): ControlPlaneStore {
       channels.push(channel);
       return channel;
     },
-    async createMessage(channelId: string, input: CreateMessageInput) {
-      if (!channels.some((channel) => channel.id === channelId)) {
+    async submitTask(channelId: string, input: CreateMessageInput) {
+      const channel = channels.find((item) => item.id === channelId);
+      if (channel === undefined) {
         throw new StoreNotFoundError("Channel not found.");
+      }
+      const candidates = channel.botIds
+        .map((botId) => bots.find((bot) => bot.id === botId))
+        .filter((bot): bot is Bot => bot !== undefined);
+      const assignee = selectChannelAssignee(candidates, input.botId);
+      if (assignee === undefined) {
+        throw new StoreValidationError(
+          input.botId === undefined
+            ? "Add a Bot to this channel before assigning a task."
+            : "The selected Bot is not a member of this channel.",
+        );
       }
       const message: Message = {
         id: id(),
@@ -387,7 +511,18 @@ function createTestStore(): ControlPlaneStore {
         createdAt: new Date().toISOString(),
       };
       messages.push(message);
-      return message;
+      const run: Run = {
+        id: id(),
+        channelId,
+        botId: assignee.id,
+        sourceMessageId: message.id,
+        title: input.content,
+        status: "queued",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      runs.push(run);
+      return { message, run };
     },
     async joinBotToChannel(channelId: string, botId: string) {
       const channel = channels.find((item) => item.id === channelId);

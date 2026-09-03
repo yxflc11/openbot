@@ -74,6 +74,25 @@ export const nodes = pgTable("nodes", {
   ...timestamps,
 });
 
+export const messages = pgTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    authorType: text("author_type").notNull(),
+    authorId: text("author_id"),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("messages_channel_time_idx").on(table.channelId, table.createdAt),
+    check("messages_author_type_valid", sql`${table.authorType} IN ('human', 'bot', 'system')`),
+    check("messages_content_not_blank", sql`length(btrim(${table.content})) > 0`),
+  ],
+);
+
 export const runs = pgTable(
   "runs",
   {
@@ -84,16 +103,28 @@ export const runs = pgTable(
     botId: text("bot_id")
       .notNull()
       .references(() => bots.id),
+    sourceMessageId: text("source_message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
     nodeId: text("node_id").references(() => nodes.id),
     title: text("title").notNull(),
     status: text("status").notNull().default("queued"),
     ...timestamps,
   },
   (table) => [
+    index("runs_created_idx").on(table.createdAt),
     index("runs_channel_created_idx").on(table.channelId, table.createdAt),
     index("runs_bot_idx").on(table.botId),
     index("runs_node_idx").on(table.nodeId),
     index("runs_status_created_idx").on(table.status, table.createdAt),
+    uniqueIndex("runs_source_message_idx")
+      .on(table.sourceMessageId)
+      .where(sql`${table.sourceMessageId} IS NOT NULL`),
+    check("runs_title_not_blank", sql`length(btrim(${table.title})) > 0`),
+    check(
+      "runs_status_valid",
+      sql`${table.status} IN ('queued', 'running', 'waiting_approval', 'blocked', 'completed', 'failed', 'cancelled')`,
+    ),
   ],
 );
 
@@ -114,25 +145,6 @@ export const runEvents = pgTable(
     index("run_events_channel_time_idx").on(table.channelId, table.createdAt),
     index("run_events_bot_idx").on(table.botId),
     index("run_events_node_idx").on(table.nodeId),
-  ],
-);
-
-export const messages = pgTable(
-  "messages",
-  {
-    id: text("id").primaryKey(),
-    channelId: text("channel_id")
-      .notNull()
-      .references(() => channels.id, { onDelete: "cascade" }),
-    authorType: text("author_type").notNull(),
-    authorId: text("author_id"),
-    content: text("content").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (table) => [
-    index("messages_channel_time_idx").on(table.channelId, table.createdAt),
-    check("messages_author_type_valid", sql`${table.authorType} IN ('human', 'bot', 'system')`),
-    check("messages_content_not_blank", sql`length(btrim(${table.content})) > 0`),
   ],
 );
 

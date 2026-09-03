@@ -7,6 +7,8 @@ import type {
   CreateChannelInput,
   CreateMessageInput,
   Message,
+  Run,
+  SubmitTaskResult,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 
@@ -92,16 +94,23 @@ export async function listMessages(channelId: string, signal?: AbortSignal): Pro
   return result.messages;
 }
 
+export async function listRuns(channelId: string, signal?: AbortSignal): Promise<Run[]> {
+  const result = await request<{ runs: Run[] }>(
+    `/api/v1/channels/${channelId}/runs`,
+    signal ? { signal } : undefined,
+  );
+  return result.runs;
+}
+
 export async function createMessage(
   channelId: string,
   input: CreateMessageInput,
-): Promise<Message> {
-  const result = await request<{ message: Message }>(`/api/v1/channels/${channelId}/messages`, {
+): Promise<SubmitTaskResult> {
+  return request<SubmitTaskResult>(`/api/v1/channels/${channelId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  return result.message;
 }
 
 export type RealtimeConnectionState = "connecting" | "live" | "retrying";
@@ -110,6 +119,7 @@ export function subscribeToChannelEvents(
   channelId: string,
   handlers: {
     onMessage(message: Message): void;
+    onRun(run: Run): void;
     onReady(): void;
     onState(state: RealtimeConnectionState): void;
   },
@@ -141,6 +151,18 @@ export function subscribeToChannelEvents(
       // Ignore malformed frames and keep the stream available for the next valid event.
     }
   };
+  const onRun = (event: Event) => {
+    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
+    try {
+      const payload: unknown = JSON.parse(event.data);
+      if (isRunCreatedEvent(payload, channelId)) {
+        markLive();
+        handlers.onRun(payload.run);
+      }
+    } catch {
+      // Ignore malformed frames and keep the stream available for the next valid event.
+    }
+  };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
     source?.close();
@@ -163,6 +185,7 @@ export function subscribeToChannelEvents(
     nextSource.addEventListener("channel.ready", onReady);
     nextSource.addEventListener("heartbeat", markLive);
     nextSource.addEventListener("message.created", onMessage);
+    nextSource.addEventListener("run.created", onRun);
   };
 
   handlers.onState("connecting");
@@ -194,6 +217,32 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+function isRunCreatedEvent(
+  value: unknown,
+  channelId: string,
+): value is Extract<ChannelRealtimeEvent, { type: "run.created" }> {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("type" in value) || value.type !== "run.created") return false;
+  if (!("channelId" in value) || value.channelId !== channelId) return false;
+  if (!("run" in value) || typeof value.run !== "object" || value.run === null) return false;
+  return (
+    "id" in value.run &&
+    typeof value.run.id === "string" &&
+    "channelId" in value.run &&
+    value.run.channelId === channelId &&
+    "botId" in value.run &&
+    typeof value.run.botId === "string" &&
+    "title" in value.run &&
+    typeof value.run.title === "string" &&
+    "status" in value.run &&
+    typeof value.run.status === "string" &&
+    "createdAt" in value.run &&
+    typeof value.run.createdAt === "string" &&
+    "updatedAt" in value.run &&
+    typeof value.run.updatedAt === "string"
+  );
 }
 
 function isMessageCreatedEvent(

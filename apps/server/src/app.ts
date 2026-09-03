@@ -128,15 +128,17 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/workspace", async (context) => {
     const nodes = dependencies.listNodes();
-    const [channels, bots, persistedCounts] = await Promise.all([
+    const [channels, bots, runs, persistedCounts] = await Promise.all([
       dependencies.store.listChannels(),
       dependencies.store.listBots(),
+      dependencies.store.listRuns(),
       dependencies.store.getCounts(),
     ]);
     const workspace: WorkspaceSnapshot = {
       channels,
       bots,
       nodes,
+      runs,
       counts: {
         ...persistedCounts,
         connectedNodes: nodes.length,
@@ -168,6 +170,10 @@ export function createApp(dependencies: AppDependencies) {
     context.json({
       messages: await dependencies.store.listMessages(context.req.param("channelId")),
     }),
+  );
+
+  app.get("/api/v1/channels/:channelId/runs", async (context) =>
+    context.json({ runs: await dependencies.store.listRuns(context.req.param("channelId")) }),
   );
 
   app.get("/api/v1/channels/:channelId/events", async (context) => {
@@ -218,7 +224,11 @@ export function createApp(dependencies: AppDependencies) {
           while (event !== undefined && !closed && !stream.aborted) {
             await stream.writeSSE({
               event: event.type,
-              ...(event.type === "message.created" ? { id: event.message.id } : {}),
+              ...(event.type === "message.created"
+                ? { id: event.message.id }
+                : event.type === "run.created"
+                  ? { id: event.run.id }
+                  : {}),
               data: JSON.stringify(event),
             });
             event = queued.shift();
@@ -232,9 +242,18 @@ export function createApp(dependencies: AppDependencies) {
 
   app.post("/api/v1/channels/:channelId/messages", async (context) => {
     const input = await parseRequest(context.req.raw, createMessageInputSchema);
-    const message = await dependencies.store.createMessage(context.req.param("channelId"), input);
-    realtime.publish({ type: "message.created", channelId: message.channelId, message });
-    return context.json({ message }, 201);
+    const result = await dependencies.store.submitTask(context.req.param("channelId"), input);
+    realtime.publish({
+      type: "message.created",
+      channelId: result.message.channelId,
+      message: result.message,
+    });
+    realtime.publish({
+      type: "run.created",
+      channelId: result.run.channelId,
+      run: result.run,
+    });
+    return context.json(result, 201);
   });
 
   app.get("/api/v1/bots", async (context) =>

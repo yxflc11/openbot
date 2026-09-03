@@ -90,6 +90,9 @@ flowchart LR
 替代 CopilotKit Intelligence，至少提供：
 
 - thread/message/event 持久化；
+- 用户频道输入在一个短事务中同时产生 message、queued Run、`MESSAGE_CREATED` 和 `RUN_CREATED`；
+- 显式 assignee 必须属于频道；未指定时由 Server 优先选择 Chief，再稳定回退到 roster 首位成员；
+- Run 使用唯一 `source_message_id` 追溯来源，Client 与模型不能自行扩大频道成员边界；
 - AG-UI event stream；
 - WebSocket/SSE 多设备同步；
 - Bot memory 的可插拔存储；
