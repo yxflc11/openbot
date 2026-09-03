@@ -43,15 +43,20 @@ body:
   - type: textarea
     id: upstreams
     attributes:
-      label: Existing open-source implementations
-      description: Link maintained repositories or open standards already researched. Include versions and licenses when known, or explain why no suitable implementation was found.
+      label: Search evidence and open-source candidates
+      description: Record the search date and actual GitHub/standards queries, then link maintained candidates. Include exact versions or commits and licenses. If nothing fits, list what was inspected and why.
+      placeholder: |
+        Search date: YYYY-MM-DD
+        Queries: …
+        Candidate: https://github.com/org/repo @ commit — SPDX license
+        Fit/gap: …
     validations:
       required: true
   - type: textarea
     id: decision
     attributes:
       label: Proposed reuse decision
-      description: Which standard, dependency, adapter, upstream contribution, or narrow fork should be used? What OpenBot-specific gap remains?
+      description: Select the first viable standard, dependency, adapter, upstream contribution, or narrow fork. Local implementation is last and must name the exact OpenBot-specific gap, failure behavior, and replacement plan.
     validations:
       required: true
   - type: dropdown

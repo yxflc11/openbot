@@ -60,7 +60,8 @@ npm audit
 ## 工程规则
 
 - 非简单功能先查维护中的 GitHub 仓库与开放标准，在 Issue、ADR 或
-  [复用记录](docs/OPEN_SOURCE_REUSE.zh-CN.md)写明版本、许可证和选择。
+  [功能调研记录](docs/research/README.zh-CN.md)中写明搜索词、候选、固定版本、许可证和选择，
+  完成记录后才能开始实现。
 - 选择顺序是开放标准、正式依赖、薄适配器、向上游贡献、窄 fork，最后才是有文档依据的本地
   差集。
 - Server 始终保存任务、审批、身份、策略和审计的唯一真相。
@@ -70,6 +71,9 @@ npm audit
   下一行代码。
 - 不提交凭证、Cookie、私人对话、含秘密截图或真实用户数据。
 - README 不堆大型架构图；使用简短文本流程、表格和专门文档链接。
+
+根目录的 [AGENTS.md](AGENTS.md) 同时约束人工和自动化贡献者。扩展旧代码前，先在
+[追溯复用账本](docs/OPEN_SOURCE_REUSE.zh-CN.md)找到对应条目；缺失或标记不完整时先补审查。
 
 ## 提交 Pull Request
 

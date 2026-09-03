@@ -8,11 +8,13 @@ Closes #
 
 ## Open-source research
 
-- Upstream/standard evaluated:
+- Research artifact: <!-- Issue, ADR, or docs/research record; required even when no candidate fit -->
+- Selected upstream/standard: <!-- Or: No suitable upstream found — see the linked research artifact -->
 - Version or commit:
 - License:
-- Decision (dependency / adapter / upstream contribution / fork / local gap):
-- Source copied or substantially adapted: no / yes — notice location:
+- Decision: <!-- dependency / adapter / upstream contribution / fork / local gap — and why -->
+- OpenBot-specific gap:
+- Source copied or substantially adapted: no / yes — notice location
 
 ## Verification
 

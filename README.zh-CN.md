@@ -37,6 +37,11 @@ OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员�
 - **可组合的 Bot 身份。** Bot 外观由头型、身体、移动方式、配件和强调色五个独立层保存。
 - **通过适配器避免锁定。** 模型、电脑运行时和上游项目通过有类型、带版本的边界接入。
 
+员工进化与学习方向明确受
+[Hermes Agent learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)
+启发。OpenBot 使用自己的 Server 权威证据、审核、权限和迁移模型，不会把学习图谱概念说成
+OpenBot 原创。
+
 ## 项目状态
 
 OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道”的受测试垂直切片。下表刻意

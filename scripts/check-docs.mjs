@@ -12,6 +12,8 @@ for (const file of markdownFiles) {
   validateLocalLinks(file, source);
 }
 
+validateResearchPolicy();
+
 for (const name of ["README.md", "README.zh-CN.md"]) {
   const file = resolve(repositoryRoot, name);
   const source = readFileSync(file, "utf8");
@@ -77,4 +79,70 @@ function isExternalTarget(target) {
 
 function relativePath(file) {
   return file.slice(repositoryRoot.length + 1);
+}
+
+function validateResearchPolicy() {
+  const contracts = [
+    {
+      name: "AGENTS.md",
+      headings: ["## Research before implementation", "## Product and security boundaries"],
+    },
+    {
+      name: "docs/research/TEMPLATE.md",
+      headings: [
+        "## Search evidence",
+        "## Candidate comparison",
+        "## Reuse decision",
+        "## Source incorporation",
+        "## Verification plan",
+      ],
+    },
+    {
+      name: "docs/decisions/TEMPLATE.md",
+      headings: [
+        "## Upstream review",
+        "## Reuse decision",
+        "## Source incorporation",
+        "## Verification plan",
+        "## Decision",
+        "## Consequences",
+      ],
+    },
+  ];
+
+  for (const contract of contracts) {
+    const file = resolve(repositoryRoot, contract.name);
+    if (!existsSync(file)) {
+      failures.push(`${contract.name}: required research-policy file is missing.`);
+      continue;
+    }
+    const source = readFileSync(file, "utf8");
+    for (const heading of contract.headings) {
+      if (!source.includes(heading)) failures.push(`${contract.name}: missing '${heading}'.`);
+    }
+  }
+
+  const decisionDirectory = resolve(repositoryRoot, "docs/decisions");
+  for (const entry of readdirSync(decisionDirectory, { withFileTypes: true })) {
+    const match = entry.name.match(/^(\d{4})-.*\.md$/u);
+    if (!entry.isFile() || match === null || Number(match[1]) < 20) continue;
+    const source = readFileSync(resolve(decisionDirectory, entry.name), "utf8");
+    for (const heading of [
+      "## Upstream review",
+      "## Reuse decision",
+      "## Source incorporation",
+      "## Verification plan",
+      "## Decision",
+      "## Consequences",
+    ]) {
+      if (!source.includes(heading)) failures.push(`${entry.name}: missing '${heading}'.`);
+    }
+  }
+
+  const workflow = readFileSync(resolve(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
+  for (const action of ["actions/checkout", "actions/setup-node"]) {
+    if (!new RegExp(`uses: ${action}@[0-9a-f]{40}(?:\\s|$)`, "u").test(workflow)) {
+      failures.push(`.github/workflows/ci.yml: ${action} must be pinned to a full commit.`);
+    }
+  }
 }

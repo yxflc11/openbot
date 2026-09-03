@@ -80,8 +80,8 @@ Run `npm run db:stop` when the development database is no longer needed.
 ## Engineering principles
 
 - Research maintained GitHub repositories and open standards before designing any non-trivial
-  feature. Record the comparison, selected version, license, and decision in an issue, ADR, or
-  [reuse note](docs/OPEN_SOURCE_REUSE.md).
+  feature. Create a durable issue, ADR, or [feature research record](docs/research/README.md) before
+  implementation and record the queries, comparison, selected version, license, and decision.
 - Prefer, in order: an open standard, a released dependency, a thin pinned adapter, an upstream
   contribution, a narrow fork, and finally a documented local gap implementation.
 - Preserve one Server-owned source of truth for tasks, approvals, and audit events.
@@ -93,6 +93,11 @@ Run `npm run db:stop` when the development database is no longer needed.
 - Never commit credentials, cookies, private transcripts, secret-bearing screenshots, or real user
   data.
 - Keep product claims aligned with executable tests and the current implementation.
+
+The root [repository instructions](AGENTS.md) apply equally to human and automated contributors.
+When expanding old code, locate its entry in the
+[retroactive reuse ledger](docs/OPEN_SOURCE_REUSE.md) first; an absent or partial entry must be
+reviewed before expansion.
 
 ## Code and comments
 

@@ -44,6 +44,11 @@ remaining self-hosted, provider-neutral, and designed for explicit human control
 - **Adapters over lock-in.** Models, computer runtimes, and upstream projects connect through typed,
   versioned boundaries.
 
+The Employee evolution and learning direction is explicitly inspired by
+[Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py).
+OpenBot keeps its own Server-owned evidence, review, permission, and portability model; it does not
+present the learning-graph concept as an OpenBot invention.
+
 ## Project status
 
 OpenBot currently provides a tested vertical slice from a local channel to a remote execution Node
