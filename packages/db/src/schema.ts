@@ -36,6 +36,8 @@ export const bots = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     role: text("role").notNull(),
+    description: text("description").notNull().default(""),
+    profileRevision: integer("profile_revision").notNull().default(1),
     status: text("status").notNull().default("idle"),
     computerProfile: text("computer_profile").notNull().default("none"),
     configuration: jsonb("configuration").notNull().default({}),
@@ -44,6 +46,10 @@ export const bots = pgTable(
   (table) => [
     uniqueIndex("bots_name_idx").on(table.name),
     check("bots_name_not_blank", sql`length(btrim(${table.name})) > 0`),
+    check("bots_role_not_blank", sql`length(btrim(${table.role})) > 0`),
+    check("bots_role_length_valid", sql`length(${table.role}) <= 160`),
+    check("bots_description_length_valid", sql`length(${table.description}) <= 2000`),
+    check("bots_profile_revision_valid", sql`${table.profileRevision} >= 1`),
   ],
 );
 

@@ -1,6 +1,11 @@
 import type { CreateEmployeeMemoryInput, EmployeeMemory, EmployeeProfile } from "@openbot/domain";
 import { type FormEvent, useId, useRef, useState } from "react";
-import { createEmployeeMemory, deleteEmployeeMemory, updateEmployeeMemory } from "../api";
+import {
+  createEmployeeMemory,
+  deleteEmployeeMemory,
+  updateEmployeeMemory,
+  updateEmployeeProfileDetails,
+} from "../api";
 import { runStatusLabel } from "../run-state";
 import { EmployeeEvolutionArchive } from "./EmployeeEvolutionArchive";
 import { EmployeeSkillReview } from "./EmployeeSkillReview";
@@ -138,7 +143,9 @@ export function EmployeeProfileView({
           <EmployeeMemoryPanel profile={profile} onProfileChanged={onProfileChanged} />
         ) : null}
         {tab === "records" ? <Records profile={profile} /> : null}
-        {tab === "configuration" ? <Configuration profile={profile} /> : null}
+        {tab === "configuration" ? (
+          <EmployeeProfileDetailsEditor profile={profile} onProfileChanged={onProfileChanged} />
+        ) : null}
       </section>
     </main>
   );
@@ -150,8 +157,8 @@ function Overview({ profile }: { profile: EmployeeProfile }) {
       <section className="employee-about">
         <h2>关于</h2>
         <p>
-          {profile.employee.name} 的职责是{profile.employee.role}。员工身份、技能和工作记录保存在
-          OpenBot Server；执行电脑可以更换，不会改变员工本身。
+          {profile.details.description ||
+            `${profile.employee.name} 的职责是${profile.employee.role}。员工身份、技能和工作记录保存在 OpenBot Server；执行电脑可以更换，不会改变员工本身。`}
         </p>
       </section>
 
@@ -566,9 +573,126 @@ function Records({ profile }: { profile: EmployeeProfile }) {
   );
 }
 
-function Configuration({ profile }: { profile: EmployeeProfile }) {
+export function EmployeeProfileDetailsEditor({
+  profile,
+  onProfileChanged,
+}: {
+  profile: EmployeeProfile;
+  onProfileChanged(): Promise<void>;
+}) {
+  const initialDetails = {
+    role: profile.employee.role,
+    description: profile.details.description,
+    revision: profile.details.revision,
+  };
+  const [baseline, setBaseline] = useState(initialDetails);
+  const [role, setRole] = useState(initialDetails.role);
+  const [description, setDescription] = useState(initialDetails.description);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const formId = useId();
+  const changed = role.trim() !== baseline.role || description.trim() !== baseline.description;
+  const serverChanged = profile.details.revision !== baseline.revision;
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError(undefined);
+    try {
+      const result = await updateEmployeeProfileDetails(profile.employee.id, {
+        role,
+        description,
+        expectedRevision: baseline.revision,
+      });
+      const nextBaseline = {
+        role: result.employee.role,
+        description: result.details.description,
+        revision: result.details.revision,
+      };
+      setBaseline(nextBaseline);
+      setRole(nextBaseline.role);
+      setDescription(nextBaseline.description);
+      await onProfileChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法保存员工主页。请重新加载后再试。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <ProfileSection title="配置" description="员工配置与工作主机权限是两套独立边界。">
+    <ProfileSection
+      title="配置"
+      description="编辑员工的说明性主页；电脑权限与执行配置仍由 Server 单独管理。"
+    >
+      <form className="employee-profile-details-form" onSubmit={(event) => void submit(event)}>
+        <header>
+          <div>
+            <h3>个人主页</h3>
+            <p>职责和简介可帮助人类与总管正确分派工作，但不会授予技能或电脑权限。</p>
+          </div>
+          <span>修订 {baseline.revision}</span>
+        </header>
+        <label htmlFor={`${formId}-role`}>
+          <span>职责</span>
+          <input
+            id={`${formId}-role`}
+            value={role}
+            maxLength={160}
+            required
+            onChange={(event) => setRole(event.target.value)}
+          />
+          <small>{role.length}/160</small>
+        </label>
+        <label htmlFor={`${formId}-description`}>
+          <span>简介</span>
+          <textarea
+            id={`${formId}-description`}
+            value={description}
+            maxLength={2000}
+            placeholder="描述适合交给这名员工的工作，以及应当遵守的协作边界。"
+            onChange={(event) => setDescription(event.target.value)}
+          />
+          <small>{description.length}/2000</small>
+        </label>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {serverChanged ? (
+          <div className="employee-profile-stale" role="status">
+            <p>这名员工已在另一台设备更新。请加载 Server 最新值后再继续。</p>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                const latest = {
+                  role: profile.employee.role,
+                  description: profile.details.description,
+                  revision: profile.details.revision,
+                };
+                setBaseline(latest);
+                setRole(latest.role);
+                setDescription(latest.description);
+                setError(undefined);
+              }}
+            >
+              加载最新值
+            </button>
+          </div>
+        ) : null}
+        <footer className="employee-profile-details-actions">
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={saving || !changed || serverChanged}
+          >
+            {saving ? "保存中…" : "保存主页"}
+          </button>
+        </footer>
+      </form>
+
       <dl className="employee-config-list">
         <div>
           <dt>固定执行配置</dt>

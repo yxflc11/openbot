@@ -88,6 +88,20 @@ claim at the lowest level proven by tests.
 - **Preserve:** the Server is authoritative; models and Worker Hosts cannot write Owner records;
   secrets are references only; audit never retains titles, content, or content hashes.
 
+## Delivered baseline: Owner-managed profile details
+
+- **Delivered:** authenticated role and biography editing, strict field bounds, PostgreSQL
+  compare-and-swap revisions, content-free evolution/SSE metadata, multi-device stale-draft review,
+  and biography preservation in safety-scanned Employee templates.
+- **Start in:** `apps/server/src/postgres-store.ts`, `apps/web/src/components/EmployeeProfileView.tsx`,
+  `packages/protocol`, `packages/db`, and the
+  [research record](research/owner-employee-profile-details.md).
+- **Research baseline:** Hermes profile editing/UI metadata CAS and Kubernetes `resourceVersion`.
+- **Remaining contribution:** independently review and implement display-name, model/Provider,
+  Worker Host, schedule, and composable-appearance editors.
+- **Preserve:** prose cannot grant authority; stale writes return conflict; audit/realtime events
+  never carry biography text; imported packages still create a fresh local identity.
+
 ## Advanced: proof-of-possession Node identity
 
 - **Outcome:** replace the current individually revocable bearer credential with a rotatable,

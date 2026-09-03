@@ -76,6 +76,17 @@
 - **必须保持：**Server 是唯一权威；模型与工作主机不能写 Owner 记录；秘密只能保存引用；
   审计永远不能保留标题、正文或正文哈希。
 
+## 已完成基线：Owner 管理员工主页详情
+
+- **已交付：**经过认证的职责/简介编辑、严格字段上限、PostgreSQL compare-and-swap revision、
+  无正文进化/SSE 元数据、多设备旧草稿审核，以及经过安全扫描的员工模板简介迁移。
+- **路径：**`apps/server/src/postgres-store.ts`、`apps/web/src/components/EmployeeProfileView.tsx`、
+  `packages/protocol`、`packages/db` 和[调研记录](research/owner-employee-profile-details.md)。
+- **调研基线：**Hermes profile 编辑/UI metadata CAS 与 Kubernetes `resourceVersion`。
+- **待共建：**分别审查并实现显示名、模型/Provider、工作主机、例行任务和组合外观编辑器。
+- **必须保持：**主页文字不能授予权限；旧写入返回冲突；审计/实时事件不携带简介正文；导入包
+  仍生成新的本地身份。
+
 ## 高级：每 Node 独立注册
 
 - **结果：**把当前可单独吊销的 bearer credential 升级为可轮换、具有持有证明的工作主机身份。

@@ -25,16 +25,22 @@ Selecting an employee opens a durable profile with seven views.
 
 | View | Purpose | Source of truth |
 | --- | --- | --- |
-| Overview | Name, role, description, appearance, model policy, status, assigned host, and trust boundaries | Employee configuration |
+| Overview | Name, role, biography, appearance, status, work summary, and trust boundaries | Employee profile and control-plane records |
 | Evolution | Chronological, evidence-backed record of meaningful capability changes | Immutable evolution events |
 | Skills | Graph of acquired skills, prerequisites, provenance, version, confidence, and verification state | Versioned skill records |
 | Live work | Current Run stage, tools in use, evidence, next action, approvals, and concise decision summaries | Structured Run events |
 | Memory | Owner-visible working, episodic, semantic, and procedural memories with retention controls | Memory records and policy |
 | Records | Runs, messages, artifacts, approvals, failures, evaluations, and audit references | Existing control-plane records |
-| Configuration | Role, model/provider preferences, capability policy, host binding, schedules, and export controls | Versioned employee configuration |
+| Configuration | Owner-editable role and biography plus read-only execution, portability, and authority boundaries | Revisioned Employee profile and Server policy |
 
 The first profile release should be a normal product page, not the deferred office visualization.
 The avatar opens the profile from the channel roster, message author, and Bot list.
+
+The implemented editor deliberately changes only `role` and a 2,000-character descriptive
+biography. PostgreSQL owns a compare-and-swap revision, so two devices cannot silently overwrite
+each other. Every accepted change appends an evolution event containing changed field names rather
+than biography text. Model preference, host binding, appearance, skills, schedules, and grants need
+separate reviewed contracts; profile prose can never grant them.
 
 ## Evolution is evidence, not gamification
 
@@ -193,6 +199,8 @@ Implemented on the `feat/cross-platform-employees` development line:
 - a persisted employee evolution ledger, versioned skill registry, dependency graph, and typed memory
   storage;
 - an authenticated `GET /api/v1/bots/:botId/profile` aggregate projection;
+- an authenticated, revision-checked `PATCH /api/v1/bots/:botId/profile` command and profile editor
+  for role and biography only, with content-free evolution/realtime metadata;
 - automatic creation events for new employees and a safe backfill for existing Bots;
 - a responsive seven-view employee profile opened from the Bot list, channel roster, and message
   authors;
@@ -200,7 +208,7 @@ Implemented on the `feat/cross-platform-employees` development line:
   newest-first presentation, and inspectable event/source/evidence identifiers;
 - structured Run progress presented as decision summaries rather than private chain-of-thought;
 - an authenticated export preview and checksum-protected JSON template containing only role,
-  appearance, execution preference, and verified skills;
+  descriptive biography, appearance, execution preference, and verified skills;
 - structural exclusion of identity, authority, memory, and work history, plus blocking checks for
   credential-like text, private keys, and user-specific local paths;
 - a 2 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill

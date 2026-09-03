@@ -32,6 +32,7 @@ HTTPS for remote access.
 | `GET` | `/api/v1/bots` | List Bots |
 | `POST` | `/api/v1/bots` | Create a Bot and its initial evolution event |
 | `GET` | `/api/v1/bots/:botId/profile` | Read the complete Employee profile projection |
+| `PATCH` | `/api/v1/bots/:botId/profile` | Update role and biography at an expected revision |
 | `POST` | `/api/v1/bots/:botId/memories` | Create one bounded Owner memory |
 | `PATCH` | `/api/v1/bots/:botId/memories/:memoryId` | Update one memory at an expected revision |
 | `DELETE` | `/api/v1/bots/:botId/memories/:memoryId` | Delete one reviewed memory at an expected revision |
@@ -91,6 +92,7 @@ in one transaction; a Bot is the Employee identity, not a second wrapper around 
 `GET /api/v1/bots/:botId/profile` returns:
 
 - `employee`: identity, role, state, appearance, and fixed execution configuration;
+- `details`: descriptive biography, Server revision, and last update time;
 - `evolution`: append-only, source- and evidence-backed changes;
 - `skills`: versions, dependencies, capability requirements, state, and confidence;
 - `memories`: typed Owner records with sensitivity, portability, provenance, and revision;
@@ -103,6 +105,26 @@ Decision records come only from persisted `RUN_PROGRESS` events. They expose sta
 observations, concise action explanations, and next actions—not hidden chain-of-thought, provider
 tokens, prompts, or secrets. Skill confidence and memory portability never grant Worker Host
 authority.
+
+### Update descriptive profile details
+
+`PATCH /api/v1/bots/:botId/profile` accepts only the complete role and biography plus the revision
+the Owner inspected:
+
+```json
+{
+  "role": "Evidence reviewer",
+  "description": "Review evidence and document limitations before reporting conclusions.",
+  "expectedRevision": 1
+}
+```
+
+The Server trims both strings, requires a non-blank role of at most 160 characters, and limits the
+biography to 2,000 characters. A stale revision returns `409`; an unchanged update or an
+authority-bearing extra field returns `422`. The successful transaction increments the revision
+and appends an evolution event that stores changed field names, not biography text. Workspace SSE
+then publishes only the Employee id and affected sections. Name, model policy, Worker Host,
+appearance, skill state, and permission grants are deliberately outside this command.
 
 ## Owner-managed memory
 
@@ -199,8 +221,9 @@ Node, route work, alter approval policy, or grant tools.
 
 ## Employee export, import, and activation
 
-Export preview lists verified skills, capability requests, checksum, exclusions, and blockers.
-The v1 template structurally excludes source identity, ownership, all memories, Runs, evolution,
+Export preview lists the role, descriptive biography, verified skills, capability requests,
+checksum, exclusions, and blockers. The v1 template structurally excludes source identity,
+ownership, all memories, Runs, evolution,
 decisions, artifacts, approvals, Node identity, host binding, credentials, sessions, and authority.
 Free text is scanned for credential-like values, bearer tokens, private keys, and local paths.
 A blocked export returns `422`.

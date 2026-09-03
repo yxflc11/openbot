@@ -26,6 +26,7 @@
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
 | `GET` | `/api/v1/bots/:botId/profile` | 读取数字员工档案、进化、技能、记忆与工作记录 |
+| `PATCH` | `/api/v1/bots/:botId/profile` | 按预期 revision 修改职责与简介 |
 | `POST` | `/api/v1/bots/:botId/memories` | 新增一条有界 Owner 记忆 |
 | `PATCH` | `/api/v1/bots/:botId/memories/:memoryId` | 按预期 revision 更新一条记忆 |
 | `DELETE` | `/api/v1/bots/:botId/memories/:memoryId` | 按预期 revision 删除一条已确认记忆 |
@@ -93,6 +94,7 @@ secret，不等于生产级持有证明身份。能力声明本身仍不授予�
 `GET /api/v1/bots/:botId/profile` 返回 Owner 可见的数字员工聚合投影：
 
 - `employee`：姓名、职责、状态、外观和固定执行配置；
+- `details`：说明性简介、Server revision 和最后更新时间；
 - `evolution`：有来源和证据引用的追加式进化事件；
 - `skills`：版本、依赖、所需能力、验证状态与证据置信度；
 - `memories`：按类型、敏感度和可迁移策略分类的记忆；
@@ -104,6 +106,23 @@ secret，不等于生产级持有证明身份。能力声明本身仍不授予�
 `records.decisions` 只来自 Worker Host 上报并持久化的 `RUN_PROGRESS` 事件，用于解释阶段、已观察事实和下一步动作。它不是模型原始思维链，也不允许 Provider 把隐藏提示、密钥或私有推理写入其中。
 
 技能的 `confidence` 表示证据质量，不会授予电脑权限；真正的执行权限仍由 Server 的 Node 路由、策略、审批和后续 capability lease 独立决定。记忆的 `portability` 也只是导出候选策略，导出时仍需重新过滤和 Owner 确认。
+
+### 修改说明性主页详情
+
+`PATCH /api/v1/bots/:botId/profile` 只接受 Owner 已检查的完整职责、简介和 revision：
+
+```json
+{
+  "role": "证据审核员",
+  "description": "先审核证据并记录限制，再输出结论。",
+  "expectedRevision": 1
+}
+```
+
+Server 会去除两端空白，要求职责非空且最多 160 字符，简介最多 2,000 字符。旧 revision 返回
+`409`；没有实际变化或夹带权限字段返回 `422`。成功事务会增加 revision，并追加只记录变更字段名、
+不保存简介正文的进化事件；Workspace SSE 也只发送员工 id 与受影响分区。显示名、模型策略、工作
+主机、外观、技能状态和授权明确不属于这个命令。
 
 ## Owner 管理员工记忆
 
@@ -196,7 +215,7 @@ Node、Provider、路由、审批策略或主机授权。完整技能目录将�
 
 ## 导出安全员工模板
 
-`GET /api/v1/bots/:botId/export/preview` 先返回将要包含的已验证技能、所需能力、校验和、
+`GET /api/v1/bots/:botId/export/preview` 先返回将要包含的职责、说明性简介、已验证技能、所需能力、校验和、
 明确排除项和阻止原因。v1 默认模板不包含任何记忆，也不包含来源员工 ID、所有权、Run、
 进化历史、决策、产物、审批、Node 身份、主机绑定、凭证、Session 或能力授权。
 

@@ -27,3 +27,5 @@ OpenBot 的每项行为变化都要先证明已经调研维护中的开源代码
 随后，[Owner 技能审核界面](owner-skill-review-surface.md)把已有的权威技能生命周期映射成可检查
 的档案流程，但不会安装可执行代码。[员工进化档案](employee-evolution-archive.md)明确注明 Hermes
 的启发来源，并把其真实日期旅程交互适配到 OpenBot 仅追加的 Server 记录。
+[Owner 管理员工主页详情](owner-employee-profile-details.md)审查继续复用现有 revision 变化路径及
+Hermes/Kubernetes 的冲突语义，只开放说明性字段。

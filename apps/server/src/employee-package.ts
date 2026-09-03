@@ -93,6 +93,7 @@ export function buildEmployeeTemplate(
     employee: {
       name: profile.employee.name,
       role: profile.employee.role,
+      description: profile.details.description,
       ...(profile.employee.appearance ? { appearance: profile.employee.appearance } : {}),
     },
     configuration: {
@@ -552,6 +553,9 @@ function scanPortableFields(payload: EmployeeTemplatePayload): EmployeeExportFin
   const fields = [
     { location: "employee.name", value: payload.employee.name },
     { location: "employee.role", value: payload.employee.role },
+    ...(payload.employee.description === undefined
+      ? []
+      : [{ location: "employee.description", value: payload.employee.description }]),
     ...payload.skills.flatMap((skill, index) => [
       { location: `skills[${index}].slug`, value: skill.slug },
       { location: `skills[${index}].name`, value: skill.name },

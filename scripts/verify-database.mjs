@@ -79,6 +79,47 @@ try {
     computerProfile: "none",
   });
   sourceEmployeeId = source.id;
+  const concurrentProfileUpdates = await Promise.allSettled([
+    store.updateEmployeeProfileDetails(source.id, {
+      role: "Database profile verification",
+      description: "Disposable profile used to verify compare-and-swap updates.",
+      expectedRevision: 1,
+    }),
+    store.updateEmployeeProfileDetails(source.id, {
+      role: "Stale database profile writer",
+      description: "This concurrent overwrite must lose.",
+      expectedRevision: 1,
+    }),
+  ]);
+  const successfulProfileUpdates = concurrentProfileUpdates.filter(
+    (item) => item.status === "fulfilled",
+  );
+  const failedProfileUpdates = concurrentProfileUpdates.filter(
+    (item) => item.status === "rejected",
+  );
+  if (successfulProfileUpdates.length !== 1 || failedProfileUpdates.length !== 1) {
+    throw new Error("Concurrent Employee profile updates did not reject one stale revision.");
+  }
+  const winningProfileUpdate = successfulProfileUpdates[0].value;
+  const profileAfterUpdate = await store.getEmployeeProfile(source.id);
+  const [profileAudit] = await first.client`
+    select payload
+    from run_events
+    where bot_id = ${source.id} and type = 'EMPLOYEE_PROFILE_UPDATED'
+    order by created_at desc
+    limit 1
+  `;
+  if (
+    profileAfterUpdate.details.revision !== 2 ||
+    profileAfterUpdate.details.description !== winningProfileUpdate.details.description ||
+    profileAfterUpdate.evolution[0]?.summary.includes(profileAfterUpdate.details.description) ||
+    profileAudit === undefined ||
+    JSON.stringify(profileAudit.payload).includes(profileAfterUpdate.details.description) ||
+    JSON.stringify(Object.keys(profileAudit.payload).sort()) !==
+      JSON.stringify(["changedFields", "revision"])
+  ) {
+    throw new Error("Employee profile revision or content-free evolution verification failed.");
+  }
   const candidate = await store.createEmployeeSkill(source.id, {
     slug: `database-import-${employeeVerificationId}`,
     name: "Database import verification",
@@ -179,6 +220,7 @@ try {
     importedProfile.skills[0]?.state !== "candidate" ||
     importedProfile.skills[0]?.source !== "imported" ||
     importedProfile.skills[0]?.confidence !== 0 ||
+    importedProfile.details.description !== profileAfterUpdate.details.description ||
     importedProfile.memories.length !== 0
   ) {
     throw new Error("Reviewed Employee activation did not preserve its zero-authority boundary.");

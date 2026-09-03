@@ -25,6 +25,7 @@ import {
   loginInputSchema,
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeMemoryInputSchema,
+  updateEmployeeProfileDetailsInputSchema,
   updateEmployeeSkillStateInputSchema,
   type DsseEnvelope,
   type EmployeeTemplatePackage,
@@ -491,6 +492,18 @@ export function createApp(dependencies: AppDependencies) {
       profile: await dependencies.store.getEmployeeProfile(context.req.param("botId")),
     }),
   );
+
+  app.patch("/api/v1/bots/:botId/profile", async (context) => {
+    const input = await parseRequest(context.req.raw, updateEmployeeProfileDetailsInputSchema);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.updateEmployeeProfileDetails(botId, input);
+    publishEmployeeProfileChanged(workspaceRealtime, botId, [
+      "identity",
+      "configuration",
+      "evolution",
+    ]);
+    return context.json(result);
+  });
 
   app.post("/api/v1/bots/:botId/skills", async (context) => {
     const input = await parseRequest(context.req.raw, createEmployeeSkillInputSchema);

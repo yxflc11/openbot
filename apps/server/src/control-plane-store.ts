@@ -17,12 +17,14 @@ import type {
   EmployeeMemoryDeletionResult,
   EmployeeMemoryMutationResult,
   EmployeeSkillMutationResult,
+  EmployeeProfileDetailsMutationResult,
   ExecutionNode,
   Message,
   Run,
   RunProgress,
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
+  UpdateEmployeeProfileDetailsInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
 import type { EmployeeTemplatePackage } from "@openbot/protocol";
@@ -69,6 +71,10 @@ export interface ControlPlaneStore {
   listChannels(): Promise<Channel[]>;
   listBots(): Promise<Bot[]>;
   getEmployeeProfile(botId: string): Promise<EmployeeProfile>;
+  updateEmployeeProfileDetails(
+    botId: string,
+    input: UpdateEmployeeProfileDetailsInput,
+  ): Promise<EmployeeProfileDetailsMutationResult>;
   listMessages(channelId: string): Promise<Message[]>;
   listRuns(channelId?: string): Promise<Run[]>;
   listApprovals(): Promise<Approval[]>;

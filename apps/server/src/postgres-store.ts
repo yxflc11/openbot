@@ -22,6 +22,8 @@ import type {
   EmployeeMemoryEvent,
   EmployeeMemoryMutationResult,
   EmployeeProfile,
+  EmployeeProfileChangedField,
+  EmployeeProfileDetailsMutationResult,
   EmployeeSkill,
   EmployeeSkillMutationResult,
   ExecutionNode,
@@ -30,6 +32,7 @@ import type {
   RunProgress,
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
+  UpdateEmployeeProfileDetailsInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
 import {
@@ -212,6 +215,11 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     const decisions = progressRows.flatMap(toEmployeeDecisionTrace);
     return {
       employee: toBot(botRow),
+      details: {
+        description: botRow.description,
+        revision: botRow.profileRevision,
+        updatedAt: botRow.updatedAt.toISOString(),
+      },
       evolution: evolutionRows.map(toEmployeeEvolutionEvent),
       skills: employeeSkillsProjection,
       memories: memoryRows.map(toEmployeeMemory),
@@ -234,6 +242,77 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         portabilityFormat: "openbot.employee/v1",
       },
     };
+  }
+
+  async updateEmployeeProfileDetails(
+    botId: string,
+    input: UpdateEmployeeProfileDetailsInput,
+  ): Promise<EmployeeProfileDetailsMutationResult> {
+    const role = input.role.trim();
+    const description = input.description.trim();
+
+    return this.#db.transaction(async (transaction) => {
+      const [current] = await transaction.select().from(bots).where(eq(bots.id, botId)).limit(1);
+      if (current === undefined) throw new StoreNotFoundError("Bot not found.");
+      if (current.profileRevision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The Employee profile changed while it was being edited. Reload and review the current values.",
+        );
+      }
+
+      const changedFields: EmployeeProfileChangedField[] = [];
+      if (current.role !== role) changedFields.push("role");
+      if (current.description !== description) changedFields.push("description");
+      if (changedFields.length === 0) {
+        throw new StoreValidationError("At least one Employee profile field must change.");
+      }
+
+      const now = new Date();
+      const nextRevision = current.profileRevision + 1;
+      const [updated] = await transaction
+        .update(bots)
+        .set({ role, description, profileRevision: nextRevision, updatedAt: now })
+        .where(and(eq(bots.id, botId), eq(bots.profileRevision, input.expectedRevision)))
+        .returning();
+      if (updated === undefined) {
+        throw new StoreConflictError(
+          "The Employee profile changed while it was being edited. Reload and review the current values.",
+        );
+      }
+
+      const [evolution] = await transaction
+        .insert(employeeEvolutionEvents)
+        .values({
+          id: randomUUID(),
+          botId,
+          type: changedFields.includes("role") ? "role_changed" : "configuration_changed",
+          title: changedFields.includes("role") ? "Employee role updated" : "Profile updated",
+          summary: `Owner updated: ${changedFields.join(", ")}.`,
+          source: "manual",
+          evidence: [],
+          createdAt: now,
+        })
+        .returning();
+      if (evolution === undefined) throw new Error("Evolution event was not created.");
+
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        botId,
+        type: "EMPLOYEE_PROFILE_UPDATED",
+        payload: { changedFields, revision: nextRevision },
+        createdAt: now,
+      });
+
+      return {
+        employee: toBot(updated),
+        details: {
+          description: updated.description,
+          revision: updated.profileRevision,
+          updatedAt: updated.updatedAt.toISOString(),
+        },
+        evolution: toEmployeeEvolutionEvent(evolution),
+      };
+    });
   }
 
   async listMessages(channelId: string): Promise<Message[]> {
@@ -434,6 +513,8 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           id: randomUUID(),
           name: employeeName,
           role: payload.employee.role,
+          description: payload.employee.description ?? "",
+          profileRevision: 1,
           status: "idle" as const,
           computerProfile: payload.configuration.recommendedExecutionProfile,
           configuration:

@@ -21,6 +21,7 @@ import {
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeSkillStateInputSchema,
   updateEmployeeMemoryInputSchema,
+  updateEmployeeProfileDetailsInputSchema,
   deleteEmployeeMemoryInputSchema,
 } from "./index.js";
 
@@ -578,6 +579,33 @@ describe("employee memory commands", () => {
     expect(
       deleteEmployeeMemoryInputSchema.safeParse({ expectedRevision: 2, ownerReviewed: false })
         .success,
+    ).toBe(false);
+  });
+});
+
+describe("Employee profile details commands", () => {
+  const input = {
+    role: "Evidence reviewer",
+    description: "Review evidence and document limitations.",
+    expectedRevision: 2,
+  };
+
+  it("accepts only bounded descriptive fields with an optimistic revision", () => {
+    expect(updateEmployeeProfileDetailsInputSchema.parse(input)).toEqual(input);
+    expect(
+      updateEmployeeProfileDetailsInputSchema.safeParse({
+        ...input,
+        computerProfile: "macos-cua",
+      }).success,
+    ).toBe(false);
+    expect(updateEmployeeProfileDetailsInputSchema.safeParse({ ...input, role: " " }).success).toBe(
+      false,
+    );
+    expect(
+      updateEmployeeProfileDetailsInputSchema.safeParse({
+        ...input,
+        description: "x".repeat(2001),
+      }).success,
     ).toBe(false);
   });
 });

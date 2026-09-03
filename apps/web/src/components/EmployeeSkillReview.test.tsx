@@ -12,6 +12,7 @@ const profile: EmployeeProfile = {
     computerProfile: "docker-linux",
     createdAt: "2026-09-03T00:00:00.000Z",
   },
+  details: { description: "", revision: 1, updatedAt: "2026-09-03T00:00:00.000Z" },
   evolution: [],
   skills: [
     {

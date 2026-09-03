@@ -25,6 +25,9 @@ describe("employee template package", () => {
       expect.objectContaining({ slug: "browse-web", dependencySlugs: [] }),
     ]);
     expect(parsed.payload.skills).toHaveLength(1);
+    expect(parsed.payload.employee.description).toBe(
+      "Navigate approved sites and return evidence-backed outcomes.",
+    );
     expect(parsed.payload.portability).toEqual({
       identity: "new-on-import",
       authority: "none",
@@ -58,6 +61,21 @@ describe("employee template package", () => {
       expect.objectContaining({
         code: "credential-like-content",
         location: "employee.role",
+      }),
+    ]);
+  });
+
+  it("scans the portable profile biography before export", () => {
+    const profile = createProfile();
+    profile.details.description = "Use api_key=super-secret-value for this workflow";
+
+    const result = buildEmployeeTemplate(profile, { generatedAt: timestamp, packageId });
+
+    expect(result.preview.blocked).toBe(true);
+    expect(result.preview.findings).toEqual([
+      expect.objectContaining({
+        code: "credential-like-content",
+        location: "employee.description",
       }),
     ]);
   });
@@ -330,6 +348,11 @@ function createProfile(): EmployeeProfile {
         accent: "green",
       },
       createdAt: timestamp,
+    },
+    details: {
+      description: "Navigate approved sites and return evidence-backed outcomes.",
+      revision: 1,
+      updatedAt: timestamp,
     },
     evolution: [
       {

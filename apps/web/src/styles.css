@@ -2659,6 +2659,98 @@ select:focus-visible {
   color: #69717a;
   font-size: 10px;
 }
+.employee-profile-details-form {
+  display: grid;
+  gap: 15px;
+  max-width: 760px;
+  margin-bottom: 24px;
+  padding: 18px;
+  border: 1px solid #dfe3e8;
+  border-radius: 8px;
+  background: #fbfbfc;
+}
+.employee-profile-details-form > header,
+.employee-profile-details-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.employee-profile-details-form h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.employee-profile-details-form header p {
+  margin: 5px 0 0;
+  color: #747b84;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.employee-profile-details-form header > span,
+.employee-profile-details-form label small {
+  color: #8e949b;
+  font-size: 9px;
+}
+.employee-profile-details-form label {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 60px;
+  align-items: start;
+  gap: 12px;
+  color: #515860;
+  font-size: 10px;
+  font-weight: 650;
+}
+.employee-profile-details-form input,
+.employee-profile-details-form textarea {
+  width: 100%;
+  border: 1px solid #d6dbe1;
+  border-radius: 7px;
+  color: #24282d;
+  background: #fff;
+}
+.employee-profile-details-form input {
+  min-height: 36px;
+  padding: 0 10px;
+}
+.employee-profile-details-form textarea {
+  min-height: 108px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+.employee-profile-details-form label small {
+  padding-top: 9px;
+  text-align: right;
+}
+.employee-profile-details-actions {
+  justify-content: flex-end;
+}
+.employee-profile-stale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid #e4c69d;
+  border-radius: 7px;
+  color: #775127;
+  background: #fff9f0;
+}
+.employee-profile-stale p {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.employee-profile-stale button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 9px;
+}
+.employee-profile-details-actions button {
+  min-height: 34px;
+  padding: 0 13px;
+  font-size: 10px;
+}
 .employee-config-list {
   margin: 0;
   border-top: 1px solid var(--line);
@@ -2977,6 +3069,14 @@ select:focus-visible {
   .employee-config-list > div {
     grid-template-columns: 1fr;
     gap: 7px;
+  }
+  .employee-profile-details-form label {
+    grid-template-columns: 1fr auto;
+  }
+  .employee-profile-details-form input,
+  .employee-profile-details-form textarea {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
   .employee-memory-fields,
   .employee-memory-list article {

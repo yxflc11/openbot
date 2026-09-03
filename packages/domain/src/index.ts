@@ -231,6 +231,13 @@ export interface EmployeeDecisionTrace extends RunProgress {
 
 export interface EmployeeProfile {
   employee: Bot;
+  details: {
+    /** Owner-authored routing biography. It is descriptive and grants no authority. */
+    description: string;
+    /** Server-owned compare-and-swap revision for role and description edits. */
+    revision: number;
+    updatedAt: string;
+  };
   evolution: EmployeeEvolutionEvent[];
   skills: EmployeeSkill[];
   memories: EmployeeMemory[];
@@ -251,6 +258,20 @@ export interface EmployeeProfile {
     executionProfile: Bot["computerProfile"];
     portabilityFormat: "openbot.employee/v1";
   };
+}
+
+export type EmployeeProfileChangedField = "role" | "description";
+
+export interface UpdateEmployeeProfileDetailsInput {
+  role: string;
+  description: string;
+  expectedRevision: number;
+}
+
+export interface EmployeeProfileDetailsMutationResult {
+  employee: Bot;
+  details: EmployeeProfile["details"];
+  evolution: EmployeeEvolutionEvent;
 }
 
 export type EmployeeProfileSection =

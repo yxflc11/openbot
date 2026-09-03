@@ -177,6 +177,7 @@ function createProfile(): EmployeeProfile {
       computerProfile: "docker-linux",
       createdAt: timestamp,
     },
+    details: { description: "", revision: 1, updatedAt: timestamp },
     evolution: [],
     skills: [],
     memories: [],

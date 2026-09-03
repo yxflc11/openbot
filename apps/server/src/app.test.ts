@@ -644,6 +644,103 @@ describe("server app", () => {
     ]);
   });
 
+  it("updates descriptive Employee profile fields with revision conflicts", async () => {
+    const store = createTestStore();
+    const employee = await store.createBot({
+      name: "Profile Worker",
+      role: "General operations",
+      computerProfile: "docker-linux",
+    });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, workspaceRealtime });
+
+    const unauthenticated = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 1,
+      }),
+    });
+    expect(unauthenticated.status).toBe(401);
+
+    const cookie = await login(app);
+    const updated = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 1,
+      }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      employee: { id: employee.id, role: "Evidence reviewer" },
+      details: {
+        description: "Review evidence without changing host authority.",
+        revision: 2,
+      },
+      evolution: {
+        type: "role_changed",
+        summary: "Owner updated: role, description.",
+        evidence: [],
+      },
+    });
+
+    const stale = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Stale writer",
+        description: "Should not win.",
+        expectedRevision: 1,
+      }),
+    });
+    expect(stale.status).toBe(409);
+
+    const unchanged = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 2,
+      }),
+    });
+    expect(unchanged.status).toBe(422);
+
+    const authoritySmuggling = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 2,
+        computerProfile: "macos-cua",
+      }),
+    });
+    expect(authoritySmuggling.status).toBe(422);
+
+    const profile = await store.getEmployeeProfile(employee.id);
+    expect(profile.employee.role).toBe("Evidence reviewer");
+    expect(profile.details).toMatchObject({ revision: 2 });
+    expect(profile.evolution.at(-1)).toMatchObject({
+      summary: "Owner updated: role, description.",
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["identity", "configuration", "evolution"],
+      }),
+    ]);
+    expect(events[0]).not.toHaveProperty("description");
+  });
+
   it("keeps learned skills pending until the Owner reviews an auditable transition", async () => {
     const store = createTestStore();
     const bot = await store.createBot({
@@ -1684,6 +1781,10 @@ function createTestStore(): ControlPlaneStore {
   const skillOwners = new Map<string, string>();
   const memories: EmployeeMemory[] = [];
   const memoryEvents: EmployeeMemoryEvent[] = [];
+  const profileDetails = new Map<
+    string,
+    { description: string; revision: number; updatedAt: string }
+  >();
   const progress: RunProgress[] = [];
   const importReceipts = new Map<
     string,
@@ -1704,8 +1805,11 @@ function createTestStore(): ControlPlaneStore {
       const bot = bots.find((item) => item.id === botId);
       if (bot === undefined) throw new StoreNotFoundError("Bot not found.");
       const employeeRuns = runs.filter((run) => run.botId === botId);
+      const details = profileDetails.get(botId);
+      if (details === undefined) throw new Error("Employee profile details were not initialized.");
       return {
         employee: bot,
+        details,
         evolution: evolution.filter((event) => event.botId === botId),
         skills: skillAssignments.filter((skill) => skillOwners.get(skill.id) === botId),
         memories: memories.filter((memory) => memory.botId === botId),
@@ -1779,6 +1883,11 @@ function createTestStore(): ControlPlaneStore {
         createdAt: new Date().toISOString(),
       };
       bots.push(bot);
+      profileDetails.set(bot.id, {
+        description: "",
+        revision: 1,
+        updatedAt: bot.createdAt,
+      });
       evolution.push({
         id: id(),
         botId: bot.id,
@@ -1827,6 +1936,11 @@ function createTestStore(): ControlPlaneStore {
         createdAt: now,
       };
       bots.push(bot);
+      profileDetails.set(bot.id, {
+        description: input.document.payload.employee.description ?? "",
+        revision: 1,
+        updatedAt: now,
+      });
       const importedSkills = new Map<string, EmployeeSkill>();
       for (const portableSkill of input.document.payload.skills) {
         const skill: EmployeeSkill = {
@@ -1949,6 +2063,42 @@ function createTestStore(): ControlPlaneStore {
       skillOwners.set(skill.id, botId);
       evolution.push(event);
       return { skill, evolution: event };
+    },
+    async updateEmployeeProfileDetails(botId, input) {
+      const bot = bots.find((candidate) => candidate.id === botId);
+      const details = profileDetails.get(botId);
+      if (bot === undefined || details === undefined) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      if (details.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The Employee profile changed while it was being edited. Reload and review the current values.",
+        );
+      }
+      const role = input.role.trim();
+      const description = input.description.trim();
+      const changedFields: Array<"role" | "description"> = [];
+      if (role !== bot.role) changedFields.push("role");
+      if (description !== details.description) changedFields.push("description");
+      if (changedFields.length === 0) {
+        throw new StoreValidationError("At least one Employee profile field must change.");
+      }
+      bot.role = role;
+      details.description = description;
+      details.revision += 1;
+      details.updatedAt = new Date().toISOString();
+      const event: EmployeeEvolutionEvent = {
+        id: id(),
+        botId,
+        type: changedFields.includes("role") ? "role_changed" : "configuration_changed",
+        title: changedFields.includes("role") ? "Employee role updated" : "Profile updated",
+        summary: `Owner updated: ${changedFields.join(", ")}.`,
+        source: "manual",
+        evidence: [],
+        createdAt: details.updatedAt,
+      };
+      evolution.push(event);
+      return { employee: bot, details: { ...details }, evolution: event };
     },
     async updateEmployeeSkillState(botId, skillId, input) {
       if (!bots.some((bot) => bot.id === botId)) {

@@ -18,6 +18,7 @@ import type {
   EmployeeMemoryDeletionResult,
   EmployeeMemoryMutationResult,
   EmployeeProfile,
+  EmployeeProfileDetailsMutationResult,
   EmployeeProfileSection,
   EmployeeSkillMutationResult,
   ExecutionNode,
@@ -29,6 +30,7 @@ import type {
   RunProgress,
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
+  UpdateEmployeeProfileDetailsInput,
   UpdateEmployeeSkillStateInput,
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
@@ -115,6 +117,20 @@ export async function getEmployeeProfile(
     signal ? { signal } : undefined,
   );
   return result.profile;
+}
+
+export async function updateEmployeeProfileDetails(
+  botId: string,
+  input: UpdateEmployeeProfileDetailsInput,
+): Promise<EmployeeProfileDetailsMutationResult> {
+  return request<EmployeeProfileDetailsMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/profile`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function createEmployeeMemory(

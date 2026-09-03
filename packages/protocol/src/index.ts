@@ -580,6 +580,15 @@ export const updateEmployeeSkillStateInputSchema = z.discriminatedUnion("state",
     .strict(),
 ]);
 
+/** Descriptive Employee fields only. Authority-bearing configuration has separate controls. */
+export const updateEmployeeProfileDetailsInputSchema = z
+  .object({
+    role: z.string().trim().min(1).max(160),
+    description: z.string().trim().max(2000),
+    expectedRevision: z.number().int().min(1),
+  })
+  .strict();
+
 export const employeeMemoryKindSchema = z.enum([
   "working",
   "episodic",
@@ -737,6 +746,7 @@ export const employeeTemplatePayloadSchema = z
       .object({
         name: z.string().trim().min(1).max(64),
         role: z.string().trim().min(1).max(160),
+        description: z.string().trim().max(2000).optional(),
         appearance: botAppearanceSchema.strict().optional(),
       })
       .strict(),

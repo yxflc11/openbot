@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   EmployeeMemoryPanel,
+  EmployeeProfileDetailsEditor,
   EmployeeProfileView,
   profileTabForNavigationKey,
 } from "./EmployeeProfileView";
@@ -15,6 +16,11 @@ const profile: EmployeeProfile = {
     status: "idle",
     computerProfile: "coder",
     createdAt: "2026-09-03T00:00:00.000Z",
+  },
+  details: {
+    description: "Build and verify changes within the assigned repository.",
+    revision: 1,
+    updatedAt: "2026-09-03T00:00:00.000Z",
   },
   evolution: [],
   skills: [],
@@ -63,5 +69,17 @@ describe("EmployeeProfileView", () => {
     expect(html).toContain("添加记忆");
     expect(html).toContain("模型不能直接写入");
     expect(html).toContain("不会进入当前员工模板");
+  });
+
+  it("renders a revision-bound descriptive profile editor without authority controls", () => {
+    const html = renderToStaticMarkup(
+      <EmployeeProfileDetailsEditor profile={profile} onProfileChanged={async () => undefined} />,
+    );
+
+    expect(html).toContain("个人主页");
+    expect(html).toContain("修订 1");
+    expect(html).toContain("Build and verify changes within the assigned repository.");
+    expect(html).toContain("不会授予技能或电脑权限");
+    expect(html).not.toContain('name="computerProfile"');
   });
 });

@@ -36,4 +36,6 @@ the current Hono SSE transport while keeping profile content behind authenticate
 [Owner skill review surface](owner-skill-review-surface.md) then maps the already-authoritative
 skill lifecycle into an inspectable profile workflow without installing executable code. The
 [Employee evolution archive](employee-evolution-archive.md) explicitly credits Hermes and adapts
-its truthful dated-journey interaction to OpenBot's append-only Server records.
+its truthful dated-journey interaction to OpenBot's append-only Server records. The
+[Owner-managed Employee profile details](owner-employee-profile-details.md) review then reuses the
+existing revision mutation path and Hermes/Kubernetes conflict semantics for descriptive fields.
