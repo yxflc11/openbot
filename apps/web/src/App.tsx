@@ -35,7 +35,7 @@ import { EmployeeProfileView } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
 import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
-import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
+import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import {
@@ -271,6 +271,8 @@ function AuthenticatedWorkspace({
                 counts: { ...current.counts, connectedNodes: nodes.length },
               },
         );
+        // Reconcile any events missed while the browser was disconnected.
+        void refresh();
       },
       onNode(node) {
         setWorkspace((current) => {
@@ -309,7 +311,7 @@ function AuthenticatedWorkspace({
       onRun: projectRun,
       onState: setWorkspaceRealtimeState,
     });
-  }, [projectRun, workspaceReady]);
+  }, [projectRun, refresh, workspaceReady]);
 
   async function handleCreateBot(input: CreateBotInput) {
     const bot = await createBot(input);

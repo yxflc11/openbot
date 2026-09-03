@@ -46,9 +46,20 @@ manifest。能力声明本身仍不授予执行权限。
 }
 ```
 
-成功后 Server 设置 `openbot_session` Cookie：`HttpOnly`、`SameSite=Strict`、`Path=/`，有效期由 `OPENBOT_SESSION_TTL_HOURS` 控制。生产环境必须设置 `OPENBOT_SECURE_COOKIES=true`。数据库只保存随机 Token 的 SHA-256 摘要，不保存 Token 或 Owner 密码；退出与过期会话均无法继续访问 API。
+成功后，loopback HTTP 开发环境设置 `openbot_session` Cookie；HTTPS 环境设置浏览器强制仅限
+主机的 `__Host-openbot_session` Cookie。两者均为 `HttpOnly`、`SameSite=Strict`、`Path=/`，有效期
+由 `OPENBOT_SESSION_TTL_HOURS` 控制；HTTPS Cookie 另带 `Secure`。配置中的非 loopback Origin
+必须使用 HTTPS 且同时启用 `OPENBOT_SECURE_COOKIES=true`，否则 Server 会在监听端口前退出。
+数据库只保存随机 Token 的 SHA-256 摘要，不保存 Token 或 Owner 密码；退出与过期会话均无法
+继续访问 API。
 
-所有非只读请求都必须携带与 `OPENBOT_ALLOWED_ORIGINS` 精确匹配的 `Origin`。登录连续失败五次后，该来源会被临时限制五分钟。当前为单 Owner 模型，不提供注册、找回密码或多用户权限；修改部署密码后应重启 Server，并主动退出现有设备。
+所有非只读请求都必须携带与 `OPENBOT_ALLOWED_ORIGINS` 精确匹配的 `Origin`。登录连续失败五次后，
+该浏览器 Origin 桶会被临时限制五分钟。这只是单进程、部署级保护，不是可信的每 IP 或每设备身份；
+反向代理身份契约与共享限速存储落地前，Server 仍只能部署在可信私网。当前为单 Owner 模型，不
+提供注册、找回密码或多用户权限；修改部署密码后应重启 Server，并主动退出现有设备。
+
+频道与工作区 SSE 每个订阅最多保留 128 个待发送投影。慢客户端达到上限后连接会被关闭，Web
+客户端重连并重新读取数据库权威快照；Server 不会静默丢弃某个事件后继续伪装为连续流。
 
 ## 创建 Bot
 

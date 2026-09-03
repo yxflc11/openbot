@@ -19,13 +19,20 @@ import {
   updateEmployeeSkillStateInputSchema,
 } from "@openbot/protocol";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import {
+  type ControlPlaneStore,
+  StoreConflictError,
+  StoreNotFoundError,
+  StoreValidationError,
+} from "./control-plane-store.js";
 import {
   buildEmployeeTemplate,
   inspectEmployeeTemplate,
@@ -36,14 +43,9 @@ import {
   LoginRateLimitedError,
   type OwnerAuthService,
 } from "./owner-auth.js";
-import {
-  StoreConflictError,
-  StoreNotFoundError,
-  StoreValidationError,
-  type ControlPlaneStore,
-} from "./control-plane-store.js";
-import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
+import { RealtimeEventBuffer } from "./realtime-event-buffer.js";
 import type { RunFrameStore } from "./run-frame-store.js";
+import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
   allowedOrigins: string[];
@@ -60,13 +62,31 @@ export interface AppDependencies {
 }
 
 export const ownerSessionCookie = "openbot_session";
+export const secureOwnerSessionCookie = "__Host-openbot_session";
+
+const maximumPendingRealtimeEvents = 128;
 
 export function createApp(dependencies: AppDependencies) {
   const app = new Hono();
   const realtime = dependencies.realtime ?? new ChannelRealtimeHub();
   const workspaceRealtime = dependencies.workspaceRealtime ?? new WorkspaceRealtimeHub();
+  const sessionCookie = dependencies.secureCookies ? secureOwnerSessionCookie : ownerSessionCookie;
 
   app.use(logger());
+  app.use(
+    secureHeaders({
+      crossOriginResourcePolicy: "same-site",
+      permissionsPolicy: {
+        camera: [],
+        geolocation: [],
+        microphone: [],
+        payment: [],
+        usb: [],
+      },
+      strictTransportSecurity: dependencies.secureCookies,
+      xFrameOptions: "DENY",
+    }),
+  );
   app.use(
     "/api/*",
     cors({
@@ -84,7 +104,7 @@ export function createApp(dependencies: AppDependencies) {
     }
     if (isPublicAuthRoute(context.req.path)) return next();
 
-    const session = await dependencies.auth.authenticate(getCookie(context, ownerSessionCookie));
+    const session = await dependencies.auth.authenticate(getCookie(context, sessionCookie));
     if (!session.authenticated) return context.json({ error: "Authentication required." }, 401);
     return next();
   });
@@ -99,7 +119,7 @@ export function createApp(dependencies: AppDependencies) {
   );
 
   app.get("/api/v1/auth/session", async (context) => {
-    const session = await dependencies.auth.authenticate(getCookie(context, ownerSessionCookie));
+    const session = await dependencies.auth.authenticate(getCookie(context, sessionCookie));
     return context.json(session);
   });
 
@@ -113,7 +133,7 @@ export function createApp(dependencies: AppDependencies) {
       1,
       Math.floor((new Date(result.session.expiresAt).getTime() - Date.now()) / 1000),
     );
-    setCookie(context, ownerSessionCookie, result.token, {
+    setCookie(context, sessionCookie, result.token, {
       httpOnly: true,
       maxAge,
       path: "/",
@@ -124,8 +144,8 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.post("/api/v1/auth/logout", async (context) => {
-    await dependencies.auth.logout(getCookie(context, ownerSessionCookie));
-    deleteCookie(context, ownerSessionCookie, {
+    await dependencies.auth.logout(getCookie(context, sessionCookie));
+    deleteCookie(context, sessionCookie, {
       path: "/",
       sameSite: "Strict",
       secure: dependencies.secureCookies,
@@ -177,11 +197,14 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/workspace/events", (context) =>
     streamSSE(context, async (stream) => {
-      const queued: WorkspaceRealtimeEvent[] = [];
+      const queued = new RealtimeEventBuffer<WorkspaceRealtimeEvent>(maximumPendingRealtimeEvents);
       let wake: (() => void) | undefined;
       let closed = false;
       const unsubscribe = workspaceRealtime.subscribe((event) => {
-        queued.push(event);
+        if (!queued.enqueue(event)) {
+          closed = true;
+          stream.abort();
+        }
         wake?.();
         wake = undefined;
       });
@@ -204,7 +227,7 @@ export function createApp(dependencies: AppDependencies) {
 
       try {
         while (!closed && !stream.aborted) {
-          if (queued.length === 0) {
+          if (queued.empty) {
             const timedOut = await waitForEventOrTimeout((resume) => {
               wake = resume;
             });
@@ -214,7 +237,7 @@ export function createApp(dependencies: AppDependencies) {
             }
           }
 
-          let event = queued.shift();
+          let event = queued.dequeue();
           while (event !== undefined && !closed && !stream.aborted) {
             await stream.writeSSE({
               event: event.type,
@@ -232,7 +255,7 @@ export function createApp(dependencies: AppDependencies) {
                   }),
               data: JSON.stringify(event),
             });
-            event = queued.shift();
+            event = queued.dequeue();
           }
         }
       } finally {
@@ -329,11 +352,14 @@ export function createApp(dependencies: AppDependencies) {
     }
 
     return streamSSE(context, async (stream) => {
-      const queued: ChannelRealtimeEvent[] = [];
+      const queued = new RealtimeEventBuffer<ChannelRealtimeEvent>(maximumPendingRealtimeEvents);
       let wake: (() => void) | undefined;
       let closed = false;
       const unsubscribe = realtime.subscribe(channelId, (event) => {
-        queued.push(event);
+        if (!queued.enqueue(event)) {
+          closed = true;
+          stream.abort();
+        }
         wake?.();
         wake = undefined;
       });
@@ -356,7 +382,7 @@ export function createApp(dependencies: AppDependencies) {
 
       try {
         while (!closed && !stream.aborted) {
-          if (queued.length === 0) {
+          if (queued.empty) {
             const timedOut = await waitForEventOrTimeout((resume) => {
               wake = resume;
             });
@@ -366,7 +392,7 @@ export function createApp(dependencies: AppDependencies) {
             }
           }
 
-          let event = queued.shift();
+          let event = queued.dequeue();
           while (event !== undefined && !closed && !stream.aborted) {
             await stream.writeSSE({
               event: event.type,
@@ -381,7 +407,7 @@ export function createApp(dependencies: AppDependencies) {
                       : {}),
               data: JSON.stringify(event),
             });
-            event = queued.shift();
+            event = queued.dequeue();
           }
         }
       } finally {

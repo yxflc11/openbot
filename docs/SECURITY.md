@@ -80,8 +80,9 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 - PostgreSQL、频道、线程、策略、凭证和审计只存在于 Server 控制域。
 - 默认只经 Tailscale/私网 HTTPS 访问；禁止公开数据库和内部 API。
 - M0 使用单 Owner 本地认证：Owner 密码来自 Server 环境变量，不写入数据库；随机 Session Token 只进入 `HttpOnly`、`SameSite=Strict` Cookie，数据库只保存 SHA-256 摘要。
-- 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录连续失败会被临时限速。
-- Session 默认 12 小时过期，支持主动撤销；生产 HTTPS 部署必须启用 Secure Cookie。审批等高风险操作仍需要后续增加重新验证或设备绑定。
+- 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录连续失败会在单 Server、浏览器 Origin 桶内临时限速；这不是可信的每 IP/每设备边界，不能代替私网部署。
+- Session 默认 12 小时过期，支持主动撤销。非 loopback Origin 必须使用 HTTPS 并启用 Secure Cookie，否则 Server 启动失败；HTTPS 会话使用 `__Host-` 前缀 Cookie 和 HSTS。审批等高风险操作仍需要后续增加重新验证或设备绑定。
+- 控制面复用 Hono 的维护中安全响应头中间件。每个 SSE 订阅的待发送事件固定为最多 128 项；溢出会终止连接，客户端必须从数据库权威快照恢复，不能静默跳过控制事件。
 - Server 签发的 view/control/upload token 都绑定用户、run、node、用途和 TTL。
 - 备份加密并定期在另一台机器验证恢复。
 

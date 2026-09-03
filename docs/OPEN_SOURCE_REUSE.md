@@ -65,6 +65,9 @@ expansion until its upstream and license review is recorded.
 | Accessible profile navigation and modal review | [WAI-ARIA APG `7e4034b2`](https://github.com/w3c/aria-practices/tree/7e4034b262bc0d25332e330d8a582aaf34113829), [React Spectrum `50279a10`](https://github.com/adobe/react-spectrum/tree/50279a10ab998572e240e44aa36f84a15c7c4f99), and [WCAG technique H102](https://www.w3.org/WAI/WCAG22/Techniques/html/H102) | W3C Software and Document License; Apache-2.0 | Adopt the standard tab roles/keyboard model and the native modal dialog lifecycle. Keep a thin local React bridge because these fixed controls do not justify a second component/style stack. No upstream source was copied. |
 | Contributor intake and review evidence | [OpenClaw `41344e0b`](https://github.com/openclaw/openclaw/tree/41344e0b7dbd5629f797c535c985fd87a323abe5), [Hermes Agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d), [MCP `d4a6fc63`](https://github.com/modelcontextprotocol/modelcontextprotocol/tree/d4a6fc63648798ad6dc6daab6f79e73c9df14699), and [GitHub Issue Forms](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms) | MIT; Apache-2.0/CC-BY-4.0; documentation reference | Adapt issue-first routing, priority guidance, platform evidence, structured forms, and AI-assistance disclosure to OpenBot's security boundaries. No template text or source was copied. |
 | Employee package authenticity | [DSSE `1d3370f6`](https://github.com/secure-systems-lab/dsse/tree/1d3370f62565bca041e97c8310b873ac340edc2e), [Sigstore JS `769a53d8`](https://github.com/sigstore/sigstore-js/tree/769a53d8713248a8bf49edfc2a5d1955b0dcc24d), and [in-toto Attestation `2dcd055e`](https://github.com/in-toto/attestation/tree/2dcd055e9f72e746687c306e35f4e59720ff45be) | Apache-2.0 | Adopt DSSE and pin `@sigstore/core` 4.0.1 for pre-authentication encoding. OpenBot implements only the package-specific Ed25519 key boundary and strict employee parsing. in-toto/Sigstore provenance and TUF-based distribution remain separate future adapters. No upstream source was copied. |
+| Browser control-plane security | [Hono `e2740d5a`](https://github.com/honojs/hono/tree/e2740d5a1bd0b4254e517e3af8b60789284bc7bd) and [OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035) | MIT; documentation CC BY-SA 4.0 | Reuse Hono 4.13.5 `secureHeaders`; apply OWASP's Secure/HttpOnly/SameSite, exact-Origin, TLS, and `__Host-` guidance. Remote misconfiguration now fails at startup. No upstream source or text was copied. |
+| Realtime overload recovery | [Hono streaming `e2740d5a`](https://github.com/honojs/hono/blob/e2740d5a1bd0b4254e517e3af8b60789284bc7bd/src/utils/stream.ts) | MIT | Keep Hono's backpressure-aware writer and add only the missing OpenBot per-subscriber policy: a 128-event bound, abort on overflow, and authoritative snapshot recovery. No upstream source was copied. |
+| Login rate-limit candidates | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) and [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | Deferred. Neither package can establish a trustworthy remote identity without an authenticated proxy contract. The current small limiter is documented as deployment-scoped; a later adapter must normalize IPv4/IPv6, use shared storage, and fail closed. |
 | Office visualization | Public Tencent Marvis product imagery supplied by the project owner | No reusable source-code license identified | Visual inspiration only. No Marvis code or assets are incorporated; the office remains a deferred optional plugin. |
 
 ## Findings applied to the current code
@@ -95,6 +98,8 @@ expansion until its upstream and license review is recorded.
 - Employee profile tabs now expose the WAI-ARIA relationships and horizontal keyboard behavior;
   create/import/export dialogs use native modality, Escape handling, focus containment, and focus
   restoration. See [Accessibility baseline](ACCESSIBILITY.md).
+- Browser sessions now fail closed for insecure remote origins, reuse Hono security headers, use a
+  `__Host-` cookie under HTTPS, and bound every SSE subscriber with snapshot recovery.
 
 ## Known gaps from the audit
 
@@ -114,6 +119,8 @@ expansion until its upstream and license review is recorded.
   the migration tooling must be upgraded or replaced after an upstream review.
 - Accessibility still needs real screen-reader, forced-colors, zoom/reflow, and custom-overlay
   evidence before OpenBot can make a conformance claim.
+- Login throttling is not yet a trusted per-device or distributed boundary. Proxy identity,
+  IPv4/IPv6 normalization, shared storage, and lockout-notification semantics remain open.
 
 ## Pull-request evidence
 

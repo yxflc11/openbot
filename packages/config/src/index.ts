@@ -1,3 +1,4 @@
+import { URL } from "node:url";
 import { z } from "zod";
 
 const portSchema = z.coerce.number().int().positive().max(65_535);
@@ -6,34 +7,65 @@ const booleanSchema = z
   .default("false")
   .transform((value) => value === "true");
 
-export const serverEnvSchema = z.object({
-  OPENBOT_HOST: z.string().default("0.0.0.0"),
-  OPENBOT_PORT: portSchema.default(3001),
-  OPENBOT_DATABASE_URL: z.string().default("postgres://openbot:openbot@localhost:5432/openbot"),
-  OPENBOT_NODE_TOKEN: z.string().min(1),
-  OPENBOT_OWNER_NAME: z.string().trim().min(1).max(80).default("Owner"),
-  OPENBOT_OWNER_PASSWORD: z
-    .string()
-    .min(12)
-    .refine(
-      (value) => value !== "replace-with-a-long-random-owner-password",
-      "Replace the example owner password before starting OpenBot.",
-    ),
-  OPENBOT_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(12),
-  OPENBOT_SECURE_COOKIES: booleanSchema,
-  OPENBOT_ALLOWED_ORIGINS: z
-    .string()
-    .default("http://localhost:5173,http://127.0.0.1:5173")
-    .transform((value) =>
-      value
-        .split(",")
-        .map((origin) => origin.trim())
-        .filter(Boolean),
-    )
-    .pipe(z.array(z.string().url()).min(1)),
-  OPENBOT_OBJECT_STORE_PATH: z.string().default("./data/objects"),
-  OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-});
+export const serverEnvSchema = z
+  .object({
+    OPENBOT_HOST: z.string().default("127.0.0.1"),
+    OPENBOT_PORT: portSchema.default(3001),
+    OPENBOT_DATABASE_URL: z.string().default("postgres://openbot:openbot@localhost:5432/openbot"),
+    OPENBOT_NODE_TOKEN: z.string().min(1),
+    OPENBOT_OWNER_NAME: z.string().trim().min(1).max(80).default("Owner"),
+    OPENBOT_OWNER_PASSWORD: z
+      .string()
+      .min(12)
+      .refine(
+        (value) => value !== "replace-with-a-long-random-owner-password",
+        "Replace the example owner password before starting OpenBot.",
+      ),
+    OPENBOT_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(12),
+    OPENBOT_SECURE_COOKIES: booleanSchema,
+    OPENBOT_ALLOWED_ORIGINS: z
+      .string()
+      .default("http://localhost:5173,http://127.0.0.1:5173")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.string().url()).min(1)),
+    OPENBOT_OBJECT_STORE_PATH: z.string().default("./data/objects"),
+    OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  })
+  .superRefine((value, context) => {
+    let hasRemoteOrigin = false;
+    for (const origin of value.OPENBOT_ALLOWED_ORIGINS) {
+      const url = new URL(origin);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        context.addIssue({
+          code: "custom",
+          message: "Allowed origins must use HTTP or HTTPS.",
+          path: ["OPENBOT_ALLOWED_ORIGINS"],
+        });
+        continue;
+      }
+      if (isLoopbackHostname(url.hostname)) continue;
+      hasRemoteOrigin = true;
+      if (url.protocol !== "https:") {
+        context.addIssue({
+          code: "custom",
+          message: "Non-loopback origins must use HTTPS.",
+          path: ["OPENBOT_ALLOWED_ORIGINS"],
+        });
+      }
+    }
+    if (hasRemoteOrigin && !value.OPENBOT_SECURE_COOKIES) {
+      context.addIssue({
+        code: "custom",
+        message: "Secure cookies are required when an allowed origin is not loopback.",
+        path: ["OPENBOT_SECURE_COOKIES"],
+      });
+    }
+  });
 
 export const nodeEnvSchema = z
   .object({
@@ -62,3 +94,13 @@ export const nodeEnvSchema = z
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 export type NodeEnv = z.infer<typeof nodeEnvSchema>;
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  );
+}

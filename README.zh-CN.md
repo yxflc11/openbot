@@ -45,7 +45,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 领域 | 当前已经可用 | 下一步 |
 | --- | --- | --- |
 | 控制平面 | 本地 Owner 认证、PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、恢复工具和多用户信任模型 |
-| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、SSE 重连、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
+| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
 | 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查、由 Owner 审核的技能元数据，以及经过测试的 DSSE 签名/验证原语 | 发布者密钥生命周期、签名导出/导入接口、可执行 Agent Skills 包、记忆控制、审核后激活、复制和转移 |
 | Node 协议 | 出站 WebSocket 登记、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和真实设备一致性报告 |
@@ -157,6 +157,8 @@ OpenBot 假设模型、提示词、网页、技能和执行环境都可能不可
 
 在 loopback 以外使用时，请启用 HTTPS、设置 `OPENBOT_SECURE_COOKIES=true`、收紧
 `OPENBOT_ALLOWED_ORIGINS`，并将服务放在 Tailscale 等私有网络后。
+Server 现在会在启动前拒绝远程 HTTP Origin，或拒绝未启用 Secure Cookie 的远程 Origin。
+HTTPS 会话使用仅限主机的 `__Host-openbot_session` Cookie 与 HSTS；直接开发默认只监听 loopback。
 
 漏洞报告流程见 [SECURITY.md](SECURITY.md)，当前保证与已知缺口见
 [威胁模型](docs/SECURITY.md)。

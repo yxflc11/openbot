@@ -52,7 +52,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Area | Available now | Next step |
 | --- | --- | --- |
 | Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
-| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, SSE reconnect, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
+| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
 | Employee profile | Seven-view profile, safe template export, quarantined import inspection, Owner-reviewed skill metadata, and a tested DSSE signing/verification primitive | Publisher-key lifecycle, signed export/import routes, executable Agent Skills bundles, memory controls, reviewed activation, cloning, and transfer |
 | Node protocol | Outbound WebSocket registration, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and real-device conformance reports |
@@ -171,6 +171,9 @@ untrusted. The intended security boundary is:
 
 For anything beyond loopback development, use HTTPS, set `OPENBOT_SECURE_COOKIES=true`, restrict
 `OPENBOT_ALLOWED_ORIGINS`, and place the deployment behind a private network such as Tailscale.
+The Server now rejects remote HTTP origins or remote origins without Secure cookies before it
+starts. HTTPS sessions use a host-only `__Host-openbot_session` cookie and HSTS; direct development
+binds to loopback by default.
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting and [the threat model](docs/SECURITY.md)
 for current guarantees and known gaps.

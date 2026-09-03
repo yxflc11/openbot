@@ -16,26 +16,26 @@ import type {
 } from "@openbot/domain";
 import { employeeTemplatePackageSchema, protocolVersion } from "@openbot/protocol";
 import { describe, expect, it, vi } from "vitest";
+import { createApp, ownerSessionCookie, secureOwnerSessionCookie } from "./app.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
+  type ArtifactRecord,
+  type ControlPlaneStore,
   StoreConflictError,
   StoreNotFoundError,
   StoreValidationError,
-  type ArtifactRecord,
-  type ControlPlaneStore,
 } from "./control-plane-store.js";
-import { createApp, ownerSessionCookie } from "./app.js";
 import { verifyEmployeeTemplateChecksum } from "./employee-package.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { RunFrameStore } from "./run-frame-store.js";
-import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 import type {
   CreateOwnerSessionInput,
   OwnerSessionStore,
   StoredOwnerSession,
 } from "./session-store.js";
 import { selectChannelAssignee } from "./task-routing.js";
+import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 const testOrigin = "http://localhost:5173";
 
@@ -46,6 +46,10 @@ describe("server app", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, phase: "m1" });
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(response.headers.get("strict-transport-security")).toBeNull();
   });
 
   it("reports an anonymous session and protects control-plane data", async () => {
@@ -91,6 +95,28 @@ describe("server app", () => {
       headers: { Cookie: cookie },
     });
     expect(await revoked.json()).toEqual({ authenticated: false });
+  });
+
+  it("uses an HTTPS-bound host cookie and HSTS for remote deployments", async () => {
+    const app = createTestApp({ secureCookies: true, store: createTestStore() });
+    const response = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get("set-cookie");
+    expect(cookie).toContain(`${secureOwnerSessionCookie}=`);
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
+    expect(response.headers.get("strict-transport-security")).toContain("max-age=");
+
+    const active = await app.request("/api/v1/auth/session", {
+      headers: { Cookie: cookie?.split(";", 1)[0] ?? "" },
+    });
+    expect(await active.json()).toMatchObject({ authenticated: true });
   });
 
   it("rejects mutations without a trusted Origin", async () => {
@@ -948,6 +974,7 @@ function createTestApp({
   artifactStorage,
   runFrames,
   workspaceRealtime,
+  secureCookies = false,
 }: {
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
@@ -957,6 +984,7 @@ function createTestApp({
   artifactStorage?: Pick<ArtifactStorage, "read">;
   runFrames?: Pick<RunFrameStore, "get">;
   workspaceRealtime?: WorkspaceRealtimeHub;
+  secureCookies?: boolean;
 }) {
   const auth = new OwnerAuthService(createMemorySessionStore(), {
     ownerName: "Test Owner",
@@ -973,7 +1001,7 @@ function createTestApp({
     ...(realtime === undefined ? {} : { realtime }),
     ...(runFrames === undefined ? {} : { runFrames }),
     ...(workspaceRealtime === undefined ? {} : { workspaceRealtime }),
-    secureCookies: false,
+    secureCookies,
     store,
   });
 }

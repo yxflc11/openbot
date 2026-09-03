@@ -10,17 +10,49 @@ describe("server environment", () => {
   it("normalizes local authentication settings", () => {
     const environment = serverEnvSchema.parse({
       ...required,
-      OPENBOT_ALLOWED_ORIGINS: "https://openbot.example.test, http://localhost:5173 ",
-      OPENBOT_SECURE_COOKIES: "true",
+      OPENBOT_ALLOWED_ORIGINS: "http://localhost:5173, http://127.0.0.1:5173 ",
       OPENBOT_SESSION_TTL_HOURS: "24",
     });
 
     expect(environment.OPENBOT_ALLOWED_ORIGINS).toEqual([
-      "https://openbot.example.test",
       "http://localhost:5173",
+      "http://127.0.0.1:5173",
     ]);
-    expect(environment.OPENBOT_SECURE_COOKIES).toBe(true);
+    expect(environment.OPENBOT_HOST).toBe("127.0.0.1");
+    expect(environment.OPENBOT_SECURE_COOKIES).toBe(false);
     expect(environment.OPENBOT_SESSION_TTL_HOURS).toBe(24);
+  });
+
+  it("requires HTTPS and Secure cookies for every remote browser origin", () => {
+    expect(
+      serverEnvSchema.safeParse({
+        ...required,
+        OPENBOT_ALLOWED_ORIGINS: "http://openbot.example.test",
+        OPENBOT_SECURE_COOKIES: "true",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverEnvSchema.safeParse({
+        ...required,
+        OPENBOT_ALLOWED_ORIGINS: "https://openbot.example.test",
+      }).success,
+    ).toBe(false);
+    expect(
+      serverEnvSchema.parse({
+        ...required,
+        OPENBOT_ALLOWED_ORIGINS: "https://openbot.example.test",
+        OPENBOT_SECURE_COOKIES: "true",
+      }).OPENBOT_SECURE_COOKIES,
+    ).toBe(true);
+  });
+
+  it("rejects non-HTTP origins", () => {
+    expect(
+      serverEnvSchema.safeParse({
+        ...required,
+        OPENBOT_ALLOWED_ORIGINS: "ftp://localhost",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects a short owner password and an empty origin list", () => {
