@@ -3,6 +3,8 @@ import type {
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateMessageInput,
+  Message,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 
@@ -49,6 +51,26 @@ export async function joinBotToChannel(channelId: string, botId: string): Promis
     body: JSON.stringify({ botId }),
   });
   return result.channel;
+}
+
+export async function listMessages(channelId: string, signal?: AbortSignal): Promise<Message[]> {
+  const result = await request<{ messages: Message[] }>(
+    `/api/v1/channels/${channelId}/messages`,
+    signal ? { signal } : undefined,
+  );
+  return result.messages;
+}
+
+export async function createMessage(
+  channelId: string,
+  input: CreateMessageInput,
+): Promise<Message> {
+  const result = await request<{ message: Message }>(`/api/v1/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return result.message;
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

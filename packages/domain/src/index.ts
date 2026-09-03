@@ -56,6 +56,17 @@ export interface Run {
   updatedAt: string;
 }
 
+export type MessageAuthorType = "human" | "bot" | "system";
+
+export interface Message {
+  id: EntityId;
+  channelId: EntityId;
+  authorType: MessageAuthorType;
+  authorId?: EntityId;
+  content: string;
+  createdAt: string;
+}
+
 export interface BootstrapSummary {
   project: "openbot";
   phase: "foundation" | "m0";
@@ -84,4 +95,8 @@ export interface CreateChannelInput {
   name: string;
   description: string;
   botIds: EntityId[];
+}
+
+export interface CreateMessageInput {
+  content: string;
 }

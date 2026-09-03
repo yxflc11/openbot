@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { Bot, Channel, CreateBotInput, CreateChannelInput } from "@openbot/domain";
-import { bots, channelBots, channels, runEvents, runs } from "@openbot/db";
+import type {
+  Bot,
+  Channel,
+  CreateBotInput,
+  CreateChannelInput,
+  CreateMessageInput,
+  Message,
+} from "@openbot/domain";
+import { bots, channelBots, channels, messages, runEvents, runs } from "@openbot/db";
 import { count, desc, eq, inArray } from "drizzle-orm";
 import type { ControlPlaneStore, PersistedCounts } from "./control-plane-store.js";
 import {
@@ -53,6 +60,17 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   async listBots(): Promise<Bot[]> {
     const rows = await this.#db.select().from(bots).orderBy(desc(bots.createdAt));
     return rows.map(toBot);
+  }
+
+  async listMessages(channelId: string): Promise<Message[]> {
+    await this.#requireChannel(channelId);
+    const rows = await this.#db
+      .select()
+      .from(messages)
+      .where(eq(messages.channelId, channelId))
+      .orderBy(desc(messages.createdAt))
+      .limit(100);
+    return rows.reverse().map(toMessage);
   }
 
   async getCounts(): Promise<PersistedCounts> {
@@ -162,6 +180,38 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     };
   }
 
+  async createMessage(channelId: string, input: CreateMessageInput): Promise<Message> {
+    const now = new Date();
+    const message = {
+      id: randomUUID(),
+      channelId,
+      authorType: "human" as const,
+      authorId: null,
+      content: input.content,
+      createdAt: now,
+    };
+
+    await this.#db.transaction(async (transaction) => {
+      const channelRows = await transaction
+        .select({ id: channels.id })
+        .from(channels)
+        .where(eq(channels.id, channelId))
+        .limit(1);
+      if (channelRows.length === 0) {
+        throw new StoreNotFoundError("Channel not found.");
+      }
+      await transaction.insert(messages).values(message);
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        channelId,
+        type: "MESSAGE_CREATED",
+        payload: { messageId: message.id, authorType: message.authorType },
+      });
+    });
+
+    return toMessage(message);
+  }
+
   async joinBotToChannel(channelId: string, botId: string): Promise<Channel> {
     try {
       await this.#db.transaction(async (transaction) => {
@@ -204,6 +254,17 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     }
     return channel;
   }
+
+  async #requireChannel(channelId: string): Promise<void> {
+    const rows = await this.#db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1);
+    if (rows.length === 0) {
+      throw new StoreNotFoundError("Channel not found.");
+    }
+  }
 }
 
 function toBot(row: typeof bots.$inferSelect | typeof bots.$inferInsert): Bot {
@@ -213,6 +274,17 @@ function toBot(row: typeof bots.$inferSelect | typeof bots.$inferInsert): Bot {
     role: row.role,
     status: row.status as Bot["status"],
     computerProfile: row.computerProfile as Bot["computerProfile"],
+    createdAt: (row.createdAt ?? new Date()).toISOString(),
+  };
+}
+
+function toMessage(row: typeof messages.$inferSelect | typeof messages.$inferInsert): Message {
+  return {
+    id: row.id,
+    channelId: row.channelId,
+    authorType: row.authorType as Message["authorType"],
+    ...(row.authorId === null || row.authorId === undefined ? {} : { authorId: row.authorId }),
+    content: row.content,
     createdAt: (row.createdAt ?? new Date()).toISOString(),
   };
 }

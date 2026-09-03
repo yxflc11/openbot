@@ -15,6 +15,13 @@
       "when": 1788499200000,
       "tag": "0001_m0_control_plane",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788585600000,
+      "tag": "0002_message_constraints",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import type { BootstrapSummary, ExecutionNode, WorkspaceSnapshot } from "@openbo
 import {
   createBotInputSchema,
   createChannelInputSchema,
+  createMessageInputSchema,
   joinChannelBotInputSchema,
 } from "@openbot/protocol";
 import { Hono } from "hono";
@@ -92,6 +93,18 @@ export function createApp(dependencies: AppDependencies) {
       input.botId,
     );
     return context.json({ channel });
+  });
+
+  app.get("/api/v1/channels/:channelId/messages", async (context) =>
+    context.json({
+      messages: await dependencies.store.listMessages(context.req.param("channelId")),
+    }),
+  );
+
+  app.post("/api/v1/channels/:channelId/messages", async (context) => {
+    const input = await parseRequest(context.req.raw, createMessageInputSchema);
+    const message = await dependencies.store.createMessage(context.req.param("channelId"), input);
+    return context.json({ message }, 201);
   });
 
   app.get("/api/v1/bots", async (context) =>

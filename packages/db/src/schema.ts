@@ -129,7 +129,11 @@ export const messages = pgTable(
     content: text("content").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("messages_channel_time_idx").on(table.channelId, table.createdAt)],
+  (table) => [
+    index("messages_channel_time_idx").on(table.channelId, table.createdAt),
+    check("messages_author_type_valid", sql`${table.authorType} IN ('human', 'bot', 'system')`),
+    check("messages_content_not_blank", sql`length(btrim(${table.content})) > 0`),
+  ],
 );
 
 export const approvals = pgTable(

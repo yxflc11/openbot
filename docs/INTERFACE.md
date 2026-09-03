@@ -70,7 +70,8 @@ flowchart LR
 
 ### 中央办公室
 
-- 每个 Bot 有固定角色形象、名字、职责和状态文字。
+- 每个 Bot 有固定角色形象、名字、职责和状态文字。角色使用粗线条像素块语言，在 28px 头像和办公室大图中保持同一轮廓。
+- 角色只保留方形屏幕脸与单一强调色，不使用拟真高光、复杂关节、手指和装甲分件；角色服务于状态识别，不能抢占任务信息。
 - 工位上的电脑代表当前绑定 Node；没有 Node 时显示“无可用电脑”，而不是空白屏幕。
 - Bot 工作时显示任务简称、所属频道和进度；等待审批时必须使用显眼的文字与图标。
 - 点击 Bot 打开 Bot 面板；点击任务打开 Channel 中对应的 Run。
@@ -193,6 +194,7 @@ sequenceDiagram
 | `CHANNEL_CREATED` | 左栏频道 |
 | `BOT_CREATED` | Bot 列表和办公室角色 |
 | `BOT_JOINED_CHANNEL` | Channel roster |
+| `MESSAGE_CREATED` | 频道本地消息流 |
 | `RUN_CREATED` | Bot 当前工作和频道任务卡 |
 | `RUN_PLAN_UPDATED` | 进度 |
 | `NODE_BOUND` | 工位电脑状态 |

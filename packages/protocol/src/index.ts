@@ -53,6 +53,7 @@ export const runEventTypeSchema = z.enum([
   "CHANNEL_CREATED",
   "BOT_CREATED",
   "BOT_JOINED_CHANNEL",
+  "MESSAGE_CREATED",
   "RUN_CREATED",
   "RUN_PLAN_UPDATED",
   "NODE_BOUND",
@@ -102,4 +103,8 @@ export const createChannelInputSchema = z.object({
 
 export const joinChannelBotInputSchema = z.object({
   botId: z.string().uuid(),
+});
+
+export const createMessageInputSchema = z.object({
+  content: z.string().trim().min(1, "Message is required.").max(8000),
 });

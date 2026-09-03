@@ -1,6 +1,13 @@
-import type { Bot, Channel, CreateBotInput, CreateChannelInput } from "@openbot/domain";
+import type {
+  Bot,
+  Channel,
+  CreateBotInput,
+  CreateChannelInput,
+  CreateMessageInput,
+  Message,
+} from "@openbot/domain";
 import { describe, expect, it } from "vitest";
-import type { ControlPlaneStore } from "./control-plane-store.js";
+import { StoreNotFoundError, type ControlPlaneStore } from "./control-plane-store.js";
 import { createApp } from "./app.js";
 
 describe("server app", () => {
@@ -90,11 +97,45 @@ describe("server app", () => {
       channel: { name: "运营中心", botIds: [bot.id] },
     });
   });
+
+  it("stores and lists a local channel message", async () => {
+    const store = createTestStore();
+    const channel = await store.createChannel({
+      name: "运营中心",
+      description: "日常任务",
+      botIds: [],
+    });
+    const app = createApp({ listNodes: () => [], store });
+
+    const created = await app.request(`/api/v1/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: "  打开测试页并截图  " }),
+    });
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({
+      message: { channelId: channel.id, authorType: "human", content: "打开测试页并截图" },
+    });
+
+    const listed = await app.request(`/api/v1/channels/${channel.id}/messages`);
+    expect(await listed.json()).toMatchObject({
+      messages: [{ content: "打开测试页并截图" }],
+    });
+  });
+
+  it("returns 404 when reading messages from an unknown channel", async () => {
+    const app = createApp({ listNodes: () => [], store: createTestStore() });
+    const response = await app.request(
+      "/api/v1/channels/00000000-0000-4000-8000-000000000099/messages",
+    );
+    expect(response.status).toBe(404);
+  });
 });
 
 function createTestStore(): ControlPlaneStore {
   const bots: Bot[] = [];
   const channels: Channel[] = [];
+  const messages: Message[] = [];
   let nextId = 0;
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
 
@@ -104,6 +145,12 @@ function createTestStore(): ControlPlaneStore {
     },
     async listChannels() {
       return channels;
+    },
+    async listMessages(channelId: string) {
+      if (!channels.some((channel) => channel.id === channelId)) {
+        throw new StoreNotFoundError("Channel not found.");
+      }
+      return messages.filter((message) => message.channelId === channelId);
     },
     async getCounts() {
       return { bots: bots.length, channels: channels.length, activeRuns: 0 };
@@ -126,6 +173,20 @@ function createTestStore(): ControlPlaneStore {
       };
       channels.push(channel);
       return channel;
+    },
+    async createMessage(channelId: string, input: CreateMessageInput) {
+      if (!channels.some((channel) => channel.id === channelId)) {
+        throw new StoreNotFoundError("Channel not found.");
+      }
+      const message: Message = {
+        id: id(),
+        channelId,
+        authorType: "human",
+        content: input.content,
+        createdAt: new Date().toISOString(),
+      };
+      messages.push(message);
+      return message;
     },
     async joinBotToChannel(channelId: string, botId: string) {
       const channel = channels.find((item) => item.id === channelId);

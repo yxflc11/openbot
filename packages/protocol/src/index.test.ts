@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createBotInputSchema,
   createChannelInputSchema,
+  createMessageInputSchema,
   nodeMessageSchema,
   protocolVersion,
   runEventSchema,
@@ -79,5 +80,12 @@ describe("control plane inputs", () => {
         botIds: [botId, botId],
       }).botIds,
     ).toEqual([botId]);
+  });
+
+  it("trims local messages and rejects empty content", () => {
+    expect(createMessageInputSchema.parse({ content: "  继续检查表单  " })).toEqual({
+      content: "继续检查表单",
+    });
+    expect(createMessageInputSchema.safeParse({ content: "   " }).success).toBe(false);
   });
 });

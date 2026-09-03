@@ -10,6 +10,8 @@
 | `GET` | `/api/v1/channels` | 频道与 Bot roster |
 | `POST` | `/api/v1/channels` | 创建频道并原子加入初始 Bot |
 | `POST` | `/api/v1/channels/:channelId/bots` | 把已有 Bot 加入频道 |
+| `GET` | `/api/v1/channels/:channelId/messages` | 读取最近 100 条本地频道消息 |
+| `POST` | `/api/v1/channels/:channelId/messages` | 保存一条用户频道消息 |
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
@@ -37,6 +39,16 @@
 ```
 
 频道与初始 roster 在同一数据库事务中写入；任一 Bot 不存在时整次创建失败。创建 Bot、创建频道和加入频道都会写入结构化事件，供后续 realtime、audit 和办公室状态投影使用。
+
+## 发送本地消息
+
+```json
+{
+  "content": "打开测试页，填写表单但不要提交"
+}
+```
+
+消息正文会先去除首尾空白，长度限制为 1–8000 个字符。当前接口只创建 `human` 消息；Bot 和系统消息将在 Run runtime 接入后由服务端写入。消息与 `MESSAGE_CREATED` 事件在同一数据库事务中保存。
 
 ## 错误约定
 

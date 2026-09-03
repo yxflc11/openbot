@@ -2,9 +2,9 @@
 
 ## 当前进度
 
-M0 第一切片已经完成：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员和结构化事件会真实落库；Web 可以创建 Bot、创建频道、把 Bot 加入频道，并在桌面办公室和手机列表中读取同一份数据；Server 重启后的刷新恢复已通过实测。
+M0 第二切片正在推进：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息和结构化事件会真实落库；Web 可以创建 Bot、创建频道、把 Bot 加入频道、发送本地消息，并在桌面办公室和手机列表中读取同一份数据；Server 重启后的刷新恢复已通过实测。
 
-M0 尚未完成的部分是本地登录、消息/线程 API、realtime 推送、共享记忆、完整 policy 与 audit 页面。它们不会和当前 CRUD 混成一次大改动，将继续沿用已经建立的 `Channel → Message/Event → Run` 数据边界。
+M0 尚未完成的部分是本地登录、thread/run 投影、realtime 推送、共享记忆、完整 policy 与 audit 页面。它们不会和当前 CRUD 混成一次大改动，将继续沿用已经建立的 `Channel → Message/Event → Run` 数据边界。
 
 ## Spike — 决定是否正式 fork CopilotKit/OpenBot
 
