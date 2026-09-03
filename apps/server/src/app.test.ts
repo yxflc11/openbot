@@ -5,9 +5,12 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
+  EmployeeEvolutionEvent,
+  EmployeeProfile,
   ExecutionNode,
   Message,
   Run,
+  RunProgress,
 } from "@openbot/domain";
 import { protocolVersion } from "@openbot/protocol";
 import { describe, expect, it, vi } from "vitest";
@@ -296,6 +299,62 @@ describe("server app", () => {
         appearance: { head: "cat", body: "cape", mobility: "hover" },
       },
     });
+  });
+
+  it("returns an authenticated, evidence-oriented employee profile", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Ops",
+      role: "Browser and operations",
+      computerProfile: "docker-linux",
+    });
+    const channel = await store.createChannel({
+      name: "Operations",
+      description: "Daily work",
+      botIds: [bot.id],
+    });
+    const submitted = await store.submitTask(channel.id, { content: "Open the test page" });
+    await store.assignRun(submitted.run.id, "node-1");
+    await store.startRun(submitted.run.id, "node-1");
+    await store.appendRunProgress(
+      submitted.run.id,
+      "node-1",
+      "observing",
+      "Reading the page before acting.",
+    );
+
+    const app = createTestApp({ store });
+    expect((await app.request(`/api/v1/bots/${bot.id}/profile`)).status).toBe(401);
+
+    const cookie = await login(app);
+    const response = await app.request(`/api/v1/bots/${bot.id}/profile`, {
+      headers: { Cookie: cookie },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      profile: {
+        employee: { id: bot.id, name: "Ops" },
+        evolution: [{ type: "created", source: "manual" }],
+        skills: [],
+        memories: [],
+        records: {
+          runs: [{ id: submitted.run.id, status: "running" }],
+          decisions: [
+            {
+              stage: "observing",
+              summary: "Reading the page before acting.",
+            },
+          ],
+        },
+        statistics: { totalRuns: 1, verifiedSkills: 0 },
+        configuration: { portabilityFormat: "openbot.employee/v1" },
+      },
+    });
+
+    const missing = await app.request("/api/v1/bots/missing/profile", {
+      headers: { Cookie: cookie },
+    });
+    expect(missing.status).toBe(404);
   });
 
   it("rejects invalid Bot input before reaching storage", async () => {
@@ -719,6 +778,8 @@ function createTestStore(): ControlPlaneStore {
   const messages: Message[] = [];
   const runs: Run[] = [];
   const approvals: Approval[] = [];
+  const evolution: EmployeeEvolutionEvent[] = [];
+  const progress: RunProgress[] = [];
   let nextId = 0;
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
 
@@ -728,6 +789,35 @@ function createTestStore(): ControlPlaneStore {
     },
     async listBots() {
       return bots;
+    },
+    async getEmployeeProfile(botId: string): Promise<EmployeeProfile> {
+      const bot = bots.find((item) => item.id === botId);
+      if (bot === undefined) throw new StoreNotFoundError("Bot not found.");
+      const employeeRuns = runs.filter((run) => run.botId === botId);
+      return {
+        employee: bot,
+        evolution: evolution.filter((event) => event.botId === botId),
+        skills: [],
+        memories: [],
+        records: {
+          runs: employeeRuns,
+          approvals: approvals.filter((approval) => approval.botId === botId),
+          artifacts: [],
+          decisions: progress
+            .filter((item) => employeeRuns.some((run) => run.id === item.runId))
+            .map((item) => ({ ...item, summary: item.message })),
+        },
+        statistics: {
+          totalRuns: employeeRuns.length,
+          completedRuns: employeeRuns.filter((run) => run.status === "completed").length,
+          failedRuns: employeeRuns.filter((run) => run.status === "failed").length,
+          verifiedSkills: 0,
+        },
+        configuration: {
+          executionProfile: bot.computerProfile,
+          portabilityFormat: "openbot.employee/v1",
+        },
+      };
     },
     async listChannels() {
       return channels;
@@ -747,8 +837,10 @@ function createTestStore(): ControlPlaneStore {
     async listApprovals() {
       return approvals;
     },
-    async listRunProgress() {
-      return [];
+    async listRunProgress(channelId?: string) {
+      return channelId === undefined
+        ? progress
+        : progress.filter((item) => item.channelId === channelId);
     },
     async listDispatchableRuns(limit = 50) {
       return runs
@@ -774,6 +866,16 @@ function createTestStore(): ControlPlaneStore {
         createdAt: new Date().toISOString(),
       };
       bots.push(bot);
+      evolution.push({
+        id: id(),
+        botId: bot.id,
+        type: "created",
+        title: "Employee created",
+        summary: `${bot.name} was created with the ${bot.role} role.`,
+        source: "manual",
+        evidence: [],
+        createdAt: bot.createdAt,
+      });
       return bot;
     },
     async createChannel(input: CreateChannelInput) {
@@ -889,20 +991,22 @@ function createTestStore(): ControlPlaneStore {
       run.updatedAt = approval.decidedAt;
       return { approval, run };
     },
-    async appendRunProgress(runId: string, nodeId: string) {
+    async appendRunProgress(runId: string, nodeId: string, stage: string, message: string) {
       const run = runs.find(
         (item) => item.id === runId && item.nodeId === nodeId && item.status === "running",
       );
       if (run === undefined) return undefined;
-      return {
+      const entry: RunProgress = {
         id: id(),
         runId,
         channelId: run.channelId,
         nodeId,
-        stage: "test",
-        message: "Testing",
+        stage,
+        message,
         createdAt: new Date().toISOString(),
       };
+      progress.push(entry);
+      return entry;
     },
     async completeRun(runId: string, nodeId: string, summary: string) {
       const run = runs.find((item) => item.id === runId);

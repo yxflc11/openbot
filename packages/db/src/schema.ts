@@ -47,6 +47,134 @@ export const bots = pgTable(
   ],
 );
 
+export const employeeEvolutionEvents = pgTable(
+  "employee_evolution_events",
+  {
+    id: text("id").primaryKey(),
+    botId: text("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    source: text("source").notNull(),
+    sourceId: text("source_id"),
+    evidence: jsonb("evidence").notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("employee_evolution_bot_time_idx").on(table.botId, table.createdAt),
+    check(
+      "employee_evolution_type_valid",
+      sql`${table.type} IN ('created', 'role_changed', 'skill_discovered', 'skill_verified', 'skill_suspended', 'skill_revoked', 'configuration_changed', 'imported')`,
+    ),
+    check(
+      "employee_evolution_source_valid",
+      sql`${table.source} IN ('run', 'artifact', 'approval', 'manual', 'import')`,
+    ),
+    check("employee_evolution_title_not_blank", sql`length(btrim(${table.title})) > 0`),
+    check("employee_evolution_summary_not_blank", sql`length(btrim(${table.summary})) > 0`),
+  ],
+);
+
+export const skills = pgTable(
+  "skills",
+  {
+    id: text("id").primaryKey(),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    version: text("version").notNull(),
+    source: text("source").notNull(),
+    requiredCapabilities: jsonb("required_capabilities").notNull().default([]),
+    metadata: jsonb("metadata").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("skills_slug_version_idx").on(table.slug, table.version),
+    check("skills_slug_not_blank", sql`length(btrim(${table.slug})) > 0`),
+    check("skills_name_not_blank", sql`length(btrim(${table.name})) > 0`),
+    check("skills_version_not_blank", sql`length(btrim(${table.version})) > 0`),
+    check("skills_source_not_blank", sql`length(btrim(${table.source})) > 0`),
+  ],
+);
+
+export const employeeSkills = pgTable(
+  "employee_skills",
+  {
+    botId: text("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    skillId: text("skill_id")
+      .notNull()
+      .references(() => skills.id, { onDelete: "cascade" }),
+    state: text("state").notNull().default("candidate"),
+    confidence: integer("confidence").notNull().default(0),
+    evidence: jsonb("evidence").notNull().default([]),
+    acquiredAt: timestamp("acquired_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.botId, table.skillId] }),
+    index("employee_skills_state_idx").on(table.botId, table.state),
+    check(
+      "employee_skills_state_valid",
+      sql`${table.state} IN ('candidate', 'verified', 'suspended', 'revoked')`,
+    ),
+    check("employee_skills_confidence_valid", sql`${table.confidence} BETWEEN 0 AND 100`),
+  ],
+);
+
+export const skillDependencies = pgTable(
+  "skill_dependencies",
+  {
+    skillId: text("skill_id")
+      .notNull()
+      .references(() => skills.id, { onDelete: "cascade" }),
+    dependsOnSkillId: text("depends_on_skill_id")
+      .notNull()
+      .references(() => skills.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.skillId, table.dependsOnSkillId] }),
+    check("skill_dependencies_not_self", sql`${table.skillId} <> ${table.dependsOnSkillId}`),
+  ],
+);
+
+export const employeeMemories = pgTable(
+  "employee_memories",
+  {
+    id: text("id").primaryKey(),
+    botId: text("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    sensitivity: text("sensitivity").notNull().default("internal"),
+    portability: text("portability").notNull().default("owner-selectable"),
+    provenance: jsonb("provenance").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => [
+    index("employee_memories_bot_time_idx").on(table.botId, table.updatedAt),
+    check(
+      "employee_memories_kind_valid",
+      sql`${table.kind} IN ('working', 'episodic', 'semantic', 'procedural', 'secret-reference')`,
+    ),
+    check(
+      "employee_memories_sensitivity_valid",
+      sql`${table.sensitivity} IN ('public', 'internal', 'confidential', 'restricted')`,
+    ),
+    check(
+      "employee_memories_portability_valid",
+      sql`${table.portability} IN ('never', 'owner-selectable', 'included')`,
+    ),
+    check("employee_memories_title_not_blank", sql`length(btrim(${table.title})) > 0`),
+    check("employee_memories_content_not_blank", sql`length(btrim(${table.content})) > 0`),
+  ],
+);
+
 export const channelBots = pgTable(
   "channel_bots",
   {

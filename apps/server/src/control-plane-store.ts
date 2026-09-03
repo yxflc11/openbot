@@ -9,6 +9,7 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
+  EmployeeProfile,
   ExecutionNode,
   Message,
   Run,
@@ -47,6 +48,7 @@ export interface ControlPlaneStore {
   channelExists(channelId: string): Promise<boolean>;
   listChannels(): Promise<Channel[]>;
   listBots(): Promise<Bot[]>;
+  getEmployeeProfile(botId: string): Promise<EmployeeProfile>;
   listMessages(channelId: string): Promise<Message[]>;
   listRuns(channelId?: string): Promise<Run[]>;
   listApprovals(): Promise<Approval[]>;

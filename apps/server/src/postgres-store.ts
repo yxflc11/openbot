@@ -9,6 +9,12 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
+  EmployeeDecisionTrace,
+  EmployeeEvidenceReference,
+  EmployeeEvolutionEvent,
+  EmployeeMemory,
+  EmployeeProfile,
+  EmployeeSkill,
   ExecutionNode,
   Message,
   Run,
@@ -21,10 +27,15 @@ import {
   bots,
   channelBots,
   channels,
+  employeeEvolutionEvents,
+  employeeMemories,
+  employeeSkills,
   messages,
   nodes,
   runEvents,
   runs,
+  skillDependencies,
+  skills,
 } from "@openbot/db";
 import { and, asc, count, desc, eq, inArray, isNull, ne } from "drizzle-orm";
 import type {
@@ -94,6 +105,112 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   async listBots(): Promise<Bot[]> {
     const rows = await this.#db.select().from(bots).orderBy(desc(bots.createdAt));
     return rows.map(toBot);
+  }
+
+  async getEmployeeProfile(botId: string): Promise<EmployeeProfile> {
+    const [botRow] = await this.#db.select().from(bots).where(eq(bots.id, botId)).limit(1);
+    if (botRow === undefined) throw new StoreNotFoundError("Bot not found.");
+
+    const [
+      evolutionRows,
+      skillRows,
+      dependencyRows,
+      memoryRows,
+      runRows,
+      approvalRows,
+      artifactRows,
+      progressRows,
+    ] = await Promise.all([
+      this.#db
+        .select()
+        .from(employeeEvolutionEvents)
+        .where(eq(employeeEvolutionEvents.botId, botId))
+        .orderBy(desc(employeeEvolutionEvents.createdAt))
+        .limit(100),
+      this.#db
+        .select({ assignment: employeeSkills, skill: skills })
+        .from(employeeSkills)
+        .innerJoin(skills, eq(employeeSkills.skillId, skills.id))
+        .where(eq(employeeSkills.botId, botId))
+        .orderBy(desc(employeeSkills.updatedAt))
+        .limit(100),
+      this.#db
+        .select({
+          skillId: skillDependencies.skillId,
+          dependsOnSkillId: skillDependencies.dependsOnSkillId,
+        })
+        .from(skillDependencies)
+        .innerJoin(employeeSkills, eq(skillDependencies.skillId, employeeSkills.skillId))
+        .where(eq(employeeSkills.botId, botId)),
+      this.#db
+        .select()
+        .from(employeeMemories)
+        .where(eq(employeeMemories.botId, botId))
+        .orderBy(desc(employeeMemories.updatedAt))
+        .limit(100),
+      this.#db
+        .select()
+        .from(runs)
+        .where(eq(runs.botId, botId))
+        .orderBy(desc(runs.createdAt))
+        .limit(50),
+      this.#db
+        .select({ approval: approvalsTable, channelId: runs.channelId })
+        .from(approvalsTable)
+        .innerJoin(runs, eq(approvalsTable.runId, runs.id))
+        .where(eq(runs.botId, botId))
+        .orderBy(desc(approvalsTable.createdAt))
+        .limit(100),
+      this.#db
+        .select({ artifact: artifactsTable })
+        .from(artifactsTable)
+        .innerJoin(runs, eq(artifactsTable.runId, runs.id))
+        .where(eq(runs.botId, botId))
+        .orderBy(desc(artifactsTable.createdAt))
+        .limit(100),
+      this.#db
+        .select()
+        .from(runEvents)
+        .where(and(eq(runEvents.botId, botId), eq(runEvents.type, "RUN_PROGRESS")))
+        .orderBy(desc(runEvents.createdAt))
+        .limit(200),
+    ]);
+
+    const dependencyIds = new Map<string, string[]>();
+    for (const row of dependencyRows) {
+      const ids = dependencyIds.get(row.skillId) ?? [];
+      ids.push(row.dependsOnSkillId);
+      dependencyIds.set(row.skillId, ids);
+    }
+
+    const employeeRuns = runRows.map(toRun);
+    const employeeSkillsProjection = skillRows.map((row) =>
+      toEmployeeSkill(row.skill, row.assignment, dependencyIds.get(row.skill.id) ?? []),
+    );
+    const decisions = progressRows.flatMap(toEmployeeDecisionTrace);
+    return {
+      employee: toBot(botRow),
+      evolution: evolutionRows.map(toEmployeeEvolutionEvent),
+      skills: employeeSkillsProjection,
+      memories: memoryRows.map(toEmployeeMemory),
+      records: {
+        runs: employeeRuns,
+        approvals: approvalRows.map((row) => toApproval(row.approval, row.channelId, botId)),
+        artifacts: artifactRows.map((row) => toArtifact(row.artifact)),
+        decisions,
+      },
+      statistics: {
+        totalRuns: employeeRuns.length,
+        completedRuns: employeeRuns.filter((run) => run.status === "completed").length,
+        failedRuns: employeeRuns.filter((run) => run.status === "failed").length,
+        verifiedSkills: employeeSkillsProjection.filter((skill) => skill.state === "verified")
+          .length,
+      },
+      configuration: {
+        executionProfile: botRow.computerProfile as Bot["computerProfile"],
+        portabilityFormat: "openbot.employee/v1",
+      },
+    };
   }
 
   async listMessages(channelId: string): Promise<Message[]> {
@@ -217,6 +334,16 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     try {
       await this.#db.transaction(async (transaction) => {
         await transaction.insert(bots).values(bot);
+        await transaction.insert(employeeEvolutionEvents).values({
+          id: randomUUID(),
+          botId: bot.id,
+          type: "created",
+          title: "Employee created",
+          summary: `${bot.name} was created with the ${bot.role} role.`,
+          source: "manual",
+          evidence: [],
+          createdAt: now,
+        });
         await transaction.insert(runEvents).values({
           id: randomUUID(),
           botId: bot.id,
@@ -1014,6 +1141,92 @@ function toRunProgress(row: typeof runEvents.$inferSelect): RunProgress[] {
       createdAt: row.createdAt.toISOString(),
     },
   ];
+}
+
+function toEmployeeDecisionTrace(row: typeof runEvents.$inferSelect): EmployeeDecisionTrace[] {
+  return toRunProgress(row).map((progress) => ({
+    ...progress,
+    summary: progress.message,
+  }));
+}
+
+function toEmployeeEvolutionEvent(
+  row: typeof employeeEvolutionEvents.$inferSelect,
+): EmployeeEvolutionEvent {
+  return {
+    id: row.id,
+    botId: row.botId,
+    type: row.type as EmployeeEvolutionEvent["type"],
+    title: row.title,
+    summary: row.summary,
+    source: row.source as EmployeeEvolutionEvent["source"],
+    ...(row.sourceId === null ? {} : { sourceId: row.sourceId }),
+    evidence: toEvidenceReferences(row.evidence),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toEmployeeSkill(
+  skill: typeof skills.$inferSelect,
+  assignment: typeof employeeSkills.$inferSelect,
+  dependencyIds: string[],
+): EmployeeSkill {
+  return {
+    id: skill.id,
+    slug: skill.slug,
+    name: skill.name,
+    description: skill.description,
+    version: skill.version,
+    source: skill.source,
+    state: assignment.state as EmployeeSkill["state"],
+    confidence: assignment.confidence,
+    requiredCapabilities: toStringArray(skill.requiredCapabilities),
+    dependencyIds,
+    evidence: toEvidenceReferences(assignment.evidence),
+    acquiredAt: assignment.acquiredAt.toISOString(),
+    updatedAt: assignment.updatedAt.toISOString(),
+  };
+}
+
+function toEmployeeMemory(row: typeof employeeMemories.$inferSelect): EmployeeMemory {
+  return {
+    id: row.id,
+    botId: row.botId,
+    kind: row.kind as EmployeeMemory["kind"],
+    title: row.title,
+    content: row.content,
+    sensitivity: row.sensitivity as EmployeeMemory["sensitivity"],
+    portability: row.portability as EmployeeMemory["portability"],
+    provenance: asRecord(row.provenance),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toEvidenceReferences(value: unknown): EmployeeEvidenceReference[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const record = asRecord(item);
+    if (
+      !["run", "artifact", "approval", "manual", "import"].includes(String(record.kind)) ||
+      typeof record.id !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        kind: record.kind as EmployeeEvidenceReference["kind"],
+        id: record.id,
+        ...(typeof record.label === "string" ? { label: record.label } : {}),
+      },
+    ];
+  });
+}
+
+function toStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function toArtifact(row: typeof artifactsTable.$inferSelect): Artifact {

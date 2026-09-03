@@ -403,6 +403,12 @@ export function createApp(dependencies: AppDependencies) {
     context.json({ bots: await dependencies.store.listBots() }),
   );
 
+  app.get("/api/v1/bots/:botId/profile", async (context) =>
+    context.json({
+      profile: await dependencies.store.getEmployeeProfile(context.req.param("botId")),
+    }),
+  );
+
   app.post("/api/v1/bots", async (context) => {
     const input = await parseRequest(context.req.raw, createBotInputSchema);
     const bot = await dependencies.store.createBot(input);

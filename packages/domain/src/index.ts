@@ -65,6 +65,108 @@ export interface Bot {
   createdAt: string;
 }
 
+export type EmployeeEvolutionEventType =
+  | "created"
+  | "role_changed"
+  | "skill_discovered"
+  | "skill_verified"
+  | "skill_suspended"
+  | "skill_revoked"
+  | "configuration_changed"
+  | "imported";
+
+export type EmployeeEvidenceKind = "run" | "artifact" | "approval" | "manual" | "import";
+
+/** A stable reference to evidence. Sensitive payloads stay in their source record. */
+export interface EmployeeEvidenceReference {
+  kind: EmployeeEvidenceKind;
+  id: EntityId;
+  label?: string;
+}
+
+/** Append-only, evidence-backed history used by the employee evolution view. */
+export interface EmployeeEvolutionEvent {
+  id: EntityId;
+  botId: EntityId;
+  type: EmployeeEvolutionEventType;
+  title: string;
+  summary: string;
+  source: EmployeeEvidenceKind;
+  sourceId?: EntityId;
+  evidence: EmployeeEvidenceReference[];
+  createdAt: string;
+}
+
+export type EmployeeSkillState = "candidate" | "verified" | "suspended" | "revoked";
+
+/** A versioned skill assignment. Confidence is evidence quality, never an authority grant. */
+export interface EmployeeSkill {
+  id: EntityId;
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  source: string;
+  state: EmployeeSkillState;
+  confidence: number;
+  requiredCapabilities: string[];
+  dependencyIds: EntityId[];
+  evidence: EmployeeEvidenceReference[];
+  acquiredAt: string;
+  updatedAt: string;
+}
+
+export type EmployeeMemoryKind =
+  | "working"
+  | "episodic"
+  | "semantic"
+  | "procedural"
+  | "secret-reference";
+export type EmployeeMemorySensitivity = "public" | "internal" | "confidential" | "restricted";
+export type EmployeeMemoryPortability = "never" | "owner-selectable" | "included";
+
+/** Owner-visible memory metadata and content. Export policy is evaluated separately. */
+export interface EmployeeMemory {
+  id: EntityId;
+  botId: EntityId;
+  kind: EmployeeMemoryKind;
+  title: string;
+  content: string;
+  sensitivity: EmployeeMemorySensitivity;
+  portability: EmployeeMemoryPortability;
+  provenance: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A safe runtime explanation derived from structured progress, not private chain-of-thought. */
+export interface EmployeeDecisionTrace extends RunProgress {
+  summary: string;
+}
+
+export interface EmployeeProfile {
+  employee: Bot;
+  evolution: EmployeeEvolutionEvent[];
+  skills: EmployeeSkill[];
+  memories: EmployeeMemory[];
+  records: {
+    runs: Run[];
+    approvals: Approval[];
+    artifacts: Artifact[];
+    decisions: EmployeeDecisionTrace[];
+  };
+  statistics: {
+    totalRuns: number;
+    completedRuns: number;
+    failedRuns: number;
+    verifiedSkills: number;
+  };
+  configuration: {
+    executionProfile: Bot["computerProfile"];
+    portabilityFormat: "openbot.employee/v1";
+  };
+}
+
 export interface ExecutionNode {
   id: EntityId;
   name: string;

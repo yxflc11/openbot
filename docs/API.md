@@ -23,6 +23,7 @@
 | `GET` | `/api/v1/runs/:runId/frame` | 鉴权读取任务最新临时画面；不持久化 |
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
+| `GET` | `/api/v1/bots/:botId/profile` | 读取数字员工档案、进化、技能、记忆与工作记录 |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
 
 在线 Node 投影包含 `platform`、`osVersion`、`architecture`、`deviceClass`、`isolation`、
@@ -54,6 +55,24 @@ manifest 用于兼容性展示和后续策略迁移，本身不授予执行权�
 ```
 
 `computerProfile` 只能是 `none`、`docker-linux`、`macos-cua`、`lume-vm` 或 `coder`。Bot 名称在当前本地工作区唯一。
+
+创建 Bot 时，Server 会在同一事务内写入一条不可变的 `created` 进化事件。Bot 是数字员工身份本身；系统不会建立第二套重复的 Employee 身份。
+
+## 读取数字员工档案
+
+`GET /api/v1/bots/:botId/profile` 返回 Owner 可见的数字员工聚合投影：
+
+- `employee`：姓名、职责、状态、外观和固定执行配置；
+- `evolution`：有来源和证据引用的追加式进化事件；
+- `skills`：版本、依赖、所需能力、验证状态与证据置信度；
+- `memories`：按类型、敏感度和可迁移策略分类的记忆；
+- `records`：该员工最近的 Run、Approval、Artifact 与结构化决策摘要；
+- `statistics`：最近 50 个 Run 的结果计数与已验证技能数；
+- `configuration`：执行配置和可移植员工包格式版本。
+
+`records.decisions` 只来自 Worker Host 上报并持久化的 `RUN_PROGRESS` 事件，用于解释阶段、已观察事实和下一步动作。它不是模型原始思维链，也不允许 Provider 把隐藏提示、密钥或私有推理写入其中。
+
+技能的 `confidence` 表示证据质量，不会授予电脑权限；真正的执行权限仍由 Server 的 Node 路由、策略、审批和后续 capability lease 独立决定。记忆的 `portability` 也只是导出候选策略，导出时仍需重新过滤和 Owner 确认。
 
 ## 创建频道
 
