@@ -17,6 +17,8 @@
   "scripts": {
     "build": "turbo run build",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "db:up": "docker compose --env-file .env -f deploy/server/compose.yaml up -d postgres",
+    "db:stop": "docker compose --env-file .env -f deploy/server/compose.yaml stop postgres",
     "dev": "turbo run dev --parallel",
     "dev:server": "npm run dev --workspace @openbot/server",
     "dev:web": "npm run dev --workspace @openbot/web",

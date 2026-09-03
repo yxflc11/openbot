@@ -75,3 +75,31 @@ export const runEventSchema = z.object({
 });
 
 export type RunEvent = z.infer<typeof runEventSchema>;
+
+export const computerProfileSchema = z.enum([
+  "none",
+  "docker-linux",
+  "macos-cua",
+  "lume-vm",
+  "coder",
+]);
+
+export const createBotInputSchema = z.object({
+  name: z.string().trim().min(1, "Bot name is required.").max(64),
+  role: z.string().trim().min(1, "Bot role is required.").max(160),
+  computerProfile: computerProfileSchema.default("none"),
+});
+
+export const createChannelInputSchema = z.object({
+  name: z.string().trim().min(1, "Channel name is required.").max(80),
+  description: z.string().trim().max(500).default(""),
+  botIds: z
+    .array(z.string().uuid())
+    .max(32)
+    .default([])
+    .transform((ids) => [...new Set(ids)]),
+});
+
+export const joinChannelBotInputSchema = z.object({
+  botId: z.string().uuid(),
+});

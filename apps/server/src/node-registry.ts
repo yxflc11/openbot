@@ -12,6 +12,7 @@ interface ConnectedNode extends ExecutionNode {
 export class NodeRegistry {
   readonly #nodes = new Map<string, ConnectedNode>();
   readonly #enrollmentToken: string;
+  #gateway?: WebSocketServer;
 
   constructor(enrollmentToken: string) {
     this.#enrollmentToken = enrollmentToken;
@@ -23,6 +24,7 @@ export class NodeRegistry {
 
   attach(server: HttpServer): void {
     const gateway = new WebSocketServer({ noServer: true });
+    this.#gateway = gateway;
 
     server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       const url = new URL(request.url ?? "/", "http://openbot.local");
@@ -90,6 +92,14 @@ export class NodeRegistry {
         }
       });
     });
+  }
+
+  close(): void {
+    for (const socket of this.#gateway?.clients ?? []) {
+      socket.terminate();
+    }
+    this.#gateway?.close();
+    this.#nodes.clear();
   }
 }
 

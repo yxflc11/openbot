@@ -33,6 +33,7 @@ export interface Bot {
   role: string;
   status: BotStatus;
   computerProfile: "none" | "docker-linux" | "macos-cua" | "lume-vm" | "coder";
+  createdAt: string;
 }
 
 export interface ExecutionNode {
@@ -57,11 +58,30 @@ export interface Run {
 
 export interface BootstrapSummary {
   project: "openbot";
-  phase: "foundation";
+  phase: "foundation" | "m0";
   counts: {
     channels: number;
     bots: number;
     connectedNodes: number;
     activeRuns: number;
   };
+}
+
+export interface WorkspaceSnapshot {
+  channels: Channel[];
+  bots: Bot[];
+  nodes: ExecutionNode[];
+  counts: BootstrapSummary["counts"];
+}
+
+export interface CreateBotInput {
+  name: string;
+  role: string;
+  computerProfile: Bot["computerProfile"];
+}
+
+export interface CreateChannelInput {
+  name: string;
+  description: string;
+  botIds: EntityId[];
 }

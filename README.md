@@ -4,7 +4,7 @@
 
 OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
 
-当前状态：**基础仓库已建立；正在进入 M0 本地控制面实现。**
+当前状态：**M0 第一切片已实现：PostgreSQL 持久化、频道/Bot 管理、Node 状态和 Marvis 式办公室已跑通。**
 
 ## 产品公式
 
@@ -81,6 +81,8 @@ OpenClaw 降级为**可选 Agent runtime/技能来源**，不再承担频道或�
 默认首页参考腾讯 Marvis 的可视化办公室，让 Bot 像数字员工一样在工位上呈现状态；同时保留 Grok Bot 的长期频道和自由新增 Bot。用户可以创建频道、创建 Bot、把 Bot 加入频道，再从办公室进入任务、实时电脑、审批和产物。
 
 这里严格区分：Bot 是员工，Node 是电脑，Channel 是工作房间，Run 是当前工作。详细交互见 [界面方案](docs/INTERFACE.md)。
+
+![OpenBot M0 办公室设计基准](docs/design/m0-office-concept.png)
 
 ## 远程控制路径
 
@@ -163,10 +165,11 @@ openbot/
 ```bash
 cp .env.example .env
 npm install
+npm run db:up
 npm run dev
 ```
 
-随后打开 `http://localhost:5173`。`apps/server` 会提供本地控制面，`apps/node` 会使用根目录 `.env` 中的登记令牌主动连接 Server。提交代码前运行：
+随后打开 `http://localhost:5173`。Server 启动时会自动执行已提交的 PostgreSQL migration；`apps/node` 会使用根目录 `.env` 中的登记令牌主动连接 Server。停止本地数据库可运行 `npm run db:stop`。提交代码前运行：
 
 ```bash
 npm run check
@@ -184,6 +187,7 @@ npm audit
 - [实施路线图](docs/ROADMAP.md)
 - [上游选择与集成策略](docs/UPSTREAMS.md)
 - [仓库拆分策略](docs/REPOSITORY.md)
+- [本地 API](docs/API.md)
 - [ADR-0002：本地频道与 Server/Node 架构](docs/decisions/0002-local-channel-server-node.md)
 - [ADR-0003：Marvis 办公室与 Grok Bot 频道](docs/decisions/0003-marvis-office-grok-channels.md)
 - [ADR-0004：基础阶段采用单一 monorepo](docs/decisions/0004-monorepo-foundation.md)

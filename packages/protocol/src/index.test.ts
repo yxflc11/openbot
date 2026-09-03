@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { nodeMessageSchema, protocolVersion, runEventSchema } from "./index.js";
+import {
+  createBotInputSchema,
+  createChannelInputSchema,
+  nodeMessageSchema,
+  protocolVersion,
+  runEventSchema,
+} from "./index.js";
 
 describe("node protocol", () => {
   it("accepts a versioned hello message", () => {
@@ -46,5 +52,32 @@ describe("run events", () => {
         payload: { title: "Fill a test form" },
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("control plane inputs", () => {
+  it("trims Bot fields and validates its computer profile", () => {
+    expect(
+      createBotInputSchema.parse({
+        name: "  Ops  ",
+        role: "  Browser operations  ",
+        computerProfile: "docker-linux",
+      }),
+    ).toEqual({
+      name: "Ops",
+      role: "Browser operations",
+      computerProfile: "docker-linux",
+    });
+  });
+
+  it("deduplicates a channel roster", () => {
+    const botId = "00000000-0000-4000-8000-000000000001";
+    expect(
+      createChannelInputSchema.parse({
+        name: "Operations",
+        description: "",
+        botIds: [botId, botId],
+      }).botIds,
+    ).toEqual([botId]);
   });
 });

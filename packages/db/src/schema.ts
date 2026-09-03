@@ -1,4 +1,5 @@
 import {
+  check,
   index,
   jsonb,
   pgTable,
@@ -7,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -21,18 +23,28 @@ export const channels = pgTable(
     description: text("description").notNull().default(""),
     ...timestamps,
   },
-  (table) => [uniqueIndex("channels_name_idx").on(table.name)],
+  (table) => [
+    uniqueIndex("channels_name_idx").on(table.name),
+    check("channels_name_not_blank", sql`length(btrim(${table.name})) > 0`),
+  ],
 );
 
-export const bots = pgTable("bots", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  role: text("role").notNull(),
-  status: text("status").notNull().default("idle"),
-  computerProfile: text("computer_profile").notNull().default("none"),
-  configuration: jsonb("configuration").notNull().default({}),
-  ...timestamps,
-});
+export const bots = pgTable(
+  "bots",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("idle"),
+    computerProfile: text("computer_profile").notNull().default("none"),
+    configuration: jsonb("configuration").notNull().default({}),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("bots_name_idx").on(table.name),
+    check("bots_name_not_blank", sql`length(btrim(${table.name})) > 0`),
+  ],
+);
 
 export const channelBots = pgTable(
   "channel_bots",
@@ -45,7 +57,10 @@ export const channelBots = pgTable(
       .references(() => bots.id, { onDelete: "cascade" }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.channelId, table.botId] })],
+  (table) => [
+    primaryKey({ columns: [table.channelId, table.botId] }),
+    index("channel_bots_bot_idx").on(table.botId),
+  ],
 );
 
 export const nodes = pgTable("nodes", {
@@ -75,8 +90,10 @@ export const runs = pgTable(
     ...timestamps,
   },
   (table) => [
-    index("runs_channel_idx").on(table.channelId),
-    index("runs_status_idx").on(table.status),
+    index("runs_channel_created_idx").on(table.channelId, table.createdAt),
+    index("runs_bot_idx").on(table.botId),
+    index("runs_node_idx").on(table.nodeId),
+    index("runs_status_created_idx").on(table.status, table.createdAt),
   ],
 );
 
@@ -92,7 +109,27 @@ export const runEvents = pgTable(
     payload: jsonb("payload").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("run_events_run_time_idx").on(table.runId, table.createdAt)],
+  (table) => [
+    index("run_events_run_time_idx").on(table.runId, table.createdAt),
+    index("run_events_channel_time_idx").on(table.channelId, table.createdAt),
+    index("run_events_bot_idx").on(table.botId),
+    index("run_events_node_idx").on(table.nodeId),
+  ],
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    authorType: text("author_type").notNull(),
+    authorId: text("author_id"),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("messages_channel_time_idx").on(table.channelId, table.createdAt)],
 );
 
 export const approvals = pgTable(

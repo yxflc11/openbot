@@ -1,111 +1,153 @@
-import type { BootstrapSummary } from "@openbot/domain";
-import { useEffect, useState } from "react";
+import type { CreateBotInput, CreateChannelInput, WorkspaceSnapshot } from "@openbot/domain";
+import { useCallback, useEffect, useState } from "react";
+import { createBot, createChannel, getWorkspace, joinBotToChannel } from "./api";
+import { ChannelWorkspace } from "./components/ChannelWorkspace";
+import { ContextRail } from "./components/ContextRail";
+import { CreateBotDialog } from "./components/CreateBotDialog";
+import { CreateChannelDialog } from "./components/CreateChannelDialog";
+import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
+import { Office } from "./components/Office";
+import { Sidebar } from "./components/Sidebar";
 
-const navigation = ["Office", "Channels", "Bots", "Routines", "Skills", "Nodes", "Audit"];
+type Dialog = "bot" | "channel" | undefined;
 
 export function App() {
-  const [summary, setSummary] = useState<BootstrapSummary | undefined>();
-  const [error, setError] = useState<string | undefined>();
+  const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
+  const [selectedChannelId, setSelectedChannelId] = useState<string>();
+  const [dialog, setDialog] = useState<Dialog>();
+  const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
+  const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+
+  const refresh = useCallback(async (signal?: AbortSignal) => {
+    setError(undefined);
+    try {
+      setWorkspace(await getWorkspace(signal));
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(
+        cause instanceof Error ? cause.message : "无法连接 OpenBot Server。请确认服务已启动。",
+      );
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-
-    async function loadSummary() {
-      try {
-        const response = await fetch("/api/v1/bootstrap", { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}.`);
-        }
-        setSummary((await response.json()) as BootstrapSummary);
-      } catch (cause) {
-        if (cause instanceof DOMException && cause.name === "AbortError") {
-          return;
-        }
-        setError(cause instanceof Error ? cause.message : "Unable to reach OpenBot Server.");
-      }
-    }
-
-    void loadSummary();
+    void refresh(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [refresh]);
+
+  async function handleCreateBot(input: CreateBotInput) {
+    const bot = await createBot(input);
+    await refresh();
+    setDialog(undefined);
+    showNotice(`${bot.name} 已创建。`);
+  }
+
+  async function handleCreateChannel(input: CreateChannelInput) {
+    const channel = await createChannel(input);
+    await refresh();
+    setSelectedChannelId(channel.id);
+    setDialog(undefined);
+    setMobilePanel(undefined);
+    showNotice(`${channel.name} 已创建。`);
+  }
+
+  async function handleJoinBot(botId: string) {
+    if (selectedChannelId === undefined) return;
+    await joinBotToChannel(selectedChannelId, botId);
+    await refresh();
+    showNotice("Bot 已加入频道。");
+  }
+
+  function showNotice(message: string) {
+    setNotice(message);
+    window.setTimeout(() => setNotice(undefined), 3000);
+  }
+
+  function selectChannel(channelId: string) {
+    setSelectedChannelId(channelId);
+    setMobilePanel(undefined);
+  }
+
+  if (workspace === undefined) {
+    return (
+      <main className="loading-screen">
+        <span className="loading-mark">O</span>
+        <h1>{error ? "无法打开 OpenBot" : "正在连接 OpenBot"}</h1>
+        <p>{error ?? "正在读取本地频道、Bots 与节点状态…"}</p>
+        {error ? (
+          <button className="primary-button" type="button" onClick={() => refresh()}>
+            重新连接
+          </button>
+        ) : null}
+      </main>
+    );
+  }
+
+  const selectedChannel = workspace.channels.find((channel) => channel.id === selectedChannelId);
 
   return (
     <div className="app-shell">
-      <aside className="navigation" aria-label="Primary navigation">
-        <a className="brand" href="/" aria-label="OpenBot home">
-          OpenBot
-        </a>
-        <nav>
-          {navigation.map((item, index) => (
-            <button
-              className={index === 0 ? "nav-item active" : "nav-item"}
-              type="button"
-              key={item}
-            >
-              {item}
-              {(item === "Channels" || item === "Bots") && <span aria-hidden="true">+</span>}
-            </button>
-          ))}
-        </nav>
-      </aside>
+      <Sidebar
+        bots={workspace.bots}
+        channels={workspace.channels}
+        selectedChannelId={selectedChannel?.id}
+        onOffice={() => setSelectedChannelId(undefined)}
+        onSelectChannel={selectChannel}
+        onCreateBot={() => setDialog("bot")}
+        onCreateChannel={() => setDialog("channel")}
+      />
 
-      <main className="foundation">
-        <header>
-          <p>Foundation workspace</p>
-          <h1>The control plane is ready for the first product slice.</h1>
-          <p>
-            This screen intentionally verifies repository wiring only. The selected Marvis-style
-            office interface will be implemented from its approved visual specification.
-          </p>
-        </header>
+      {selectedChannel ? (
+        <ChannelWorkspace channel={selectedChannel} bots={workspace.bots} onJoin={handleJoinBot} />
+      ) : (
+        <Office
+          bots={workspace.bots}
+          channels={workspace.channels}
+          onCreateBot={() => setDialog("bot")}
+          onCreateChannel={() => setDialog("channel")}
+        />
+      )}
 
-        <section className="boundaries" aria-labelledby="boundaries-heading">
-          <h2 id="boundaries-heading">Runtime boundaries</h2>
-          <dl>
-            <div>
-              <dt>Bot</dt>
-              <dd>Digital employee</dd>
-            </div>
-            <div>
-              <dt>Node</dt>
-              <dd>Replaceable computer</dd>
-            </div>
-            <div>
-              <dt>Channel</dt>
-              <dd>Long-lived workspace</dd>
-            </div>
-            <div>
-              <dt>Run</dt>
-              <dd>One auditable task</dd>
-            </div>
-          </dl>
-        </section>
-      </main>
+      <ContextRail workspace={workspace} />
 
-      <aside className="runtime" aria-label="Runtime status">
-        <p className="section-label">Runtime status</p>
-        {error !== undefined ? (
-          <p className="error">Server unavailable: {error}</p>
-        ) : summary === undefined ? (
-          <p className="muted">Connecting to OpenBot Server…</p>
-        ) : (
-          <dl className="metrics">
-            <Metric label="Channels" value={summary.counts.channels} />
-            <Metric label="Bots" value={summary.counts.bots} />
-            <Metric label="Connected nodes" value={summary.counts.connectedNodes} />
-            <Metric label="Active runs" value={summary.counts.activeRuns} />
-          </dl>
-        )}
-      </aside>
-    </div>
-  );
-}
+      <MobileNavigation
+        panel={mobilePanel}
+        bots={workspace.bots}
+        channels={workspace.channels}
+        nodes={workspace.nodes}
+        onPanel={setMobilePanel}
+        onOffice={() => {
+          setSelectedChannelId(undefined);
+          setMobilePanel(undefined);
+        }}
+        onCreateBot={() => {
+          setMobilePanel(undefined);
+          setDialog("bot");
+        }}
+        onCreateChannel={() => {
+          setMobilePanel(undefined);
+          setDialog("channel");
+        }}
+        onSelectChannel={selectChannel}
+      />
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
+      {dialog === "bot" ? (
+        <CreateBotDialog onClose={() => setDialog(undefined)} onCreate={handleCreateBot} />
+      ) : null}
+      {dialog === "channel" ? (
+        <CreateChannelDialog
+          bots={workspace.bots}
+          onClose={() => setDialog(undefined)}
+          onCreate={handleCreateChannel}
+        />
+      ) : null}
+      {notice ? (
+        <div className="toast" role="status">
+          {notice}
+        </div>
+      ) : null}
     </div>
   );
 }
