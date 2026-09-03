@@ -69,7 +69,7 @@ export class FileArtifactStorage implements ArtifactStorage {
         try {
           await rm(this.#pathFor(storageKey), { force: true });
         } catch {
-          // Cleanup is best effort and must not obscure the original persistence failure.
+          // Rollback cleanup is best-effort; the persistence failure remains the primary error.
         }
       }),
     );

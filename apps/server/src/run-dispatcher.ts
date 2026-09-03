@@ -66,6 +66,7 @@ export class RunDispatcher {
   readonly #artifacts: ArtifactStorage;
   readonly #frames: FramePublisher | undefined;
   readonly #workspace: WorkspacePublisher | undefined;
+  // Preserve protocol order per Run without serializing independent Runs or Nodes.
   readonly #runMessageTails = new Map<string, Promise<void>>();
   #draining = false;
   #drainAgain = false;
@@ -156,6 +157,7 @@ export class RunDispatcher {
   async dispatchQueued(): Promise<void> {
     if (this.#stopped) return;
     if (this.#draining) {
+      // Coalesce concurrent wakeups instead of running overlapping dispatch loops.
       this.#drainAgain = true;
       return;
     }
@@ -190,6 +192,7 @@ export class RunDispatcher {
     });
     if (result.status !== "accepted") return;
 
+    // A Node offer reserves local capacity; the database transition remains the global claim.
     const assigned = await this.#store.assignRun(run.id, node.id);
     if (assigned === undefined) {
       this.#nodes.cancelRun(node.id, run.id, "Run was claimed by another dispatcher.");

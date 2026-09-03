@@ -22,6 +22,10 @@ export interface ProviderArtifact {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * A side effect frozen before approval. Providers must commit this exact action rather than
+ * recomputing a target from mutable model output after approval.
+ */
 export interface PreparedAction {
   actionId: string;
   action: string;
@@ -56,6 +60,10 @@ export interface ProviderFrame {
   capturedAt: string;
 }
 
+/**
+ * A replaceable execution backend. Declared capabilities describe what the backend can do; they
+ * never authorize a Run or bypass Server policy.
+ */
 export interface ComputerProvider {
   id: string;
   displayName: string;

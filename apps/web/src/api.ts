@@ -161,55 +161,28 @@ export function subscribeToChannelEvents(
     handlers.onReady();
   };
   const onMessage = (event: Event) => {
-    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
-    try {
-      const payload: unknown = JSON.parse(event.data);
-      if (isMessageCreatedEvent(payload, channelId)) {
-        markLive();
-        handlers.onMessage(payload.message);
-      }
-    } catch {
-      // Ignore malformed frames and keep the stream available for the next valid event.
-    }
+    const payload = parseEventPayload(event);
+    if (!isMessageCreatedEvent(payload, channelId)) return;
+    markLive();
+    handlers.onMessage(payload.message);
   };
   const onRun = (event: Event) => {
-    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
-    try {
-      const payload: unknown = JSON.parse(event.data);
-      if (isRunProjectionEvent(payload, channelId)) {
-        markLive();
-        handlers.onRun(
-          payload.run,
-          payload.type === "run.updated" ? (payload.artifacts ?? []) : [],
-        );
-      }
-    } catch {
-      // Ignore malformed frames and keep the stream available for the next valid event.
-    }
+    const payload = parseEventPayload(event);
+    if (!isRunProjectionEvent(payload, channelId)) return;
+    markLive();
+    handlers.onRun(payload.run, payload.type === "run.updated" ? (payload.artifacts ?? []) : []);
   };
   const onProgress = (event: Event) => {
-    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
-    try {
-      const payload: unknown = JSON.parse(event.data);
-      if (isRunProgressProjectionEvent(payload, channelId)) {
-        markLive();
-        handlers.onProgress(payload.progress);
-      }
-    } catch {
-      // Ignore malformed frames and keep the stream available for the next valid event.
-    }
+    const payload = parseEventPayload(event);
+    if (!isRunProgressProjectionEvent(payload, channelId)) return;
+    markLive();
+    handlers.onProgress(payload.progress);
   };
   const onFrame = (event: Event) => {
-    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
-    try {
-      const payload: unknown = JSON.parse(event.data);
-      if (isRunFrameProjectionEvent(payload, channelId)) {
-        markLive();
-        handlers.onFrame(payload.frame);
-      }
-    } catch {
-      // Ignore malformed frames and keep the stream available for the next valid event.
-    }
+    const payload = parseEventPayload(event);
+    if (!isRunFrameProjectionEvent(payload, channelId)) return;
+    markLive();
+    handlers.onFrame(payload.frame);
   };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
@@ -498,6 +471,7 @@ function parseEventPayload(event: Event): unknown {
   try {
     return JSON.parse(event.data);
   } catch {
+    // One malformed event must not tear down an otherwise healthy realtime stream.
     return undefined;
   }
 }

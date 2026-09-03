@@ -239,7 +239,7 @@ export class NodeRegistry {
     try {
       node.socket.send(JSON.stringify(message));
     } catch {
-      // A later heartbeat or disconnect reconciles the in-memory capacity view.
+      // Heartbeat or disconnect reconciliation repairs the in-memory capacity projection.
     }
   }
 
@@ -262,7 +262,7 @@ export class NodeRegistry {
     try {
       node.socket.send(JSON.stringify(message));
     } catch {
-      // The disconnect handler reconciles any assignment that lost its socket.
+      // Disconnect reconciliation repairs any assignment that lost its transport.
     }
   }
 

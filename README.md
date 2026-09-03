@@ -1,222 +1,267 @@
-# OpenBot（暂定名）
+# OpenBot
 
-> 融合成熟开源组件并开发关键差集，做出一个完全自托管、可从任意设备远程使用、执行节点可替换的 Grok Bot 开源复刻版。
+**A self-hosted control plane for always-on digital workers.**
 
-OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-当前状态：**M1 已跑通第一条完整执行链：含明确公开 URL 的任务会按固定 execution profile 分配给在线 Node，经 CopilotKit/OpenBot `agent-computer` 打开网页并截图；节点连接/断开、Run 状态、结构化进度和最新执行画面会实时同步，结果与截图持久化后可在任务 Inspector 中复查。第一段 M2 审批控制面也已接通：provider 可在动作前发起审批，Run 会原子进入 `waiting_approval`，Owner 可在桌面或手机批准一次或拒绝，决定与目标指纹会持久化并回传原 Node。当前 Docker provider 仍是只读适配器，不会点击、填写或提交表单；一次性加密 capability lease 尚未实现。**
+[![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
+[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](package.json)
+[![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#project-status)
 
-## 产品公式
+OpenBot is an early-stage, open-source system for running named AI workers on computers you
+control. You talk to Bots in persistent local channels; the OpenBot Server routes each task to a
+replaceable execution Node and keeps messages, approvals, artifacts, and audit events under your
+ownership.
 
-```text
-本地 Web/PWA 频道
-  + CopilotKit/OpenBot 的产品壳、策略、审计、电脑与交接
-  - CopilotKit Intelligence 云依赖
-  + 本地线程/记忆/实时服务
-  + 可远程注册的 OpenBot Node
-  + Cua Driver / Lume / Docker 执行后端
-  = 我们的自托管 Grok Bot
-```
+A Mac mini can be a macOS execution Node, but it is not the product. The Server can run on Linux,
+macOS, a NAS, or a cloud VM, and you can reach it from any browser over a private network.
 
-## M1 完整验收只证明一件事
+OpenBot is inspired by the always-on, channel-based experience of products such as Grok Bot while
+remaining self-hosted, provider-neutral, and designed for explicit human control.
 
-> 用户在手机浏览器打开自己的 OpenBot，对 `Ops` 说「打开测试页，填写但不要提交，截图给我」；部署在任意服务器上的控制面把任务发给在线执行节点，任务完成后在同一频道返回截图。若要求提交，系统必须停下来等批准。
+> [!WARNING]
+> OpenBot is pre-alpha software. The current computer provider is read-only and does **not** fill,
+> click, submit, or control production accounts. Do not connect payment methods, primary accounts,
+> or production credentials. Read [Security](#security) before exposing a deployment.
 
-当前已经完成“明确网址 → 无人值守打开 → 临时画面 → 截图回频道”和“provider 请求动作 → Owner 审批 → 原 Node 收到决定”的控制链。“连续画面”“填写但不提交”“一次性 capability lease”和真正提交动作仍是下一阶段，不能把现在的只读适配器描述成完整电脑操作。
+## Why OpenBot
 
-## 总体架构
+- **Local channels, not disposable chat windows.** Bots, conversations, runs, and results persist
+  in your own PostgreSQL database.
+- **Replaceable computers.** A Bot is an identity and policy profile; a Node is a machine. Linux,
+  macOS, VM, and coding Nodes can be added or replaced independently.
+- **Approval before side effects.** Sensitive actions enter an explicit, auditable approval state.
+  Models cannot grant themselves additional privileges.
+- **One control plane on every device.** Desktop and mobile browsers share the same channel state
+  through authenticated realtime updates.
+- **Composable Bot identities.** Bot appearance is stored as five independent layers: head, body,
+  mobility, accessory, and accent color.
+- **Adapters over lock-in.** Models, computer runtimes, and upstream projects connect through typed,
+  versioned boundaries.
 
-```mermaid
-flowchart TB
-    subgraph Clients["你的设备"]
-      PHONE["手机 PWA"]
-      LAPTOP["笔记本浏览器"]
-      TABLET["平板浏览器"]
-    end
+## Project status
 
-    subgraph Server["OpenBot Server · 可部署在 Mini / Linux / 云服务器"]
-      WEB["本地频道与 Bot UI"]
-      API["API · Auth · Realtime"]
-      POLICY["Action Gateway<br/>策略 · 审批 · 能力租约"]
-      ROUTER["Scheduler & Node Router"]
-      DB[("PostgreSQL<br/>线程 · 记忆 · 审计 · 配置")]
-    end
+OpenBot currently provides a tested vertical slice from a local channel to a remote execution Node
+and back. The table deliberately separates working code from planned capabilities.
 
-    subgraph Nodes["可替换执行节点"]
-      LINUX["Linux Node<br/>Docker · Browser · Shell"]
-      MAC["macOS Node<br/>Cua Driver · 原生 App"]
-      VM["Apple Node<br/>Lume macOS VM"]
-      CODE["Coder Node<br/>Codex · Claude · Multica"]
-    end
-
-    PHONE & LAPTOP & TABLET -->|"HTTPS · Tailscale 优先"| WEB
-    WEB --> API --> POLICY --> ROUTER
-    API <--> DB
-    POLICY --> DB
-    LINUX & MAC & VM & CODE -->|"节点主动建立 WSS/mTLS 连接"| ROUTER
-```
-
-### 关键边界
-
-- **Server 是系统本体**：频道、会话、Bot、策略、审批、审计和调度都在这里。
-- **Node 只是员工的电脑**：上报能力、领取任务、回传屏幕和产物；不保存系统真相。
-- **Mac Mini 不是必需品**：普通网页和脚本可由 Linux 服务器完成。
-- **macOS 能力不能凭空替代**：若任务必须操作 Mac 原生软件，仍需一台 Mac 节点；Linux 服务器只能替代控制面和非 macOS 工作。
-- **节点不开放入站管理端口**：节点主动连 Server，远程设备永远只连接 Server。
-
-## 为什么以 CopilotKit/OpenBot 为产品底座候选
-
-[CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) 已经具备我们原计划大量自研的能力：Bot 名册和频道、每 Bot 容器、实时屏幕、人工接管、fail-closed CEL 策略、动作审计、凭证脱敏、routine 和结构化 Bot 交接。
-
-我们不原样采用它，因为当前版本把持久线程和记忆绑定到 CopilotKit Intelligence，并要求项目 key 与机器 license；官方配置说明其 Intelligence 自托管不是自助功能。我们的核心开发因此变为：
-
-1. 用本地 PostgreSQL + realtime service 替换 Intelligence。
-2. 把单机 Docker supervisor 泛化成远程 Node 协议。
-3. 增加 Cua Driver 与 Lume provider。
-4. 把 Web UI 做成适合手机远程审批和接管的 PWA。
-5. 增加 Codex、Claude、Grok CLI/AG-UI 运行适配器。
-
-OpenClaw 降级为**可选 Agent runtime/技能来源**，不再承担频道或系统真相源，避免双控制面。
-
-## 界面方向
-
-当前版本默认进入 Grok Bot 式长期频道。频道是任务、Bot 回复、审批和产物的主界面；用户可以明确选择接收消息的 Bot，执行结果也会以该 Bot 的身份持久化回到同一对话。腾讯 Marvis 的空间化办公室不在当前版本展示，已隔离为 `@openbot/office-plugin` 可选包，后续独立迭代。
-
-Bot 角色采用用户定义的黑色机器人模型，并拆成头部、身体、移动方式、配件和强调色五层组合身份。组合随 Bot 保存，可在频道头像、成员名册以及未来插件中复用；当前不引入稀有度、交易或链上逻辑。
-
-这里严格区分：Bot 是员工，Node 是电脑，Channel 是工作房间，Run 是当前工作。详细交互见 [界面方案](docs/INTERFACE.md)。
-
-## 远程控制路径
-
-```mermaid
-sequenceDiagram
-    actor User as 手机/笔记本
-    participant Web as OpenBot PWA
-    participant Server as OpenBot Server
-    participant Node as OpenBot Node
-    participant Computer as Browser/Cua/Lume
-
-    Node->>Server: 主动注册能力与心跳
-    User->>Web: 打开私有频道并下任务
-    Web->>Server: 创建 run
-    Server->>Node: 经既有 WSS 连接派发
-    Node->>Computer: 执行并持续观察
-    Computer-->>Node: 屏幕、状态、产物
-    Node-->>Server: 流式回传
-    Server-->>Web: 展示工作画面
-    Server-->>User: 请求敏感动作审批
-    User-->>Server: 批准一次
-    Server->>Node: 一次性 capability lease
-    User->>Server: 请求人工接管
-    Server->>Node: 独占控制租约
-    Node-->>Web: 短时屏幕/输入通道
-```
-
-## 上游分工
-
-| 能力 | 采用 | 我们开发什么 |
+| Area | Available now | Next step |
 | --- | --- | --- |
-| 产品壳、Bot、频道、策略、审计、容器电脑 | CopilotKit/OpenBot 上游基线 | 当前复用 `agent-computer` HTTP 边界；后续再决定是否 fork UI/策略层 |
-| macOS 后台操作与 VM | Cua Driver / Lume | Node adapter、审批关联、远程屏幕 |
-| Agent CLI 与技能 | Codex / Claude / OpenClaw adapters | 统一 AG-UI/run contract |
-| 编码任务看板 | Multica（后加） | 只给 `coder` Node |
-| UX/provider 参考 | Rakazo / OpenMausBot | 不运行第二套控制面 |
+| Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
+| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, and SSE reconnect | Installable PWA, notification delivery, accessibility and localization polish |
+| Bot identity | Five-layer composable appearance persisted with each Bot | More parts, import/export, and community-created appearance packs |
+| Node protocol | Outbound WebSocket registration, heartbeat, capacity, deterministic routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and protocol compatibility tests |
+| Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
+| Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
+| Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Production macOS Cua/Lume and isolated coding providers |
+| Office view | Isolated `@openbot/office-plugin` package with no core-app dependency | Optional plugin lifecycle after the channel workflow is mature |
 
-## 里程碑
+### What the current release does not claim
 
-- **M0 — 本地控制面**：完全断开 CopilotKit Intelligence 后，频道、线程、登录和审计仍能本地运行。
-- **M1 — Server + Node 闭环**：Server 向一台 Linux Node 派发浏览器任务并回传截图。
-- **M2 — 远程访问与审批**：手机通过 Tailscale/PWA 使用频道、审批并安全接管。
-- **M3 — macOS Node**：Cua Driver/Lume 接入，Mac Mini 成为一种节点而不是系统本体。
-- **M4 — 多 Bot 与 routine**：交接、调度、重试、熔断和节点选择。
-- **M5 — 发布与扩展**：一键 Server/Node 安装、签名、SBOM、升级和恢复。
+- It does not perform unattended form submissions or arbitrary desktop actions.
+- It does not yet issue cryptographic, single-use capability leases after approval.
+- It does not provide continuous remote desktop control.
+- It does not yet have production-grade Node identity, mTLS, or credential rotation.
+- The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
+- The optional office visualization is not part of the current product navigation or Web build.
 
-详细过线标准见 [路线图](docs/ROADMAP.md)。
+## Quick start
 
-## 仓库结构
+### Requirements
 
-```text
-openbot/
-├── apps/
-│   ├── web/                 # Web/PWA 产品壳
-│   ├── server/              # 本地 API、控制面与 Node gateway
-│   └── node/                # 可远程注册的执行节点 daemon
-├── providers/
-│   ├── docker/              # Linux 浏览器与 Shell
-│   ├── cua/                 # macOS Cua Driver
-│   ├── lume/                # macOS VM
-│   └── coder/               # Codex / Claude / Multica
-├── packages/
-│   ├── config/              # 环境变量契约
-│   ├── db/                  # PostgreSQL schema 与 migration
-│   ├── domain/              # Channel、Bot、Run、Node 实体
-│   ├── protocol/            # Server ↔ Node 与事件契约
-│   ├── policy/              # fail-closed 策略
-│   └── provider-sdk/        # 执行 provider 接口
-├── deploy/
-│   ├── server/              # Docker Compose / Linux service
-│   └── node/                # macOS launchd / Linux systemd
-├── examples/
-└── docs/
-```
+- Node.js 22 or newer
+- npm 10 or newer
+- Docker with Docker Compose
 
-## 本地启动
-
-要求：Node.js 22+、npm 10+ 和 Docker。当前控制面使用 PostgreSQL 保存频道、Bot、成员、消息、排队任务和结构化事件。
+### Run locally
 
 ```bash
+git clone https://github.com/yxflc11/openbot.git
+cd openbot
 cp .env.example .env
-# 编辑 .env，替换 OPENBOT_OWNER_PASSWORD 与 OPENBOT_NODE_TOKEN
+```
+
+Edit `.env` and replace at least these development placeholders with independent random secrets:
+
+```dotenv
+OPENBOT_OWNER_PASSWORD=<a-random-password-with-at-least-12-characters>
+OPENBOT_NODE_TOKEN=<a-random-node-enrollment-token>
+```
+
+Then start PostgreSQL and all application workspaces:
+
+```bash
 npm install
 npm run db:up
 npm run dev
 ```
 
-随后打开 `http://localhost:5173`。Server 启动时会自动执行已提交的 PostgreSQL migration；`apps/node` 会使用根目录 `.env` 中的登记令牌主动连接 Server，并以 `OPENBOT_NODE_MAX_CONCURRENT_RUNS` 声明并发容量。未配置可执行 provider 时，Node 会如实上报零项执行能力，任务保持排队。
+Open <http://localhost:5173>, sign in with `OPENBOT_OWNER_PASSWORD`, create a Bot, create a channel,
+and add the Bot to that channel.
 
-要启用当前只读浏览器切片，先按上游说明在 **Node 所在机器**运行固定版本的 [CopilotKit/OpenBot `agent-computer`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer)，把它保持在 loopback；然后在本仓 `.env` 中同时设置：
+By default, the local Node honestly advertises no execution capability. Messages are still stored
+as queued Runs until a compatible provider is configured. Stop PostgreSQL with `npm run db:stop`.
+
+### Enable the read-only browser slice
+
+Run the pinned
+[CopilotKit/OpenBot `agent-computer`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer)
+on the Node machine and keep it bound to loopback. Configure both values below with the same
+computer token, then restart the Node:
 
 ```dotenv
 OPENBOT_DOCKER_COMPUTER_URL=http://127.0.0.1:4100
-OPENBOT_DOCKER_COMPUTER_TOKEN=<与 agent-computer 的 COMPUTER_TOKEN 相同>
+OPENBOT_DOCKER_COMPUTER_TOKEN=<a-random-token-with-at-least-16-characters>
 OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS=false
 ```
 
-重启 Node 后，它才会声明 `browser` 和 `screenshot`。在频道中发送“打开 `https://example.com` 并截图”即可走完整链路；任务必须包含明确的 HTTP(S) URL。停止本地数据库可运行 `npm run db:stop`。提交代码前运行：
+Send a channel message containing an explicit public URL, for example:
 
-```bash
-npm run check
-npm audit
+```text
+Open https://example.com and send me a screenshot.
 ```
 
-此时可通过本地 Owner 密码登录，并运行频道优先界面、组合式 Bot 创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。用户可在输入框中指定接收任务的 Bot；任务完成后，Server 将结果保存为该 Bot 的回复并通过 SSE 推回频道。Bot 回复支持段落、列表、表格、引用关系和 Artifact。随后按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`。节点在线状态、容量、执行阶段、审批和最新画面经 SSE 实时投影；点击活动任务或右栏任务即可打开 Inspector。provider 发起写入、删除或特权动作前可请求审批，Owner 的一次批准或拒绝会落库并只回传对应 Run 与 Node。画面只在 Server 内存中短时保留。连续屏幕采集、真实网页填写/点击、加密的一次性 capability lease 和远程接管仍将按 M1–M2 逐步接入。
+The Server assigns the Run to a compatible Node, streams structured progress and the latest frame,
+stores the final screenshot, and posts the result under the selected Bot's identity.
 
-生产环境必须使用 HTTPS，把 `OPENBOT_SECURE_COOKIES` 设为 `true`，并让 `OPENBOT_ALLOWED_ORIGINS` 只包含实际 Web/PWA 地址。Owner 密码至少 12 个字符，建议使用密码管理器生成的长随机值。
+## How it fits together
 
-## 文档
+```text
+Any browser  ->  OpenBot Server  <- outbound connections -  OpenBot Nodes  ->  Providers
+                   source of truth                             replaceable computers
+```
 
-- [产品定义](docs/PRODUCT.md)
-- [系统架构](docs/ARCHITECTURE.md)
-- [频道优先 + 可选办公室插件界面方案](docs/INTERFACE.md)
-- [安全模型](docs/SECURITY.md)
-- [实施路线图](docs/ROADMAP.md)
-- [上游选择与集成策略](docs/UPSTREAMS.md)
-- [仓库拆分策略](docs/REPOSITORY.md)
-- [本地 API](docs/API.md)
-- [ADR-0002：本地频道与 Server/Node 架构](docs/decisions/0002-local-channel-server-node.md)
-- [ADR-0003：Marvis 办公室与 Grok Bot 频道](docs/decisions/0003-marvis-office-grok-channels.md)
-- [ADR-0004：基础阶段采用单一 monorepo](docs/decisions/0004-monorepo-foundation.md)
-- [ADR-0005：PostgreSQL 控制面](docs/decisions/0005-postgres-control-plane.md)
-- [ADR-0006：频道实时传输采用 REST + SSE](docs/decisions/0006-channel-realtime-sse.md)
-- [ADR-0007：单 Owner 本地认证与数据库会话](docs/decisions/0007-local-owner-auth.md)
-- [ADR-0008：频道消息到持久化任务](docs/decisions/0008-channel-task-runs.md)
-- [ADR-0009：两阶段 Node 任务分配](docs/decisions/0009-two-phase-node-assignment.md)
-- [ADR-0010：复用 agent-computer 的 provider 边界](docs/decisions/0010-agent-computer-provider-boundary.md)
-- [ADR-0011：Workspace Node 实时投影](docs/decisions/0011-workspace-node-realtime.md)
-- [ADR-0012：临时最新画面传输](docs/decisions/0012-ephemeral-run-frame-transport.md)
-- [ADR-0013：当前版本频道优先，办公室插件化](docs/decisions/0013-channel-first-office-plugin.md)
-- [声明式配置草案](examples/openbot.example.yaml)
+| Component | Owns | Does not own |
+| --- | --- | --- |
+| Client | Interaction, observation, approval input | Policy decisions or execution authority |
+| Server | Identity, channels, Runs, routing, policy, approvals, audit, and persistence | Host-specific computer capabilities |
+| Node | Capability discovery, local capacity, provider execution, progress, and artifacts | Bot identity, long-term memory, or authorization policy |
+| Provider | One narrow execution backend such as Docker/browser, Cua, Lume, or coder | Cross-Node routing or privilege escalation |
 
-## 开源注意事项
+The Server is the only source of truth. Nodes connect outward and never require a public management
+port. Routing is deterministic: a Run's fixed execution profile is intersected with online Node
+capabilities; the model cannot select an unauthorized machine.
 
-`OpenBot` 已被多个公开项目使用，而且 CopilotKit/OpenBot 与本项目高度相似。当前可保留本地仓库名，但公开 fork 前必须确定独特项目名并保留所有 MIT 版权和来源说明。
+For the detailed design, read [Architecture](docs/ARCHITECTURE.md) and the
+[Server/Node decision record](docs/decisions/0002-local-channel-server-node.md).
+
+## Security
+
+OpenBot assumes that models, prompts, webpages, skills, and execution environments can be
+untrusted. The intended security boundary is:
+
+1. The Server authorizes; the Node executes.
+2. Runs have fixed Bot, channel, Node, and execution-profile relationships.
+3. Write, destructive, and privileged actions must fail closed pending approval.
+4. Artifacts and realtime events are bounded and validated before publication.
+5. Nodes connect to the Server; management services, databases, Docker sockets, and computer
+   backends must not be exposed publicly.
+
+For anything beyond loopback development, use HTTPS, set `OPENBOT_SECURE_COOKIES=true`, restrict
+`OPENBOT_ALLOWED_ORIGINS`, and place the deployment behind a private network such as Tailscale.
+
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and [the threat model](docs/SECURITY.md)
+for current guarantees and known gaps.
+
+## Roadmap
+
+OpenBot is built in acceptance-driven milestones. Contributions should advance one of these user
+outcomes rather than add an isolated demo.
+
+| Milestone | Outcome |
+| --- | --- |
+| M0 — Local control plane | Channels, Bots, authentication, persistence, and audit run without a proprietary cloud service. The foundation is available today. |
+| M1 — Server/Node loop | A replaceable Node receives a browser task and returns progress and a screenshot. The read-only vertical slice is available; safe interaction remains active work. |
+| M2 — Remote control and approval | Mobile access, signed single-use approvals, notifications, and exclusive human takeover. Persisted approval decisions are available; leases and takeover are next. |
+| M3 — macOS Node | Cua and Lume make a Mac mini one optional Node for native macOS work. |
+| M4 — Multi-Bot operations | Structured handoffs, routines, durable queues, retries, circuit breakers, and memory. |
+| M5 — Distribution | Reproducible Server/Node installers, signed releases, SBOMs, upgrades, backup, and recovery. |
+
+The complete acceptance gates live in [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Contributing
+
+OpenBot is meant to be built in the open. You do not need to understand the entire system before
+contributing.
+
+Good places to start:
+
+| Interest | Start in |
+| --- | --- |
+| Product and mobile UX | `apps/web`, [interface guide](docs/INTERFACE.md) |
+| APIs, persistence, and realtime | `apps/server`, `packages/db`, [API reference](docs/API.md) |
+| Node protocol and reliability | `apps/node`, `packages/protocol`, [architecture](docs/ARCHITECTURE.md) |
+| Computer backends | `providers/*`, `packages/provider-sdk` |
+| Policy and security | `packages/policy`, [threat model](docs/SECURITY.md) |
+| Documentation and translation | `README*.md`, `docs/`, decision records |
+| Optional experiences | `packages/office-plugin` and future plugins, without coupling them to the core app |
+
+Contribution flow:
+
+1. Read [CONTRIBUTING.md](CONTRIBUTING.md) and choose a scoped acceptance journey.
+2. Use an existing issue or open a bug/feature issue with the provided template.
+3. Keep execution capabilities behind typed provider boundaries and fail-closed tests.
+4. Run `npm run check` and `npm audit` before opening a pull request.
+5. Complete the pull request template, including verification and security impact.
+
+Documentation is part of the feature. English is the canonical project language; maintained
+translations should preserve the same claims, warnings, and section structure. New translations
+are welcome.
+
+## Repository map
+
+```text
+apps/
+  web/                 responsive channel UI
+  server/              control plane, API, persistence, routing, approvals
+  node/                outbound execution Node daemon
+packages/
+  domain/              shared entities
+  protocol/            versioned Server/Node messages and API validation
+  db/                  PostgreSQL schema and migrations
+  policy/              deterministic fail-closed policy evaluator
+  provider-sdk/        provider contracts
+  office-plugin/       deferred optional visualization
+providers/
+  docker/              current read-only browser adapter
+  cua/                 macOS extension boundary
+  lume/                macOS VM extension boundary
+  coder/               coding-agent extension boundary
+deploy/                 Compose, systemd, and launchd assets
+docs/                   product, architecture, security, roadmap, API, and ADRs
+```
+
+## Documentation
+
+| Goal | Start here |
+| --- | --- |
+| Understand the product and boundaries | [Product definition](docs/PRODUCT.md) |
+| Understand the system | [Architecture](docs/ARCHITECTURE.md) |
+| Review current and future delivery | [Roadmap](docs/ROADMAP.md) |
+| Build or integrate against the API | [Local API](docs/API.md) |
+| Review security guarantees | [Threat model](docs/SECURITY.md) |
+| Work on the channel experience | [Interface guide](docs/INTERFACE.md) |
+| Understand upstream choices | [Upstream strategy](docs/UPSTREAMS.md) |
+| Review why a decision was made | [Architecture decision records](docs/decisions/) |
+
+## Upstream projects
+
+OpenBot integrates ideas and narrow interfaces from existing open-source work instead of copying
+multiple control planes into one repository:
+
+- [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) — current `agent-computer` provider
+  boundary and product research.
+- [Cua](https://github.com/trycua/cua) and Lume — planned macOS execution providers.
+- [OpenClaw](https://github.com/openclaw/openclaw) — optional runtime, skills, and operational
+  reference; not a second source of truth.
+- Codex, Claude, and Multica — planned isolated coding-provider integrations.
+
+Upstream licenses and notices must be preserved whenever code is incorporated.
+
+## License and naming
+
+OpenBot is available under the [MIT License](LICENSE).
+
+`OpenBot` is currently a working project name and is already used by other public projects,
+including CopilotKit/OpenBot. A distinct public name must be selected before a stable release. The
+project is not affiliated with xAI, Tencent, CopilotKit, OpenClaw, or the other referenced projects.

@@ -311,6 +311,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     let selectedBotId: string | undefined;
     let selectedExecutionProfile: Bot["computerProfile"] | undefined;
 
+    // The source message, queued Run, and both audit events must become visible together.
     await this.#db.transaction(async (transaction) => {
       const channelRows = await transaction
         .select({ id: channels.id })
@@ -525,6 +526,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     decidedBy: string,
   ): Promise<ApprovalResolution> {
     const now = new Date();
+    // Conditional updates make a decision single-use even when two Owner clients race.
     return this.#db.transaction(async (transaction) => {
       const [current] = await transaction
         .select({ approval: approvalsTable, run: runs })
@@ -633,6 +635,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     artifacts: ArtifactRecord[],
   ): Promise<RunCompletion | undefined> {
     const now = new Date();
+    // Publish only after the terminal Run, Bot reply, artifacts, and audit events commit together.
     return this.#db.transaction(async (transaction) => {
       const [updated] = await transaction
         .update(runs)

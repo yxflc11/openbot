@@ -18,6 +18,10 @@ export interface PolicyDecision {
   reason: string;
 }
 
+/**
+ * Returns the first deterministic rule match and denies requests that have no explicit grant.
+ * Model output must not alter this decision after evaluation.
+ */
 export function evaluatePolicy(
   request: PolicyRequest,
   rules: readonly PolicyRule[],
