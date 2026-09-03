@@ -1970,14 +1970,14 @@ select:focus-visible {
   padding: 0;
   list-style: none;
 }
-.employee-evolution-timeline li {
+.employee-evolution-timeline > li {
   position: relative;
   display: grid;
   grid-template-columns: 78px 12px minmax(0, 1fr);
   gap: 10px;
   padding-bottom: 17px;
 }
-.employee-evolution-timeline li::before {
+.employee-evolution-timeline > li::before {
   position: absolute;
   top: 10px;
   bottom: -1px;
@@ -1986,13 +1986,13 @@ select:focus-visible {
   background: #dfe3e7;
   content: "";
 }
-.employee-evolution-timeline li:last-child {
+.employee-evolution-timeline > li:last-child {
   padding-bottom: 0;
 }
-.employee-evolution-timeline li:last-child::before {
+.employee-evolution-timeline > li:last-child::before {
   display: none;
 }
-.employee-evolution-timeline time {
+.employee-evolution-timeline > li > time {
   padding-top: 1px;
   color: #7a818a;
   font-size: 9px;
@@ -2021,6 +2021,136 @@ select:focus-visible {
 .employee-evolution-timeline small {
   color: #969ca3;
   font-size: 8px;
+}
+.employee-evolution-archive {
+  display: grid;
+  gap: 18px;
+}
+.employee-evolution-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1.3fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid #e5e7e9;
+  border-radius: 12px;
+  background: #fafbfb;
+}
+.employee-evolution-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #626a73;
+  font-size: 9px;
+  font-weight: 650;
+}
+.employee-evolution-controls select {
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid #dfe3e6;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e252b;
+  font: inherit;
+}
+.employee-evolution-range input {
+  width: 100%;
+  accent-color: var(--green);
+}
+.employee-evolution-controls > p {
+  margin: 0 0 3px;
+  color: #7a818a;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.employee-evolution-archive-list > li {
+  grid-template-columns: 118px 12px minmax(0, 1fr);
+}
+.employee-evolution-archive-list > li::before {
+  left: 133px;
+}
+.employee-evolution-archive-list article > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.employee-evolution-type {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #edf6ef;
+  color: #397549;
+  font-size: 8px;
+  font-weight: 700;
+}
+.employee-evolution-archive-list details {
+  margin-top: 7px;
+  color: #737a82;
+  font-size: 9px;
+}
+.employee-evolution-archive-list summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 650;
+}
+.employee-evolution-provenance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.employee-evolution-provenance div {
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid #eceeef;
+  border-radius: 8px;
+  background: #fff;
+}
+.employee-evolution-provenance dt {
+  color: #969ca3;
+  font-size: 8px;
+}
+.employee-evolution-provenance dd {
+  overflow-wrap: anywhere;
+  margin: 3px 0 0;
+  color: #4e565e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8px;
+}
+.employee-evolution-evidence {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.employee-evolution-evidence li {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+  padding: 8px 9px;
+  border-left: 2px solid #9bcda7;
+  background: #f7faf8;
+}
+.employee-evolution-evidence strong {
+  font-size: 9px;
+}
+.employee-evolution-evidence small {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.employee-evolution-no-evidence,
+.employee-evolution-credit {
+  margin: 10px 0 0;
+  color: #8a9097;
+  font-size: 8px;
+  line-height: 1.5;
+}
+.employee-evolution-credit {
+  padding-top: 12px;
+  border-top: 1px solid #eceeef;
 }
 .employee-skill-graph {
   display: grid;
@@ -2813,6 +2943,23 @@ select:focus-visible {
   }
   .employee-skill-review-body {
     padding-left: 20px;
+  }
+  .employee-evolution-controls {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .employee-evolution-controls > p {
+    margin: 0;
+    white-space: normal;
+  }
+  .employee-evolution-archive-list > li {
+    grid-template-columns: 88px 12px minmax(0, 1fr);
+  }
+  .employee-evolution-archive-list > li::before {
+    left: 103px;
+  }
+  .employee-evolution-provenance {
+    grid-template-columns: 1fr;
   }
   .employee-run-table {
     overflow-x: auto;

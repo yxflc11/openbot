@@ -56,6 +56,13 @@ Each event stores an actor, timestamp, reason, evidence references, previous and
 whether the change was automatic or approved. Cosmetic levels and badges may summarize the record,
 but they cannot grant execution authority.
 
+The implemented archive keeps the Server's stable event order, offers exact event-type filtering,
+and uses a native dated scrubber to reveal a truthful prefix of the history. Each row exposes the
+full timestamp, event id, source id, and bounded evidence references without silently fetching
+their potentially sensitive payloads. This interaction is deliberately adapted from Hermes
+Desktop's Learning Journey; OpenBot retains a simple ordered-list fallback instead of copying its
+canvas graph runtime.
+
 ## Skill graph
 
 A skill is a versioned capability description with explicit provenance. Executable skill bundles
@@ -189,6 +196,8 @@ Implemented on the `feat/cross-platform-employees` development line:
 - automatic creation events for new employees and a safe backfill for existing Bots;
 - a responsive seven-view employee profile opened from the Bot list, channel roster, and message
   authors;
+- a Hermes-inspired evolution archive with exact type filters, a truthful dated cutoff, stable
+  newest-first presentation, and inspectable event/source/evidence identifiers;
 - structured Run progress presented as decision summaries rather than private chain-of-thought;
 - an authenticated export preview and checksum-protected JSON template containing only role,
   appearance, execution preference, and verified skills;

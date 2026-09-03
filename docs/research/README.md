@@ -34,4 +34,6 @@ selecting the existing OpenBot PostgreSQL boundary, and
 [Employee profile realtime invalidation](employee-profile-realtime-invalidation.md), which reuses
 the current Hono SSE transport while keeping profile content behind authenticated REST. The
 [Owner skill review surface](owner-skill-review-surface.md) then maps the already-authoritative
-skill lifecycle into an inspectable profile workflow without installing executable code.
+skill lifecycle into an inspectable profile workflow without installing executable code. The
+[Employee evolution archive](employee-evolution-archive.md) explicitly credits Hermes and adapts
+its truthful dated-journey interaction to OpenBot's append-only Server records.

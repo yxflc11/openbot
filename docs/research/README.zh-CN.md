@@ -25,4 +25,5 @@ OpenBot 的每项行为变化都要先证明已经调研维护中的开源代码
 另见[员工档案实时失效通知](employee-profile-realtime-invalidation.md)：它复用现有 Hono SSE，
 同时让档案正文继续只通过鉴权 REST 获取。
 随后，[Owner 技能审核界面](owner-skill-review-surface.md)把已有的权威技能生命周期映射成可检查
-的档案流程，但不会安装可执行代码。
+的档案流程，但不会安装可执行代码。[员工进化档案](employee-evolution-archive.md)明确注明 Hermes
+的启发来源，并把其真实日期旅程交互适配到 OpenBot 仅追加的 Server 记录。

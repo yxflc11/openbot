@@ -2,6 +2,7 @@ import type { CreateEmployeeMemoryInput, EmployeeMemory, EmployeeProfile } from 
 import { type FormEvent, useId, useRef, useState } from "react";
 import { createEmployeeMemory, deleteEmployeeMemory, updateEmployeeMemory } from "../api";
 import { runStatusLabel } from "../run-state";
+import { EmployeeEvolutionArchive } from "./EmployeeEvolutionArchive";
 import { EmployeeSkillReview } from "./EmployeeSkillReview";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -184,9 +185,9 @@ function Evolution({ profile }: { profile: EmployeeProfile }) {
   return (
     <ProfileSection
       title="进化档案"
-      description="这里只记录真实的职责、配置和能力变化；等级或外观不会授予权限。"
+      description="按真实时间查看职责、配置和能力变化；原始思维链、等级和外观都不属于权限。"
     >
-      <EvolutionTimeline events={profile.evolution} />
+      <EmployeeEvolutionArchive events={profile.evolution} />
     </ProfileSection>
   );
 }
