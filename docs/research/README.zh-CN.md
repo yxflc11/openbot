@@ -41,3 +41,5 @@ Server 的完整说明性资料和所选技能元数据。
 Owner 刚刚检查过的同一份包实例。
 [跨平台员工导出文件名](cross-platform-employee-export-filenames.md)审查随后采用 RFC 6266 和一个
 聚焦、持续维护的设备名判断器，确保建议下载名在 Windows、macOS 与 Linux 上安全可用。
+[POSIX Node 凭证权限](posix-node-credential-permissions.md)审查随后把 OpenSSH 的私钥 fail-closed
+规则用于现有原子文件适配器，同时明确 Windows ACL 与系统密钥库不在当前声明范围内。

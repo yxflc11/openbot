@@ -54,3 +54,6 @@ validators so download can serve only the exact package instance the Owner just 
 The [Cross-platform Employee export filename](cross-platform-employee-export-filenames.md) review
 then applies RFC 6266 and a focused maintained device-name predicate so the advisory download name
 remains safe and usable across Windows, macOS, and Linux.
+The [POSIX Node credential permission](posix-node-credential-permissions.md) audit then applies
+OpenSSH's fail-closed private-key invariant to the existing atomic file adapter, while explicitly
+leaving Windows ACLs and native keyrings outside the claim.

@@ -30,8 +30,9 @@ OpenBot 工作主机主动连接 Server。每台 Node 先用一个短时、单�
 5. 立即从环境中删除 `OPENBOT_NODE_ENROLLMENT_TOKEN`。重启 Node，确认它能使用已保存身份重连。
 
 令牌默认十分钟过期、只显示一次且不能重放。为同一 Node 创建新令牌时，之前尚未使用的令牌会失效。
-凭证文件使用原子写入，在 POSIX 系统上权限为 `0600`。OpenBot 会拒绝符号链接、非普通文件、过大
-文件、格式错误的包和签发给其他 Node id 的凭证。
+凭证文件使用原子写入，在 POSIX 系统上权限为 `0600`。如果之后出现 group 或 other 权限位，
+OpenBot 也会拒绝加载；调查暴露原因并确认文件可信后，可执行 `chmod 600 identity.json` 再重启。
+OpenBot 还会拒绝符号链接、非普通文件、过大文件、格式错误的包和签发给其他 Node id 的凭证。
 
 Owner 弹窗只列出安全的有效/已吊销身份元数据，不返回凭证摘要；在线状态与实时 Node 连接投影合并。
 配对令牌只保留在当前打开的弹窗中，关闭后不能再次读取。
@@ -51,6 +52,7 @@ Git，也不能放入员工包。`OPENBOT_NODE_CREDENTIAL_PATH` 可以把文件�
 
 - 不要通过公开聊天、Issue、日志平台或 Git 传递 enrollment token。
 - 不要在 Node id 之间复制 `identity.json`，也不要把它放入可移植员工包。
+- POSIX 权限拒绝意味着需要调查凭证是否已经暴露，不能只当作普通启动错误。
 - 安全备份 Server 数据库；其中只有凭证摘要与身份审计事件，没有可恢复的明文凭证。
 - 丢失 Node 凭证时应吊销后重新登记，不能“找回”。
 - 登记成功不代表系统隔离、物理主机所有权或 Provider 权限可信。
@@ -61,4 +63,5 @@ Git，也不能放入员工包。`OPENBOT_NODE_CREDENTIAL_PATH` 可以把文件�
 协议 `0.9.0` 能在连接时验证每台 Node 对独立 bearer 值的持有，并支持单节点吊销。它还不能证明
 Node 持有不可导出的私钥，不能轮换短时证书、给每条消息绑定序号，也没有接入 Windows DPAPI、
 macOS Keychain 或 Linux Secret Service。Node 通道进入不受信任网络前必须补齐这些控制。详见
-[ADR-0023](decisions/0023-one-time-node-enrollment.md)与[安全模型](SECURITY.md)。
+[ADR-0023](decisions/0023-one-time-node-enrollment.md)、
+[权限审查](research/posix-node-credential-permissions.md)与[安全模型](SECURITY.md)。

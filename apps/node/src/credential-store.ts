@@ -1,5 +1,5 @@
-import type { Stats } from "node:fs";
-import { lstat, mkdir, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { type NodeEnrollmentResult, nodeEnrollmentResultSchema } from "@openbot/protocol";
 import writeFileAtomic from "write-file-atomic";
@@ -20,28 +20,41 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
   }
 
   async load(nodeId: string): Promise<NodeEnrollmentResult | undefined> {
-    let file: Stats;
     try {
-      file = await lstat(this.#path);
+      const pathEntry = await lstat(this.#path);
+      if (!pathEntry.isFile() || pathEntry.isSymbolicLink()) {
+        throw new Error("Node credential path must be a regular file.");
+      }
     } catch (error) {
       if (isMissingFile(error)) return undefined;
       throw error;
     }
-    if (!file.isFile() || file.isSymbolicLink()) {
-      throw new Error("Node credential path must be a regular file.");
-    }
-    if (file.size > maximumCredentialFileBytes) {
-      throw new Error("Node credential file exceeds the 4 KiB limit.");
-    }
 
-    const parsed = nodeEnrollmentResultSchema.safeParse(
-      JSON.parse(await readFile(this.#path, "utf8")),
+    const handle = await open(
+      this.#path,
+      process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW,
     );
-    if (!parsed.success) throw new Error("Node credential file is invalid.");
-    if (parsed.data.nodeId !== nodeId) {
-      throw new Error("Node credential belongs to a different Node id.");
+    try {
+      const file = await handle.stat();
+      if (!file.isFile()) throw new Error("Node credential path must be a regular file.");
+      if (process.platform !== "win32" && (file.mode & 0o077) !== 0) {
+        throw new Error("Node credential file must not be accessible by group or other users.");
+      }
+      if (file.size > maximumCredentialFileBytes) {
+        throw new Error("Node credential file exceeds the 4 KiB limit.");
+      }
+
+      const parsed = nodeEnrollmentResultSchema.safeParse(
+        JSON.parse(await handle.readFile("utf8")),
+      );
+      if (!parsed.success) throw new Error("Node credential file is invalid.");
+      if (parsed.data.nodeId !== nodeId) {
+        throw new Error("Node credential belongs to a different Node id.");
+      }
+      return parsed.data;
+    } finally {
+      await handle.close();
     }
-    return parsed.data;
   }
 
   async save(identity: NodeEnrollmentResult): Promise<void> {

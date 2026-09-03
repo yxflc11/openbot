@@ -36,8 +36,10 @@ every non-loopback connection, and use a dedicated OS account for the Node.
 
 Enrollment tokens expire after ten minutes by default, are shown once, and cannot be replayed.
 Issuing a replacement invalidates the previous unused token for that Node. The credential file is
-atomically written and uses mode `0600` on POSIX systems. OpenBot refuses symlinks, non-regular
-files, oversized files, malformed packages, and credentials issued for another Node id.
+atomically written with mode `0600` on POSIX systems. OpenBot also refuses to load it if group or
+other permission bits later appear; restore an operator-approved file with
+`chmod 600 identity.json` before restarting. It refuses symlinks, non-regular files, oversized
+files, malformed packages, and credentials issued for another Node id.
 
 The Owner dialog lists active and revoked identities without returning credential digests. Its
 online state is reconciled with the live Node connection projection. The pairing token is held only
@@ -62,6 +64,7 @@ the previous credential, and leaves all old values invalid.
 
 - Never send an enrollment token through a public chat, issue tracker, log collector, or Git.
 - Never copy `identity.json` between Node ids or include it in a portable Employee package.
+- Treat a POSIX permission refusal as secret exposure to investigate, not only a startup error.
 - Back up the Server database securely; it contains credential digests and identity audit events,
   not recoverable plaintext credentials.
 - A lost Node credential is replaced through revocation and fresh enrollment, not recovered.
@@ -75,4 +78,5 @@ single-Node revocation. It does not yet prove possession of a non-exportable pri
 short-lived certificate, bind every message to a sequence, or store credentials through Windows
 DPAPI, macOS Keychain, or Linux Secret Service. Those controls remain required before exposing the
 Node channel to an untrusted network. See
-[ADR-0023](decisions/0023-one-time-node-enrollment.md) and [Security](SECURITY.md).
+[ADR-0023](decisions/0023-one-time-node-enrollment.md), the
+[permission review](research/posix-node-credential-permissions.md), and [Security](SECURITY.md).

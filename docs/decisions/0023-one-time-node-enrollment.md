@@ -34,6 +34,10 @@ grants Provider authority.
 - [`write-file-atomic` 8.0.0](https://github.com/npm/write-file-atomic/tree/v8.0.0) (ISC) already
   supplies the tested fsync, atomic rename, mode, and failed-temporary cleanup mechanics needed by
   the baseline file credential adapter.
+- A follow-up [POSIX permission review](../research/posix-node-credential-permissions.md) compares
+  OpenSSH's opened-handle permission check and OpenClaw's credential-file audit. OpenBot retains
+  atomic creation and adds a fail-closed load check rather than silently repairing an exposed
+  authentication secret.
 - Hono 4.13.5 (MIT) supplies the public enrollment route's transport-level request body limit. This
   version is newer than the chunked-body bypass fix published in 4.12.16.
 
@@ -61,7 +65,7 @@ design lineage are recorded here and in the reuse ledger.
 - HTTP tests prove anonymous callers cannot issue tokens, public enrollment can exchange one valid
   token, replay fails, oversized bodies fail, and Owner revocation disconnects the online Node.
 - Node tests prove a new credential is persisted before `node.hello` and the file adapter rejects
-  symlinks, wrong identities, malformed content, and unsafe size.
+  symlinks, wrong identities, malformed content, unsafe size, and group/other-readable POSIX mode.
 - A disposable real PostgreSQL test performs two concurrent exchanges and requires exactly one
   success, then authenticates and revokes the credential.
 - Future proof-of-possession, rotation, keyring, and real-device conformance work must receive a new
@@ -80,7 +84,9 @@ design lineage are recorded here and in the reuse ledger.
 4. The Server stores only the credential digest. Owner revocation invalidates it and closes the
    matching live connection. Fresh enrollment can replace a revoked identity.
 5. The baseline Node adapter writes a versioned identity package atomically with Owner-only POSIX
-   permissions. Environment and custom-path adapters support external secret injection.
+   permissions. It validates and reads the opened file handle, and refuses a file if group or other
+   permission bits later appear. Environment and custom-path adapters support external secret
+   injection; Windows ACL enforcement and native keyrings remain future adapters.
 6. Enrollment does not grant capabilities, elevate trust tier, authenticate a human, or carry into
    an Employee package. Server policy, Run assignment, and approval remain independent.
 7. Non-loopback Node connections require WSS. Bearer credentials are explicitly transitional and
