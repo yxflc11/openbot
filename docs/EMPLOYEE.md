@@ -146,6 +146,23 @@ The receiving owner must explicitly bind it to a Worker Host and grant a local p
 6. **Selective clones:** owner-reviewed memories and local re-identification.
 7. **Authenticated transfer:** signed ownership handoff, source revocation, and import receipts.
 
+## Current implementation status
+
+Implemented on the `feat/cross-platform-employees` development line:
+
+- a persisted employee evolution ledger, versioned skill registry, dependency graph, and typed memory
+  storage;
+- an authenticated `GET /api/v1/bots/:botId/profile` aggregate projection;
+- automatic creation events for new employees and a safe backfill for existing Bots;
+- a responsive seven-view employee profile opened from the Bot list, channel roster, and message
+  authors;
+- structured Run progress presented as decision summaries rather than private chain-of-thought.
+
+The skill learning/verification workflow, memory editing and retention controls, signed employee
+packages, import preview, cloning, and authenticated ownership transfer are not implemented yet.
+Their data and authority boundaries are defined here so contributors can add them without coupling
+employee knowledge to Worker Host access.
+
 ## Acceptance criteria
 
 - Clicking a Bot anywhere in the core UI opens the same employee profile.

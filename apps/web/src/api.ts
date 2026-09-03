@@ -11,6 +11,7 @@ import type {
   CreateChannelInput,
   CreateMessageInput,
   ExecutionNode,
+  EmployeeProfile,
   Message,
   Run,
   RunFrame,
@@ -65,6 +66,17 @@ export function subscribeToUnauthorized(handler: () => void): () => void {
 
 export async function getWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
   return request<WorkspaceSnapshot>("/api/v1/workspace", signal ? { signal } : undefined);
+}
+
+export async function getEmployeeProfile(
+  botId: string,
+  signal?: AbortSignal,
+): Promise<EmployeeProfile> {
+  const result = await request<{ profile: EmployeeProfile }>(
+    `/api/v1/bots/${botId}/profile`,
+    signal ? { signal } : undefined,
+  );
+  return result.profile;
 }
 
 export async function decideApproval(

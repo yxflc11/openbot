@@ -1,0 +1,452 @@
+import type { EmployeeProfile } from "@openbot/domain";
+import { useState } from "react";
+import { runStatusLabel } from "../run-state";
+import { RobotAvatar } from "./RobotAvatar";
+
+type ProfileTab =
+  | "overview"
+  | "evolution"
+  | "skills"
+  | "live"
+  | "memory"
+  | "records"
+  | "configuration";
+
+const tabs: Array<{ id: ProfileTab; label: string }> = [
+  { id: "overview", label: "概览" },
+  { id: "evolution", label: "进化档案" },
+  { id: "skills", label: "技能图谱" },
+  { id: "live", label: "运行中" },
+  { id: "memory", label: "记忆" },
+  { id: "records", label: "工作记录" },
+  { id: "configuration", label: "配置" },
+];
+
+export function EmployeeProfileView({
+  profile,
+  loading,
+  error,
+  onRetry,
+  onAssign,
+  onExport,
+}: {
+  profile: EmployeeProfile | undefined;
+  loading: boolean;
+  error: string | undefined;
+  onRetry(): void;
+  onAssign(): void;
+  onExport(): void;
+}) {
+  const [tab, setTab] = useState<ProfileTab>("overview");
+
+  if (loading || profile === undefined) {
+    return (
+      <main className="workspace-main employee-profile-loading">
+        <span className="loading-mark">O</span>
+        <h1>{error ? "无法读取员工档案" : "正在读取员工档案"}</h1>
+        <p>{error ?? "正在汇总进化、技能、记忆和工作记录…"}</p>
+        {error ? (
+          <button className="primary-button" type="button" onClick={onRetry}>
+            重新加载
+          </button>
+        ) : null}
+      </main>
+    );
+  }
+
+  const { employee } = profile;
+  return (
+    <main className="workspace-main employee-profile">
+      <header className="employee-profile-header">
+        <RobotAvatar bot={employee} status={employee.status} className="employee-profile-avatar" />
+        <div className="employee-profile-identity">
+          <h1>{employee.name}</h1>
+          <p>{employee.role}</p>
+          <span className={`employee-status ${employee.status}`}>
+            <i />
+            {employeeStatusLabel(employee.status)}
+          </span>
+        </div>
+        <div className="employee-profile-actions">
+          <button className="primary-button" type="button" onClick={onAssign}>
+            分配任务
+          </button>
+          <button className="secondary-button" type="button" onClick={onExport}>
+            导出模板
+          </button>
+        </div>
+      </header>
+
+      <nav className="employee-tabs" aria-label="员工档案页面">
+        {tabs.map((item) => (
+          <button
+            className={tab === item.id ? "selected" : ""}
+            type="button"
+            aria-current={tab === item.id ? "page" : undefined}
+            onClick={() => setTab(item.id)}
+            key={item.id}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "overview" ? <Overview profile={profile} /> : null}
+      {tab === "evolution" ? <Evolution profile={profile} /> : null}
+      {tab === "skills" ? <Skills profile={profile} /> : null}
+      {tab === "live" ? <LiveWork profile={profile} /> : null}
+      {tab === "memory" ? <Memory profile={profile} /> : null}
+      {tab === "records" ? <Records profile={profile} /> : null}
+      {tab === "configuration" ? <Configuration profile={profile} /> : null}
+    </main>
+  );
+}
+
+function Overview({ profile }: { profile: EmployeeProfile }) {
+  return (
+    <div className="employee-profile-body">
+      <section className="employee-about">
+        <h2>关于</h2>
+        <p>
+          {profile.employee.name} 的职责是{profile.employee.role}。员工身份、技能和工作记录保存在
+          OpenBot Server；执行电脑可以更换，不会改变员工本身。
+        </p>
+      </section>
+
+      <dl className="employee-stat-row">
+        <EmployeeStat label="任务" value={profile.statistics.totalRuns} />
+        <EmployeeStat label="已完成" value={profile.statistics.completedRuns} />
+        <EmployeeStat label="失败" value={profile.statistics.failedRuns} />
+        <EmployeeStat label="已验证技能" value={profile.statistics.verifiedSkills} />
+      </dl>
+
+      <div className="employee-overview-split">
+        <section>
+          <SectionHeading title="最近进化" description="每一次变化都有来源和证据。" />
+          <EvolutionTimeline events={profile.evolution.slice(0, 4)} />
+        </section>
+        <section>
+          <SectionHeading title="技能图谱" description="技能不会自动获得电脑权限。" />
+          <SkillGraph profile={profile} />
+        </section>
+      </div>
+
+      <section className="employee-recent-work">
+        <SectionHeading title="最近工作" description="来自 Server 的可审计任务记录。" />
+        <RunTable runs={profile.records.runs.slice(0, 5)} />
+      </section>
+    </div>
+  );
+}
+
+function Evolution({ profile }: { profile: EmployeeProfile }) {
+  return (
+    <ProfileSection
+      title="进化档案"
+      description="这里只记录真实的职责、配置和能力变化；等级或外观不会授予权限。"
+    >
+      <EvolutionTimeline events={profile.evolution} />
+    </ProfileSection>
+  );
+}
+
+function Skills({ profile }: { profile: EmployeeProfile }) {
+  return (
+    <ProfileSection
+      title="技能图谱"
+      description="候选技能必须通过确定性测试或人工审核，才能成为已验证技能。"
+    >
+      <SkillGraph profile={profile} expanded />
+    </ProfileSection>
+  );
+}
+
+function LiveWork({ profile }: { profile: EmployeeProfile }) {
+  const activeRuns = profile.records.runs.filter((run) =>
+    ["queued", "assigned", "running", "waiting_approval", "blocked"].includes(run.status),
+  );
+  return (
+    <ProfileSection title="运行中" description="展示结构化阶段和决策摘要，不展示模型的原始思维链。">
+      {activeRuns.length === 0 && profile.records.decisions.length === 0 ? (
+        <EmployeeEmpty
+          title="当前没有运行中的任务"
+          copy="给这名员工分配工作后，进度会出现在这里。"
+        />
+      ) : (
+        <div className="employee-live-grid">
+          <RunTable runs={activeRuns} />
+          <DecisionTimeline decisions={profile.records.decisions} />
+        </div>
+      )}
+    </ProfileSection>
+  );
+}
+
+function Memory({ profile }: { profile: EmployeeProfile }) {
+  return (
+    <ProfileSection title="记忆" description="每条记忆都有类型、敏感级别和独立的可迁移策略。">
+      {profile.memories.length === 0 ? (
+        <EmployeeEmpty title="还没有长期记忆" copy="运行中的临时状态不会自动进入员工模板。" />
+      ) : (
+        <div className="employee-record-list">
+          {profile.memories.map((memory) => (
+            <article key={memory.id}>
+              <div>
+                <strong>{memory.title}</strong>
+                <p>{memory.content}</p>
+              </div>
+              <small>
+                {memoryKindLabel(memory.kind)} · {memory.sensitivity} · {memory.portability}
+              </small>
+            </article>
+          ))}
+        </div>
+      )}
+    </ProfileSection>
+  );
+}
+
+function Records({ profile }: { profile: EmployeeProfile }) {
+  return (
+    <ProfileSection
+      title="工作记录"
+      description="任务、审批、产物与结构化进度都保留对原始记录的引用。"
+    >
+      <RunTable runs={profile.records.runs} />
+      <div className="employee-record-counts">
+        <span>审批 {profile.records.approvals.length}</span>
+        <span>产物 {profile.records.artifacts.length}</span>
+        <span>决策摘要 {profile.records.decisions.length}</span>
+      </div>
+    </ProfileSection>
+  );
+}
+
+function Configuration({ profile }: { profile: EmployeeProfile }) {
+  return (
+    <ProfileSection title="配置" description="员工配置与工作主机权限是两套独立边界。">
+      <dl className="employee-config-list">
+        <div>
+          <dt>固定执行配置</dt>
+          <dd>{profile.configuration.executionProfile}</dd>
+        </div>
+        <div>
+          <dt>可移植格式</dt>
+          <dd>{profile.configuration.portabilityFormat}</dd>
+        </div>
+        <div>
+          <dt>电脑权限</dt>
+          <dd>不随员工模板导出，接收者必须在自己的 Server 重新授权</dd>
+        </div>
+      </dl>
+    </ProfileSection>
+  );
+}
+
+function EmployeeStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function SectionHeading({ title, description }: { title: string; description: string }) {
+  return (
+    <header className="employee-section-heading">
+      <h2>{title}</h2>
+      <p>{description}</p>
+    </header>
+  );
+}
+
+function ProfileSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="employee-profile-body employee-tab-panel">
+      <SectionHeading title={title} description={description} />
+      {children}
+    </section>
+  );
+}
+
+function EvolutionTimeline({ events }: { events: EmployeeProfile["evolution"] }) {
+  if (events.length === 0) {
+    return <EmployeeEmpty title="暂无进化记录" copy="真实能力变化会形成可追溯事件。" />;
+  }
+  return (
+    <ol className="employee-evolution-timeline">
+      {events.map((event) => (
+        <li key={event.id}>
+          <time dateTime={event.createdAt}>{formatDate(event.createdAt)}</time>
+          <span aria-hidden="true" />
+          <div>
+            <strong>{event.title}</strong>
+            <p>{event.summary}</p>
+            <small>
+              来源：{event.source}
+              {event.evidence.length > 0 ? ` · ${event.evidence.length} 条证据` : ""}
+            </small>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function SkillGraph({
+  profile,
+  expanded = false,
+}: {
+  profile: EmployeeProfile;
+  expanded?: boolean;
+}) {
+  if (profile.skills.length === 0) {
+    return <EmployeeEmpty title="还没有技能" copy="学习到的技能会先以候选状态出现。" />;
+  }
+  const skills = expanded ? profile.skills : profile.skills.slice(0, 6);
+  return (
+    <div className={`employee-skill-graph ${expanded ? "expanded" : ""}`}>
+      <RobotAvatar bot={profile.employee} compact className="employee-skill-avatar" />
+      <div>
+        {skills.map((skill) => (
+          <article key={skill.id}>
+            <span className={`skill-state ${skill.state}`} aria-hidden="true" />
+            <strong>{skill.name}</strong>
+            <small>
+              v{skill.version} · {skill.confidence}% · {skillStateLabel(skill.state)}
+            </small>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DecisionTimeline({ decisions }: { decisions: EmployeeProfile["records"]["decisions"] }) {
+  if (decisions.length === 0) return null;
+  return (
+    <section>
+      <SectionHeading title="决策摘要" description="可审计的阶段说明，而非原始思维链。" />
+      <ol className="employee-decision-list">
+        {decisions.map((decision) => (
+          <li key={decision.id}>
+            <span>{decision.stage}</span>
+            <p>{decision.summary}</p>
+            <time dateTime={decision.createdAt}>{formatDateTime(decision.createdAt)}</time>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function RunTable({ runs }: { runs: EmployeeProfile["records"]["runs"] }) {
+  if (runs.length === 0) {
+    return <EmployeeEmpty title="还没有工作记录" copy="完成第一项任务后会出现在这里。" />;
+  }
+  return (
+    <div className="employee-run-table">
+      <table aria-label="员工工作记录">
+        <thead>
+          <tr className="employee-run-table-header">
+            <th scope="col">时间</th>
+            <th scope="col">任务</th>
+            <th scope="col">状态</th>
+            <th scope="col">结果</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr key={run.id}>
+              <td>
+                <time dateTime={run.createdAt}>{formatDateTime(run.createdAt)}</time>
+              </td>
+              <td>
+                <strong>{run.title}</strong>
+              </td>
+              <td>
+                <span className={`employee-run-state ${run.status}`}>
+                  <i />
+                  {runStatusLabel(run.status)}
+                </span>
+              </td>
+              <td>
+                <small>{run.resultSummary ?? run.errorMessage ?? "—"}</small>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function EmployeeEmpty({ title, copy }: { title: string; copy: string }) {
+  return (
+    <div className="employee-empty">
+      <strong>{title}</strong>
+      <p>{copy}</p>
+    </div>
+  );
+}
+
+function employeeStatusLabel(status: EmployeeProfile["employee"]["status"]) {
+  const labels: Record<EmployeeProfile["employee"]["status"], string> = {
+    idle: "待命",
+    running: "工作中",
+    waiting_approval: "等待审批",
+    blocked: "已阻塞",
+    human_takeover: "人工接管",
+    offline: "离线",
+    completed: "已完成",
+    failed: "失败",
+  };
+  return labels[status];
+}
+
+function skillStateLabel(state: EmployeeProfile["skills"][number]["state"]) {
+  return state === "candidate"
+    ? "候选"
+    : state === "verified"
+      ? "已验证"
+      : state === "suspended"
+        ? "已暂停"
+        : "已撤销";
+}
+
+function memoryKindLabel(kind: EmployeeProfile["memories"][number]["kind"]) {
+  const labels: Record<EmployeeProfile["memories"][number]["kind"], string> = {
+    working: "工作记忆",
+    episodic: "情景记忆",
+    semantic: "语义记忆",
+    procedural: "流程记忆",
+    "secret-reference": "密钥引用",
+  };
+  return labels[kind];
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}

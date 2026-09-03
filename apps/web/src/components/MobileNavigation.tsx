@@ -17,6 +17,7 @@ export function MobileNavigation({
   onCreateBot,
   onCreateChannel,
   onSelectChannel,
+  onSelectBot,
 }: {
   panel: MobilePanel;
   bots: Bot[];
@@ -28,6 +29,7 @@ export function MobileNavigation({
   onCreateBot(): void;
   onCreateChannel(): void;
   onSelectChannel(channelId: string): void;
+  onSelectBot(botId: string): void;
 }) {
   const activeRunByBot = indexActiveRunsByBot(runs);
   const botById = new Map(bots.map((bot) => [bot.id, bot]));
@@ -71,11 +73,16 @@ export function MobileNavigation({
               {bots.map((bot) => {
                 const run = activeRunByBot.get(bot.id);
                 return (
-                  <div className="mobile-list-row" key={bot.id}>
+                  <button
+                    className="mobile-list-row"
+                    type="button"
+                    onClick={() => onSelectBot(bot.id)}
+                    key={bot.id}
+                  >
                     <RobotAvatar bot={bot} compact status={run?.status ?? bot.status} />
                     <span className="mobile-list-label">{bot.name}</span>
                     <small>{run ? runStatusLabel(run.status) : "待命"}</small>
-                  </div>
+                  </button>
                 );
               })}
             </>
