@@ -1,3 +1,4 @@
+import { createHash, webcrypto } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   downloadEmployeeTemplate,
@@ -6,7 +7,10 @@ import {
   updateEmployeeSkillState,
 } from "./api";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("employee profile realtime invalidation", () => {
   it("accepts a content-free event with unique allowlisted sections", () => {
@@ -108,29 +112,9 @@ describe("Employee export review binding", () => {
       }),
     );
 
-    await expect(
-      downloadEmployeeTemplate("employee/1", {
-        format: "openbot.employee/v1",
-        kind: "template",
-        packageId: "00000000-0000-4000-8000-000000000099",
-        fileName: "employee.openbot-employee.json",
-        generatedAt: "2026-09-04T00:00:00.000Z",
-        employee: { name: "Employee", role: "Research" },
-        skills: [],
-        employeeName: "Employee",
-        verifiedSkillCount: 0,
-        requestedCapabilities: [],
-        includedMemoryCount: 0,
-        exclusions: [],
-        findings: [],
-        blocked: false,
-        checksum: "a".repeat(64),
-        downloadReviewToken: "b".repeat(64),
-        signatureStatus: "unsigned",
-        identityOnImport: "new",
-        hostAuthority: "none",
-      }),
-    ).rejects.toMatchObject({ status: 412 });
+    await expect(downloadEmployeeTemplate("employee/1", exportPreview())).rejects.toMatchObject({
+      status: 412,
+    });
 
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(
@@ -141,4 +125,109 @@ describe("Employee export review binding", () => {
       headers: { "If-Match": `"${"b".repeat(64)}"` },
     });
   });
+
+  it("rejects response bytes that do not match the reviewed digest before download", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("changed bytes", {
+        status: 200,
+        headers: { ETag: `"${"b".repeat(64)}"` },
+      }),
+    );
+
+    await expect(downloadEmployeeTemplate("employee-1", exportPreview())).rejects.toThrow(
+      "未通过完整性检查",
+    );
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["changed", `"${"c".repeat(64)}"`],
+  ])("rejects a %s response tag before creating a download", async (_label, responseTag) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("changed bytes", {
+        status: 200,
+        headers: responseTag === undefined ? undefined : { ETag: responseTag },
+      }),
+    );
+
+    await expect(downloadEmployeeTemplate("employee-1", exportPreview())).rejects.toThrow(
+      "未匹配已审核的员工模板",
+    );
+  });
+
+  it("fails closed when the browser cannot hash the received bytes", async () => {
+    const body = '{"portable":true}\n';
+    const reviewToken = createHash("sha256").update(body).digest("hex");
+    vi.stubGlobal("crypto", undefined);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(body, {
+        status: 200,
+        headers: { ETag: `"${reviewToken}"` },
+      }),
+    );
+
+    await expect(
+      downloadEmployeeTemplate("employee-1", {
+        ...exportPreview(),
+        downloadReviewToken: reviewToken,
+      }),
+    ).rejects.toThrow("无法安全校验员工模板");
+  });
+
+  it("creates a browser download only after the response tag and received bytes match", async () => {
+    const body = '{"portable":true}\n';
+    const reviewToken = createHash("sha256").update(body).digest("hex");
+    const click = vi.fn();
+    const remove = vi.fn();
+    const append = vi.fn();
+    vi.stubGlobal("crypto", webcrypto);
+    vi.stubGlobal("document", {
+      body: { append },
+      createElement: vi.fn(() => ({ click, remove })),
+    });
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:reviewed");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(body, {
+        status: 200,
+        headers: { ETag: `"${reviewToken}"` },
+      }),
+    );
+
+    await downloadEmployeeTemplate("employee-1", {
+      ...exportPreview(),
+      downloadReviewToken: reviewToken,
+    });
+
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    expect(append).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:reviewed");
+  });
 });
+
+function exportPreview() {
+  return {
+    format: "openbot.employee/v1" as const,
+    kind: "template" as const,
+    packageId: "00000000-0000-4000-8000-000000000099",
+    fileName: "employee.openbot-employee.json",
+    generatedAt: "2026-09-04T00:00:00.000Z",
+    employee: { name: "Employee", role: "Research" },
+    skills: [],
+    employeeName: "Employee",
+    verifiedSkillCount: 0,
+    requestedCapabilities: [],
+    includedMemoryCount: 0 as const,
+    exclusions: [],
+    findings: [],
+    blocked: false,
+    checksum: "a".repeat(64),
+    downloadReviewToken: "b".repeat(64),
+    signatureStatus: "unsigned" as const,
+    identityOnImport: "new" as const,
+    hostAuthority: "none" as const,
+  };
+}

@@ -218,7 +218,16 @@ export async function downloadEmployeeTemplate(
   });
   if (!response.ok) throw await readApiError(response, url);
 
-  const objectUrl = URL.createObjectURL(await response.blob());
+  const expectedTag = `"${preview.downloadReviewToken}"`;
+  if (response.headers.get("etag") !== expectedTag) {
+    throw new ApiError("下载响应未匹配已审核的员工模板，请刷新预览后重试。", 0);
+  }
+  const blob = await response.blob();
+  if ((await browserSha256Hex(await blob.arrayBuffer())) !== preview.downloadReviewToken) {
+    throw new ApiError("下载的员工模板未通过完整性检查，请刷新预览后重试。", 0);
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement("a");
     anchor.href = objectUrl;
@@ -230,6 +239,15 @@ export async function downloadEmployeeTemplate(
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+async function browserSha256Hex(bytes: ArrayBuffer): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle === undefined) {
+    throw new ApiError("当前浏览器无法安全校验员工模板，请通过 HTTPS 或本机地址使用 OpenBot。", 0);
+  }
+  const digest = await subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export async function previewEmployeeImport(

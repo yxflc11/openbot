@@ -251,7 +251,9 @@ that exact package identity. It returns the file only when the complete serializ
 match. Missing review state returns `428 Precondition Required`; malformed or weak tags return
 `422`; changed content or publisher state returns `412 Precondition Failed` and requires a fresh
 preview. The Client refreshes the preview but never retries the download automatically. All
-preview, error, and download responses are `Cache-Control: no-store`.
+preview, error, and download responses are `Cache-Control: no-store`. Before creating a browser
+download, the Web Client also requires the matching response `ETag` and recomputes SHA-256 over the
+received `Blob`; a mismatch produces no file.
 
 Unsigned export uses `application/vnd.openbot.employee+json`. When the optional Owner publisher
 keyring is configured, export uses `application/vnd.openbot.employee.dsse+json` and a DSSE/Ed25519

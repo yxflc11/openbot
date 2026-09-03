@@ -249,6 +249,8 @@ Server 使用当前权威档案和发布者状态、以及同一个包身份重�
 仍一致才会返回。缺少审核条件返回 `428 Precondition Required`；格式错误或弱标签返回 `422`；
 内容或发布密钥已变化则返回 `412 Precondition Failed`，要求重新预览。Client 会刷新预览，但绝不
 自动重试下载。预览、错误和下载响应都使用 `Cache-Control: no-store`。
+Web Client 在创建浏览器下载前，还会要求响应 `ETag` 一致，并用原生 Web Crypto 对收到的 `Blob`
+重新计算 SHA-256；任何不一致都不会产生文件。
 
 代码内已经有 DSSE/Ed25519 签名与验证原语，并使用固定版本的 `@sigstore/core` 生成标准预认证
 编码。它签署 `application/vnd.openbot.employee.v1+json` 的精确字节，且只信任 Server 显式配置、

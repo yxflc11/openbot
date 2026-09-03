@@ -18,6 +18,8 @@
 - GitHub queries:
   - `site:github.com/kubernetes/kubernetes resourceVersion conflict optimistic concurrency v1.36.2`
   - `site:github.com/honojs/hono etag middleware If-None-Match If-Match`
+  - `site:github.com/npm/ssri browser integrity check sha256`
+  - `site:github.com/openclaw/openclaw sha256 verify download checksum`
 - Standards and primary documentation queries:
   - `site:rfc-editor.org/rfc/rfc9110 If-Match strong comparison 412 Precondition Failed`
   - `site:rfc-editor.org/rfc/rfc6585 428 Precondition Required`
@@ -30,6 +32,13 @@
     as opaque, submit the version they read, and handle stale conflicts instead of overwriting;
   - Hono 4.13.5 ETag middleware source: it computes cache validators and evaluates
     `If-None-Match` for `304`; it does not implement the required `If-Match` review precondition.
+  - W3C Web Cryptography Level 2 `SubtleCrypto.digest`: hashes an exact copied `BufferSource` and
+    supports SHA-256 without a third-party runtime;
+  - npm `ssri` v14.0.0 and its tests: maintained Node.js integrity generation/checking with an ISC
+    license, but not a browser-first API and unnecessary for one fixed hex SHA-256 comparison;
+  - OpenClaw/ClawHub issue #2378 and OpenClaw v2026.7.1 release assets: a real mismatch occurred
+    when a published digest described a tarball while a legacy endpoint returned ZIP bytes,
+    reinforcing that the Client must hash the bytes it actually received.
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked:
   - `docs/research/employee-export-content-preview.md`;
   - `docs/research/employee-publisher-key-lifecycle.md`;
@@ -45,13 +54,17 @@
 | Precondition Required | [RFC 6585](https://www.rfc-editor.org/rfc/rfc6585.html), section 3 | IETF Trust | Standards-track status code with explicit cache requirement | Lets the export endpoint require review rather than silently serving a fresh package when `If-Match` is absent | Adopt `428` with an actionable response |
 | Kubernetes optimistic concurrency | [`v1.36.2`](https://github.com/kubernetes/kubernetes/tree/v1.36.2), especially [`ObjectMeta.resourceVersion`](https://github.com/kubernetes/kubernetes/blob/v1.36.2/staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/types.go) | Apache-2.0 | Maintained production API with extensive concurrency tests | Opaque read-return-submit semantics are a strong interaction precedent, but Kubernetes object storage and update APIs are not Employee export machinery | Adapt the opaque-token and explicit-refresh behavior |
 | Hono ETag middleware | [`4.13.5` / `e2740d5a`](https://github.com/honojs/hono/blob/e2740d5a1bd0b4254e517e3af8b60789284bc7bd/src/middleware/etag/index.ts) | MIT | Maintained framework middleware with digest and `304` tests | Handles `If-None-Match` caching, not mandatory `If-Match`; applying it would not close the reviewed-download race | Do not use for this boundary |
-| Existing OpenBot package builder and publisher | commits through `ee418e7` | MIT | Strict package schema, deterministic content build, Ed25519/DSSE publisher, blockers, quarantine, and tests | Already owns exact export content, but preview and download independently generate `packageId`, timestamp, checksum, and signed bytes | Reuse and add the missing snapshot adapter |
+| Web Cryptography | [Web Cryptography Level 2](https://www.w3.org/TR/WebCryptoAPI/), especially `SubtleCrypto.digest` and SHA-256 | W3C Software and Document License | Browser standard with byte-defined asynchronous digest semantics | Already available in OpenBot's localhost secure context and required HTTPS remote context; hashes the received `Blob` before any download side effect | Adopt the native API |
+| npm `ssri` | [`v14.0.0` / `b70a4da`](https://github.com/npm/ssri/tree/v14.0.0) | ISC | Maintained, tested integrity parser/checker used by npm | Strong Node.js option for SRI strings and streams, but adds `minipass` and a second integrity format to a browser flow that has one fixed SHA-256 hex token | Do not add the dependency |
+| OpenClaw release checksum practice | [`v2026.7.1`](https://github.com/openclaw/openclaw/releases/tag/v2026.7.1) and ClawHub [issue #2378](https://github.com/openclaw/clawhub/issues/2378) | MIT | Signed release workflow publishes per-asset SHA-256 evidence; issue records a concrete wrong-artifact digest mismatch | Confirms that checking only metadata is insufficient when endpoint bytes differ | Adapt the hash-the-received-artifact invariant |
+| Existing OpenBot package builder and publisher | commits through `c9680bc` | MIT | Strict package schema, deterministic content build, Ed25519/DSSE publisher, blockers, quarantine, and tests | Already owns exact export content and reviewed-download preconditions; the browser still needs to verify the actual bytes it receives | Reuse and add the missing Client verification adapter |
 
 ## Reuse decision
 
 - Selected option: open standard plus a narrow adapter over existing OpenBot code.
-- Selected upstream or standard: RFC 9110 `ETag`/`If-Match`, RFC 6585 `428`, and
-  Kubernetes-style opaque reviewed-version interaction.
+- Selected upstream or standard: RFC 9110 `ETag`/`If-Match`, RFC 6585 `428`,
+  Kubernetes-style opaque reviewed-version interaction, and W3C Web Crypto SHA-256 over received
+  bytes.
 - Why this is the first viable option: HTTP already defines representation validators and stale
   request behavior. No dependency or second service is needed, and Hono's cache middleware does
   not implement the required precondition.
@@ -69,7 +82,8 @@
 
 - Source copied or substantially adapted: no
 - Files and upstream locations: no RFC, Kubernetes, or Hono source is copied. OpenBot adds a small
-  strong-tag parser, export preparation helper, route preconditions, Client forwarding, and tests.
+  strong-tag parser, export preparation helper, route preconditions, native Web Crypto digest
+  comparison, Client forwarding, and tests. No W3C, npm, or OpenClaw source is copied.
 - Required copyright or license notice location: citations and license decisions are recorded here
   and in `docs/OPEN_SOURCE_REUSE.md`; no third-party source notice is required.
 
@@ -77,10 +91,11 @@
 
 - Automated tests: preview returns `packageId`, `generatedAt`, and a 64-character strong entity-tag
   value; a matching download returns the exact same bytes, response `ETag`, and package metadata for
-  unsigned and signed exports.
+  unsigned and signed exports. The Web Client checks the response tag and SHA-256 of the received
+  `Blob` before creating a browser download.
 - Negative and fail-closed tests: missing `If-Match` returns `428`; weak/malformed tags or malformed
-  snapshot parameters return `422`; stale content or publisher state returns `412`; a blocked
-  package is never downloadable.
+  snapshot parameters return `422`; stale content or publisher state returns `412`; response-tag
+  or received-byte mismatch stops before browser download; a blocked package is never downloadable.
 - Platforms and devices: pure HTTP/Server and browser Client behavior shared by all supported Web
   Clients and Worker Host platforms.
 - User-visible documentation and translations: update English API/Employee/reuse docs and their
