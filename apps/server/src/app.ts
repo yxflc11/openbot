@@ -12,6 +12,7 @@ import {
   createBotInputSchema,
   createChannelInputSchema,
   createMessageInputSchema,
+  employeeTemplatePackageSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
 } from "@openbot/protocol";
@@ -23,7 +24,11 @@ import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
-import { buildEmployeeTemplate, serializeEmployeeTemplate } from "./employee-package.js";
+import {
+  buildEmployeeTemplate,
+  inspectEmployeeTemplate,
+  serializeEmployeeTemplate,
+} from "./employee-package.js";
 import {
   InvalidCredentialsError,
   LoginRateLimitedError,
@@ -432,6 +437,13 @@ export function createApp(dependencies: AppDependencies) {
     return context.body(serializeEmployeeTemplate(employeeTemplate.document));
   });
 
+  app.post("/api/v1/employees/import/preview", async (context) => {
+    const employeePackage = await parseEmployeePackageRequest(context.req.raw);
+    return context.json({
+      preview: inspectEmployeeTemplate(employeePackage, dependencies.listNodes()),
+    });
+  });
+
   app.post("/api/v1/bots", async (context) => {
     const input = await parseRequest(context.req.raw, createBotInputSchema);
     const bot = await dependencies.store.createBot(input);
@@ -520,6 +532,35 @@ async function parseRequest<T>(request: Request, schema: ZodType<T>): Promise<T>
       "Please correct the highlighted fields.",
       parsed.error.flatten().fieldErrors as Record<string, string[]>,
     );
+  }
+  return parsed.data;
+}
+
+const maxEmployeePackageBytes = 1024 * 1024;
+
+async function parseEmployeePackageRequest(request: Request) {
+  const declaredSize = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredSize) && declaredSize > maxEmployeePackageBytes) {
+    throw new RequestValidationError("Employee package must not exceed 1 MiB.", {});
+  }
+
+  const body = await request.text();
+  if (new TextEncoder().encode(body).byteLength > maxEmployeePackageBytes) {
+    throw new RequestValidationError("Employee package must not exceed 1 MiB.", {});
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    throw new RequestValidationError("Employee package must be valid JSON.", {});
+  }
+  const parsed = employeeTemplatePackageSchema.safeParse(value);
+  if (!parsed.success) {
+    const fields = Object.fromEntries(
+      parsed.error.issues.map((issue) => [issue.path.join(".") || "package", [issue.message]]),
+    );
+    throw new RequestValidationError("Employee package does not match a supported format.", fields);
   }
   return parsed.data;
 }

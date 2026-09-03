@@ -8,7 +8,13 @@ export interface ExecutionRequirements {
 }
 
 export function requirementsForRun(run: Run): ExecutionRequirements | undefined {
-  switch (run.executionProfile) {
+  return requirementsForExecutionProfile(run.executionProfile);
+}
+
+export function requirementsForExecutionProfile(
+  executionProfile: Run["executionProfile"],
+): ExecutionRequirements | undefined {
+  switch (executionProfile) {
     case "docker-linux":
       return { capabilities: ["browser", "screenshot"], executionProfile: "docker-linux" };
     case "macos-cua":

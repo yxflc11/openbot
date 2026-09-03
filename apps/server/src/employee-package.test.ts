@@ -3,6 +3,7 @@ import { employeeTemplatePackageSchema } from "@openbot/protocol";
 import { describe, expect, it } from "vitest";
 import {
   buildEmployeeTemplate,
+  inspectEmployeeTemplate,
   serializeEmployeeTemplate,
   verifyEmployeeTemplateChecksum,
 } from "./employee-package.js";
@@ -65,6 +66,61 @@ describe("employee template package", () => {
     document.payload.employee.role = "Changed after export";
 
     expect(verifyEmployeeTemplateChecksum(document)).toBe(false);
+  });
+
+  it("previews a compatible package in quarantine without activating it", () => {
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    const preview = inspectEmployeeTemplate(document, [
+      {
+        id: "node-1",
+        name: "Linux worker",
+        platform: "linux",
+        osVersion: "6.8",
+        architecture: "x64",
+        deviceClass: "server",
+        isolation: "container",
+        trustTier: "development",
+        capabilities: ["browser", "screenshot"],
+        capabilityManifest: [],
+        activeRunIds: [],
+        maxConcurrentRuns: 1,
+        connectedAt: timestamp,
+        lastSeenAt: timestamp,
+      },
+    ]);
+
+    expect(preview.blocked).toBe(false);
+    expect(preview.compatibility.compatibleHosts).toEqual([
+      expect.objectContaining({ id: "node-1", platform: "linux" }),
+    ]);
+    expect(preview.integrity.valid).toBe(true);
+    expect(preview.signature).toEqual({ status: "unsigned", trusted: false });
+    expect(preview.quarantine).toEqual({
+      active: true,
+      createsNewIdentity: true,
+      importedSkillState: "disabled-pending-review",
+      hostAuthority: "none",
+      memoryCount: 0,
+      canActivate: false,
+    });
+  });
+
+  it("blocks a tampered or incompatible package while still returning a review projection", () => {
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    document.payload.employee.role = "Changed after checksum";
+    const preview = inspectEmployeeTemplate(document, []);
+
+    expect(preview.blocked).toBe(true);
+    expect(preview.integrity.valid).toBe(false);
+    expect(preview.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(["checksum-mismatch", "missing-capability", "no-compatible-host"]),
+    );
   });
 });
 

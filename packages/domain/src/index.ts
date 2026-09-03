@@ -204,6 +204,63 @@ export interface EmployeeExportPreview {
   hostAuthority: "none";
 }
 
+export type EmployeeImportIssueCode =
+  | "checksum-mismatch"
+  | "capability-set-mismatch"
+  | "duplicate-skill"
+  | "missing-skill-dependency"
+  | "sensitive-content"
+  | "missing-capability"
+  | "no-compatible-host";
+
+export interface EmployeeImportIssue {
+  code: EmployeeImportIssueCode;
+  message: string;
+  locations: string[];
+}
+
+/** A read-only, quarantined projection. Creating a local Employee is a separate future command. */
+export interface EmployeeImportPreview {
+  format: "openbot.employee/v1";
+  packageId: string;
+  generatedAt: string;
+  employee: Pick<Bot, "name" | "role" | "appearance">;
+  recommendedExecutionProfile: Bot["computerProfile"];
+  skills: Array<{
+    slug: string;
+    name: string;
+    version: string;
+    requiredCapabilities: string[];
+    dependencySlugs: string[];
+  }>;
+  requestedCapabilities: string[];
+  integrity: {
+    algorithm: "sha256";
+    valid: boolean;
+  };
+  signature: {
+    status: "unsigned";
+    trusted: false;
+  };
+  compatibility: {
+    hostRequired: boolean;
+    compatibleHosts: Array<
+      Pick<ExecutionNode, "id" | "name" | "platform" | "architecture" | "deviceClass">
+    >;
+    missingCapabilities: string[];
+  };
+  quarantine: {
+    active: true;
+    createsNewIdentity: true;
+    importedSkillState: "disabled-pending-review";
+    hostAuthority: "none";
+    memoryCount: 0;
+    canActivate: false;
+  };
+  issues: EmployeeImportIssue[];
+  blocked: boolean;
+}
+
 export interface ExecutionNode {
   id: EntityId;
   name: string;

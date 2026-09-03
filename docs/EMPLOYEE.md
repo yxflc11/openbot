@@ -160,12 +160,17 @@ Implemented on the `feat/cross-platform-employees` development line:
 - an authenticated export preview and checksum-protected JSON template containing only role,
   appearance, execution preference, and verified skills;
 - structural exclusion of identity, authority, memory, and work history, plus blocking checks for
-  credential-like text, private keys, and user-specific local paths.
+  credential-like text, private keys, and user-specific local paths;
+- a 1 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill
+  dependency/capability consistency, sensitive text, and connected Worker Host compatibility;
+- a read-only quarantine projection that cannot create an Employee, activate a skill, persist
+  memory, bind a host, or grant authority.
 
 The current v1 template is deliberately unsigned and memory-free. The skill learning/verification
-workflow, memory editing and retention controls, signed archive, import preview, cloning, and
-authenticated ownership transfer are not implemented yet. Their data and authority boundaries are
-defined here so contributors can add them without coupling employee knowledge to Worker Host access.
+workflow, memory editing and retention controls, signed archive, reviewed import activation,
+cloning, and authenticated ownership transfer are not implemented yet. Their data and authority
+boundaries are defined here so contributors can add them without coupling employee knowledge to
+Worker Host access.
 
 ## Acceptance criteria
 

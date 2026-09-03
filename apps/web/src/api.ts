@@ -11,6 +11,7 @@ import type {
   CreateChannelInput,
   CreateMessageInput,
   EmployeeExportPreview,
+  EmployeeImportPreview,
   ExecutionNode,
   EmployeeProfile,
   Message,
@@ -108,6 +109,25 @@ export async function downloadEmployeeTemplate(botId: string, fileName: string):
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+export async function previewEmployeeImport(
+  file: File,
+  signal?: AbortSignal,
+): Promise<EmployeeImportPreview> {
+  if (file.size > 1024 * 1024) {
+    throw new ApiError("员工模板不能超过 1 MiB。", 422);
+  }
+  const result = await request<{ preview: EmployeeImportPreview }>(
+    "/api/v1/employees/import/preview",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/vnd.openbot.employee+json" },
+      body: file,
+      ...(signal ? { signal } : {}),
+    },
+  );
+  return result.preview;
 }
 
 export async function decideApproval(

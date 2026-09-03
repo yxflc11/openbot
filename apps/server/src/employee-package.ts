@@ -2,13 +2,17 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   EmployeeExportFinding,
   EmployeeExportPreview,
+  EmployeeImportIssue,
+  EmployeeImportPreview,
   EmployeeProfile,
+  ExecutionNode,
 } from "@openbot/domain";
 import {
   employeeTemplatePayloadSchema,
   type EmployeeTemplatePackage,
   type EmployeeTemplatePayload,
 } from "@openbot/protocol";
+import { requirementsForExecutionProfile } from "./execution-routing.js";
 
 interface EmployeeTemplateBuildOptions {
   generatedAt?: string;
@@ -172,6 +176,168 @@ export function serializeEmployeeTemplate(document: EmployeeTemplatePackage): st
 export function verifyEmployeeTemplateChecksum(document: EmployeeTemplatePackage): boolean {
   const actual = createHash("sha256").update(canonicalJson(document.payload)).digest("hex");
   return actual === document.integrity.digest;
+}
+
+/**
+ * Inspects a schema-valid package in quarantine. This function never persists or activates data.
+ */
+export function inspectEmployeeTemplate(
+  document: EmployeeTemplatePackage,
+  nodes: ExecutionNode[],
+): EmployeeImportPreview {
+  const { payload } = document;
+  const issues: EmployeeImportIssue[] = [];
+  const skillSlugs = payload.skills.map((skill) => skill.slug);
+  const uniqueSkillSlugs = new Set(skillSlugs);
+  const duplicateSkillSlugs = Array.from(
+    new Set(skillSlugs.filter((slug, index) => skillSlugs.indexOf(slug) !== index)),
+  ).sort();
+  if (duplicateSkillSlugs.length > 0) {
+    issues.push({
+      code: "duplicate-skill",
+      message: "The package contains duplicate skill slugs.",
+      locations: duplicateSkillSlugs,
+    });
+  }
+
+  const missingDependencies = payload.skills.flatMap((skill) =>
+    skill.dependencySlugs
+      .filter((dependencySlug) => !uniqueSkillSlugs.has(dependencySlug))
+      .map((dependencySlug) => `${skill.slug} -> ${dependencySlug}`),
+  );
+  if (missingDependencies.length > 0) {
+    issues.push({
+      code: "missing-skill-dependency",
+      message: "One or more skill dependencies are absent from the package.",
+      locations: [...new Set(missingDependencies)].sort(),
+    });
+  }
+
+  const skillCapabilities = Array.from(
+    new Set(payload.skills.flatMap((skill) => skill.requiredCapabilities)),
+  ).sort();
+  const declaredCapabilities = [...new Set(payload.requestedCapabilities)].sort();
+  if (skillCapabilities.join("\n") !== declaredCapabilities.join("\n")) {
+    issues.push({
+      code: "capability-set-mismatch",
+      message: "The declared capability set does not match the included skills.",
+      locations: Array.from(new Set([...skillCapabilities, ...declaredCapabilities])).sort(),
+    });
+  }
+
+  if (!verifyEmployeeTemplateChecksum(document)) {
+    issues.push({
+      code: "checksum-mismatch",
+      message: "The package checksum does not match its payload.",
+      locations: ["integrity.digest"],
+    });
+  }
+
+  const sensitiveFindings = scanPortableFields(payload);
+  if (sensitiveFindings.length > 0) {
+    issues.push({
+      code: "sensitive-content",
+      message: "The package contains credential-like text or a machine-local path.",
+      locations: sensitiveFindings.map((finding) => finding.location),
+    });
+  }
+
+  const executionRequirements = requirementsForExecutionProfile(
+    payload.configuration.recommendedExecutionProfile,
+  );
+  const requiredForCompatibility = Array.from(
+    new Set([
+      ...skillCapabilities,
+      ...declaredCapabilities,
+      ...(executionRequirements?.capabilities ?? []),
+    ]),
+  ).sort();
+  const hostRequired =
+    payload.configuration.recommendedExecutionProfile !== "none" ||
+    requiredForCompatibility.length > 0;
+  const availableCapabilities = new Set(
+    nodes.flatMap((node) => [
+      ...node.capabilities,
+      ...node.capabilityManifest.map((capability) => capability.id),
+    ]),
+  );
+  const missingCapabilities = requiredForCompatibility.filter(
+    (capability) => !availableCapabilities.has(capability),
+  );
+  const compatibleHosts = hostRequired
+    ? nodes
+        .filter((node) => {
+          if (
+            executionRequirements?.platform !== undefined &&
+            node.platform !== executionRequirements.platform
+          ) {
+            return false;
+          }
+          const nodeCapabilities = new Set([
+            ...node.capabilities,
+            ...node.capabilityManifest.map((capability) => capability.id),
+          ]);
+          return requiredForCompatibility.every((capability) => nodeCapabilities.has(capability));
+        })
+        .map(({ id, name, platform, architecture, deviceClass }) => ({
+          id,
+          name,
+          platform,
+          architecture,
+          deviceClass,
+        }))
+        .sort((left, right) => left.id.localeCompare(right.id))
+    : [];
+
+  if (missingCapabilities.length > 0) {
+    issues.push({
+      code: "missing-capability",
+      message: "No connected Worker Host currently advertises one or more required capabilities.",
+      locations: missingCapabilities,
+    });
+  }
+  if (hostRequired && compatibleHosts.length === 0) {
+    issues.push({
+      code: "no-compatible-host",
+      message: "No connected Worker Host satisfies the complete package requirement set.",
+      locations: [payload.configuration.recommendedExecutionProfile],
+    });
+  }
+
+  return {
+    format: payload.format,
+    packageId: payload.packageId,
+    generatedAt: payload.generatedAt,
+    employee: payload.employee,
+    recommendedExecutionProfile: payload.configuration.recommendedExecutionProfile,
+    skills: payload.skills.map(
+      ({ slug, name, version, requiredCapabilities, dependencySlugs }) => ({
+        slug,
+        name,
+        version,
+        requiredCapabilities,
+        dependencySlugs,
+      }),
+    ),
+    requestedCapabilities: declaredCapabilities,
+    integrity: { algorithm: "sha256", valid: verifyEmployeeTemplateChecksum(document) },
+    signature: { status: "unsigned", trusted: false },
+    compatibility: {
+      hostRequired,
+      compatibleHosts,
+      missingCapabilities,
+    },
+    quarantine: {
+      active: true,
+      createsNewIdentity: true,
+      importedSkillState: "disabled-pending-review",
+      hostAuthority: "none",
+      memoryCount: 0,
+      canActivate: false,
+    },
+    issues,
+    blocked: issues.length > 0,
+  };
 }
 
 function scanPortableFields(payload: EmployeeTemplatePayload): EmployeeExportFinding[] {

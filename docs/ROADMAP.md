@@ -10,8 +10,9 @@ M2 第一切片已完成：Node/provider 可发送结构化 `approval.request`�
 
 M3 基础切片已完成：员工进化事件、版本化技能、技能依赖和分类记忆已经落库；七视图员工主页
 可以从 Bot 列表、频道成员和消息作者进入。安全模板导出已有严格 schema、默认排除项、疑似敏感
-文本阻止、SHA-256 校验和 Owner 鉴权下载。当前模板仍未签名且不含记忆；下一步是只读导入预览
-与隔离兼容性报告，不能直接创建员工或获得工作主机权限。
+文本阻止、SHA-256 校验和 Owner 鉴权下载。只读导入预览也已完成严格 schema、1 MiB 上限、
+完整性与技能语义检查、敏感文本检查和在线主机兼容报告；它不能创建员工或获得工作主机权限。
+当前模板仍未签名且不含记忆，下一步是有证据的技能变更接口和签名/审核后激活设计。
 
 ## 当前持续目标的执行顺序
 
@@ -140,13 +141,13 @@ M3 基础切片已完成：员工进化事件、版本化技能、技能依赖�
 
 ## 下一批 Issue
 
-1. `Portability: validate an Employee package without activating it`
-2. `Web: add quarantined Employee import preview and compatibility report`
-3. `Domain: add Owner-reviewed Skill create, verify, suspend, and revoke commands`
-4. `Database: persist immutable Skill evidence and review events`
-5. `Protocol: publish cross-platform Provider conformance fixtures`
-6. `Routing: reject unsupported capability versions without fallback`
-7. `Security: design publisher keys and signed Employee archives`
-8. `Memory: add retention, redaction, deletion, and selective export controls`
-9. `Node identity: replace shared enrollment token with per-Node credentials`
-10. `Approval: issue single-use capability leases bound to target fingerprints`
+1. `Domain: add Owner-reviewed Skill create, verify, suspend, and revoke commands`
+2. `Database: persist immutable Skill evidence and review events`
+3. `Protocol: publish cross-platform Provider conformance fixtures`
+4. `Routing: reject unsupported capability versions without fallback`
+5. `Security: design publisher keys and signed Employee archives`
+6. `Import: add explicit Owner review receipts before activation`
+7. `Memory: add retention, redaction, deletion, and selective export controls`
+8. `Node identity: replace shared enrollment token with per-Node credentials`
+9. `Approval: issue single-use capability leases bound to target fingerprints`
+10. `Web: add accessible internationalization for Employee portability flows`

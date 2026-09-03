@@ -399,6 +399,36 @@ describe("server app", () => {
     expect(employeePackage.payload.employee).not.toHaveProperty("id");
     expect(employeePackage.payload.portability.authority).toBe("none");
     expect(verifyEmployeeTemplateChecksum(employeePackage)).toBe(true);
+
+    const importPreviewResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(employeePackage),
+    });
+    expect(importPreviewResponse.status).toBe(200);
+    expect(await importPreviewResponse.json()).toMatchObject({
+      preview: {
+        employee: { name: "Ops" },
+        integrity: { valid: true },
+        signature: { status: "unsigned", trusted: false },
+        quarantine: {
+          active: true,
+          createsNewIdentity: true,
+          hostAuthority: "none",
+          canActivate: false,
+        },
+      },
+    });
+
+    const unknownFieldResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...employeePackage, credentials: { token: "hidden" } }),
+    });
+    expect(unknownFieldResponse.status).toBe(422);
+    expect(await unknownFieldResponse.json()).toMatchObject({
+      error: "Employee package does not match a supported format.",
+    });
   });
 
   it("rejects invalid Bot input before reaching storage", async () => {
@@ -413,6 +443,22 @@ describe("server app", () => {
     expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({
       error: "Please correct the highlighted fields.",
+    });
+  });
+
+  it("rejects oversized employee packages before parsing", async () => {
+    const app = createTestApp({ store: createTestStore() });
+    const cookie = await login(app);
+    const response = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ padding: "x".repeat(1024 * 1024) }),
+    });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: "Employee package must not exceed 1 MiB.",
+      fields: {},
     });
   });
 

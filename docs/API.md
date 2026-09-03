@@ -26,6 +26,7 @@
 | `GET` | `/api/v1/bots/:botId/profile` | 读取数字员工档案、进化、技能、记忆与工作记录 |
 | `GET` | `/api/v1/bots/:botId/export/preview` | 预览默认脱敏员工模板及全部排除项 |
 | `GET` | `/api/v1/bots/:botId/export` | 下载通过安全检查的员工模板 JSON |
+| `POST` | `/api/v1/employees/import/preview` | 在隔离区严格检查员工模板，不写入任何员工数据 |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
 
 在线 Node 投影包含 `platform`、`osVersion`、`architecture`、`deviceClass`、`isolation`、
@@ -87,6 +88,16 @@ manifest 用于兼容性展示和后续策略迁移，本身不授予执行权�
 私钥标记和用户本地路径；命中后返回 `422`，不会生成下载。包内 SHA-256 对规范化 `payload`
 提供意外修改检测，但当前 `signature.status` 是 `unsigned`，不能证明发布者身份。未来导入功能必须
 先隔离校验、创建新的本地员工 ID，并让所有导入技能保持禁用，直到 Owner 完成本地策略审核。
+
+`POST /api/v1/employees/import/preview` 接受整个 v1 员工模板 JSON，最大 1 MiB。它使用严格
+schema，任何未声明字段都会返回 `422`，不会被静默忽略。通过结构验证后，Server 检查 SHA-256、
+技能 slug 与依赖、技能实际能力和顶层能力声明是否一致、疑似敏感文本，以及当前在线工作主机
+能否满足执行配置和全部能力。
+
+成功响应只是一份 `quarantine.active: true` 的只读投影。`quarantine.canActivate` 固定为 `false`，
+`createsNewIdentity` 固定为 `true`，`importedSkillState` 固定为
+`disabled-pending-review`，`hostAuthority` 固定为 `none`。该接口不写入 Bot、技能、记忆、Node
+绑定或权限；即使 `blocked: false`，也只表示可以进入人工审核，不表示员工已导入或已获信任。
 
 ## 创建频道
 

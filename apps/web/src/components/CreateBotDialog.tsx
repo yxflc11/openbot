@@ -52,9 +52,11 @@ const appearanceOptions = {
 export function CreateBotDialog({
   onClose,
   onCreate,
+  onImport,
 }: {
   onClose(): void;
   onCreate(input: CreateBotInput): Promise<void>;
+  onImport(): void;
 }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -185,6 +187,9 @@ export function CreateBotDialog({
             </p>
           ) : null}
           <footer>
+            <button className="secondary-button dialog-import-action" type="button" onClick={onImport}>
+              检查员工模板
+            </button>
             <button className="secondary-button" type="button" onClick={onClose}>
               取消
             </button>

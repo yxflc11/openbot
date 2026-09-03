@@ -33,6 +33,7 @@ import { CreateChannelDialog } from "./components/CreateChannelDialog";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
+import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
 import { RunInspector } from "./components/RunInspector";
@@ -135,6 +136,7 @@ function AuthenticatedWorkspace({
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
   const [employeeProfileError, setEmployeeProfileError] = useState<string>();
   const [employeeExportOpen, setEmployeeExportOpen] = useState(false);
+  const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const [framesByRun, setFramesByRun] = useState<Map<string, RunFrame>>(() => new Map());
   const [workspaceRealtimeState, setWorkspaceRealtimeState] =
     useState<RealtimeConnectionState>("connecting");
@@ -353,6 +355,7 @@ function AuthenticatedWorkspace({
 
   function selectChannel(channelId: string) {
     setEmployeeExportOpen(false);
+    setEmployeeImportOpen(false);
     setSelectedChannelId(channelId);
     setSelectedEmployeeId(undefined);
     setSelectedRunId(undefined);
@@ -361,6 +364,7 @@ function AuthenticatedWorkspace({
 
   function openEmployee(botId: string) {
     setEmployeeExportOpen(false);
+    setEmployeeImportOpen(false);
     setSelectedEmployeeId(botId);
     setSelectedRunId(undefined);
     setMobilePanel(undefined);
@@ -483,7 +487,14 @@ function AuthenticatedWorkspace({
       ) : null}
 
       {dialog === "bot" ? (
-        <CreateBotDialog onClose={() => setDialog(undefined)} onCreate={handleCreateBot} />
+        <CreateBotDialog
+          onClose={() => setDialog(undefined)}
+          onCreate={handleCreateBot}
+          onImport={() => {
+            setDialog(undefined);
+            setEmployeeImportOpen(true);
+          }}
+        />
       ) : null}
       {dialog === "channel" ? (
         <CreateChannelDialog
@@ -501,6 +512,9 @@ function AuthenticatedWorkspace({
             showNotice(`已下载安全员工模板：${fileName}`);
           }}
         />
+      ) : null}
+      {employeeImportOpen ? (
+        <ImportEmployeeDialog onClose={() => setEmployeeImportOpen(false)} />
       ) : null}
       {notice ? (
         <div className="toast" role="status">
