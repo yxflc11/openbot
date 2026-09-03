@@ -341,7 +341,10 @@ export interface EmployeeImportPreview {
   format: "openbot.employee/v1";
   packageId: string;
   generatedAt: string;
-  employee: Pick<Bot, "name" | "role" | "appearance">;
+  employee: Pick<Bot, "name" | "role" | "appearance"> & {
+    /** Untrusted, descriptive package content. It never grants authority. */
+    description?: string;
+  };
   recommendedExecutionProfile: Bot["computerProfile"];
   skills: Array<{
     slug: string;

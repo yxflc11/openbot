@@ -205,7 +205,7 @@ function ImportDropZone({
   );
 }
 
-function ImportPreviewDetails({
+export function ImportPreviewDetails({
   preview,
   fileName,
   employeeName,
@@ -245,6 +245,29 @@ function ImportPreviewDetails({
         <strong className={preview.blocked ? "blocked" : "ready"}>
           {preview.blocked ? "需要处理" : "隔离检查通过"}
         </strong>
+      </section>
+
+      <section className="import-profile-summary" aria-labelledby="import-profile-summary-title">
+        <h3 id="import-profile-summary-title">员工资料</h3>
+        <dl>
+          <div>
+            <dt>职责</dt>
+            <dd>{preview.employee.role}</dd>
+          </div>
+          <div>
+            <dt>简介</dt>
+            <dd>{preview.employee.description || "模板未提供简介。"}</dd>
+          </div>
+          <div>
+            <dt>请求能力</dt>
+            <dd>
+              {preview.requestedCapabilities.length > 0
+                ? preview.requestedCapabilities.join("、")
+                : "无"}
+            </dd>
+          </div>
+        </dl>
+        <p>这些内容只用于说明员工，不会授予技能、电脑或账号权限。</p>
       </section>
 
       <section className="import-quarantine-grid">

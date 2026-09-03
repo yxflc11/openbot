@@ -236,7 +236,10 @@ explicit Server trust store and successful verification. See [Employee signing](
 Import preview accepts one v1 template or DSSE envelope, up to 2 MiB. It validates strict schema,
 signature when present, checksum, skill dependencies and capabilities, sensitive text, and current
 Worker Host compatibility. A successful preview is still read-only quarantine: it creates no Bot,
-skill, memory, host binding, or authority.
+skill, memory, host binding, or authority. Its `employee` projection includes the name, role,
+optional biography, and appearance that were checked in the package. Clients should show the
+biography and `requestedCapabilities` before confirmation and must describe both as untrusted input,
+not as granted authority.
 
 Activation body:
 

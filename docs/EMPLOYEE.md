@@ -162,8 +162,10 @@ Import always shows a preview:
 The implemented template path now follows those boundaries for identity-free packages: activation
 repeats validation, requires the exact reviewed package id and canonical digest, requires explicit
 Owner acceptance for an unsigned source, creates a fresh local identity, and records an immutable
-idempotent receipt. It does not implement authenticated ownership transfer or optional-memory
-selection.
+idempotent receipt. Before that confirmation, the quarantine view shows the Employee name, role,
+optional biography, skills, requested capabilities, publisher trust, compatible hosts, and
+zero-authority boundary. The biography is untrusted descriptive text and grants nothing. This path
+does not implement authenticated ownership transfer or optional-memory selection.
 
 An employee package carries knowledge and configuration. It never carries authority to a computer.
 The receiving owner must explicitly bind it to a Worker Host and grant a local policy profile.
@@ -212,7 +214,8 @@ Implemented on the `feat/cross-platform-employees` development line:
 - structural exclusion of identity, authority, memory, and work history, plus blocking checks for
   credential-like text, private keys, and user-specific local paths;
 - a 2 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill
-  dependency/capability consistency, sensitive text, and connected Worker Host compatibility;
+  dependency/capability consistency, sensitive text, and connected Worker Host compatibility,
+  then show the role, optional biography, requested capabilities, and zero-authority boundary;
 - a read-only quarantine projection that cannot create an Employee, activate a skill, persist
   memory, bind a host, or grant authority;
 - an authenticated activation command that revalidates the package and current-host compatibility,

@@ -29,3 +29,5 @@ OpenBot 的每项行为变化都要先证明已经调研维护中的开源代码
 的启发来源，并把其真实日期旅程交互适配到 OpenBot 仅追加的 Server 记录。
 [Owner 管理员工主页详情](owner-employee-profile-details.md)审查继续复用现有 revision 变化路径及
 Hermes/Kubernetes 的冲突语义，只开放说明性字段。
+[可迁移员工资料审核](portable-employee-profile-review.md)继续补齐传输安全：接收方会在激活前，
+从现有摘要绑定的隔离预览中看清员工简介。

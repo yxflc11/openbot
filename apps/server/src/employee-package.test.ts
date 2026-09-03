@@ -5,6 +5,7 @@ import { employeeTemplateDssePayloadType, employeeTemplatePackageSchema } from "
 import { describe, expect, it } from "vitest";
 import {
   buildEmployeeTemplate,
+  employeeTemplatePayloadChecksum,
   inspectEmployeeTemplate,
   serializeEmployeeTemplate,
   signEmployeeTemplateEnvelope,
@@ -115,6 +116,9 @@ describe("employee template package", () => {
     ]);
 
     expect(preview.blocked).toBe(false);
+    expect(preview.employee.description).toBe(
+      "Navigate approved sites and return evidence-backed outcomes.",
+    );
     expect(preview.compatibility.compatibleHosts).toEqual([
       expect.objectContaining({ id: "node-1", platform: "linux" }),
     ]);
@@ -128,6 +132,20 @@ describe("employee template package", () => {
       memoryCount: 0,
       canActivate: true,
     });
+  });
+
+  it("keeps older v1 packages without a biography reviewable", () => {
+    const { document } = buildEmployeeTemplate(createProfile(), {
+      generatedAt: timestamp,
+      packageId,
+    });
+    delete document.payload.employee.description;
+    document.integrity.digest = employeeTemplatePayloadChecksum(document.payload);
+
+    const preview = inspectEmployeeTemplate(document, []);
+
+    expect(preview.employee.description).toBeUndefined();
+    expect(preview.issues.map((issue) => issue.code)).not.toContain("checksum-mismatch");
   });
 
   it("blocks a tampered or incompatible package while still returning a review projection", () => {

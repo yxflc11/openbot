@@ -137,13 +137,13 @@ Token 与私钥会被阻止；只能保存 `vault://operations/email` 这类不�
   "kind": "semantic",
   "title": "报告格式偏好",
   "content": "先写简短结论，再附来源表格。",
-  "sensitivity": "private",
+  "sensitivity": "internal",
   "portability": "owner-selectable"
 }
 ```
 
 `kind` 可以是 `working`、`episodic`、`semantic`、`procedural` 或 `secret-reference`；
-`sensitivity` 可以是 `public`、`private` 或 `restricted`。Owner 命令只能设置 `never` 或
+`sensitivity` 可以是 `public`、`internal`、`confidential` 或 `restricted`。Owner 命令只能设置 `never` 或
 `owner-selectable`；`included` 会被拒绝，因为 `openbot.employee/v1` 固定导出零条记忆。
 `secret-reference` 必须是 `restricted` 和 `never`，正文只能是引用，不能是真实秘密。
 
@@ -243,7 +243,8 @@ Server 会拒绝启动而不是退回无签名模式。使用方法见[员工包
 `quarantine.canActivate` 为 `true`；`createsNewIdentity` 固定为 `true`，
 `importedSkillState` 固定为 `disabled-pending-review`，`hostAuthority` 固定为 `none`。该接口
 不写入 Bot、技能、记忆、Node 绑定或权限。`integrity.digest` 是严格解析后员工包的规范摘要，
-客户端必须在激活时原样提交。
+客户端必须在激活时原样提交。`employee` 投影会返回已检查的名称、职责、可选简介与外观；客户端
+应在确认前展示简介和 `requestedCapabilities`，并明确它们只是未受信任的输入，不是已经授予的权限。
 
 `POST /api/v1/employees/import/activate` 接受如下 JSON：
 

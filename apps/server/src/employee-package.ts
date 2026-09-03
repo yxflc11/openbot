@@ -122,7 +122,7 @@ export function buildEmployeeTemplate(
     signature: { status: "unsigned" },
   });
 
-  const checksum = createHash("sha256").update(canonicalJson(payload)).digest("hex");
+  const checksum = employeeTemplatePayloadChecksum(payload);
   const findings = scanPortableFields(payload);
   const workHistoryCount =
     profile.evolution.length +
@@ -190,8 +190,13 @@ export function serializeEmployeeTemplate(document: EmployeeTemplatePackage): st
 }
 
 export function verifyEmployeeTemplateChecksum(document: EmployeeTemplatePackage): boolean {
-  const actual = createHash("sha256").update(canonicalJson(document.payload)).digest("hex");
+  const actual = employeeTemplatePayloadChecksum(document.payload);
   return actual === document.integrity.digest;
+}
+
+/** Canonical checksum stored inside an Employee package and recomputed during quarantine. */
+export function employeeTemplatePayloadChecksum(payload: EmployeeTemplatePayload): string {
+  return createHash("sha256").update(canonicalJson(payload)).digest("hex");
 }
 
 /** Stable digest of the complete validated package used to bind preview and activation. */
@@ -510,7 +515,16 @@ export function inspectEmployeeTemplate(
     format: payload.format,
     packageId: payload.packageId,
     generatedAt: payload.generatedAt,
-    employee: payload.employee,
+    employee: {
+      name: payload.employee.name,
+      role: payload.employee.role,
+      ...(payload.employee.description === undefined
+        ? {}
+        : { description: payload.employee.description }),
+      ...(payload.employee.appearance === undefined
+        ? {}
+        : { appearance: payload.employee.appearance }),
+    },
     recommendedExecutionProfile: payload.configuration.recommendedExecutionProfile,
     skills: payload.skills.map(
       ({ slug, name, version, requiredCapabilities, dependencySlugs }) => ({

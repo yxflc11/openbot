@@ -4392,6 +4392,50 @@ select:focus-visible {
   font-size: 8px;
   text-align: right;
 }
+.import-profile-summary {
+  padding: 13px 14px;
+  border: 1px solid #d9dde2;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+.import-profile-summary h3,
+.import-profile-summary dl,
+.import-profile-summary dd,
+.import-profile-summary p {
+  margin: 0;
+}
+.import-profile-summary h3 {
+  margin-bottom: 10px;
+  font-size: 11px;
+}
+.import-profile-summary dl {
+  display: grid;
+  gap: 8px;
+}
+.import-profile-summary dl > div {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 10px;
+}
+.import-profile-summary dt {
+  color: #7a828b;
+  font-size: 9px;
+}
+.import-profile-summary dd {
+  overflow-wrap: anywhere;
+  color: #343b43;
+  font-size: 9px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.import-profile-summary p {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #e2e5e8;
+  color: #66717b;
+  font-size: 9px;
+  line-height: 1.5;
+}
 .import-empty,
 .import-missing {
   margin: 0;
