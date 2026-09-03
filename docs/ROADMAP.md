@@ -8,127 +8,140 @@ Node 已通过出站 WebSocket 上报真实可执行能力和并发容量；两�
 
 M2 第一切片已完成：Node/provider 可发送结构化 `approval.request`，Server 原子保存审批和目标指纹并把 Run 切换为 `waiting_approval`；桌面 Attention 与手机审批页可批准一次或拒绝，决定会审计并回传原 Node。重复决定、过期审批和失联 Node 均 fail closed。下一步是接入真正的交互式 provider，并把当前请求/决定握手升级为可验证、可消费一次的 capability lease；连续画面与接管仍待补。
 
-## Spike — 决定是否正式 fork CopilotKit/OpenBot
+## 当前持续目标的执行顺序
 
-### 验证
+本轮 Codex 目标至少持续八小时，并按小步可验证提交推进：
 
-- 在 Apple Silicon 与 Linux 上原样启动。
-- 画出 CopilotKit Intelligence 在 server/app 中的所有依赖点。
-- 用最小本地 thread adapter 完成一轮消息持久化和刷新恢复。
-- 确认 `agent-computer`、policy、audit、routine、handoff 测试可独立运行。
-- 估算 supervisor 泛化成 remote Node 的改造边界。
+1. **产品基线：**更新双语定位、跨平台工作主机模型、数字员工档案与安全迁移规范。
+2. **协议泛化：**去除只支持 Linux/macOS 的硬编码，加入 OS、架构、设备类型、隔离等级和
+   版本化能力，同时为旧 Node 保留明确兼容边界。
+3. **员工领域模型：**建立 profile、evolution event、skill、skill relation、memory 和 portable
+   package 的共享类型与数据库 migration。
+4. **读取闭环：**提供员工主页 API，把已有 Run、产物和审批投影为可解释工作记录。
+5. **界面切片：**从频道 Bot 入口打开员工主页，先交付概览、进化、技能、运行和记录视图。
+6. **安全导出：**实现不包含凭证、Session、Node 身份、租约和私人记忆的模板导出/导入预览。
+7. **工程收口：**补齐协议、数据库、API 和 UI 测试，运行 `npm run check`，更新文档并通过 PR
+   合并。
 
-### 决策门
+任何阶段未通过验收都不能通过扩大宣传或跳过测试来“完成”。
 
-如果替换 Intelligence 不要求重写大部分 server/app，正式 fork；否则只提取 MIT 模块/设计并保持 clean-room 边界。
+## M0 — 本地控制平面（基础已完成）
 
-## M0 — 完全本地的 Server
+### 已交付
 
-### 交付
+- 本地 Owner 认证、PostgreSQL、频道、Bot、消息、Run、审批、产物和审计。
+- 频道优先的响应式 Web UI、组合式 Bot 外观和多设备实时同步。
+- 办公室隔离为未加载的 `@openbot/office-plugin`。
 
-- Local Threads / Memory / Realtime。
-- PostgreSQL 中的频道、消息和事件。
-- 不提供 Intelligence key/license 时完整启动。
-- 本地登录、Bot 名册、频道、policy 和 audit。
-- 频道优先的桌面和移动端界面，以及创建频道、组合式 Bot、把 Bot 加入频道的完整流程。
-- Marvis 式办公室隔离为 `@openbot/office-plugin`，不在当前版本加载。
-- 响应式 Web/PWA 基线；移动端使用单栏任务与底部抽屉。
+### 剩余过线项
 
-### 过线测试
+- 可安装 PWA、通知投递、恢复工具和更完整的无障碍支持。
 
-- 断网环境仍能创建频道、对话、刷新和恢复历史。
-- Server 重启不丢 thread/run/approval。
-- 浏览器中不存在向 CopilotKit Intelligence 的网络请求。
-
-## M1 — Server + Linux Node 闭环
+## M1 — 跨平台 Server/Node 基础
 
 ### 交付
 
-- Node enrollment、WSS 长连接、心跳、吊销（当前为共享启动令牌，独立身份与吊销待补）。
-- capability registry 与 deterministic router（首个切片已完成）。
-- 两阶段任务分配、并发容量和断线/重启回队（首个切片已完成）。
-- Docker browser provider（只读 navigate + screenshot 已完成）。
-- run 生命周期、UI progress、结果和小型 PNG 产物回传（已完成）；受限的最新画面 transport 已完成，连续采集待补。
-- Run Inspector 的任务、Computer、Progress、Team、临时画面与 Artifacts 投影（已完成）。
+- Linux x64/arm64 生产 Server 镜像，可运行在 Linux、NAS、云、macOS 或 Windows 容器主机。
+- 结构化 Worker Host 身份、版本化 capability 和确定性能力路由。
+- Windows、macOS、Linux Node daemon 的共同生命周期和兼容测试。
+- 独立 Node enrollment、证书轮换、吊销和防重放。
 
 ### 过线测试
 
-- Server 与 Node 可位于两台不同机器。
-- Node 无入站端口仍能领取任务。
-- 节点断线后 run 明确失败/等待，不重复外部副作用。
-- 更换 Node 后 Bot、频道和历史保持不变。
+- 三种桌面平台的模拟 Node 都能注册、心跳、领取匹配任务并安全断线。
+- Node 不开放公网入站控制端口。
+- 更换工作主机后，员工、频道和历史保持不变。
 
-## M2 — 多设备远程审批与接管
+## M2 — 安全浏览器、审批与接管
 
 ### 交付
 
-- Tailscale-first 部署文档。
-- 手机 PWA 的频道、审批和电脑画面。
-- Attention 审批卡在桌面右栏和手机审批页同时置顶（第一切片已完成）。
-- 审批请求、目标指纹、超时、Owner 决定、审计和 Node 恢复握手（第一切片已完成）。
-- 一次性 capability lease。
-- view token、独占 control lease 和人机互斥。
-- Run、审批与 Node 状态的多设备 realtime 同步（已完成）；连续电脑画面待补。
+- 跨平台语义浏览器 Provider 的 observe/fill/act 循环。
+- 审批前冻结动作、一次性 capability lease 和上下文指纹复核。
+- 连续画面、短时 view token、独占 control lease 和人机互斥。
+- 手机 PWA 审批、通知和接管。
 
 ### 过线测试
 
-- 手机在外网通过私网访问 Server。
-- 未批准的 commit 不发生；重放、超时和上下文变化均拒绝。
-- 一台设备接管后，其他设备和 Agent 不能同时输入。
-- Client 无法绕过 Server 直连 Node。
+- 未批准的 commit 不发生；批准不能重放，超时或目标变化立即拒绝。
+- 一台 Client 接管后，其他 Client 和 Agent 都不能输入。
+- Client 无法绕过 Server 直连工作主机。
 
-## M3 — macOS Node
+## M3 — 员工档案、技能与可迁移模板
 
 ### 交付
 
-- macOS launchd Node daemon。
-- Cua observe/prepare provider。
-- Lume VM provider。
-- macOS 权限诊断与稳定 runtime identity。
+- 员工个人主页：概览、进化档案、技能图谱、运行轨迹、记忆、记录和配置。
+- 有来源、版本、验证状态和证据的技能注册表。
+- 类型化记忆、敏感等级、保留和删除控制。
+- 安全默认的员工模板导出、导入预览和本地重新授权。
 
 ### 过线测试
 
-- Linux Server 能调度家中 Mac Node。
-- Mac Node 重启后主动重连。
-- 没有 Cua capability 时任务不会错误路由。
-- 宿主 Cua 与 Lume VM 的凭证和工作区彼此隔离。
+- 每项进化和技能都可以追溯证据。
+- 决策轨迹不暴露私有思维链、密钥或凭证。
+- 默认员工包不含私人记忆、设备身份、电脑权限、Session 或租约。
+- 导入员工在新 Owner 授权前不能操作任何工作主机。
 
-## M4 — 多 Bot、routine 与 coder
+完整模型见[可迁移数字员工模型](EMPLOYEE.zh-CN.md)。
+
+## M4 — Windows、macOS、Linux 原生工作主机
+
+### 交付
+
+- Windows UI Automation/PowerShell Provider 与 Windows Service。
+- macOS Cua/Lume Provider、权限诊断与 launchd 服务。
+- Linux Shell/File Provider，随后认证支持的 Linux 桌面环境。
+- 全部 Provider 使用相同 prepare/approve/commit 和一致性测试。
+
+### 过线测试
+
+- 同一员工可以在策略允许时更换 Windows、macOS 或 Linux 工作主机。
+- 缺少对应 Provider 时不会错误路由或静默降级。
+- 工作主机使用员工专用账户，不复用 Owner 主账号和主密码库。
+
+平台矩阵见[跨平台工作主机](CROSS_PLATFORM.zh-CN.md)。
+
+## M5 — 多 Bot、Routine、Coder 与所有权转移
 
 ### 交付
 
 - `chief` / `ops` / `coder` 结构化 handoff。
-- durable queue、并发限制、幂等、重试和失败熔断。
-- Codex/Claude CLI adapter。
-- 可选 Multica coder provider。
+- durable queue、并发限制、幂等、重试、熔断和长期记忆。
+- Codex/Claude CLI adapter 与可选 Multica Provider。
+- 经认证的员工所有权转移、来源端撤销和双方收据。
 
 ### 过线测试
 
 - `chief` 无电脑权限，只能派活和汇总。
-- routine 在 Server 重启后不重复、不补跑过期窗口。
-- `coder` 不能读取 `ops` 的浏览器 profile 或 macOS 凭证。
+- Routine 在 Server 重启后不重复执行副作用。
+- `coder` 不能读取 `ops` 的浏览器配置或原生桌面凭证。
+- 完成转移后，来源端不能继续使用员工身份或权限。
 
-## M5 — 开源发布与运维
+## M6 — 移动设备、发布与运维
 
 ### 交付
 
-- Server Docker Compose 安装。
-- Linux systemd 与 macOS launchd Node 安装。
-- 固定版本、checksum、SBOM、第三方 notice。
-- 备份、恢复、升级 canary 和回滚。
-- 独特项目名、LICENSE、SECURITY、贡献指南。
+- 受管理 Android Node 与 iOS/Android 伴侣端。
+- Server Docker Compose、Linux systemd、Windows Service 和 macOS launchd 安装。
+- 固定版本、签名、checksum、SBOM、第三方 notice、备份、恢复和回滚。
+- Provider 模板、支持等级、兼容矩阵和社区认证流程。
 
 ### 过线测试
 
-- 新服务器能从备份恢复全部频道、Bot、策略和审计。
-- 替换执行节点不需要迁移系统数据库。
+- 新 Server 能从备份恢复员工、频道、策略和审计。
 - 升级失败能回滚且不重新消费审批。
+- Experimental、Supported、Certified 能力不会在产品和文档中混淆。
 
-## 最先创建的 Issue
+## 下一批 Issue
 
-1. `Spike: boot CopilotKit/OpenBot on Apple Silicon and Linux`
-2. `Spike: map and replace Intelligence thread dependencies`
-3. `M0: persist local channels, threads and AG-UI events`
-4. `M1: define versioned Server-Node protocol`
-5. `M1: enroll a remote Linux Node over outbound WSS`
-6. `M1: route one browser task and stream its screenshot`
+1. `ADR: define Worker Host and portable Employee boundaries`
+2. `Protocol: add structured platform, architecture and device class`
+3. `Protocol: replace fixed capability enum with versioned descriptors`
+4. `Provider SDK: define cross-platform lifecycle and conformance suite`
+5. `Domain: add Employee profile and evolution ledger`
+6. `Domain: add versioned Skill registry and dependency graph`
+7. `Database: persist Employee evolution, skills and typed memories`
+8. `API: expose one read-only Employee profile projection`
+9. `Web: open Employee profile from channel Bot identity`
+10. `Portability: export and inspect a safe Employee template`

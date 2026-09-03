@@ -9,13 +9,15 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](package.json)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#project-status)
 
-OpenBot is an early-stage, open-source system for running named AI workers on computers you
-control. You talk to Bots in persistent local channels; the OpenBot Server routes each task to a
-replaceable execution Node and keeps messages, approvals, artifacts, and audit events under your
-ownership.
+OpenBot is an early-stage, open-source, self-hosted platform for running named AI employees on
+computers you control. You talk to employees in persistent local channels; the OpenBot Server
+routes each task to an authorized, replaceable Worker Host and keeps identity, skills, memory,
+messages, approvals, artifacts, and audit events under your ownership.
 
-A Mac mini can be a macOS execution Node, but it is not the product. The Server can run on Linux,
-macOS, a NAS, or a cloud VM, and you can reach it from any browser over a private network.
+A Mac mini is the first practical Worker Host, not the product boundary. Windows, macOS, and Linux
+computers can become employee work machines through the same Server-authorized Node protocol. The
+Server can run on Linux, macOS, a NAS, or a cloud VM, and you can reach it from any browser over a
+private network.
 
 OpenBot is inspired by the always-on, channel-based experience of products such as Grok Bot while
 remaining self-hosted, provider-neutral, and designed for explicit human control.
@@ -29,8 +31,10 @@ remaining self-hosted, provider-neutral, and designed for explicit human control
 
 - **Local channels, not disposable chat windows.** Bots, conversations, runs, and results persist
   in your own PostgreSQL database.
-- **Replaceable computers.** A Bot is an identity and policy profile; a Node is a machine. Linux,
-  macOS, VM, and coding Nodes can be added or replaced independently.
+- **Replaceable, cross-platform computers.** An employee is a persistent identity and policy; a
+  Worker Host is a Windows, macOS, Linux, VM, container, or managed device that can be replaced.
+- **Employees that grow and travel.** Each employee has an evidence-backed evolution history,
+  skill graph, decision trace, memory, work record, configuration, and safe portability controls.
 - **Approval before side effects.** Sensitive actions enter an explicit, auditable approval state.
   Models cannot grant themselves additional privileges.
 - **One control plane on every device.** Desktop and mobile browsers share the same channel state
@@ -50,10 +54,11 @@ and back. The table deliberately separates working code from planned capabilitie
 | Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, and SSE reconnect | Installable PWA, notification delivery, accessibility and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot | More parts, import/export, and community-created appearance packs |
+| Employee profile | Existing Bot, Run, approval, artifact, and configuration data provide the foundation | Unified profile, evolution ledger, skill graph, typed memory, and portable employee packages |
 | Node protocol | Outbound WebSocket registration, heartbeat, capacity, deterministic routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and protocol compatibility tests |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
-| Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Production macOS Cua/Lume and isolated coding providers |
+| Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
 | Office view | Isolated `@openbot/office-plugin` package with no core-app dependency | Optional plugin lifecycle after the channel workflow is mature |
 
 ### What the current release does not claim
@@ -62,6 +67,8 @@ and back. The table deliberately separates working code from planned capabilitie
 - It does not yet issue cryptographic, single-use capability leases after approval.
 - It does not provide continuous remote desktop control.
 - It does not yet have production-grade Node identity, mTLS, or credential rotation.
+- It does not yet provide the employee evolution, skill, memory, or import/export UI described in
+  the target product model.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
 - The optional office visualization is not part of the current product navigation or Web build.
 
@@ -127,15 +134,15 @@ stores the final screenshot, and posts the result under the selected Bot's ident
 ## How it fits together
 
 ```text
-Any browser  ->  OpenBot Server  <- outbound connections -  OpenBot Nodes  ->  Providers
-                   source of truth                             replaceable computers
+Any device  ->  OpenBot Server  <- outbound connections -  Worker Hosts  ->  Providers
+                 source of truth                         Windows/macOS/Linux/etc.
 ```
 
 | Component | Owns | Does not own |
 | --- | --- | --- |
 | Client | Interaction, observation, approval input | Policy decisions or execution authority |
 | Server | Identity, channels, Runs, routing, policy, approvals, audit, and persistence | Host-specific computer capabilities |
-| Node | Capability discovery, local capacity, provider execution, progress, and artifacts | Bot identity, long-term memory, or authorization policy |
+| Worker Host / Node | Capability discovery, local capacity, provider execution, progress, and artifacts | Employee identity, skills, long-term memory, or authorization policy |
 | Provider | One narrow execution backend such as Docker/browser, Cua, Lume, or coder | Cross-Node routing or privilege escalation |
 
 The Server is the only source of truth. Nodes connect outward and never require a public management
@@ -173,9 +180,10 @@ outcomes rather than add an isolated demo.
 | M0 — Local control plane | Channels, Bots, authentication, persistence, and audit run without a proprietary cloud service. The foundation is available today. |
 | M1 — Server/Node loop | A replaceable Node receives a browser task and returns progress and a screenshot. The read-only vertical slice is available; safe interaction remains active work. |
 | M2 — Remote control and approval | Mobile access, signed single-use approvals, notifications, and exclusive human takeover. Persisted approval decisions are available; leases and takeover are next. |
-| M3 — macOS Node | Cua and Lume make a Mac mini one optional Node for native macOS work. |
-| M4 — Multi-Bot operations | Structured handoffs, routines, durable queues, retries, circuit breakers, and memory. |
-| M5 — Distribution | Reproducible Server/Node installers, signed releases, SBOMs, upgrades, backup, and recovery. |
+| M3 — Portable employees | Profile, evolution ledger, skill graph, typed memory, and safe employee templates. |
+| M4 — Native Worker Hosts | Windows, macOS, and Linux Providers use one capability and approval contract. |
+| M5 — Multi-Bot operations | Structured handoffs, routines, durable queues, coder Providers, and authenticated employee transfer. |
+| M6 — Distribution | Managed mobile devices, reproducible installers, signed releases, SBOMs, upgrades, backup, and recovery. |
 
 The complete acceptance gates live in [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -241,6 +249,8 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | Build or integrate against the API | [Local API](docs/API.md) |
 | Review security guarantees | [Threat model](docs/SECURITY.md) |
 | Work on the channel experience | [Interface guide](docs/INTERFACE.md) |
+| Design employee identity and portability | [Portable employee model](docs/EMPLOYEE.md) |
+| Add an operating system or device | [Cross-platform Worker Hosts](docs/CROSS_PLATFORM.md) |
 | Understand upstream choices | [Upstream strategy](docs/UPSTREAMS.md) |
 | Review why a decision was made | [Architecture decision records](docs/decisions/) |
 

@@ -2,17 +2,20 @@
 
 ## 1. 一句话
 
-OpenBot 是一个完全自托管的数字员工服务器：它提供自己的频道和远程控制界面，并把工作派给可替换的 Linux、macOS 或代码执行节点。
+OpenBot 是一个受 Grok Bot 体验启发的开源、自托管、跨平台数字员工平台：员工拥有可成长、
+可查看和可迁移的持久身份，并通过用户授权的 Windows、macOS、Linux 或隔离运行环境完成工作。
 
 ## 2. 用户体验
 
 - 用户在手机、平板或笔记本浏览器打开自己的 OpenBot PWA。
 - 频道、聊天记录、记忆、审批和审计保存在自己的 Server。
-- Bot 在后台选择已经声明并在线的 Node 工作。
+- Server 在后台为 Bot 选择已经声明、在线且获得授权的工作主机。
 - 用户可以看屏幕、暂停、批准、拒绝或接管。
-- 更换 Mac Mini、迁移 Linux 服务器或增加新 Node，不会丢失频道和 Bot 身份。
+- 更换 Mac mini、Windows PC、Linux 主机或隔离环境，不会丢失频道和员工身份。
 - 桌面端和手机端都默认进入 Grok Bot 式长期频道；Marvis 式办公室作为可选插件保留，不进入当前版本导航和 Web 构建。
 - Bot 外观由头部、身体、移动方式、配件和强调色组合，并作为持久身份在所有界面复用。
+- 点击 Bot 可以查看员工个人主页、进化档案、技能图谱、可审计决策轨迹、记忆、工作记录和配置。
+- 员工可以导出为安全模板、复制为新员工或通过认证流程转移；电脑权限和凭证不随员工包迁移。
 - 进度、团队、审批、电脑和产物均由结构化 run events 渲染，而不是从聊天文本推断。
 
 ## 3. 部署角色
@@ -30,9 +33,9 @@ OpenBot 是一个完全自托管的数字员工服务器：它提供自己的频
 
 Server 可以部署在 Mac Mini、普通 Linux 主机、NAS 虚拟机或云服务器。
 
-### OpenBot Node
+### OpenBot Worker Host / Node
 
-可以被替换的执行机，负责：
+Bot 被授权使用的可替换工作电脑或运行环境，负责：
 
 - 主动连接 Server 并维持心跳；
 - 宣告 `docker`、`browser`、`cua`、`lume`、`coder` 等能力；
@@ -40,14 +43,15 @@ Server 可以部署在 Mac Mini、普通 Linux 主机、NAS 虚拟机或云服�
 - 回传状态、屏幕、产物和工具结果；
 - 执行短时人工接管租约。
 
-节点不负责频道、审批真相、长期记忆或 Bot 身份。
+工作主机不负责频道、审批真相、长期记忆、员工技能图谱或 Bot 身份。Mac mini 只是第一种工作
+主机；Windows 和 Linux 主流电脑使用同一协议接入。
 
 ## 4. 最小角色
 
 | Bot | 责任 | 可用节点 |
 | --- | --- | --- |
 | `chief` | 拆解、路由、汇总、升级问题 | 无电脑 |
-| `ops` | 浏览器、文档和桌面任务 | Linux Docker；必要时 macOS Cua/Lume |
+| `ops` | 浏览器、文档和桌面任务 | 跨平台浏览器；必要时 Windows/macOS/Linux 原生 Provider |
 | `coder` | 仓库和代码任务 | 隔离 coder Node；后加 Multica |
 
 ## 5. 北极星验收
@@ -68,22 +72,31 @@ Server 可以部署在 Mac Mini、普通 Linux 主机、NAS 虚拟机或云服�
 4. 一次批准只允许对应动作；上下文变化立即失效。
 5. 用户也可以取得独占接管租约；接管期间 Agent 输入全部拒绝。
 
-### 场景 C：macOS 专属任务
+### 场景 C：跨平台专属任务
 
-1. `Ops` 收到必须操作 macOS 原生 App 的任务。
-2. Server 只能在带 `cua` 或 `lume` capability 的 Apple Node 中选择。
-3. 没有合格节点时明确等待，不偷偷降级到宿主 Shell 或普通 Linux。
+1. `Ops` 收到必须操作 Windows、macOS 或 Linux 原生软件的任务。
+2. Server 只能在声明对应平台 Provider、能力和信任等级的工作主机中选择。
+3. 没有合格主机时明确等待，不偷偷切换设备、扩大权限或降级到宿主 Shell。
+
+### 场景 D：查看、复制和转移员工
+
+1. 用户点击 `Ops`，查看它的职责、进化档案、技能来源、记忆、工作记录和当前运行轨迹。
+2. 用户导出不含凭证和私人记忆的员工模板，并在另一套 OpenBot 中预览导入内容。
+3. 新系统生成本地员工身份；技能默认禁用，直到新用户检查兼容性并重新授权工作主机。
+4. 若执行正式所有权转移，来源端权限必须撤销，并保留双方可审计的转移凭据。
 
 ## 6. V1 必须有
 
 - 完全本地的 Web/PWA 频道，不依赖 Telegram/飞书。
 - 本地 PostgreSQL 保存线程、记忆、策略、审批和审计。
 - 不连接 CopilotKit Intelligence 时也能完整启动和工作。
-- 一个 Server、一台 Linux Node、`chief` 和 `ops`。
+- 一个 Server、一台 Linux Worker Host、`chief` 和 `ops`。
 - 节点主动出站连接、心跳、断线、重连和撤销。
 - 浏览器任务、实时截图和远程审批。
 - 所有事件统一关联 `run_id`。
 - Tailscale 私网访问作为默认部署方式。
+- 员工个人主页基础、进化事件和版本化技能记录。
+- 不包含凭证、设备权限和私人记忆的安全员工模板导入导出。
 
 ## 7. 明确不做
 
@@ -94,6 +107,8 @@ Server 可以部署在 Mac Mini、普通 Linux 主机、NAS 虚拟机或云服�
 - 不做观察用户操作后自动学习。
 - 不支持自主支付、转账或主密钥操作。
 - 不要求原生 iOS/Android App；优先做好 PWA。
+- 不把原始模型思维链当成审计记录；只展示结构化证据和简明决策轨迹。
+- 不承诺 iOS V1 可以无人值守控制任意系统界面。
 
 ## 8. Grok Bot 能力映射
 
@@ -101,7 +116,7 @@ Server 可以部署在 Mac Mini、普通 Linux 主机、NAS 虚拟机或云服�
 | --- | --- | --- |
 | 具名 Bot 和本地频道 | M0 | Adapt CopilotKit/OpenBot app/server |
 | 持久线程和记忆 | M0 | Local Threads + PostgreSQL |
-| 每个 Bot 有电脑 | M1/M3 | Remote Node + Docker/Cua/Lume |
+| 每个 Bot 有工作电脑 | M1/M3 | 跨平台 Worker Host + Browser/Windows/macOS/Linux Provider |
 | 一直在线 | M1 | Server service + Node daemon |
 | 任意设备访问 | M2 | HTTPS PWA + Tailscale |
 | 看着它工作 | M1/M2 | 节点屏幕流经 Server relay |
@@ -109,3 +124,9 @@ Server 可以部署在 Mac Mini、普通 Linux 主机、NAS 虚拟机或云服�
 | 敏感动作审批 | M2 | Action Gateway + local channel approval |
 | Bot 间交接 | M4 | 结构化 handoff |
 | 例行工作 | M4 | 本地 worker + durable queue |
+| 员工个人主页 | M2 | Profile + evolution ledger + skill graph + records |
+| 下载和复制员工 | M3 | 签名、版本化、安全默认的 portable employee package |
+| 转移员工 | M5 | 认证所有权交接 + 来源撤销 + 导入凭据 |
+
+员工模型的完整边界见[可迁移数字员工模型](EMPLOYEE.zh-CN.md)，跨平台主机策略见
+[跨平台工作主机](CROSS_PLATFORM.zh-CN.md)。

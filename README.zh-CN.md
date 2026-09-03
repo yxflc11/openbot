@@ -9,12 +9,13 @@
 [![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](package.json)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#项目状态)
 
-OpenBot 是一个早期阶段的开源系统，用来在你掌控的电脑上运行具名 AI 员工。你在持久化的
-本地频道中与 Bot 对话；OpenBot Server 将每项任务路由到可替换的执行 Node，并把消息、
-审批、产物和审计事件保存在你自己的系统中。
+OpenBot 是一个早期阶段的开源、自托管平台，用来在你掌控的电脑上运行具名 AI 员工。你在
+持久化本地频道中与员工对话；OpenBot Server 将每项任务路由到获得授权且可以替换的工作主机，
+并把身份、技能、记忆、消息、审批、产物和审计事件保存在你自己的系统中。
 
-Mac mini 可以是一台 macOS 执行 Node，但它不是产品本体。Server 可以运行在 Linux、macOS、
-NAS 或云主机上，你可以通过私有网络从任意浏览器访问。
+Mac mini 是第一种实用工作主机，不是产品边界。Windows、macOS 和 Linux 主流电脑都可以通过
+同一套 Server 授权的 Node 协议成为员工的工作电脑。Server 可以运行在 Linux、macOS、NAS
+或云主机上，你可以通过私有网络从任意浏览器访问。
 
 OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员工体验，同时坚持自托管、
 模型与 Provider 中立，以及明确的人类控制边界。
@@ -27,8 +28,10 @@ OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员�
 ## 为什么做 OpenBot
 
 - **本地频道，而非一次性聊天窗口。** Bot、对话、Run 和结果都保存在你自己的 PostgreSQL。
-- **电脑可以替换。** Bot 是身份与策略配置；Node 是机器。Linux、macOS、VM 和编码 Node
-  可以独立增加或更换。
+- **电脑可以跨平台替换。** 员工是持久身份和策略；工作主机可以是 Windows、macOS、Linux、
+  VM、容器或受管理设备。
+- **员工可以成长和迁移。** 每个员工都有可追溯的进化档案、技能图谱、决策轨迹、记忆、工作
+  记录、配置和安全迁移控制。
 - **副作用前审批。** 敏感动作必须进入明确且可审计的审批状态，模型不能自行扩大权限。
 - **所有设备共享一个控制平面。** 桌面和手机浏览器通过经过认证的实时更新看到同一频道状态。
 - **可组合的 Bot 身份。** Bot 外观由头型、身体、移动方式、配件和强调色五个独立层保存。
@@ -44,10 +47,11 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 控制平面 | 本地 Owner 认证、PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、恢复工具和多用户信任模型 |
 | 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批和 SSE 重连 | 可安装 PWA、通知投递、无障碍和本地化完善 |
 | Bot 身份 | 随 Bot 持久化的五层组合外观 | 更多部件、导入导出和社区外观包 |
+| 员工档案 | 已有 Bot、Run、审批、产物和配置数据可以作为基础 | 统一个人主页、进化档案、技能图谱、类型化记忆和可迁移员工包 |
 | Node 协议 | 出站 WebSocket 登记、心跳、容量、确定性路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和协议兼容测试 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
-| Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 可生产使用的 macOS Cua/Lume 与隔离编码 Provider |
+| Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 跨平台浏览器、Windows、macOS、Linux 桌面、受管理 Android 和隔离编码 Provider |
 | 办公室视图 | 与核心应用无依赖的 `@openbot/office-plugin` 隔离包 | 等频道工作流成熟后再建设可选插件生命周期 |
 
 ### 当前版本不作出的承诺
@@ -56,6 +60,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - 审批后还不会签发加密的单次 capability lease。
 - 尚不提供连续远程桌面控制。
 - 尚未具备生产级 Node 身份、mTLS 或凭证轮换。
+- 尚未提供目标模型中的员工进化、技能、记忆和导入导出界面。
 - Cua、Lume 和 coder Provider 目前是扩展边界，不是已完成的运行时。
 - 可选办公室可视化不进入当前产品导航和 Web 构建。
 
@@ -120,15 +125,15 @@ Bot 的身份把结果发回频道。
 ## 系统如何协作
 
 ```text
-任意浏览器  ->  OpenBot Server  <- Node 主动出站连接 -  OpenBot Nodes  ->  Providers
-                    唯一真相源                              可替换的电脑
+任意设备  ->  OpenBot Server  <- Node 主动出站连接 -  工作主机  ->  Providers
+                唯一真相源                         Windows/macOS/Linux 等
 ```
 
 | 组件 | 负责 | 不负责 |
 | --- | --- | --- |
 | Client | 交互、观察和提交审批决定 | 策略决定或执行授权 |
 | Server | 身份、频道、Run、路由、策略、审批、审计和持久化 | 特定宿主机的电脑能力 |
-| Node | 能力发现、本地容量、Provider 执行、进度和产物 | Bot 身份、长期记忆或授权策略 |
+| 工作主机 / Node | 能力发现、本地容量、Provider 执行、进度和产物 | 员工身份、技能、长期记忆或授权策略 |
 | Provider | 一个窄执行后端，例如 Docker/browser、Cua、Lume 或 coder | 跨 Node 路由或权限升级 |
 
 Server 是唯一真相源。Node 主动连接 Server，不需要开放公网管理端口。路由是确定性的：Run
@@ -162,9 +167,10 @@ OpenBot 按用户验收结果推进。贡献应当推动一个完整用户结果
 | M0 — 本地控制平面 | 频道、Bot、认证、持久化和审计不依赖专有云服务。目前基础已经可用。 |
 | M1 — Server/Node 闭环 | 可替换 Node 接收浏览器任务并回传进度和截图。只读垂直切片已经可用，安全交互仍在开发。 |
 | M2 — 远程控制与审批 | 手机访问、签名单次审批、通知和独占人工接管。持久化审批决定已经可用，lease 与接管是下一步。 |
-| M3 — macOS Node | Cua 和 Lume 让 Mac mini 成为处理 macOS 原生任务的一种可选 Node。 |
-| M4 — 多 Bot 运营 | 结构化交接、routine、持久队列、重试、熔断和记忆。 |
-| M5 — 发布 | 可复现的 Server/Node 安装器、签名发布、SBOM、升级、备份和恢复。 |
+| M3 — 可迁移员工 | 个人主页、进化档案、技能图谱、类型化记忆和安全员工模板。 |
+| M4 — 原生工作主机 | Windows、macOS 和 Linux Provider 使用统一能力与审批协议。 |
+| M5 — 多 Bot 运营 | 结构化交接、Routine、持久队列、Coder Provider 和认证员工转移。 |
+| M6 — 发布 | 受管理移动设备、可复现安装器、签名发布、SBOM、升级、备份和恢复。 |
 
 完整过线标准见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
@@ -228,6 +234,8 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | 基于 API 开发或集成 | [本地 API](docs/API.md) |
 | 审查安全保证 | [威胁模型](docs/SECURITY.md) |
 | 参与频道体验开发 | [界面方案](docs/INTERFACE.md) |
+| 设计员工身份和迁移 | [可迁移数字员工模型](docs/EMPLOYEE.zh-CN.md) |
+| 增加操作系统或设备 | [跨平台工作主机](docs/CROSS_PLATFORM.zh-CN.md) |
 | 理解上游选择 | [上游策略](docs/UPSTREAMS.md) |
 | 查看一项决策的原因 | [架构决策记录](docs/decisions/) |
 

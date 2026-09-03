@@ -30,10 +30,10 @@ flowchart LR
       DK[Docker browser / shell]
     end
 
-    subgraph NodeB["Apple Node"]
+    subgraph NodeB["Desktop Worker Hosts"]
       ND2[Node daemon]
-      CUA[Cua Driver]
-      LUME[Lume VM]
+      NATIVE[Windows UIA / macOS Cua / Linux desktop]
+      VM[VM / managed runtime]
     end
 
     PWA -->|HTTPS| APP
@@ -42,7 +42,7 @@ flowchart LR
     ND1 -->|Outbound WSS/mTLS| NR
     ND2 -->|Outbound WSS/mTLS| NR
     ND1 --> DK
-    ND2 --> CUA & LUME
+    ND2 --> NATIVE & VM
 ```
 
 ## 2. 产品底座
@@ -102,12 +102,21 @@ flowchart LR
 
 频道消息、Run 与最新画面元数据使用频道 SSE；在线 Node 属于整个工作区，使用独立的 Workspace SSE。Workspace 订阅建立后先发送包含在线 Node 的权威快照，再发送 `node.upserted` / `node.removed` 增量，避免连接建立期间的竞态，也避免把全局机器拓扑复制到每个频道流。画面正文通过鉴权 HTTP 端点按 revision 读取，不把 base64 图片复制进每个 SSE 订阅。
 
+### Employee Registry
+
+Bot 是可迁移的数字员工，而不是 Node 的别名。Server 持久保存员工主页、版本化配置、进化事件、
+技能图谱、记忆和工作记录；Node 只在一次 Run 的范围内接收最少上下文。员工包可以携带经过选择
+的知识和配置，但不携带 Node 身份、凭证、Session 或电脑权限。
+
+详细模型见[可迁移数字员工模型](EMPLOYEE.zh-CN.md)。
+
 ### Node Registry
 
 记录 Node 的：
 
 - node id、owner 和吊销状态；
 - OS、架构、版本；
+- device class、isolation class 和 trust tier；
 - capabilities 与 provider versions；
 - 当前负载、健康状态和最后心跳；
 - 可执行的 policy profiles；
@@ -118,7 +127,7 @@ flowchart LR
 路由由 Server 决定：
 
 ```text
-agent policy ∩ task requirements ∩ online node capabilities
+employee policy ∩ task requirements ∩ online node capabilities
   -> exact node + provider + execution profile
 ```
 
@@ -187,11 +196,15 @@ health / version
 | Provider | 运行位置 | 用途 |
 | --- | --- | --- |
 | Docker | Linux/macOS Node | 隔离浏览器、Shell、文件 |
-| Cua | macOS Node | 宿主机原生 App，默认观察优先 |
+| Browser | Windows/Linux/macOS Node | 跨平台 DOM/URL/表单语义，优先交互路径 |
+| Windows UIA | Windows Node | Windows 原生软件，默认观察优先 |
+| Cua | macOS Node | macOS 原生 App，默认观察优先 |
 | Lume | Apple Silicon Node | 隔离 macOS GUI |
+| Linux Desktop | Linux Node | 受支持桌面环境中的原生软件 |
+| Android | 受管理 Android Node | 明确设备所有权下的 UI Automator/ADB |
 | Coder | 任意合格 Node | Codex/Claude/Multica 工作区 |
 
-当前只落地了 Docker provider 的第一条 observe 能力。它是对 CopilotKit/OpenBot `agent-computer` `/navigate` 与 `/screenshot` 接口的薄适配器，而不是复制上游控制面；只有 URL 和 token 同时配置后，Node 才声明 `browser`、`screenshot`。其他 provider 目录仍是接口占位，不会虚假上报能力。
+当前只落地了 Docker provider 的第一条 observe 能力。它是对 CopilotKit/OpenBot `agent-computer` `/navigate` 与 `/screenshot` 接口的薄适配器，而不是复制上游控制面；只有 URL 和 token 同时配置后，Node 才声明 `browser`、`screenshot`。其他 provider 目录仍是接口占位，不会虚假上报能力。完整跨平台计划见[跨平台工作主机](CROSS_PLATFORM.zh-CN.md)。
 
 ## 6. 远程屏幕与接管
 
@@ -232,7 +245,7 @@ Client 不直连 Node：
 
 ```text
 Linux/NAS Server：控制面 + Docker Node
-Mac Mini：Cua/Lume Node
+Windows/macOS/Linux PC：员工工作主机
 手机/笔记本：Tailscale + PWA
 ```
 
@@ -240,8 +253,8 @@ Mac Mini：Cua/Lume Node
 
 ```text
 云服务器：Server + PostgreSQL
-家中 Mac：出站连接的 macOS Node
-其他服务器：按需注册 Linux/Coder Node
+家中 Windows/macOS/Linux PC：出站连接的工作主机
+其他服务器：按需注册 Linux/Coder/Compute Node
 ```
 
 ## 9. 技术栈
