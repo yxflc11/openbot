@@ -242,6 +242,7 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | 检查工作主机或 Provider 声明 | [Provider 一致性测试](docs/PROVIDER_CONFORMANCE.zh-CN.md) |
 | 理解上游选择 | [上游策略](docs/UPSTREAMS.md) |
 | 遵循开源优先审查流程 | [开源复用规则与当前审查](docs/OPEN_SOURCE_REUSE.zh-CN.md) |
+| 领取可独立审查的共建任务 | [贡献者任务包](docs/CONTRIBUTOR_TASKS.zh-CN.md) |
 | 查看一项决策的原因 | [架构决策记录](docs/decisions/) |
 
 ## 上游项目

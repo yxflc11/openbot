@@ -258,6 +258,7 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | Test a Worker Host or Provider claim | [Provider conformance](docs/PROVIDER_CONFORMANCE.md) |
 | Understand upstream choices | [Upstream strategy](docs/UPSTREAMS.md) |
 | Follow the open-source-first review process | [Open-source reuse policy and current audit](docs/OPEN_SOURCE_REUSE.md) |
+| Pick an independently reviewable contribution | [Contributor work packages](docs/CONTRIBUTOR_TASKS.md) |
 | Review why a decision was made | [Architecture decision records](docs/decisions/) |
 
 ## Upstream projects

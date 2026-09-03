@@ -7,6 +7,22 @@ issue that identifies the milestone, user outcome, and security boundary it adva
 English is the canonical language for source code, comments, issues, pull requests, and project
 documentation. Translations are welcome and should remain faithful to the English source.
 
+[简体中文贡献指南](CONTRIBUTING.zh-CN.md)
+
+## Contribution priorities
+
+OpenBot currently reviews contributions in this order:
+
+1. reproducible bugs, data loss, and security hardening;
+2. Windows, macOS, and Linux compatibility with real-device evidence;
+3. reliability, recovery, observability, and fail-closed behavior;
+4. small product journeys already present in the roadmap;
+5. documentation, accessibility evidence, and faithful translations;
+6. broad new subsystems only after issue-level design agreement.
+
+Start with the [contributor work packages](docs/CONTRIBUTOR_TASKS.md) if you want a bounded task with
+acceptance criteria.
+
 ## Find an area to contribute
 
 | Interest | Main paths |
@@ -21,6 +37,14 @@ documentation. Translations are welcome and should remain faithful to the Englis
 
 Use an existing issue when possible. For new work, choose the bug or feature template so the
 expected behavior, milestone, and permission boundary are recorded before implementation.
+
+| Situation | Start here | Evidence expected |
+| --- | --- | --- |
+| Reproducible defect | Bug report | Actual/expected behavior, minimal reproduction, sanitized environment |
+| Product or architecture change | Feature request | Acceptance journey, upstream review, permission boundary |
+| New runtime or computer integration | Provider integration | Pinned upstream, exact capabilities, negative tests, target-platform evidence |
+| Security vulnerability | Private Security Advisory | Impact and minimal safe reproduction; never use a public issue |
+| Setup question without a defect | Existing docs and Discussions when enabled | Do not create a product bug without reproducible behavior |
 
 ## Local development
 
@@ -109,12 +133,18 @@ through the private process in [SECURITY.md](SECURITY.md), not a public issue.
 
 ## Pull requests
 
-1. Keep one pull request focused on one acceptance journey.
-2. Add tests at the lowest useful boundary and an integration test for cross-component behavior.
-3. Update docs and existing translations when user-visible behavior or project claims change.
-4. Complete every applicable section of the pull request template.
-5. Preserve upstream copyright and license notices.
-6. Link the upstream research note and state whether source was copied or substantially adapted.
+1. Fork the repository and create a focused branch such as `fix/dialog-focus` or
+   `feat/windows-provider`.
+2. Keep one pull request focused on one acceptance journey and link the issue it closes or relates
+   to.
+3. Add tests at the lowest useful boundary and an integration test for cross-component behavior.
+4. Run `npm run check`; record any real-device, browser, or assistive-technology evidence.
+5. Update docs and existing translations when user-visible behavior or project claims change.
+6. Complete every applicable section of the pull request template.
+7. Preserve upstream copyright and license notices.
+8. Link the upstream research note and state whether source was copied or substantially adapted.
+9. Disclose AI or automation assistance and identify what a human verified; generated output is not
+   acceptance evidence by itself.
 
 All new source files are contributed under the repository's MIT license unless a directory contains
 a more specific upstream notice.

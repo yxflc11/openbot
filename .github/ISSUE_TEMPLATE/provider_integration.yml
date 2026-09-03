@@ -1,0 +1,78 @@
+name: Provider integration
+description: Propose or implement a bounded computer/runtime Provider.
+title: "provider: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A Provider executes behind the OpenBot Server policy boundary. A capability declaration is not permission, and a simulated contract test is not a real-device support claim.
+  - type: checkboxes
+    id: existing
+    attributes:
+      label: Existing work
+      options:
+        - label: I searched existing Provider issues and the cross-platform matrix.
+          required: true
+  - type: input
+    id: upstream
+    attributes:
+      label: Upstream implementation
+      description: Repository or standard URL, pinned commit/release, and license.
+      placeholder: https://github.com/org/repo @ commit — MIT
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Target platform
+      options:
+        - Windows x64
+        - Windows arm64
+        - macOS arm64
+        - macOS x64
+        - Linux x64
+        - Linux arm64
+        - Container / VM
+        - Managed mobile device
+    validations:
+      required: true
+  - type: textarea
+    id: capabilities
+    attributes:
+      label: Versioned capabilities
+      description: List exact capability names/major versions and the bounded actions each enables.
+    validations:
+      required: true
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Process and permission boundary
+      description: Explain account isolation, local OS grants, network direction, approval points, and fail-closed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: conformance
+    attributes:
+      label: Conformance evidence plan
+      description: Name hermetic tests, negative cases, target hardware/OS, artifacts, and the initial support level.
+      placeholder: Declared → Integrated → Supported → Certified
+    validations:
+      required: true
+  - type: textarea
+    id: exclusions
+    attributes:
+      label: Explicitly out of scope
+      description: State which side effects, apps, credentials, or platforms this work will not claim.
+    validations:
+      required: true
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Contribution intent
+      options:
+        - I can implement and test on the target platform
+        - I can provide target-platform test access or review
+        - I am proposing the integration for another contributor
+    validations:
+      required: true

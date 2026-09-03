@@ -143,6 +143,9 @@ Owner 验证、暂停或永久撤销；每次变化都会追加进化事件，�
 
 ## 下一批 Issue
 
+这些条目已经拆成可独立领取的验收包，见[贡献者任务包](CONTRIBUTOR_TASKS.zh-CN.md)。新增
+Provider 请使用专门 Issue 表单，不要用能力声明代替真实设备证据。
+
 1. `Skills: validate quarantined SKILL.md directories with the official skills-ref worker`
 2. `Skills: add bounded proposal expiry, supersession, notification, and full-diff review`
 3. `Conformance: emit machine-readable Provider reports with explicit expected failures`
