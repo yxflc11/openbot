@@ -45,3 +45,5 @@ Owner 刚刚检查过的同一份包实例。
 规则用于现有原子文件适配器，同时明确 Windows ACL 与系统密钥库不在当前声明范围内。
 [Artifact 读取完整性](artifact-read-integrity.md)审查把 OCI descriptor 校验用于已有大小和
 SHA-256 元数据，使被替换的截图字节在返回前失败。
+拟议的[跨平台 Node CI 基线](cross-platform-node-ci.md)记录明确的托管 runner 系列和证据边界，
+作为引入 Windows/macOS/Linux 测试矩阵前的依据。

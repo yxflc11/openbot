@@ -59,3 +59,5 @@ OpenSSH's fail-closed private-key invariant to the existing atomic file adapter,
 leaving Windows ACLs and native keyrings outside the claim.
 The [Artifact read integrity](artifact-read-integrity.md) audit applies OCI descriptor verification
 to the already-stored size and SHA-256 so changed screenshot bytes fail before delivery.
+The proposed [Cross-platform Node CI baseline](cross-platform-node-ci.md) records explicit hosted
+runner families and the evidence boundary before a Windows/macOS/Linux matrix is introduced.
