@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import type {
   Approval,
   Bot,
@@ -8,6 +8,7 @@ import type {
   CreateEmployeeSkillInput,
   CreateMessageInput,
   EmployeeEvolutionEvent,
+  EmployeeExportPreview,
   EmployeeImportActivationResult,
   EmployeeMemory,
   EmployeeMemoryEvent,
@@ -920,7 +921,10 @@ describe("server app", () => {
       headers: { Cookie: cookie },
     });
     expect(previewResponse.status).toBe(200);
-    expect(await previewResponse.json()).toMatchObject({
+    const previewBody = (await previewResponse.json()) as { preview: EmployeeExportPreview };
+    const previewEtag = `"${previewBody.preview.downloadReviewToken}"`;
+    expect(previewResponse.headers.get("etag")).toBeNull();
+    expect(previewBody).toMatchObject({
       preview: {
         blocked: false,
         employeeName: "Ops",
@@ -932,17 +936,54 @@ describe("server app", () => {
       },
     });
 
-    const downloadResponse = await app.request(`/api/v1/bots/${bot.id}/export`, {
+    const downloadUrl = employeeExportDownloadUrl(bot.id, previewBody.preview);
+    const missingReview = await app.request(downloadUrl, {
       headers: { Cookie: cookie },
     });
+    expect(missingReview.status).toBe(428);
+    expect(await missingReview.json()).toMatchObject({
+      error: expect.stringContaining("requires a reviewed preview"),
+    });
+
+    const legacyUnreviewedDownload = await app.request(`/api/v1/bots/${bot.id}/export`, {
+      headers: { Cookie: cookie },
+    });
+    expect(legacyUnreviewedDownload.status).toBe(428);
+
+    const unknownParameter = await app.request(`${downloadUrl}&unexpected=true`, {
+      headers: { Cookie: cookie, "If-Match": previewEtag },
+    });
+    expect(unknownParameter.status).toBe(422);
+
+    const weakReview = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": `W/${previewEtag}` },
+    });
+    expect(weakReview.status).toBe(422);
+
+    const staleReview = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": `"${"0".repeat(64)}"` },
+    });
+    expect(staleReview.status).toBe(412);
+
+    const downloadResponse = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": previewEtag },
+    });
     expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("etag")).toBe(previewEtag);
     expect(downloadResponse.headers.get("content-type")).toContain(
       "application/vnd.openbot.employee+json",
     );
     expect(downloadResponse.headers.get("content-disposition")).toBe(
       'attachment; filename="ops.openbot-employee.json"',
     );
-    const employeePackage = employeeTemplatePackageSchema.parse(await downloadResponse.json());
+    const downloadedBody = await downloadResponse.text();
+    expect(createHash("sha256").update(downloadedBody).digest("hex")).toBe(
+      previewBody.preview.downloadReviewToken,
+    );
+    const employeePackage = employeeTemplatePackageSchema.parse(JSON.parse(downloadedBody));
+    expect(employeePackage.payload.packageId).toBe(previewBody.preview.packageId);
+    expect(employeePackage.payload.generatedAt).toBe(previewBody.preview.generatedAt);
+    expect(employeePackage.integrity.digest).toBe(previewBody.preview.checksum);
     expect(employeePackage.payload.employee).not.toHaveProperty("id");
     expect(employeePackage.payload.portability.authority).toBe("none");
     expect(verifyEmployeeTemplateChecksum(employeePackage)).toBe(true);
@@ -966,6 +1007,16 @@ describe("server app", () => {
         },
       },
     });
+
+    await store.updateEmployeeProfileDetails(bot.id, {
+      role: "Changed after export review",
+      description: "",
+      expectedRevision: 1,
+    });
+    const changedAfterReview = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": previewEtag },
+    });
+    expect(changedAfterReview.status).toBe(412);
 
     const unknownFieldResponse = await app.request("/api/v1/employees/import/preview", {
       method: "POST",
@@ -1037,9 +1088,7 @@ describe("server app", () => {
     workspaceRealtime.subscribe((event) => events.push(event));
     const app = createTestApp({ store, workspaceRealtime });
     const cookie = await login(app);
-    const downloaded = await app.request(`/api/v1/bots/${source.id}/export`, {
-      headers: { Cookie: cookie },
-    });
+    const { response: downloaded } = await reviewAndDownloadEmployee(app, source.id, cookie);
     const employeePackage = employeeTemplatePackageSchema.parse(await downloaded.json());
     const previewed = await app.request("/api/v1/employees/import/preview", {
       method: "POST",
@@ -1176,10 +1225,12 @@ describe("server app", () => {
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const employeePublisher = {
       activeKeyId: "owner-key-1",
-      sign: (document: Parameters<typeof signEmployeeTemplateEnvelope>[0]) =>
-        signEmployeeTemplateEnvelope(document, { keyid: "owner-key-1", privateKey }),
-      verify: (input: unknown) =>
-        verifyEmployeeTemplateEnvelope(input, [{ keyid: "owner-key-1", publicKey }]),
+      sign(document: Parameters<typeof signEmployeeTemplateEnvelope>[0]) {
+        return signEmployeeTemplateEnvelope(document, { keyid: this.activeKeyId, privateKey });
+      },
+      verify(input: unknown) {
+        return verifyEmployeeTemplateEnvelope(input, [{ keyid: this.activeKeyId, publicKey }]);
+      },
     };
     const app = createTestApp({
       store,
@@ -1191,7 +1242,9 @@ describe("server app", () => {
     const previewResponse = await app.request(`/api/v1/bots/${bot.id}/export/preview`, {
       headers: { Cookie: cookie },
     });
-    expect(await previewResponse.json()).toMatchObject({
+    const previewBody = (await previewResponse.json()) as { preview: EmployeeExportPreview };
+    const previewEtag = `"${previewBody.preview.downloadReviewToken}"`;
+    expect(previewBody).toMatchObject({
       preview: {
         fileName: "portable-ops.openbot-employee.dsse.json",
         signatureStatus: "dsse",
@@ -1199,13 +1252,26 @@ describe("server app", () => {
       },
     });
 
-    const downloadResponse = await app.request(`/api/v1/bots/${bot.id}/export`, {
-      headers: { Cookie: cookie },
-    });
+    const downloadResponse = await app.request(
+      employeeExportDownloadUrl(bot.id, previewBody.preview),
+      {
+        headers: { Cookie: cookie, "If-Match": previewEtag },
+      },
+    );
     expect(downloadResponse.headers.get("content-type")).toContain(
       "application/vnd.openbot.employee.dsse+json",
     );
-    const envelope = dsseEnvelopeSchema.parse(await downloadResponse.json());
+    const signedBody = await downloadResponse.text();
+    expect(createHash("sha256").update(signedBody).digest("hex")).toBe(
+      previewBody.preview.downloadReviewToken,
+    );
+    const envelope = dsseEnvelopeSchema.parse(JSON.parse(signedBody));
+    const verifiedDownload = employeePublisher.verify(envelope);
+    expect(verifiedDownload.status).toBe("verified");
+    if (verifiedDownload.status !== "verified") throw new Error("Expected a verified export.");
+    expect(verifiedDownload.document.payload.packageId).toBe(previewBody.preview.packageId);
+    expect(verifiedDownload.document.payload.generatedAt).toBe(previewBody.preview.generatedAt);
+    expect(verifiedDownload.document.integrity.digest).toBe(previewBody.preview.checksum);
     const importResponse = await app.request("/api/v1/employees/import/preview", {
       method: "POST",
       headers: authenticatedHeaders(cookie),
@@ -1722,6 +1788,34 @@ function createMemoryNodeIdentityStore(): NodeIdentityStore {
       }));
     },
   };
+}
+
+function employeeExportDownloadUrl(botId: string, preview: EmployeeExportPreview): string {
+  const parameters = new URLSearchParams({
+    packageId: preview.packageId,
+    generatedAt: preview.generatedAt,
+  });
+  return `/api/v1/bots/${encodeURIComponent(botId)}/export?${parameters.toString()}`;
+}
+
+async function reviewAndDownloadEmployee(
+  app: ReturnType<typeof createApp>,
+  botId: string,
+  cookie: string,
+): Promise<{ preview: EmployeeExportPreview; response: Response }> {
+  const previewResponse = await app.request(`/api/v1/bots/${botId}/export/preview`, {
+    headers: { Cookie: cookie },
+  });
+  expect(previewResponse.status).toBe(200);
+  const { preview } = (await previewResponse.json()) as { preview: EmployeeExportPreview };
+  const response = await app.request(employeeExportDownloadUrl(botId, preview), {
+    headers: {
+      Cookie: cookie,
+      "If-Match": `"${preview.downloadReviewToken}"`,
+    },
+  });
+  expect(response.status).toBe(200);
+  return { preview, response };
 }
 
 async function login(app: ReturnType<typeof createApp>): Promise<string> {

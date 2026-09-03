@@ -21,6 +21,7 @@ import {
   deleteEmployeeMemoryInputSchema,
   dsseEnvelopeSchema,
   exchangeNodeEnrollmentInputSchema,
+  employeeExportDownloadQuerySchema,
   joinChannelBotInputSchema,
   loginInputSchema,
   unsignedEmployeeTemplatePackageSchema,
@@ -47,10 +48,10 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import {
-  buildEmployeeTemplate,
   employeeTemplatePackageDigest,
   type EmployeeTemplateEnvelopeVerification,
   inspectEmployeeTemplate,
+  prepareEmployeeTemplateExport,
 } from "./employee-package.js";
 import {
   InvalidNodeEnrollmentError,
@@ -117,8 +118,9 @@ export function createApp(dependencies: AppDependencies) {
     "/api/*",
     cors({
       origin: dependencies.allowedOrigins,
-      allowHeaders: ["Content-Type"],
+      allowHeaders: ["Content-Type", "If-Match"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      exposeHeaders: ["ETag"],
       credentials: true,
     }),
   );
@@ -559,27 +561,36 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/bots/:botId/export/preview", async (context) => {
     const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
-    return context.json({
-      preview: buildEmployeeTemplate(profile, {
-        ...(dependencies.employeePublisher === undefined
-          ? {}
-          : { publisherKeyId: dependencies.employeePublisher.activeKeyId }),
-      }).preview,
-    });
+    const prepared = prepareEmployeeTemplateExport(
+      profile,
+      employeeTemplateExportOptions(dependencies.employeePublisher),
+    );
+    return context.json({ preview: prepared.preview });
   });
 
   app.get("/api/v1/bots/:botId/export", async (context) => {
+    const reviewedInstance = parseEmployeeExportDownloadRequest(context.req.raw);
     const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
-    const employeeTemplate = buildEmployeeTemplate(profile, {
-      ...(dependencies.employeePublisher === undefined
-        ? {}
-        : { publisherKeyId: dependencies.employeePublisher.activeKeyId }),
+    const employeeTemplate = prepareEmployeeTemplateExport(profile, {
+      ...employeeTemplateExportOptions(dependencies.employeePublisher),
+      generatedAt: reviewedInstance.generatedAt,
+      packageId: reviewedInstance.packageId,
     });
     if (employeeTemplate.preview.blocked) {
       throw new StoreValidationError(
         "Employee template export is blocked until the reported findings are resolved.",
       );
     }
+    if (employeeTemplate.preview.downloadReviewToken !== reviewedInstance.reviewToken) {
+      return context.json(
+        {
+          error:
+            "The Employee export changed after review. Request a new preview and review it before downloading.",
+        },
+        412,
+      );
+    }
+    context.header("ETag", strongEmployeeExportTag(employeeTemplate.preview.downloadReviewToken));
     context.header(
       "Content-Disposition",
       `attachment; filename="${employeeTemplate.preview.fileName}"`,
@@ -591,9 +602,7 @@ export function createApp(dependencies: AppDependencies) {
         : "application/vnd.openbot.employee.dsse+json; charset=utf-8",
     );
     context.header("X-Content-Type-Options", "nosniff");
-    const exportedDocument =
-      dependencies.employeePublisher?.sign(employeeTemplate.document) ?? employeeTemplate.document;
-    return context.body(`${JSON.stringify(exportedDocument, null, 2)}\n`);
+    return context.body(employeeTemplate.body);
   });
 
   app.post("/api/v1/employees/import/preview", async (context) => {
@@ -743,6 +752,9 @@ export function createApp(dependencies: AppDependencies) {
     if (error instanceof RequestValidationError) {
       return context.json({ error: error.message, fields: error.fields }, 422);
     }
+    if (error instanceof EmployeeExportReviewRequiredError) {
+      return context.json({ error: error.message }, 428);
+    }
     if (error instanceof InvalidCredentialsError) {
       return context.json({ error: "Password is incorrect." }, 401);
     }
@@ -819,8 +831,82 @@ class RequestValidationError extends Error {
   }
 }
 
+class EmployeeExportReviewRequiredError extends Error {}
+
 const maximumApiRequestBytes = 64 * 1024;
 const maximumNodeIdentityRequestBytes = 8 * 1024;
+
+function parseEmployeeExportDownloadRequest(request: Request): {
+  packageId: string;
+  generatedAt: string;
+  reviewToken: string;
+} {
+  const parameters = new URL(request.url).searchParams;
+  const ifMatch = request.headers.get("if-match");
+  if (ifMatch === null) {
+    throw new EmployeeExportReviewRequiredError(
+      "Employee export requires a reviewed preview. Request a new preview, then retry with its strong If-Match tag.",
+    );
+  }
+  const tag = /^"([a-f0-9]{64})"$/.exec(ifMatch);
+  if (tag?.[1] === undefined) {
+    throw new RequestValidationError(
+      "Employee export If-Match must contain exactly one strong review tag.",
+      { ifMatch: ["Use the quoted strong tag value returned by the export preview."] },
+    );
+  }
+
+  const unsupportedParameters = Array.from(parameters.keys()).filter(
+    (name) => name !== "packageId" && name !== "generatedAt",
+  );
+  if (unsupportedParameters.length > 0) {
+    throw new RequestValidationError("The reviewed Employee export instance is invalid.", {
+      query: [`Unsupported query parameter: ${unsupportedParameters[0]}`],
+    });
+  }
+  const parsed = employeeExportDownloadQuerySchema.safeParse({
+    packageId: singleEmployeeExportParameter(parameters, "packageId"),
+    generatedAt: singleEmployeeExportParameter(parameters, "generatedAt"),
+  });
+  if (!parsed.success) {
+    throw new RequestValidationError(
+      "The reviewed Employee export instance is invalid.",
+      parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    );
+  }
+
+  return { ...parsed.data, reviewToken: tag[1] };
+}
+
+function singleEmployeeExportParameter(
+  parameters: URLSearchParams,
+  name: string,
+): string | undefined {
+  const values = parameters.getAll(name);
+  return values.length === 1 ? values[0] : undefined;
+}
+
+function strongEmployeeExportTag(reviewToken: string): string {
+  return `"${reviewToken}"`;
+}
+
+function employeeTemplateExportOptions(publisher: AppDependencies["employeePublisher"]): {
+  publisher?: {
+    keyId: string;
+    sign(document: EmployeeTemplatePackage): DsseEnvelope;
+    verify(input: unknown): EmployeeTemplateEnvelopeVerification;
+  };
+} {
+  if (publisher === undefined) return {};
+  return {
+    publisher: {
+      keyId: publisher.activeKeyId,
+      // Keep the class receiver: production keyrings sign with private `this` state.
+      sign: (document) => publisher.sign(document),
+      verify: (input) => publisher.verify(input),
+    },
+  };
+}
 
 async function parseRequest<T>(
   request: Request,

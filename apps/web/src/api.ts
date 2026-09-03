@@ -203,16 +203,26 @@ export async function getEmployeeExportPreview(
   return result.preview;
 }
 
-export async function downloadEmployeeTemplate(botId: string, fileName: string): Promise<void> {
-  const url = `/api/v1/bots/${botId}/export`;
-  const response = await fetch(url, { credentials: "include" });
+export async function downloadEmployeeTemplate(
+  botId: string,
+  preview: EmployeeExportPreview,
+): Promise<void> {
+  const parameters = new URLSearchParams({
+    packageId: preview.packageId,
+    generatedAt: preview.generatedAt,
+  });
+  const url = `/api/v1/bots/${encodeURIComponent(botId)}/export?${parameters.toString()}`;
+  const response = await fetch(url, {
+    credentials: "include",
+    headers: { "If-Match": `"${preview.downloadReviewToken}"` },
+  });
   if (!response.ok) throw await readApiError(response, url);
 
   const objectUrl = URL.createObjectURL(await response.blob());
   try {
     const anchor = document.createElement("a");
     anchor.href = objectUrl;
-    anchor.download = fileName;
+    anchor.download = preview.fileName;
     anchor.hidden = true;
     document.body.append(anchor);
     anchor.click();

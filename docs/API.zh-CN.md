@@ -33,7 +33,7 @@
 | `POST` | `/api/v1/bots/:botId/skills` | 登记一个待 Owner 审核的候选技能元数据 |
 | `POST` | `/api/v1/bots/:botId/skills/:skillId/state` | 由 Owner 验证、暂停或永久撤销技能 |
 | `GET` | `/api/v1/bots/:botId/export/preview` | 预览默认脱敏员工模板及全部排除项 |
-| `GET` | `/api/v1/bots/:botId/export` | 下载通过安全检查的员工模板 JSON |
+| `GET` | `/api/v1/bots/:botId/export` | 使用 `If-Match` 下载刚审核的精确员工模板实例 |
 | `POST` | `/api/v1/employees/import/preview` | 在隔离区严格检查员工模板，不写入任何员工数据 |
 | `POST` | `/api/v1/employees/import/activate` | 重新检查 Owner 已确认的模板并原子创建一个零权限新员工 |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
@@ -215,7 +215,10 @@ Node、Provider、路由、审批策略或主机授权。完整技能目录将�
 
 ## 导出安全员工模板
 
-`GET /api/v1/bots/:botId/export/preview` 与下载共用同一个规范包构建结果。返回值的 `employee`
+`GET /api/v1/bots/:botId/export/preview` 与下载共用同一条规范包准备路径。每次预览会生成新的
+`packageId`、`generatedAt` 和 `downloadReviewToken`。该令牌是目标下载表示的强实体标签不透明值，
+也就是最终格式化 JSON 精确字节的 SHA-256；配置签名时也包含 DSSE 信封。它不是凭证，也不能
+授予权限。返回值的 `employee`
 投影会精确列出模板选中的名称、职责、可选说明性简介和外观；有序的 `skills` 投影会逐项列出
 每个已验证技能的 slug、名称、Agent Skills 说明、版本、请求能力和依赖 slug。`employeeName`
 仅作为 `employee.name` 的 v1 弃用兼容别名继续保留。预览同时返回校验和、明确排除项和阻止原因。
@@ -233,6 +236,19 @@ v1 默认模板不包含任何记忆，也不包含来源员工 ID、所有权�
 每个导出的已验证技能还必须把全部技能依赖放在同一个已验证集合中。如果某项依赖仍是候选、
 已暂停、已撤销或已经不存在，预览会返回 `excluded-skill-dependency` 并阻止下载，不会静默删掉
 依赖后伪装成完整技能。
+
+下载必须把审核过的 `packageId` 和 `generatedAt` 放回查询参数，并在 `If-Match` 中返回预览的
+`downloadReviewToken` 作为一个带引号的强实体标签放进 `If-Match`：
+
+```http
+GET /api/v1/bots/{botId}/export?packageId={uuid}&generatedAt={编码后的-ISO-8601}
+If-Match: "{downloadReviewToken}"
+```
+
+Server 使用当前权威档案和发布者状态、以及同一个包身份重新构建候选文件，只有完整序列化字节
+仍一致才会返回。缺少审核条件返回 `428 Precondition Required`；格式错误或弱标签返回 `422`；
+内容或发布密钥已变化则返回 `412 Precondition Failed`，要求重新预览。Client 会刷新预览，但绝不
+自动重试下载。预览、错误和下载响应都使用 `Cache-Control: no-store`。
 
 代码内已经有 DSSE/Ed25519 签名与验证原语，并使用固定版本的 `@sigstore/core` 生成标准预认证
 编码。它签署 `application/vnd.openbot.employee.v1+json` 的精确字节，且只信任 Server 显式配置、

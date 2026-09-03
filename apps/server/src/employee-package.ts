@@ -37,7 +37,18 @@ interface EmployeeTemplateBuildOptions {
 
 export interface EmployeeTemplateBuild {
   document: EmployeeTemplatePackage;
+  preview: Omit<EmployeeExportPreview, "downloadReviewToken">;
+}
+
+export interface PreparedEmployeeTemplateExport extends EmployeeTemplateBuild {
+  body: string;
   preview: EmployeeExportPreview;
+}
+
+export interface EmployeeTemplateExportPublisher {
+  keyId: string;
+  sign(document: EmployeeTemplatePackage): DsseEnvelope;
+  verify(input: unknown): EmployeeTemplateEnvelopeVerification;
 }
 
 export interface EmployeeTemplateSigningKey {
@@ -147,6 +158,7 @@ export function buildEmployeeTemplate(
     preview: {
       format: payload.format,
       kind: payload.kind,
+      packageId: payload.packageId,
       fileName: `${portableFileStem(profile.employee.name)}.openbot-employee${options.publisherKeyId === undefined ? "" : ".dsse"}.json`,
       generatedAt: payload.generatedAt,
       employee: portableEmployeeSummary(payload.employee),
@@ -186,6 +198,63 @@ export function buildEmployeeTemplate(
       ...(options.publisherKeyId === undefined ? {} : { publisherKeyId: options.publisherKeyId }),
       identityOnImport: "new",
       hostAuthority: "none",
+    },
+  };
+}
+
+/**
+ * Prepares the exact bytes exposed by preview and download. Rebuilding with the returned package
+ * identity is deliberate: a later request can prove that profile and publisher state still
+ * serialize to the reviewed representation without storing a second source of truth.
+ */
+export function prepareEmployeeTemplateExport(
+  profile: EmployeeProfile,
+  options: {
+    generatedAt?: string;
+    packageId?: string;
+    publisher?: EmployeeTemplateExportPublisher;
+  } = {},
+): PreparedEmployeeTemplateExport {
+  const built = buildEmployeeTemplate(profile, {
+    ...(options.generatedAt === undefined ? {} : { generatedAt: options.generatedAt }),
+    ...(options.packageId === undefined ? {} : { packageId: options.packageId }),
+    ...(options.publisher === undefined ? {} : { publisherKeyId: options.publisher.keyId }),
+  });
+  const publisher = built.preview.blocked ? undefined : options.publisher;
+  const exportedDocument = publisher?.sign(built.document) ?? built.document;
+  let downloadableDocument = built.document;
+  let checksum = built.preview.checksum;
+  if (publisher !== undefined) {
+    const verification = publisher.verify(exportedDocument);
+    if (verification.status === "rejected") {
+      const reason = `${verification.code}: ${verification.message}`;
+      throw new Error(`Employee publisher could not verify its export: ${reason}.`);
+    }
+    const { signature: _unsignedSignature, ...expectedContent } = built.document.payload;
+    const { signature, ...verifiedContent } = verification.document.payload;
+    if (
+      verification.trustedKeyId !== publisher.keyId ||
+      signature.status !== "dsse" ||
+      signature.keyid !== publisher.keyId ||
+      canonicalJson(verifiedContent) !== canonicalJson(expectedContent)
+    ) {
+      throw new Error(
+        "Employee publisher could not verify its export: verified payload does not match the prepared Employee package.",
+      );
+    }
+    downloadableDocument = verification.document;
+    checksum = verification.document.integrity.digest;
+  }
+  const body = `${JSON.stringify(exportedDocument, null, 2)}\n`;
+
+  return {
+    ...built,
+    document: downloadableDocument,
+    body,
+    preview: {
+      ...built.preview,
+      checksum,
+      downloadReviewToken: createHash("sha256").update(body).digest("hex"),
     },
   };
 }

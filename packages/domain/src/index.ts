@@ -322,6 +322,8 @@ export interface PortableEmployeeSkillSummary {
 export interface EmployeeExportPreview {
   format: "openbot.employee/v1";
   kind: "template";
+  /** Fresh package identity that must be returned when downloading this reviewed instance. */
+  packageId: string;
   fileName: string;
   generatedAt: string;
   employee: PortableEmployeeProfileSummary;
@@ -335,6 +337,8 @@ export interface EmployeeExportPreview {
   findings: EmployeeExportFinding[];
   blocked: boolean;
   checksum: string;
+  /** Opaque SHA-256 strong validator for the exact serialized download bytes. */
+  downloadReviewToken: string;
   signatureStatus: "unsigned" | "dsse";
   publisherKeyId?: string;
   identityOnImport: "new";

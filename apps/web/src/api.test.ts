@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  downloadEmployeeTemplate,
   isEmployeeProfileChangedEvent,
   updateEmployeeProfileDetails,
   updateEmployeeSkillState,
@@ -94,6 +95,50 @@ describe("Employee profile details API", () => {
       role: "Evidence reviewer",
       description: "Review evidence and document limitations.",
       expectedRevision: 3,
+    });
+  });
+});
+
+describe("Employee export review binding", () => {
+  it("returns the reviewed package identity and strong tag on download", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: "The export changed." }), {
+        status: 412,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(
+      downloadEmployeeTemplate("employee/1", {
+        format: "openbot.employee/v1",
+        kind: "template",
+        packageId: "00000000-0000-4000-8000-000000000099",
+        fileName: "employee.openbot-employee.json",
+        generatedAt: "2026-09-04T00:00:00.000Z",
+        employee: { name: "Employee", role: "Research" },
+        skills: [],
+        employeeName: "Employee",
+        verifiedSkillCount: 0,
+        requestedCapabilities: [],
+        includedMemoryCount: 0,
+        exclusions: [],
+        findings: [],
+        blocked: false,
+        checksum: "a".repeat(64),
+        downloadReviewToken: "b".repeat(64),
+        signatureStatus: "unsigned",
+        identityOnImport: "new",
+        hostAuthority: "none",
+      }),
+    ).rejects.toMatchObject({ status: 412 });
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe(
+      "/api/v1/bots/employee%2F1/export?packageId=00000000-0000-4000-8000-000000000099&generatedAt=2026-09-04T00%3A00%3A00.000Z",
+    );
+    expect(init).toMatchObject({
+      credentials: "include",
+      headers: { "If-Match": `"${"b".repeat(64)}"` },
     });
   });
 });

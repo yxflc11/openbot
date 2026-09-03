@@ -7,6 +7,7 @@ import {
   buildEmployeeTemplate,
   employeeTemplatePayloadChecksum,
   inspectEmployeeTemplate,
+  prepareEmployeeTemplateExport,
   serializeEmployeeTemplate,
   signEmployeeTemplateEnvelope,
   verifyEmployeeTemplateEnvelope,
@@ -93,6 +94,31 @@ describe("employee template package", () => {
         code: "credential-like-content",
         location: "employee.description",
       }),
+    ]);
+  });
+
+  it("returns blocking findings without invoking a configured publisher", () => {
+    const profile = createProfile();
+    profile.employee.role = "Use api_key=super-secret-value for operations";
+
+    const result = prepareEmployeeTemplateExport(profile, {
+      generatedAt: timestamp,
+      packageId,
+      publisher: {
+        keyId: "owner-key-1",
+        sign() {
+          throw new Error("A blocked package must not be signed.");
+        },
+        verify() {
+          throw new Error("A blocked package must not be verified.");
+        },
+      },
+    });
+
+    expect(result.preview.blocked).toBe(true);
+    expect(result.preview.signatureStatus).toBe("dsse");
+    expect(result.preview.findings).toEqual([
+      expect.objectContaining({ code: "credential-like-content", location: "employee.role" }),
     ]);
   });
 

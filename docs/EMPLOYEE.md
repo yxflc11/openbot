@@ -172,6 +172,10 @@ does not implement authenticated ownership transfer or optional-memory selection
 skill depends on a skill outside the verified export set, the sending Server blocks download rather
 than silently removing that edge from the portable graph. `dependencySlugs` remains an OpenBot v1
 extension because the Agent Skills specification does not yet define skill-to-skill dependencies.
+The sender also binds download to the preview's package id, generation time, and strong validator
+over the exact serialized file. A missing review is rejected, and a changed profile or publisher
+state returns `412` so the Owner must inspect a fresh preview; the Client never accepts or downloads
+a newly generated replacement silently.
 
 An employee package carries knowledge and configuration. It never carries authority to a computer.
 The receiving owner must explicitly bind it to a Worker Host and grant a local policy profile.
@@ -218,6 +222,8 @@ Implemented on the `feat/cross-platform-employees` development line:
 - an authenticated, same-builder export preview and checksum-protected JSON template containing
   only role, descriptive biography, appearance, execution preference, and verified skills; the
   sender can inspect the exact profile and selected skill metadata before download;
+- a strong reviewed-download precondition that binds package id, generation time, and exact
+  serialized bytes, with explicit refresh after a stale `412` response;
 - dependency-closed verified skill exports; a missing, candidate, suspended, or revoked dependency
   blocks download instead of being silently removed from the portable graph;
 - structural exclusion of identity, authority, memory, and work history, plus blocking checks for

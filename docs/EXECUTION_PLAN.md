@@ -20,7 +20,8 @@ The development line already contains:
 - a versioned Node contract for Windows, macOS, Linux, containers, VMs, and managed devices;
 - a seven-view Employee profile with evolution, skills, safe decision summaries, memory, records,
   and configuration;
-- a strict `openbot.employee/v1` template schema and an Owner-authenticated export preview;
+- a strict `openbot.employee/v1` template schema, an Owner-authenticated export preview, and an
+  exact-byte reviewed-download precondition;
 - default structural exclusion of identity, authority, memories, and work history;
 - strict, bounded, read-only import inspection with checksum, semantic, sensitive-text, and current
   Worker Host compatibility checks.
@@ -47,7 +48,7 @@ tests, hardening, or the next slice.
 | 0:00–0:45 | Complete | Product and safety baseline | English source docs plus Chinese translation for Employee, Worker Host, Run, portability, and visible decision traces | No text claims that skills grant authority or that raw chain-of-thought is exposed |
 | 0:45–1:45 | Complete | Cross-platform Node contract | Platform, architecture, device class, isolation, trust tier, and versioned capability descriptors | Windows, macOS, and Linux fixtures validate without changing Server ownership boundaries |
 | 1:45–3:15 | Complete | Employee profile foundation | Persisted evolution/skill/memory records, aggregate API, seven-view responsive UI, and existing-Bot backfill | Every UI entry opens the same employee; full repository check and browser QA pass |
-| 3:15–4:30 | Complete | Safe template export | Strict package schema, preview, sensitive-text blocker, checksum, and JSON download | Default package has no source id, secret, session, approval, Node identity, memory, history, or authority |
+| 3:15–4:30 | Complete | Safe template export | Strict package schema, preview, sensitive-text blocker, checksum, reviewed strong ETag, and JSON download | Default package has no source id, secret, session, approval, Node identity, memory, history, or authority; stale review returns `412` |
 | 4:30–5:45 | Complete | Import inspection and quarantine | Upload/parse boundary, schema and checksum validation, compatibility report, and review-only preview | Invalid/unknown fields fail closed; no Bot, skill, memory, or authority is created during preview |
 | 5:45–6:45 | Complete | Contributor skill interfaces | Minimal versioned skill create/verify/suspend APIs with immutable evolution events | Verification requires evidence or explicit Owner review; skill state never changes host policy |
 | 6:45–7:45 | Complete | Cross-platform conformance hardening | Provider/Node fixture matrix, routing negatives, reconnect tests, and documented support levels | Exact capability majors are checked at both ends; unsupported platforms and versions remain blocked without fallback |

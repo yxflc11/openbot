@@ -786,6 +786,15 @@ export const employeeTemplatePackageSchema = z
 
 export type EmployeeTemplatePackage = z.infer<typeof employeeTemplatePackageSchema>;
 
+/** Identifies the package instance inspected by an Employee export preview. */
+export const employeeExportDownloadQuerySchema = z
+  .object({
+    packageId: z.string().uuid(),
+    generatedAt: z.string().datetime(),
+  })
+  .strict();
+export type EmployeeExportDownloadQuery = z.infer<typeof employeeExportDownloadQuerySchema>;
+
 /** Standalone packages must be explicitly unsigned; signed documents travel inside DSSE. */
 export const unsignedEmployeeTemplatePackageSchema = employeeTemplatePackageSchema.refine(
   (document) => document.payload.signature.status === "unsigned",

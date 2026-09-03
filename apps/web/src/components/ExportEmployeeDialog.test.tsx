@@ -6,6 +6,7 @@ import { ExportPreviewDetails } from "./ExportEmployeeDialog";
 const preview: EmployeeExportPreview = {
   format: "openbot.employee/v1",
   kind: "template",
+  packageId: "00000000-0000-4000-8000-000000000099",
   fileName: "researcher.openbot-employee.json",
   generatedAt: "2026-09-04T00:00:00.000Z",
   employee: {
@@ -36,6 +37,7 @@ const preview: EmployeeExportPreview = {
   findings: [],
   blocked: false,
   checksum: "4db13fa00000000000000000000000000000000000000000000000000000000",
+  downloadReviewToken: "9c4733b00000000000000000000000000000000000000000000000000000000",
   signatureStatus: "unsigned",
   identityOnImport: "new",
   hostAuthority: "none",

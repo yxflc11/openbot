@@ -37,3 +37,5 @@ Hermes/Kubernetes 的冲突语义，只开放说明性字段。
 Server 的完整说明性资料和所选技能元数据。
 [可迁移员工技能依赖闭包](portable-employee-skill-dependency-closure.md)随后阻止模板静默丢弃
 不在已验证导出集合中的依赖。
+[员工导出审核绑定](employee-export-review-binding.md)最后采用 HTTP 强校验器，让下载只能返回
+Owner 刚刚检查过的同一份包实例。

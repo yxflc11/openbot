@@ -37,10 +37,22 @@ export function ExportEmployeeDialog({
     setDownloading(true);
     setError(undefined);
     try {
-      await downloadEmployeeTemplate(employee.id, preview.fileName);
+      await downloadEmployeeTemplate(employee.id, preview);
       onDownloaded(preview.fileName);
     } catch (cause) {
-      setError((cause as ApiError).message ?? "下载员工模板失败。");
+      const apiError = cause as ApiError;
+      if (apiError.status === 412) {
+        setPreview(undefined);
+        try {
+          const refreshed = await getEmployeeExportPreview(employee.id);
+          setPreview(refreshed);
+          setError("员工内容在审核后发生变化，预览已刷新。请重新检查后再下载。");
+        } catch (refreshCause) {
+          setError((refreshCause as ApiError).message ?? "无法刷新员工导出预览。");
+        }
+      } else {
+        setError(apiError.message ?? "下载员工模板失败。");
+      }
     } finally {
       setDownloading(false);
     }

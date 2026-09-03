@@ -39,7 +39,7 @@ HTTPS for remote access.
 | `POST` | `/api/v1/bots/:botId/skills` | Register candidate skill metadata for Owner review |
 | `POST` | `/api/v1/bots/:botId/skills/:skillId/state` | Verify, suspend, or permanently revoke a skill |
 | `GET` | `/api/v1/bots/:botId/export/preview` | Preview a sanitized Employee template and all exclusions |
-| `GET` | `/api/v1/bots/:botId/export` | Download a template that passed the safety checks |
+| `GET` | `/api/v1/bots/:botId/export` | Download the exact reviewed template instance using `If-Match` |
 | `POST` | `/api/v1/employees/import/preview` | Strictly inspect a template in quarantine without writes |
 | `POST` | `/api/v1/employees/import/activate` | Revalidate reviewed input and create a zero-authority Employee |
 | `GET` | `/api/v1/nodes` | List currently connected Worker Hosts |
@@ -221,7 +221,11 @@ Node, route work, alter approval policy, or grant tools.
 
 ## Employee export, import, and activation
 
-Export preview is generated from the same canonical package build that download uses. Its
+Export preview is generated from the same canonical package preparation path that download uses.
+It creates one fresh `packageId` and `generatedAt` and returns a `downloadReviewToken`. That token
+is the opaque value of the target download representation's strong entity tag: the SHA-256 digest
+of the exact pretty-printed JSON bytes, including the DSSE envelope when signing is configured. It
+is not a credential or authority grant. Its
 `employee` projection contains the exact name, role, optional descriptive biography, and appearance
 selected for the template; its ordered `skills` projection contains every selected verified skill's
 slug, name, Agent Skills description, version, capability requests, and dependency slugs.
@@ -233,6 +237,21 @@ Free text is scanned for credential-like values, bearer tokens, private keys, an
 Every exported verified skill must also have all of its skill dependencies inside the same verified
 set. An excluded or unknown dependency produces an `excluded-skill-dependency` finding rather than
 being silently omitted. A blocked export returns `422`.
+
+Download must return the reviewed `packageId` and `generatedAt` as query parameters and the
+preview's `downloadReviewToken`, quoted as one strong entity tag, in `If-Match`:
+
+```http
+GET /api/v1/bots/{botId}/export?packageId={uuid}&generatedAt={encoded-ISO-8601}
+If-Match: "{downloadReviewToken}"
+```
+
+The Server rebuilds the candidate from its current authoritative profile and publisher state with
+that exact package identity. It returns the file only when the complete serialized bytes still
+match. Missing review state returns `428 Precondition Required`; malformed or weak tags return
+`422`; changed content or publisher state returns `412 Precondition Failed` and requires a fresh
+preview. The Client refreshes the preview but never retries the download automatically. All
+preview, error, and download responses are `Cache-Control: no-store`.
 
 Unsigned export uses `application/vnd.openbot.employee+json`. When the optional Owner publisher
 keyring is configured, export uses `application/vnd.openbot.employee.dsse+json` and a DSSE/Ed25519
