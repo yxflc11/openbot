@@ -10,6 +10,7 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
+  EmployeeExportPreview,
   ExecutionNode,
   EmployeeProfile,
   Message,
@@ -77,6 +78,36 @@ export async function getEmployeeProfile(
     signal ? { signal } : undefined,
   );
   return result.profile;
+}
+
+export async function getEmployeeExportPreview(
+  botId: string,
+  signal?: AbortSignal,
+): Promise<EmployeeExportPreview> {
+  const result = await request<{ preview: EmployeeExportPreview }>(
+    `/api/v1/bots/${botId}/export/preview`,
+    signal ? { signal } : undefined,
+  );
+  return result.preview;
+}
+
+export async function downloadEmployeeTemplate(botId: string, fileName: string): Promise<void> {
+  const url = `/api/v1/bots/${botId}/export`;
+  const response = await fetch(url, { credentials: "include" });
+  if (!response.ok) throw await readApiError(response, url);
+
+  const objectUrl = URL.createObjectURL(await response.blob());
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    anchor.hidden = true;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export async function decideApproval(
@@ -330,19 +361,21 @@ export function subscribeToWorkspaceEvents(handlers: {
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: "include", ...init });
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as ErrorPayload;
-    if (response.status === 401 && url !== "/api/v1/auth/login") {
-      window.dispatchEvent(new Event("openbot:unauthorized"));
-    }
-    throw new ApiError(
-      payload.error ?? `OpenBot Server returned ${response.status}.`,
-      response.status,
-      payload.fields,
-    );
-  }
+  if (!response.ok) throw await readApiError(response, url);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+async function readApiError(response: Response, url: string): Promise<ApiError> {
+  const payload = (await response.json().catch(() => ({}))) as ErrorPayload;
+  if (response.status === 401 && url !== "/api/v1/auth/login") {
+    window.dispatchEvent(new Event("openbot:unauthorized"));
+  }
+  return new ApiError(
+    payload.error ?? `OpenBot Server returned ${response.status}.`,
+    response.status,
+    payload.fields,
+  );
 }
 
 function isRunProjectionEvent(

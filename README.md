@@ -53,8 +53,8 @@ and back. The table deliberately separates working code from planned capabilitie
 | --- | --- | --- |
 | Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, and SSE reconnect | Installable PWA, notification delivery, accessibility and localization polish |
-| Bot identity | Five-layer composable appearance persisted with each Bot | More parts, import/export, and community-created appearance packs |
-| Employee profile | Existing Bot, Run, approval, artifact, and configuration data provide the foundation | Unified profile, evolution ledger, skill graph, typed memory, and portable employee packages |
+| Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
+| Employee profile | Seven-view profile with evolution, skill graph, structured live decisions, typed memory, records, configuration, and a safe template export preview/download | Skill learning and verification, memory controls, signed packages, import review, cloning, and transfer |
 | Node protocol | Outbound WebSocket registration, heartbeat, capacity, deterministic routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and protocol compatibility tests |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
@@ -67,8 +67,10 @@ and back. The table deliberately separates working code from planned capabilitie
 - It does not yet issue cryptographic, single-use capability leases after approval.
 - It does not provide continuous remote desktop control.
 - It does not yet have production-grade Node identity, mTLS, or credential rotation.
-- It does not yet provide the employee evolution, skill, memory, or import/export UI described in
-  the target product model.
+- It does not yet learn or verify skills autonomously, edit memory, import employee packages, clone
+  employees, or transfer ownership.
+- The current employee template is checksum-protected but unsigned. It carries no memory or host
+  authority and must remain quarantined when import support is added.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
 - The optional office visualization is not part of the current product navigation or Web build.
 
@@ -245,6 +247,7 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | --- | --- |
 | Understand the product and boundaries | [Product definition](docs/PRODUCT.md) |
 | Understand the system | [Architecture](docs/ARCHITECTURE.md) |
+| Follow the active implementation sequence | [Goal-mode execution plan](docs/EXECUTION_PLAN.md) |
 | Review current and future delivery | [Roadmap](docs/ROADMAP.md) |
 | Build or integrate against the API | [Local API](docs/API.md) |
 | Review security guarantees | [Threat model](docs/SECURITY.md) |

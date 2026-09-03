@@ -23,6 +23,7 @@ import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import { buildEmployeeTemplate, serializeEmployeeTemplate } from "./employee-package.js";
 import {
   InvalidCredentialsError,
   LoginRateLimitedError,
@@ -408,6 +409,28 @@ export function createApp(dependencies: AppDependencies) {
       profile: await dependencies.store.getEmployeeProfile(context.req.param("botId")),
     }),
   );
+
+  app.get("/api/v1/bots/:botId/export/preview", async (context) => {
+    const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
+    return context.json({ preview: buildEmployeeTemplate(profile).preview });
+  });
+
+  app.get("/api/v1/bots/:botId/export", async (context) => {
+    const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
+    const employeeTemplate = buildEmployeeTemplate(profile);
+    if (employeeTemplate.preview.blocked) {
+      throw new StoreValidationError(
+        "Employee template export is blocked until sensitive-looking content is removed.",
+      );
+    }
+    context.header(
+      "Content-Disposition",
+      `attachment; filename="${employeeTemplate.preview.fileName}"`,
+    );
+    context.header("Content-Type", "application/vnd.openbot.employee+json; charset=utf-8");
+    context.header("X-Content-Type-Options", "nosniff");
+    return context.body(serializeEmployeeTemplate(employeeTemplate.document));
+  });
 
   app.post("/api/v1/bots", async (context) => {
     const input = await parseRequest(context.req.raw, createBotInputSchema);

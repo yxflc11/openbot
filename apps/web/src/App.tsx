@@ -32,6 +32,7 @@ import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView } from "./components/EmployeeProfileView";
+import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
 import { RunInspector } from "./components/RunInspector";
@@ -133,6 +134,7 @@ function AuthenticatedWorkspace({
   const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile>();
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
   const [employeeProfileError, setEmployeeProfileError] = useState<string>();
+  const [employeeExportOpen, setEmployeeExportOpen] = useState(false);
   const [framesByRun, setFramesByRun] = useState<Map<string, RunFrame>>(() => new Map());
   const [workspaceRealtimeState, setWorkspaceRealtimeState] =
     useState<RealtimeConnectionState>("connecting");
@@ -350,6 +352,7 @@ function AuthenticatedWorkspace({
   }
 
   function selectChannel(channelId: string) {
+    setEmployeeExportOpen(false);
     setSelectedChannelId(channelId);
     setSelectedEmployeeId(undefined);
     setSelectedRunId(undefined);
@@ -357,6 +360,7 @@ function AuthenticatedWorkspace({
   }
 
   function openEmployee(botId: string) {
+    setEmployeeExportOpen(false);
     setSelectedEmployeeId(botId);
     setSelectedRunId(undefined);
     setMobilePanel(undefined);
@@ -412,7 +416,7 @@ function AuthenticatedWorkspace({
           error={employeeProfileError}
           onRetry={() => void loadEmployeeProfile(selectedEmployeeId)}
           onAssign={() => assignEmployee(selectedEmployeeId)}
-          onExport={() => showNotice("安全的员工模板导出将在下一阶段接入。")}
+          onExport={() => setEmployeeExportOpen(true)}
         />
       ) : selectedChannel ? (
         <ChannelWorkspace
@@ -486,6 +490,16 @@ function AuthenticatedWorkspace({
           bots={workspace.bots}
           onClose={() => setDialog(undefined)}
           onCreate={handleCreateChannel}
+        />
+      ) : null}
+      {employeeExportOpen && employeeProfile ? (
+        <ExportEmployeeDialog
+          employee={employeeProfile.employee}
+          onClose={() => setEmployeeExportOpen(false)}
+          onDownloaded={(fileName) => {
+            setEmployeeExportOpen(false);
+            showNotice(`已下载安全员工模板：${fileName}`);
+          }}
         />
       ) : null}
       {notice ? (

@@ -167,6 +167,43 @@ export interface EmployeeProfile {
   };
 }
 
+export type EmployeeExportFindingCode =
+  | "credential-like-content"
+  | "private-key-content"
+  | "local-path-content";
+
+/** A blocking finding discovered before portable employee data leaves the Server. */
+export interface EmployeeExportFinding {
+  code: EmployeeExportFindingCode;
+  location: string;
+  message: string;
+}
+
+export interface EmployeeExportExclusion {
+  category: "identity" | "authority" | "memory" | "work-history";
+  count: number;
+  reason: string;
+}
+
+/** Owner-facing summary of exactly what a default employee template will contain. */
+export interface EmployeeExportPreview {
+  format: "openbot.employee/v1";
+  kind: "template";
+  fileName: string;
+  generatedAt: string;
+  employeeName: string;
+  verifiedSkillCount: number;
+  requestedCapabilities: string[];
+  includedMemoryCount: 0;
+  exclusions: EmployeeExportExclusion[];
+  findings: EmployeeExportFinding[];
+  blocked: boolean;
+  checksum: string;
+  signatureStatus: "unsigned";
+  identityOnImport: "new";
+  hostAuthority: "none";
+}
+
 export interface ExecutionNode {
   id: EntityId;
   name: string;

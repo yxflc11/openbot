@@ -403,3 +403,71 @@ export const approvalDecisionInputSchema = z.object({
 export const loginInputSchema = z.object({
   password: z.string().min(1, "Password is required.").max(1024),
 });
+
+/**
+ * The first portable employee format is intentionally a template, not an identity transfer.
+ * It contains no source employee id, host binding, credentials, sessions, or capability grants.
+ */
+export const employeeTemplateSkillSchema = z
+  .object({
+    slug: z.string().trim().min(1).max(160),
+    name: z.string().trim().min(1).max(160),
+    description: z.string().trim().max(2000),
+    version: z.string().trim().min(1).max(64),
+    requiredCapabilities: z.array(z.string().trim().min(1).max(160)).max(64),
+    dependencySlugs: z.array(z.string().trim().min(1).max(160)).max(64),
+  })
+  .strict();
+
+export const employeeTemplatePayloadSchema = z
+  .object({
+    format: z.literal("openbot.employee/v1"),
+    kind: z.literal("template"),
+    packageId: z.string().uuid(),
+    generatedAt: z.string().datetime(),
+    employee: z
+      .object({
+        name: z.string().trim().min(1).max(64),
+        role: z.string().trim().min(1).max(160),
+        appearance: botAppearanceSchema.strict().optional(),
+      })
+      .strict(),
+    configuration: z
+      .object({
+        recommendedExecutionProfile: computerProfileSchema,
+      })
+      .strict(),
+    skills: z.array(employeeTemplateSkillSchema).max(256),
+    requestedCapabilities: z.array(z.string().trim().min(1).max(160)).max(256),
+    portability: z
+      .object({
+        identity: z.literal("new-on-import"),
+        authority: z.literal("none"),
+        memories: z.literal("none"),
+        importedSkillState: z.literal("disabled-pending-review"),
+      })
+      .strict(),
+    signature: z
+      .object({
+        status: z.literal("unsigned"),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type EmployeeTemplatePayload = z.infer<typeof employeeTemplatePayloadSchema>;
+
+export const employeeTemplatePackageSchema = z
+  .object({
+    payload: employeeTemplatePayloadSchema,
+    integrity: z
+      .object({
+        algorithm: z.literal("sha256"),
+        canonicalization: z.literal("openbot-json-v1"),
+        digest: z.string().regex(/^[a-f0-9]{64}$/),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type EmployeeTemplatePackage = z.infer<typeof employeeTemplatePackageSchema>;

@@ -156,12 +156,16 @@ Implemented on the `feat/cross-platform-employees` development line:
 - automatic creation events for new employees and a safe backfill for existing Bots;
 - a responsive seven-view employee profile opened from the Bot list, channel roster, and message
   authors;
-- structured Run progress presented as decision summaries rather than private chain-of-thought.
+- structured Run progress presented as decision summaries rather than private chain-of-thought;
+- an authenticated export preview and checksum-protected JSON template containing only role,
+  appearance, execution preference, and verified skills;
+- structural exclusion of identity, authority, memory, and work history, plus blocking checks for
+  credential-like text, private keys, and user-specific local paths.
 
-The skill learning/verification workflow, memory editing and retention controls, signed employee
-packages, import preview, cloning, and authenticated ownership transfer are not implemented yet.
-Their data and authority boundaries are defined here so contributors can add them without coupling
-employee knowledge to Worker Host access.
+The current v1 template is deliberately unsigned and memory-free. The skill learning/verification
+workflow, memory editing and retention controls, signed archive, import preview, cloning, and
+authenticated ownership transfer are not implemented yet. Their data and authority boundaries are
+defined here so contributors can add them without coupling employee knowledge to Worker Host access.
 
 ## Acceptance criteria
 

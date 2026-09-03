@@ -3,6 +3,7 @@ import {
   createBotInputSchema,
   createChannelInputSchema,
   createMessageInputSchema,
+  employeeTemplatePackageSchema,
   loginInputSchema,
   nodeMessageSchema,
   protocolVersion,
@@ -269,5 +270,54 @@ describe("control plane inputs", () => {
     });
     expect(loginInputSchema.safeParse({ password: "" }).success).toBe(false);
     expect(loginInputSchema.safeParse({ password: "x".repeat(1025) }).success).toBe(false);
+  });
+});
+
+describe("portable employee format", () => {
+  const employeePackage = {
+    payload: {
+      format: "openbot.employee/v1",
+      kind: "template",
+      packageId: "00000000-0000-4000-8000-000000000099",
+      generatedAt: "2026-09-04T00:00:00.000Z",
+      employee: { name: "Ops", role: "Browser operations" },
+      configuration: { recommendedExecutionProfile: "docker-linux" },
+      skills: [],
+      requestedCapabilities: [],
+      portability: {
+        identity: "new-on-import",
+        authority: "none",
+        memories: "none",
+        importedSkillState: "disabled-pending-review",
+      },
+      signature: { status: "unsigned" },
+    },
+    integrity: {
+      algorithm: "sha256",
+      canonicalization: "openbot-json-v1",
+      digest: "a".repeat(64),
+    },
+  };
+
+  it("accepts the bounded identity-free template", () => {
+    expect(employeeTemplatePackageSchema.safeParse(employeePackage).success).toBe(true);
+  });
+
+  it("rejects undeclared authority and credential fields at every level", () => {
+    expect(
+      employeeTemplatePackageSchema.safeParse({
+        ...employeePackage,
+        payload: { ...employeePackage.payload, credentials: { token: "hidden" } },
+      }).success,
+    ).toBe(false);
+    expect(
+      employeeTemplatePackageSchema.safeParse({
+        ...employeePackage,
+        payload: {
+          ...employeePackage.payload,
+          employee: { ...employeePackage.payload.employee, sourceEmployeeId: "source-id" },
+        },
+      }).success,
+    ).toBe(false);
   });
 });

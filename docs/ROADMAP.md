@@ -8,6 +8,11 @@ Node 已通过出站 WebSocket 上报真实可执行能力和并发容量；两�
 
 M2 第一切片已完成：Node/provider 可发送结构化 `approval.request`，Server 原子保存审批和目标指纹并把 Run 切换为 `waiting_approval`；桌面 Attention 与手机审批页可批准一次或拒绝，决定会审计并回传原 Node。重复决定、过期审批和失联 Node 均 fail closed。下一步是接入真正的交互式 provider，并把当前请求/决定握手升级为可验证、可消费一次的 capability lease；连续画面与接管仍待补。
 
+M3 基础切片已完成：员工进化事件、版本化技能、技能依赖和分类记忆已经落库；七视图员工主页
+可以从 Bot 列表、频道成员和消息作者进入。安全模板导出已有严格 schema、默认排除项、疑似敏感
+文本阻止、SHA-256 校验和 Owner 鉴权下载。当前模板仍未签名且不含记忆；下一步是只读导入预览
+与隔离兼容性报告，不能直接创建员工或获得工作主机权限。
+
 ## 当前持续目标的执行顺序
 
 本轮 Codex 目标至少持续八小时，并按小步可验证提交推进：
@@ -135,13 +140,13 @@ M2 第一切片已完成：Node/provider 可发送结构化 `approval.request`�
 
 ## 下一批 Issue
 
-1. `ADR: define Worker Host and portable Employee boundaries`
-2. `Protocol: add structured platform, architecture and device class`
-3. `Protocol: replace fixed capability enum with versioned descriptors`
-4. `Provider SDK: define cross-platform lifecycle and conformance suite`
-5. `Domain: add Employee profile and evolution ledger`
-6. `Domain: add versioned Skill registry and dependency graph`
-7. `Database: persist Employee evolution, skills and typed memories`
-8. `API: expose one read-only Employee profile projection`
-9. `Web: open Employee profile from channel Bot identity`
-10. `Portability: export and inspect a safe Employee template`
+1. `Portability: validate an Employee package without activating it`
+2. `Web: add quarantined Employee import preview and compatibility report`
+3. `Domain: add Owner-reviewed Skill create, verify, suspend, and revoke commands`
+4. `Database: persist immutable Skill evidence and review events`
+5. `Protocol: publish cross-platform Provider conformance fixtures`
+6. `Routing: reject unsupported capability versions without fallback`
+7. `Security: design publisher keys and signed Employee archives`
+8. `Memory: add retention, redaction, deletion, and selective export controls`
+9. `Node identity: replace shared enrollment token with per-Node credentials`
+10. `Approval: issue single-use capability leases bound to target fingerprints`

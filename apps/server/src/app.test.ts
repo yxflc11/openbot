@@ -12,7 +12,7 @@ import type {
   Run,
   RunProgress,
 } from "@openbot/domain";
-import { protocolVersion } from "@openbot/protocol";
+import { employeeTemplatePackageSchema, protocolVersion } from "@openbot/protocol";
 import { describe, expect, it, vi } from "vitest";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
@@ -24,6 +24,7 @@ import {
   type ControlPlaneStore,
 } from "./control-plane-store.js";
 import { createApp, ownerSessionCookie } from "./app.js";
+import { verifyEmployeeTemplateChecksum } from "./employee-package.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
@@ -355,6 +356,49 @@ describe("server app", () => {
       headers: { Cookie: cookie },
     });
     expect(missing.status).toBe(404);
+  });
+
+  it("previews and downloads an identity-free employee template", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Ops",
+      role: "Browser and operations",
+      computerProfile: "docker-linux",
+    });
+    const app = createTestApp({ store });
+    expect((await app.request(`/api/v1/bots/${bot.id}/export/preview`)).status).toBe(401);
+
+    const cookie = await login(app);
+    const previewResponse = await app.request(`/api/v1/bots/${bot.id}/export/preview`, {
+      headers: { Cookie: cookie },
+    });
+    expect(previewResponse.status).toBe(200);
+    expect(await previewResponse.json()).toMatchObject({
+      preview: {
+        blocked: false,
+        employeeName: "Ops",
+        fileName: "ops.openbot-employee.json",
+        hostAuthority: "none",
+        identityOnImport: "new",
+        includedMemoryCount: 0,
+        signatureStatus: "unsigned",
+      },
+    });
+
+    const downloadResponse = await app.request(`/api/v1/bots/${bot.id}/export`, {
+      headers: { Cookie: cookie },
+    });
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("content-type")).toContain(
+      "application/vnd.openbot.employee+json",
+    );
+    expect(downloadResponse.headers.get("content-disposition")).toBe(
+      'attachment; filename="ops.openbot-employee.json"',
+    );
+    const employeePackage = employeeTemplatePackageSchema.parse(await downloadResponse.json());
+    expect(employeePackage.payload.employee).not.toHaveProperty("id");
+    expect(employeePackage.payload.portability.authority).toBe("none");
+    expect(verifyEmployeeTemplateChecksum(employeePackage)).toBe(true);
   });
 
   it("rejects invalid Bot input before reaching storage", async () => {

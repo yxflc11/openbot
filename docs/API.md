@@ -24,6 +24,8 @@
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
 | `GET` | `/api/v1/bots/:botId/profile` | 读取数字员工档案、进化、技能、记忆与工作记录 |
+| `GET` | `/api/v1/bots/:botId/export/preview` | 预览默认脱敏员工模板及全部排除项 |
+| `GET` | `/api/v1/bots/:botId/export` | 下载通过安全检查的员工模板 JSON |
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
 
 在线 Node 投影包含 `platform`、`osVersion`、`architecture`、`deviceClass`、`isolation`、
@@ -73,6 +75,18 @@ manifest 用于兼容性展示和后续策略迁移，本身不授予执行权�
 `records.decisions` 只来自 Worker Host 上报并持久化的 `RUN_PROGRESS` 事件，用于解释阶段、已观察事实和下一步动作。它不是模型原始思维链，也不允许 Provider 把隐藏提示、密钥或私有推理写入其中。
 
 技能的 `confidence` 表示证据质量，不会授予电脑权限；真正的执行权限仍由 Server 的 Node 路由、策略、审批和后续 capability lease 独立决定。记忆的 `portability` 也只是导出候选策略，导出时仍需重新过滤和 Owner 确认。
+
+## 导出安全员工模板
+
+`GET /api/v1/bots/:botId/export/preview` 先返回将要包含的已验证技能、所需能力、校验和、
+明确排除项和阻止原因。v1 默认模板不包含任何记忆，也不包含来源员工 ID、所有权、Run、
+进化历史、决策、产物、审批、Node 身份、主机绑定、凭证、Session 或能力授权。
+
+`GET /api/v1/bots/:botId/export` 只在预览没有阻止项时返回
+`application/vnd.openbot.employee+json`。Server 会检查导出自由文本中的疑似凭证、Bearer Token、
+私钥标记和用户本地路径；命中后返回 `422`，不会生成下载。包内 SHA-256 对规范化 `payload`
+提供意外修改检测，但当前 `signature.status` 是 `unsigned`，不能证明发布者身份。未来导入功能必须
+先隔离校验、创建新的本地员工 ID，并让所有导入技能保持禁用，直到 Owner 完成本地策略审核。
 
 ## 创建频道
 
