@@ -14,7 +14,7 @@
 | `GET` | `/api/v1/channels` | 频道与 Bot roster |
 | `POST` | `/api/v1/channels` | 创建频道并原子加入初始 Bot |
 | `POST` | `/api/v1/channels/:channelId/bots` | 把已有 Bot 加入频道 |
-| `GET` | `/api/v1/channels/:channelId/messages` | 读取最近 100 条本地频道消息 |
+| `GET` | `/api/v1/channels/:channelId/messages` | 读取最近 100 条本地频道消息与 Bot 回复关系 |
 | `POST` | `/api/v1/channels/:channelId/messages` | 原子保存用户消息并创建排队任务 |
 | `GET` | `/api/v1/channels/:channelId/runs` | 读取频道最近 50 个任务 |
 | `GET` | `/api/v1/channels/:channelId/events` | 订阅频道实时事件（SSE） |

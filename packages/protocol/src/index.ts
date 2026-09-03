@@ -282,10 +282,19 @@ export const computerProfileSchema = z.enum([
   "coder",
 ]);
 
+export const botAppearanceSchema = z.object({
+  head: z.enum(["round", "square", "cat"]),
+  body: z.enum(["classic", "tall", "cape", "armor", "storage", "quadruped"]),
+  mobility: z.enum(["feet", "single-wheel", "dual-wheel", "hover", "four-legs"]),
+  accessory: z.enum(["none", "headphones", "backpack", "trench", "arm", "toolbox"]),
+  accent: z.enum(["green", "yellow", "red", "blue"]),
+});
+
 export const createBotInputSchema = z.object({
   name: z.string().trim().min(1, "Bot name is required.").max(64),
   role: z.string().trim().min(1, "Bot role is required.").max(160),
   computerProfile: computerProfileSchema.default("none"),
+  appearance: botAppearanceSchema.optional(),
 });
 
 export const createChannelInputSchema = z.object({
@@ -305,6 +314,7 @@ export const joinChannelBotInputSchema = z.object({
 export const createMessageInputSchema = z.object({
   content: z.string().trim().min(1, "Message is required.").max(8000),
   botId: z.string().uuid().optional(),
+  replyToMessageId: z.string().uuid().optional(),
 });
 
 export const approvalDecisionInputSchema = z.object({

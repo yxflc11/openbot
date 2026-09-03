@@ -34,6 +34,7 @@ export interface ArtifactRecord extends Artifact {
 export interface RunCompletion {
   run: Run;
   artifacts: Artifact[];
+  message: Message;
 }
 
 export interface PersistedCounts {

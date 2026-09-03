@@ -1,5 +1,5 @@
 import type { Artifact, Bot, Channel, Message, Run, RunFrame, RunProgress } from "@openbot/domain";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   createMessage,
   listMessages,
@@ -8,7 +8,8 @@ import {
   subscribeToChannelEvents,
 } from "../api";
 import { indexActiveRunsByBot, isActiveRun, mergeRuns, runStatusLabel } from "../run-state";
-import { BotIcon, HashIcon } from "./Icons";
+import { HashIcon, PlusIcon } from "./Icons";
+import { RichMessage } from "./RichMessage";
 import { RobotAvatar } from "./RobotAvatar";
 
 export function ChannelWorkspace({
@@ -34,26 +35,44 @@ export function ChannelWorkspace({
 }) {
   const members = bots.filter((bot) => channel.botIds.includes(bot.id));
   const available = bots.filter((bot) => !channel.botIds.includes(bot.id));
-  const botsById = new Map(bots.map((bot) => [bot.id, bot]));
-  const artifactsByRun = new Map<string, Artifact[]>();
-  for (const artifact of artifacts) {
-    const items = artifactsByRun.get(artifact.runId) ?? [];
-    items.push(artifact);
-    artifactsByRun.set(artifact.runId, items);
-  }
-  const latestProgressByRun = new Map<string, RunProgress>();
-  for (const item of progress) latestProgressByRun.set(item.runId, item);
-  const [botId, setBotId] = useState(available[0]?.id ?? "");
-  const [busy, setBusy] = useState(false);
+  const botsById = useMemo(() => new Map(bots.map((bot) => [bot.id, bot])), [bots]);
+  const [joinBotId, setJoinBotId] = useState(available[0]?.id ?? "");
+  const [targetBotId, setTargetBotId] = useState(members[0]?.id ?? "");
+  const [joining, setJoining] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [messageText, setMessageText] = useState("");
+  const [replyingTo, setReplyingTo] = useState<Message>();
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [messageError, setMessageError] = useState<string>();
   const [sending, setSending] = useState(false);
   const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
   const messageList = useRef<HTMLDivElement>(null);
   const activeRunByBot = indexActiveRunsByBot(runs);
+  const activeRuns = runs.filter(isActiveRun);
+  const messageById = useMemo(
+    () => new Map(messages.map((message) => [message.id, message])),
+    [messages],
+  );
+  const artifactsByRun = useMemo(() => {
+    const result = new Map<string, Artifact[]>();
+    for (const artifact of artifacts) {
+      const items = result.get(artifact.runId) ?? [];
+      items.push(artifact);
+      result.set(artifact.runId, items);
+    }
+    return result;
+  }, [artifacts]);
+  const latestProgressByRun = useMemo(() => {
+    const result = new Map<string, RunProgress>();
+    for (const item of progress) result.set(item.runId, item);
+    return result;
+  }, [progress]);
+
+  useEffect(() => {
+    if (!members.some((bot) => bot.id === targetBotId)) setTargetBotId(members[0]?.id ?? "");
+    if (!available.some((bot) => bot.id === joinBotId)) setJoinBotId(available[0]?.id ?? "");
+  }, [available, joinBotId, members, targetBotId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -93,6 +112,9 @@ export function ChannelWorkspace({
       },
       onState: setRealtimeState,
     });
+    setMessages([]);
+    setRuns([]);
+    setReplyingTo(undefined);
     setMessagesLoading(true);
     setMessageError(undefined);
     return () => {
@@ -107,29 +129,33 @@ export function ChannelWorkspace({
     }
   }, [messages.length]);
 
-  async function submit() {
-    if (botId.length === 0) return;
-    setBusy(true);
+  async function joinSelectedBot() {
+    if (joinBotId.length === 0 || joining) return;
+    setJoining(true);
     try {
-      await onJoin(botId);
-      setBotId(available.find((bot) => bot.id !== botId)?.id ?? "");
+      await onJoin(joinBotId);
     } finally {
-      setBusy(false);
+      setJoining(false);
     }
   }
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = messageText.trim();
-    if (content.length === 0 || sending) return;
+    if (content.length === 0 || sending || targetBotId.length === 0) return;
     setSending(true);
     setMessageError(undefined);
     try {
-      const result = await createMessage(channel.id, { content });
+      const result = await createMessage(channel.id, {
+        content,
+        botId: targetBotId,
+        ...(replyingTo === undefined ? {} : { replyToMessageId: replyingTo.id }),
+      });
       setMessages((current) => mergeMessages(current, [result.message]));
       setRuns((current) => mergeRuns(current, [result.run]));
       onRun(result.run);
       setMessageText("");
+      setReplyingTo(undefined);
     } catch (cause) {
       setMessageError(cause instanceof Error ? cause.message : "消息未能保存。");
     } finally {
@@ -137,30 +163,43 @@ export function ChannelWorkspace({
     }
   }
 
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
+  }
+
+  const targetBot = botsById.get(targetBotId);
   return (
     <main className="workspace-main channel-workspace">
-      <header className="workspace-header channel-header">
-        <div className="channel-title-icon">
-          <HashIcon />
-        </div>
-        <div>
-          <h1>{channel.name}</h1>
-          <p>{channel.description || "这个频道还没有工作目标。"}</p>
-        </div>
-      </header>
-
-      <section className="channel-panel">
-        <div className="channel-panel-heading">
+      <header className="channel-conversation-header">
+        <div className="channel-identity">
+          <span className="channel-title-icon">
+            <HashIcon />
+          </span>
           <div>
-            <h2>频道团队</h2>
-            <p>加入这里的 Bot 才能接收该频道的任务。</p>
+            <h1>{channel.name}</h1>
+            <p>{channel.description || "长期任务与 Bot 对话"}</p>
+          </div>
+        </div>
+        <div className="channel-team-summary">
+          <div className="member-stack" title={`${members.length} 名 Bot`}>
+            {members.slice(0, 4).map((bot) => (
+              <RobotAvatar
+                bot={bot}
+                compact
+                status={activeRunByBot.get(bot.id)?.status ?? bot.status}
+                key={bot.id}
+              />
+            ))}
+            {members.length > 4 ? <span>+{members.length - 4}</span> : null}
           </div>
           {available.length > 0 ? (
-            <div className="join-control">
+            <div className="join-control compact-join-control">
               <select
-                aria-label="选择 Bot"
-                value={botId}
-                onChange={(event) => setBotId(event.target.value)}
+                aria-label="选择要加入频道的 Bot"
+                value={joinBotId}
+                onChange={(event) => setJoinBotId(event.target.value)}
               >
                 {available.map((bot) => (
                   <option value={bot.id} key={bot.id}>
@@ -168,107 +207,45 @@ export function ChannelWorkspace({
                   </option>
                 ))}
               </select>
-              <button className="secondary-button" type="button" disabled={busy} onClick={submit}>
-                {busy ? "加入中…" : "加入频道"}
+              <button
+                className="icon-button"
+                type="button"
+                disabled={joining}
+                onClick={() => void joinSelectedBot()}
+                aria-label="加入频道"
+              >
+                <PlusIcon />
               </button>
             </div>
           ) : null}
+          <span className={`realtime-state ${realtimeState}`}>
+            <i />
+            {realtimeLabel(realtimeState)}
+          </span>
         </div>
+      </header>
 
-        {members.length === 0 ? (
-          <div className="channel-empty">
-            <BotIcon />
-            <h3>还没有 Bot</h3>
-            <p>从上方选择一个 Bot 加入频道。</p>
-          </div>
-        ) : (
-          <div className="member-list">
-            {members.map((bot) => {
-              const activeRun = activeRunByBot.get(bot.id);
+      <section
+        className="conversation-panel channel-conversation"
+        aria-label={`${channel.name} 消息`}
+      >
+        {activeRuns.length > 0 ? (
+          <section className="active-run-strip" aria-label="正在执行的任务">
+            {activeRuns.slice(0, 3).map((run) => {
+              const assignee = botsById.get(run.botId);
               return (
-                <article key={bot.id}>
-                  <RobotAvatar bot={bot} compact status={activeRun?.status ?? bot.status} />
-                  <div className="member-copy">
-                    <strong>{bot.name}</strong>
-                    <span className="member-role">{bot.role}</span>
-                  </div>
-                  <small className={activeRun ? "active" : ""}>
-                    {activeRun ? runStatusLabel(activeRun.status) : "待命"}
-                  </small>
-                </article>
+                <button type="button" onClick={() => onInspectRun(run.id)} key={run.id}>
+                  {assignee ? <RobotAvatar bot={assignee} compact status={run.status} /> : null}
+                  <span>
+                    <strong>
+                      {assignee?.name ?? "Bot"} · {runStatusLabel(run.status)}
+                    </strong>
+                    <small>{latestProgressByRun.get(run.id)?.message ?? run.title}</small>
+                  </span>
+                  <span aria-hidden="true">›</span>
+                </button>
               );
             })}
-          </div>
-        )}
-      </section>
-
-      <section className="conversation-panel" aria-label={`${channel.name} 消息`}>
-        <div className="conversation-heading">
-          <div>
-            <h2>频道消息</h2>
-            <p>消息保存在你自己的 PostgreSQL 中。</p>
-          </div>
-          <div className="realtime-summary">
-            <span>最近 {messages.length} 条</span>
-            <span className={`realtime-state ${realtimeState}`}>
-              <i />
-              {realtimeLabel(realtimeState)}
-            </span>
-          </div>
-        </div>
-
-        {runs.length > 0 ? (
-          <section className="run-queue" aria-label="频道任务">
-            <header>
-              <h3>任务</h3>
-              <span>{runs.filter(isActiveRun).length} 个处理中</span>
-            </header>
-            <div>
-              {runs.slice(0, 5).map((run) => {
-                const assignee = botsById.get(run.botId);
-                const runArtifacts = artifactsByRun.get(run.id) ?? [];
-                const latestProgress = latestProgressByRun.get(run.id);
-                return (
-                  <article className="run-row-shell" key={run.id}>
-                    <button
-                      className="run-row"
-                      type="button"
-                      aria-label={`查看任务：${run.title}`}
-                      onClick={() => onInspectRun(run.id)}
-                    >
-                      {assignee ? <RobotAvatar bot={assignee} compact status={run.status} /> : null}
-                      <span className="run-row-copy">
-                        <strong>{run.title}</strong>
-                        <small>{latestProgress?.message ?? assignee?.name ?? "未知 Bot"}</small>
-                      </span>
-                      <span className={`run-status ${run.status}`}>
-                        {runStatusLabel(run.status)}
-                      </span>
-                    </button>
-                    {run.resultSummary || run.errorMessage || runArtifacts.length > 0 ? (
-                      <div className={`run-result ${run.errorMessage ? "failed" : ""}`}>
-                        <p>{run.errorMessage ?? run.resultSummary}</p>
-                        {runArtifacts.map((artifact) => (
-                          <a
-                            href={`/api/v1/artifacts/${artifact.id}/content`}
-                            target="_blank"
-                            rel="noreferrer"
-                            key={artifact.id}
-                          >
-                            <img
-                              src={`/api/v1/artifacts/${artifact.id}/content`}
-                              alt={artifact.name}
-                              loading="lazy"
-                            />
-                            <span>{artifact.name}</span>
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
           </section>
         ) : null}
 
@@ -280,49 +257,91 @@ export function ChannelWorkspace({
               <span className="conversation-icon">
                 <HashIcon />
               </span>
-              <h2>{channel.name} 的起点</h2>
-              <p>写下第一条任务，之后的对话和执行结果都会留在这里。</p>
+              <h2>{channel.name} 的第一条消息</h2>
+              <p>
+                {members.length === 0
+                  ? "先将一名 Bot 加入频道。"
+                  : "选择一名 Bot，直接交代第一件工作。"}
+              </p>
             </div>
           ) : (
-            messages.map((message) => (
-              <article className={`message-row ${message.authorType}`} key={message.id}>
-                <span className="message-author" aria-hidden="true">
-                  {message.authorType === "human" ? "你" : "O"}
-                </span>
-                <div>
-                  <header>
-                    <strong>{message.authorType === "human" ? "你" : "OpenBot"}</strong>
-                    <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
-                  </header>
-                  <p>{message.content}</p>
-                </div>
-              </article>
-            ))
+            messages.map((message) => {
+              const author =
+                message.authorId === undefined ? undefined : botsById.get(message.authorId);
+              const replyTarget =
+                message.replyToMessageId === undefined
+                  ? undefined
+                  : messageById.get(message.replyToMessageId);
+              const run =
+                message.runId === undefined
+                  ? undefined
+                  : runs.find((item) => item.id === message.runId);
+              const messageArtifacts =
+                message.runId === undefined ? [] : (artifactsByRun.get(message.runId) ?? []);
+              return (
+                <MessageRow
+                  message={message}
+                  author={author}
+                  replyTarget={replyTarget}
+                  botsById={botsById}
+                  artifacts={messageArtifacts}
+                  run={run}
+                  onReply={() => setReplyingTo(message)}
+                  onInspectRun={onInspectRun}
+                  key={message.id}
+                />
+              );
+            })
           )}
         </div>
 
         <form className="message-composer" onSubmit={sendMessage}>
-          <label htmlFor={`message-${channel.id}`}>给频道下任务</label>
-          <div>
+          {replyingTo ? (
+            <div className="composer-reply">
+              <span>回复 {messageAuthorName(replyingTo, botsById)}</span>
+              <p>{replyingTo.content}</p>
+              <button type="button" onClick={() => setReplyingTo(undefined)} aria-label="取消回复">
+                ×
+              </button>
+            </div>
+          ) : null}
+          <div className="composer-target">
+            <span>发送给</span>
+            <select
+              value={targetBotId}
+              disabled={members.length === 0}
+              onChange={(event) => setTargetBotId(event.target.value)}
+              aria-label="选择接收任务的 Bot"
+            >
+              {members.map((bot) => (
+                <option value={bot.id} key={bot.id}>
+                  {bot.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="composer-input-row">
             <textarea
               id={`message-${channel.id}`}
               value={messageText}
               maxLength={8000}
-              rows={2}
+              rows={1}
               disabled={members.length === 0}
               placeholder={
                 members.length === 0
                   ? "先把一名 Bot 加入频道"
-                  : "例如：打开测试页，填写表单但不要提交…"
+                  : `给 ${targetBot?.name ?? "Bot"} 发消息`
               }
               onChange={(event) => setMessageText(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
             />
             <button
-              className="primary-button"
+              className="composer-send"
               type="submit"
               disabled={sending || members.length === 0 || messageText.trim().length === 0}
+              aria-label="发送消息"
             >
-              {sending ? "保存中…" : "发送"}
+              {sending ? "…" : "↑"}
             </button>
           </div>
           {messageError ? <p className="composer-error">{messageError}</p> : null}
@@ -332,11 +351,91 @@ export function ChannelWorkspace({
   );
 }
 
+function MessageRow({
+  message,
+  author,
+  replyTarget,
+  botsById,
+  artifacts,
+  run,
+  onReply,
+  onInspectRun,
+}: {
+  message: Message;
+  author: Bot | undefined;
+  replyTarget: Message | undefined;
+  botsById: Map<string, Bot>;
+  artifacts: Artifact[];
+  run: Run | undefined;
+  onReply(): void;
+  onInspectRun(runId: string): void;
+}) {
+  const name = message.authorType === "human" ? "你" : (author?.name ?? "OpenBot");
+  return (
+    <article className={`message-row ${message.authorType}`}>
+      <div className="message-avatar">
+        {author ? (
+          <RobotAvatar bot={author} compact status={run?.status ?? author.status} />
+        ) : (
+          <span>{message.authorType === "human" ? "你" : "O"}</span>
+        )}
+      </div>
+      <div className="message-content">
+        <header>
+          <strong>{name}</strong>
+          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+        </header>
+        {replyTarget ? (
+          <blockquote>
+            {messageAuthorName(replyTarget, botsById)}：{replyTarget.content}
+          </blockquote>
+        ) : null}
+        <RichMessage content={message.content} />
+        {artifacts.length > 0 ? (
+          <div className="message-artifacts">
+            {artifacts.map((artifact) => (
+              <a
+                href={`/api/v1/artifacts/${artifact.id}/content`}
+                target="_blank"
+                rel="noreferrer"
+                key={artifact.id}
+              >
+                <img
+                  src={`/api/v1/artifacts/${artifact.id}/content`}
+                  alt={artifact.name}
+                  loading="lazy"
+                />
+                <span>{artifact.name}</span>
+              </a>
+            ))}
+          </div>
+        ) : null}
+        <div className="message-actions">
+          <button type="button" onClick={onReply}>
+            ↩ 回复
+          </button>
+          {run ? (
+            <button type="button" onClick={() => onInspectRun(run.id)}>
+              任务详情 ↗
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function messageAuthorName(message: Message, botsById: Map<string, Bot> = new Map()) {
+  if (message.authorType === "human") return "你";
+  return (
+    (message.authorId === undefined ? undefined : botsById.get(message.authorId)?.name) ?? "OpenBot"
+  );
+}
+
 function formatMessageTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(
+    new Date(value),
+  );
 }
 
 function mergeMessages(primary: Message[], secondary: Message[]): Message[] {

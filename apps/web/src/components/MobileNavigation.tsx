@@ -1,7 +1,7 @@
 import type { Approval, ApprovalDecision, Bot, Channel, Run } from "@openbot/domain";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { ApprovalCard } from "./ApprovalCard";
-import { ApprovalIcon, BotIcon, HashIcon, OfficeIcon, PlusIcon } from "./Icons";
+import { ApprovalIcon, BotIcon, HashIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 export type MobilePanel = "channels" | "bots" | "approvals" | undefined;
@@ -14,7 +14,6 @@ export function MobileNavigation({
   approvals,
   onPanel,
   onDecideApproval,
-  onOffice,
   onCreateBot,
   onCreateChannel,
   onSelectChannel,
@@ -26,7 +25,6 @@ export function MobileNavigation({
   approvals: Approval[];
   onPanel(panel: MobilePanel): void;
   onDecideApproval(approvalId: string, decision: ApprovalDecision): Promise<void>;
-  onOffice(): void;
   onCreateBot(): void;
   onCreateChannel(): void;
   onSelectChannel(channelId: string): void;
@@ -99,10 +97,6 @@ export function MobileNavigation({
         </section>
       ) : null}
       <nav className="mobile-nav" aria-label="移动端导航">
-        <button type="button" onClick={onOffice}>
-          <OfficeIcon />
-          <span>办公室</span>
-        </button>
         <button type="button" onClick={() => onPanel("channels")}>
           <HashIcon />
           <span>频道</span>

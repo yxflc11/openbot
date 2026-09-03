@@ -1,7 +1,7 @@
 import type { Bot, Channel, Run } from "@openbot/domain";
 import { useState } from "react";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
-import { BotIcon, HashIcon, OfficeIcon, PlusIcon } from "./Icons";
+import { BotIcon, HashIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
@@ -10,7 +10,6 @@ interface SidebarProps {
   runs: Run[];
   ownerName: string;
   selectedChannelId?: string | undefined;
-  onOffice(): void;
   onSelectChannel(channelId: string): void;
   onCreateBot(): void;
   onCreateChannel(): void;
@@ -23,7 +22,6 @@ export function Sidebar({
   runs,
   ownerName,
   selectedChannelId,
-  onOffice,
   onSelectChannel,
   onCreateBot,
   onCreateChannel,
@@ -50,15 +48,6 @@ export function Sidebar({
       <a className="brand" href="/" aria-label="OpenBot 首页">
         OpenBot
       </a>
-
-      <button
-        className={`office-link ${selectedChannelId === undefined ? "active" : ""}`}
-        type="button"
-        onClick={onOffice}
-      >
-        <OfficeIcon />
-        办公室
-      </button>
 
       <div className="sidebar-body">
         <SidebarSection title="频道" onAdd={onCreateChannel} addLabel="创建频道">

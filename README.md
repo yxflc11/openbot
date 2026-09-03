@@ -80,13 +80,11 @@ OpenClaw 降级为**可选 Agent runtime/技能来源**，不再承担频道或�
 
 ## 界面方向
 
-默认首页参考腾讯 Marvis 的可视化办公室，让 Bot 像数字员工一样在工位上呈现状态；同时保留 Grok Bot 的长期频道和自由新增 Bot。用户可以创建频道、创建 Bot、把 Bot 加入频道，再从办公室进入任务、实时电脑、审批和产物。
+当前版本默认进入 Grok Bot 式长期频道。频道是任务、Bot 回复、审批和产物的主界面；用户可以明确选择接收消息的 Bot，执行结果也会以该 Bot 的身份持久化回到同一对话。腾讯 Marvis 的空间化办公室不在当前版本展示，已隔离为 `@openbot/office-plugin` 可选包，后续独立迭代。
 
-Bot 角色采用原创的粗线条像素块语言：只保留方形屏幕脸、状态表情和单一角色强调色，不使用高光、复杂机械关节或拟真 3D 材质。它是系统状态图标，不应抢过任务内容的视觉层级。
+Bot 角色采用用户定义的黑色机器人模型，并拆成头部、身体、移动方式、配件和强调色五层组合身份。组合随 Bot 保存，可在频道头像、成员名册以及未来插件中复用；当前不引入稀有度、交易或链上逻辑。
 
 这里严格区分：Bot 是员工，Node 是电脑，Channel 是工作房间，Run 是当前工作。详细交互见 [界面方案](docs/INTERFACE.md)。
-
-![OpenBot M0 办公室设计基准](docs/design/m0-office-concept.png)
 
 ## 远程控制路径
 
@@ -191,7 +189,7 @@ npm run check
 npm audit
 ```
 
-此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`。节点在线状态、容量、执行阶段、审批和最新画面经 SSE 实时投影；点击频道任务或右栏任务即可打开 Inspector，查看指令、Bot、电脑、进度、临时画面、结果与 PNG 产物。provider 发起写入、删除或特权动作前可请求审批，Owner 的一次批准或拒绝会落库并只回传对应 Run 与 Node。画面只在 Server 内存中短时保留，通过 Owner Session 读取，不写入 PostgreSQL。执行中的 Node 断线会把 Run 明确标记失败，避免对未知外部副作用盲目重试。连续屏幕采集、真实网页填写/点击、加密的一次性 capability lease 和远程接管仍将按 M1–M2 逐步接入。
+此时可通过本地 Owner 密码登录，并运行频道优先界面、组合式 Bot 创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。用户可在输入框中指定接收任务的 Bot；任务完成后，Server 将结果保存为该 Bot 的回复并通过 SSE 推回频道。Bot 回复支持段落、列表、表格、引用关系和 Artifact。随后按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`。节点在线状态、容量、执行阶段、审批和最新画面经 SSE 实时投影；点击活动任务或右栏任务即可打开 Inspector。provider 发起写入、删除或特权动作前可请求审批，Owner 的一次批准或拒绝会落库并只回传对应 Run 与 Node。画面只在 Server 内存中短时保留。连续屏幕采集、真实网页填写/点击、加密的一次性 capability lease 和远程接管仍将按 M1–M2 逐步接入。
 
 生产环境必须使用 HTTPS，把 `OPENBOT_SECURE_COOKIES` 设为 `true`，并让 `OPENBOT_ALLOWED_ORIGINS` 只包含实际 Web/PWA 地址。Owner 密码至少 12 个字符，建议使用密码管理器生成的长随机值。
 
@@ -199,7 +197,7 @@ npm audit
 
 - [产品定义](docs/PRODUCT.md)
 - [系统架构](docs/ARCHITECTURE.md)
-- [Marvis 办公室 + Grok Bot 频道界面方案](docs/INTERFACE.md)
+- [频道优先 + 可选办公室插件界面方案](docs/INTERFACE.md)
 - [安全模型](docs/SECURITY.md)
 - [实施路线图](docs/ROADMAP.md)
 - [上游选择与集成策略](docs/UPSTREAMS.md)
@@ -216,6 +214,7 @@ npm audit
 - [ADR-0010：复用 agent-computer 的 provider 边界](docs/decisions/0010-agent-computer-provider-boundary.md)
 - [ADR-0011：Workspace Node 实时投影](docs/decisions/0011-workspace-node-realtime.md)
 - [ADR-0012：临时最新画面传输](docs/decisions/0012-ephemeral-run-frame-transport.md)
+- [ADR-0013：当前版本频道优先，办公室插件化](docs/decisions/0013-channel-first-office-plugin.md)
 - [声明式配置草案](examples/openbot.example.yaml)
 
 ## 开源注意事项

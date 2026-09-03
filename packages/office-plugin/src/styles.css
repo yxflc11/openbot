@@ -1,0 +1,57 @@
+.openbot-office-plugin {
+  min-height: 100%;
+  padding: 32px;
+  background: #f5f7f9;
+  color: #17191c;
+}
+.openbot-office-plugin > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.openbot-office-plugin h1,
+.openbot-office-plugin h2,
+.openbot-office-plugin p {
+  margin: 0;
+}
+.openbot-office-plugin header span {
+  color: #1267ed;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.openbot-office-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.openbot-office-grid article {
+  padding: 20px;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  background: #fff;
+}
+.openbot-office-grid article.is-active {
+  border-color: #9fc1f5;
+}
+.openbot-office-avatar {
+  display: grid;
+  min-height: 150px;
+  place-items: center;
+}
+.openbot-office-grid h2 {
+  font-size: 15px;
+}
+.openbot-office-grid p,
+.openbot-office-grid small {
+  display: block;
+  margin-top: 6px;
+  color: #707780;
+  font-size: 11px;
+}
+.openbot-office-grid article > div:last-child {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}

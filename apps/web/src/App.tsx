@@ -30,7 +30,6 @@ import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
-import { Office } from "./components/Office";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import {
@@ -211,6 +210,17 @@ function AuthenticatedWorkspace({
 
   const workspaceReady = workspace !== undefined;
   useEffect(() => {
+    if (workspace === undefined) return;
+    if (workspace.channels.length === 0) {
+      if (selectedChannelId !== undefined) setSelectedChannelId(undefined);
+      return;
+    }
+    if (!workspace.channels.some((channel) => channel.id === selectedChannelId)) {
+      setSelectedChannelId(workspace.channels[0]?.id);
+    }
+  }, [selectedChannelId, workspace]);
+
+  useEffect(() => {
     if (!workspaceReady) return;
     return subscribeToWorkspaceEvents({
       onReady(nodes) {
@@ -337,7 +347,6 @@ function AuthenticatedWorkspace({
         runs={workspace.runs}
         ownerName={ownerName}
         selectedChannelId={selectedChannel?.id}
-        onOffice={() => setSelectedChannelId(undefined)}
         onSelectChannel={selectChannel}
         onCreateBot={() => setDialog("bot")}
         onCreateChannel={() => setDialog("channel")}
@@ -357,11 +366,8 @@ function AuthenticatedWorkspace({
           onRun={projectRun}
         />
       ) : (
-        <Office
-          bots={workspace.bots}
-          channels={workspace.channels}
-          nodes={workspace.nodes}
-          runs={workspace.runs}
+        <ChannelEmptyState
+          hasBots={workspace.bots.length > 0}
           onCreateBot={() => setDialog("bot")}
           onCreateChannel={() => setDialog("channel")}
         />
@@ -382,10 +388,6 @@ function AuthenticatedWorkspace({
         approvals={workspace.approvals}
         onPanel={setMobilePanel}
         onDecideApproval={handleDecideApproval}
-        onOffice={() => {
-          setSelectedChannelId(undefined);
-          setMobilePanel(undefined);
-        }}
         onCreateBot={() => {
           setMobilePanel(undefined);
           setDialog("bot");
@@ -425,6 +427,35 @@ function AuthenticatedWorkspace({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ChannelEmptyState({
+  hasBots,
+  onCreateBot,
+  onCreateChannel,
+}: {
+  hasBots: boolean;
+  onCreateBot(): void;
+  onCreateChannel(): void;
+}) {
+  return (
+    <main className="workspace-main channel-first-empty">
+      <span className="channel-empty-mark">#</span>
+      <p className="empty-eyebrow">OPENBOT CHANNELS</p>
+      <h1>从一个长期频道开始</h1>
+      <p>频道保存任务、Bot 对话、审批和结果。执行电脑可以随时替换，工作上下文不会丢失。</p>
+      <div>
+        <button className="primary-button" type="button" onClick={onCreateChannel}>
+          创建第一个频道
+        </button>
+        {!hasBots ? (
+          <button className="secondary-button" type="button" onClick={onCreateBot}>
+            先创建 Bot
+          </button>
+        ) : null}
+      </div>
+    </main>
   );
 }
 

@@ -265,12 +265,24 @@ describe("server app", () => {
         name: "Ops",
         role: "Browser and operations",
         computerProfile: "docker-linux",
+        appearance: {
+          head: "cat",
+          body: "cape",
+          mobility: "hover",
+          accessory: "headphones",
+          accent: "green",
+        },
       }),
     });
 
     expect(response.status).toBe(201);
     expect(await response.json()).toMatchObject({
-      bot: { name: "Ops", status: "idle", computerProfile: "docker-linux" },
+      bot: {
+        name: "Ops",
+        status: "idle",
+        computerProfile: "docker-linux",
+        appearance: { head: "cat", body: "cape", mobility: "hover" },
+      },
     });
   });
 
@@ -777,16 +789,21 @@ function createTestStore(): ControlPlaneStore {
             : "The selected Bot is not a member of this channel.",
         );
       }
+      const runId = id();
       const message: Message = {
         id: id(),
         channelId,
         authorType: "human",
+        runId,
+        ...(input.replyToMessageId === undefined
+          ? {}
+          : { replyToMessageId: input.replyToMessageId }),
         content: input.content,
         createdAt: new Date().toISOString(),
       };
       messages.push(message);
       const run: Run = {
-        id: id(),
+        id: runId,
         channelId,
         botId: assignee.id,
         sourceMessageId: message.id,
@@ -881,7 +898,18 @@ function createTestStore(): ControlPlaneStore {
       run.status = "completed";
       run.resultSummary = summary;
       run.updatedAt = new Date().toISOString();
-      return { run, artifacts: [] };
+      const message: Message = {
+        id: id(),
+        channelId: run.channelId,
+        authorType: "bot",
+        authorId: run.botId,
+        runId: run.id,
+        ...(run.sourceMessageId === undefined ? {} : { replyToMessageId: run.sourceMessageId }),
+        content: summary,
+        createdAt: new Date().toISOString(),
+      };
+      messages.push(message);
+      return { run, artifacts: [], message };
     },
     async failRun(runId: string, nodeId: string, error: string) {
       const run = runs.find((item) => item.id === runId);

@@ -209,7 +209,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       role: input.role,
       status: "idle" as const,
       computerProfile: input.computerProfile,
-      configuration: {},
+      configuration: input.appearance === undefined ? {} : { appearance: input.appearance },
       createdAt: now,
       updatedAt: now,
     };
@@ -297,15 +297,17 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
 
   async submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult> {
     const now = new Date();
+    const runId = randomUUID();
     const message = {
       id: randomUUID(),
       channelId,
       authorType: "human" as const,
       authorId: null,
+      replyToMessageId: input.replyToMessageId ?? null,
+      runId,
       content: input.content,
       createdAt: now,
     };
-    const runId = randomUUID();
     let selectedBotId: string | undefined;
     let selectedExecutionProfile: Bot["computerProfile"] | undefined;
 
@@ -317,6 +319,17 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         .limit(1);
       if (channelRows.length === 0) {
         throw new StoreNotFoundError("Channel not found.");
+      }
+
+      if (input.replyToMessageId !== undefined) {
+        const [replyTarget] = await transaction
+          .select({ id: messages.id })
+          .from(messages)
+          .where(and(eq(messages.id, input.replyToMessageId), eq(messages.channelId, channelId)))
+          .limit(1);
+        if (replyTarget === undefined) {
+          throw new StoreValidationError("The replied message does not belong to this channel.");
+        }
       }
 
       const candidates = await transaction
@@ -628,6 +641,18 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         .returning();
       if (updated === undefined) return undefined;
 
+      const message = {
+        id: randomUUID(),
+        channelId: updated.channelId,
+        authorType: "bot" as const,
+        authorId: updated.botId,
+        replyToMessageId: updated.sourceMessageId,
+        runId: updated.id,
+        content: summary,
+        createdAt: now,
+      };
+      await transaction.insert(messages).values(message);
+
       if (artifacts.length > 0) {
         await transaction.insert(artifactsTable).values(
           artifacts.map((record) => ({
@@ -642,16 +667,35 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           })),
         );
       }
-      await transaction.insert(runEvents).values({
-        id: randomUUID(),
-        runId,
-        channelId: updated.channelId,
-        botId: updated.botId,
-        nodeId,
-        type: "RUN_COMPLETED",
-        payload: { summary, artifactIds: artifacts.map((artifact) => artifact.id) },
-      });
-      return { run: toRun(updated), artifacts: artifacts.map(stripArtifactRecord) };
+      await transaction.insert(runEvents).values([
+        {
+          id: randomUUID(),
+          runId,
+          channelId: updated.channelId,
+          botId: updated.botId,
+          nodeId,
+          type: "MESSAGE_CREATED",
+          payload: {
+            messageId: message.id,
+            authorType: message.authorType,
+            replyToMessageId: message.replyToMessageId,
+          },
+        },
+        {
+          id: randomUUID(),
+          runId,
+          channelId: updated.channelId,
+          botId: updated.botId,
+          nodeId,
+          type: "RUN_COMPLETED",
+          payload: { summary, artifactIds: artifacts.map((artifact) => artifact.id) },
+        },
+      ]);
+      return {
+        run: toRun(updated),
+        artifacts: artifacts.map(stripArtifactRecord),
+        message: toMessage(message),
+      };
     });
   }
 
@@ -829,12 +873,15 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
 }
 
 function toBot(row: typeof bots.$inferSelect | typeof bots.$inferInsert): Bot {
+  const configuration = asRecord(row.configuration);
+  const appearance = toBotAppearance(configuration.appearance);
   return {
     id: row.id,
     name: row.name,
     role: row.role,
     status: row.status as Bot["status"],
     computerProfile: row.computerProfile as Bot["computerProfile"],
+    ...(appearance === undefined ? {} : { appearance }),
     createdAt: (row.createdAt ?? new Date()).toISOString(),
   };
 }
@@ -845,8 +892,39 @@ function toMessage(row: typeof messages.$inferSelect | typeof messages.$inferIns
     channelId: row.channelId,
     authorType: row.authorType as Message["authorType"],
     ...(row.authorId === null || row.authorId === undefined ? {} : { authorId: row.authorId }),
+    ...(row.replyToMessageId === null || row.replyToMessageId === undefined
+      ? {}
+      : { replyToMessageId: row.replyToMessageId }),
+    ...(row.runId === null || row.runId === undefined ? {} : { runId: row.runId }),
     content: row.content,
     createdAt: (row.createdAt ?? new Date()).toISOString(),
+  };
+}
+
+function toBotAppearance(value: unknown): Bot["appearance"] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (
+    !["round", "square", "cat"].includes(String(candidate.head)) ||
+    !["classic", "tall", "cape", "armor", "storage", "quadruped"].includes(
+      String(candidate.body),
+    ) ||
+    !["feet", "single-wheel", "dual-wheel", "hover", "four-legs"].includes(
+      String(candidate.mobility),
+    ) ||
+    !["none", "headphones", "backpack", "trench", "arm", "toolbox"].includes(
+      String(candidate.accessory),
+    ) ||
+    !["green", "yellow", "red", "blue"].includes(String(candidate.accent))
+  ) {
+    return undefined;
+  }
+  return {
+    head: candidate.head as NonNullable<Bot["appearance"]>["head"],
+    body: candidate.body as NonNullable<Bot["appearance"]>["body"],
+    mobility: candidate.mobility as NonNullable<Bot["appearance"]>["mobility"],
+    accessory: candidate.accessory as NonNullable<Bot["appearance"]>["accessory"],
+    accent: candidate.accent as NonNullable<Bot["appearance"]>["accent"],
   };
 }
 

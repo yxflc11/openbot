@@ -348,6 +348,11 @@ export class RunDispatcher {
         run: completion.run,
         artifacts: completion.artifacts,
       });
+      this.#realtime.publish({
+        type: "message.created",
+        channelId: completion.message.channelId,
+        message: completion.message,
+      });
       this.#workspace?.publish({
         type: "run.updated",
         run: completion.run,

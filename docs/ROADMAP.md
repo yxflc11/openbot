@@ -2,7 +2,7 @@
 
 ## 当前进度
 
-M1 第二切片已完成：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、任务、结构化事件、Owner Session、结果和 Artifact 元数据会真实落库；Web 可以本地登录、创建 Bot、创建频道、把 Bot 加入频道、提交频道任务，并在频道、桌面办公室和手机列表中读取同一份数据。频道 SSE、多浏览器即时同步、断线检测和自动重连已跑通。任务先由 Server 确定性地选择频道成员，再以 Bot 固定的 execution profile 匹配有容量的 Node。
+M1 第二切片已完成：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、任务、结构化事件、Owner Session、结果和 Artifact 元数据会真实落库；Web 可以本地登录、创建组合式 Bot、创建频道、把 Bot 加入频道并指定 Bot 提交任务。任务完成结果会作为 Bot 回复保存到频道，频道 SSE、多浏览器即时同步、回复关系、富文本表格、断线检测和自动重连已跑通。任务再以 Bot 固定的 execution profile 匹配有容量的 Node。
 
 Node 已通过出站 WebSocket 上报真实可执行能力和并发容量；两阶段 offer/accept/confirm、显式 start、progress、frame、completed/failed/settled、数据库条件转换、节点断线恢复已通过进程级链路验证。首个 Docker provider 已用薄适配层接通 CopilotKit/OpenBot `agent-computer`：当前只打开任务中明确的公开 URL 并回传一张 PNG。Workspace SSE 已让 Node、Run 与审批状态在所有设备实时同步；结构化 progress 与最新临时画面已进入 Run Inspector。
 
@@ -30,7 +30,8 @@ M2 第一切片已完成：Node/provider 可发送结构化 `approval.request`�
 - PostgreSQL 中的频道、消息和事件。
 - 不提供 Intelligence key/license 时完整启动。
 - 本地登录、Bot 名册、频道、policy 和 audit。
-- Marvis 式办公室基线，以及创建频道、创建 Bot、把 Bot 加入频道的完整流程。
+- 频道优先的桌面和移动端界面，以及创建频道、组合式 Bot、把 Bot 加入频道的完整流程。
+- Marvis 式办公室隔离为 `@openbot/office-plugin`，不在当前版本加载。
 - 响应式 Web/PWA 基线；移动端使用单栏任务与底部抽屉。
 
 ### 过线测试

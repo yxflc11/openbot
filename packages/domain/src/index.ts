@@ -32,12 +32,27 @@ export interface Channel {
   createdAt: string;
 }
 
+export type BotHeadShape = "round" | "square" | "cat";
+export type BotBodyShape = "classic" | "tall" | "cape" | "armor" | "storage" | "quadruped";
+export type BotMobility = "feet" | "single-wheel" | "dual-wheel" | "hover" | "four-legs";
+export type BotAccessory = "none" | "headphones" | "backpack" | "trench" | "arm" | "toolbox";
+export type BotAccent = "green" | "yellow" | "red" | "blue";
+
+export interface BotAppearance {
+  head: BotHeadShape;
+  body: BotBodyShape;
+  mobility: BotMobility;
+  accessory: BotAccessory;
+  accent: BotAccent;
+}
+
 export interface Bot {
   id: EntityId;
   name: string;
   role: string;
   status: BotStatus;
   computerProfile: "none" | "docker-linux" | "macos-cua" | "lume-vm" | "coder";
+  appearance?: BotAppearance | undefined;
   createdAt: string;
 }
 
@@ -131,6 +146,8 @@ export interface Message {
   channelId: EntityId;
   authorType: MessageAuthorType;
   authorId?: EntityId;
+  replyToMessageId?: EntityId;
+  runId?: EntityId;
   content: string;
   createdAt: string;
 }
@@ -233,6 +250,7 @@ export interface CreateBotInput {
   name: string;
   role: string;
   computerProfile: Bot["computerProfile"];
+  appearance?: BotAppearance | undefined;
 }
 
 export interface CreateChannelInput {
@@ -244,6 +262,7 @@ export interface CreateChannelInput {
 export interface CreateMessageInput {
   content: string;
   botId?: EntityId | undefined;
+  replyToMessageId?: EntityId | undefined;
 }
 
 export interface SubmitTaskResult {

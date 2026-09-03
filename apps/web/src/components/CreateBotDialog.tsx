@@ -1,7 +1,8 @@
-import type { Bot, CreateBotInput } from "@openbot/domain";
+import type { Bot, BotAppearance, CreateBotInput } from "@openbot/domain";
 import { useState } from "react";
 import type { ApiError } from "../api";
 import { CloseIcon } from "./Icons";
+import { defaultBotAppearance, RobotAvatar } from "./RobotAvatar";
 
 const computerOptions: Array<{ value: Bot["computerProfile"]; label: string }> = [
   { value: "none", label: "暂不绑定电脑" },
@@ -10,6 +11,43 @@ const computerOptions: Array<{ value: Bot["computerProfile"]; label: string }> =
   { value: "lume-vm", label: "Lume macOS VM" },
   { value: "coder", label: "Coder runtime" },
 ];
+
+const appearanceOptions = {
+  head: [
+    { value: "round", label: "圆角头盔" },
+    { value: "square", label: "方形头盔" },
+    { value: "cat", label: "猫耳头盔" },
+  ],
+  body: [
+    { value: "classic", label: "基础款" },
+    { value: "tall", label: "长身款" },
+    { value: "cape", label: "披风款" },
+    { value: "armor", label: "装甲款" },
+    { value: "storage", label: "收纳款" },
+    { value: "quadruped", label: "四足款" },
+  ],
+  mobility: [
+    { value: "feet", label: "双脚" },
+    { value: "single-wheel", label: "单轮" },
+    { value: "dual-wheel", label: "双轮" },
+    { value: "hover", label: "悬浮" },
+    { value: "four-legs", label: "四足" },
+  ],
+  accessory: [
+    { value: "none", label: "无配件" },
+    { value: "headphones", label: "耳机" },
+    { value: "backpack", label: "背包" },
+    { value: "trench", label: "斗篷" },
+    { value: "arm", label: "机械臂" },
+    { value: "toolbox", label: "工具箱" },
+  ],
+  accent: [
+    { value: "green", label: "绿色" },
+    { value: "yellow", label: "黄色" },
+    { value: "red", label: "红色" },
+    { value: "blue", label: "蓝色" },
+  ],
+} as const;
 
 export function CreateBotDialog({
   onClose,
@@ -21,6 +59,7 @@ export function CreateBotDialog({
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [computerProfile, setComputerProfile] = useState<Bot["computerProfile"]>("none");
+  const [appearance, setAppearance] = useState<BotAppearance>(defaultBotAppearance);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
@@ -29,7 +68,7 @@ export function CreateBotDialog({
     setBusy(true);
     setError(undefined);
     try {
-      await onCreate({ name, role, computerProfile });
+      await onCreate({ name, role, computerProfile, appearance });
     } catch (cause) {
       setError((cause as ApiError).message ?? "无法创建 Bot。请稍后重试。");
     } finally {
@@ -50,6 +89,57 @@ export function CreateBotDialog({
               <CloseIcon />
             </button>
           </header>
+          <section className="bot-identity-builder" aria-label="Bot 外观组合">
+            <div className="bot-preview">
+              <RobotAvatar
+                bot={{
+                  id: "preview",
+                  name: name.trim() || "新 Bot",
+                  role: role.trim() || "数字员工",
+                  status: "idle",
+                  computerProfile,
+                  appearance,
+                  createdAt: new Date(0).toISOString(),
+                }}
+              />
+              <div>
+                <strong>{name.trim() || "新 Bot"}</strong>
+                <span>五层组合身份</span>
+              </div>
+            </div>
+            <div className="appearance-grid">
+              <AppearanceSelect
+                label="头部"
+                value={appearance.head}
+                options={appearanceOptions.head}
+                onChange={(head) => setAppearance((current) => ({ ...current, head }))}
+              />
+              <AppearanceSelect
+                label="身体"
+                value={appearance.body}
+                options={appearanceOptions.body}
+                onChange={(body) => setAppearance((current) => ({ ...current, body }))}
+              />
+              <AppearanceSelect
+                label="移动"
+                value={appearance.mobility}
+                options={appearanceOptions.mobility}
+                onChange={(mobility) => setAppearance((current) => ({ ...current, mobility }))}
+              />
+              <AppearanceSelect
+                label="配件"
+                value={appearance.accessory}
+                options={appearanceOptions.accessory}
+                onChange={(accessory) => setAppearance((current) => ({ ...current, accessory }))}
+              />
+              <AppearanceSelect
+                label="颜色"
+                value={appearance.accent}
+                options={appearanceOptions.accent}
+                onChange={(accent) => setAppearance((current) => ({ ...current, accent }))}
+              />
+            </div>
+          </section>
           <div className="form-grid">
             <label>
               <span>Bot 名称</span>
@@ -105,5 +195,30 @@ export function CreateBotDialog({
         </form>
       </dialog>
     </div>
+  );
+}
+
+function AppearanceSelect<Value extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: Value;
+  options: ReadonlyArray<{ value: Value; label: string }>;
+  onChange(value: Value): void;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value as Value)}>
+        {options.map((option) => (
+          <option value={option.value} key={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

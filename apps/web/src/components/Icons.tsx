@@ -20,15 +20,6 @@ const strokeProps = {
   strokeWidth: 1.8,
 };
 
-export function OfficeIcon() {
-  return (
-    <Icon>
-      <path d="M3.5 10.4 12 3.5l8.5 6.9v9.1a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1Z" {...strokeProps} />
-      <path d="M8.5 20.5v-6h7v6" {...strokeProps} />
-    </Icon>
-  );
-}
-
 export function HashIcon() {
   return (
     <Icon size={16}>

@@ -1,4 +1,4 @@
-import type { ExecutionNode, Run } from "@openbot/domain";
+import type { ExecutionNode, Message, Run } from "@openbot/domain";
 import { protocolVersion } from "@openbot/protocol";
 import { describe, expect, it } from "vitest";
 import type { NodeRunMessage } from "./node-registry.js";
@@ -238,6 +238,7 @@ describe("run dispatcher", () => {
     const projectedStatuses: Run["status"][] = [];
     const projectedProgress: string[] = [];
     const projectedFrames: number[] = [];
+    const projectedMessages: Message[] = [];
     const settled: Array<{ runId: string; status: "completed" | "failed" }> = [];
     const projectedApprovals: string[] = [];
     const projectedWorkspaceStatuses: Run["status"][] = [];
@@ -300,7 +301,19 @@ describe("run dispatcher", () => {
           if (run.status !== "running" || run.nodeId !== nodeId) return undefined;
           run.status = "completed";
           run.resultSummary = summary;
-          return { run, artifacts };
+          return {
+            run,
+            artifacts,
+            message: {
+              id: "00000000-0000-4000-8000-000000000010",
+              channelId: run.channelId,
+              authorType: "bot",
+              authorId: run.botId,
+              runId: run.id,
+              content: summary,
+              createdAt: new Date().toISOString(),
+            },
+          };
         },
         async failRun() {
           return undefined;
@@ -333,6 +346,7 @@ describe("run dispatcher", () => {
           if (event.type === "run.updated") projectedStatuses.push(event.run.status);
           if (event.type === "run.progress") projectedProgress.push(event.progress.message);
           if (event.type === "run.frame") projectedFrames.push(event.frame.revision);
+          if (event.type === "message.created") projectedMessages.push(event.message);
         },
       },
       artifactStorage,
@@ -413,6 +427,9 @@ describe("run dispatcher", () => {
     expect(run.resultSummary).toBe("已打开页面并截图");
     expect(projectedProgress).toEqual(["正在打开测试页"]);
     expect(projectedFrames).toEqual([1]);
+    expect(projectedMessages).toMatchObject([
+      { authorType: "bot", authorId: run.botId, content: "已打开页面并截图" },
+    ]);
     expect(settled).toEqual([{ runId: run.id, status: "completed" }]);
     expect(projectedStatuses).toEqual(["assigned", "running", "waiting_approval", "completed"]);
     expect(projectedWorkspaceStatuses).toEqual([

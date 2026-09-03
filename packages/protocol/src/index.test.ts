@@ -167,6 +167,31 @@ describe("control plane inputs", () => {
     });
   });
 
+  it("validates the five composable Bot appearance layers", () => {
+    const appearance = {
+      head: "cat",
+      body: "cape",
+      mobility: "hover",
+      accessory: "headphones",
+      accent: "red",
+    } as const;
+    expect(
+      createBotInputSchema.parse({
+        name: "Scout",
+        role: "Research",
+        computerProfile: "docker-linux",
+        appearance,
+      }).appearance,
+    ).toEqual(appearance);
+    expect(
+      createBotInputSchema.safeParse({
+        name: "Scout",
+        role: "Research",
+        appearance: { ...appearance, mobility: "teleport" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("deduplicates a channel roster", () => {
     const botId = "00000000-0000-4000-8000-000000000001";
     expect(
@@ -187,9 +212,13 @@ describe("control plane inputs", () => {
 
   it("accepts an optional Bot assignment for a channel task", () => {
     const botId = "00000000-0000-4000-8000-000000000001";
-    expect(createMessageInputSchema.parse({ content: "  执行任务  ", botId })).toEqual({
+    const replyToMessageId = "00000000-0000-4000-8000-000000000002";
+    expect(
+      createMessageInputSchema.parse({ content: "  执行任务  ", botId, replyToMessageId }),
+    ).toEqual({
       content: "执行任务",
       botId,
+      replyToMessageId,
     });
     expect(
       createMessageInputSchema.safeParse({ content: "执行任务", botId: "not-an-id" }).success,

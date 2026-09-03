@@ -1,5 +1,7 @@
 # ADR-0003：Marvis 办公室与 Grok Bot 频道
 
+> Superseded by [ADR-0013](0013-channel-first-office-plugin.md)：办公室已改为可选插件，当前版本频道优先。
+
 ## 状态
 
 Accepted

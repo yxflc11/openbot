@@ -64,6 +64,13 @@
       "when": 1789104000000,
       "tag": "0008_owner_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789190400000,
+      "tag": "0009_channel_conversations",
+      "breakpoints": true
     }
   ]
 }
