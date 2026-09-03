@@ -23,14 +23,22 @@ export function configuredProviders(env: NodeEnv): ComputerProvider[] {
 }
 
 export function availableCapabilities(providers: ComputerProvider[]): NodeCapability[] {
-  return Array.from(new Set(providers.flatMap((provider) => provider.capabilities))).sort();
+  return Array.from(
+    new Set(
+      providers
+        .filter((provider) => provider.execute !== undefined)
+        .flatMap((provider) => provider.capabilities),
+    ),
+  ).sort();
 }
 
 export function availableCapabilityManifest(
   providers: ComputerProvider[],
 ): NodeCapabilityDescriptor[] {
   const descriptors = new Map<string, NodeCapabilityDescriptor>();
-  for (const descriptor of providers.flatMap((provider) => provider.capabilityManifest)) {
+  for (const descriptor of providers
+    .filter((provider) => provider.execute !== undefined)
+    .flatMap((provider) => provider.capabilityManifest)) {
     const key = `${descriptor.id}@${descriptor.version}:${descriptor.providerId}`;
     descriptors.set(key, descriptor);
   }

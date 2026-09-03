@@ -55,7 +55,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, and SSE reconnect | Installable PWA, notification delivery, accessibility and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
 | Employee profile | Seven-view profile, safe template export, quarantined import inspection, and Owner-reviewed candidate/verify/suspend/revoke skill metadata | Executable Agent Skills bundles, autonomous proposals, memory controls, signed packages, reviewed activation, cloning, and transfer |
-| Node protocol | Outbound WebSocket registration, heartbeat, capacity, deterministic routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and protocol compatibility tests |
+| Node protocol | Outbound WebSocket registration, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
 | Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
@@ -254,6 +254,7 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | Work on the channel experience | [Interface guide](docs/INTERFACE.md) |
 | Design employee identity and portability | [Portable employee model](docs/EMPLOYEE.md) |
 | Add an operating system or device | [Cross-platform Worker Hosts](docs/CROSS_PLATFORM.md) |
+| Test a Worker Host or Provider claim | [Provider conformance](docs/PROVIDER_CONFORMANCE.md) |
 | Understand upstream choices | [Upstream strategy](docs/UPSTREAMS.md) |
 | Follow the open-source-first review process | [Open-source reuse policy and current audit](docs/OPEN_SOURCE_REUSE.md) |
 | Review why a decision was made | [Architecture decision records](docs/decisions/) |

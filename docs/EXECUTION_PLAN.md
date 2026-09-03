@@ -41,8 +41,8 @@ tests, hardening, or the next slice.
 | 3:15–4:30 | Complete | Safe template export | Strict package schema, preview, sensitive-text blocker, checksum, and JSON download | Default package has no source id, secret, session, approval, Node identity, memory, history, or authority |
 | 4:30–5:45 | Complete | Import inspection and quarantine | Upload/parse boundary, schema and checksum validation, compatibility report, and review-only preview | Invalid/unknown fields fail closed; no Bot, skill, memory, or authority is created during preview |
 | 5:45–6:45 | Complete | Contributor skill interfaces | Minimal versioned skill create/verify/suspend APIs with immutable evolution events | Verification requires evidence or explicit Owner review; skill state never changes host policy |
-| 6:45–7:45 | Active | Cross-platform conformance hardening | Provider/Node fixture matrix, routing negatives, reconnect tests, and documented support levels | Unsupported platforms and capabilities remain visibly blocked without silent fallback |
-| 7:45–8:30 | Queued | Integration and contribution handoff | Full checks, API docs, roadmap, issue-ready follow-ups, accessibility pass, and small reviewable commits | `npm run check` passes; docs distinguish implemented, experimental, and planned behavior |
+| 6:45–7:45 | Complete | Cross-platform conformance hardening | Provider/Node fixture matrix, routing negatives, reconnect tests, and documented support levels | Exact capability majors are checked at both ends; unsupported platforms and versions remain blocked without fallback |
+| 7:45–8:30 | Active | Integration and contribution handoff | Full checks, API docs, roadmap, issue-ready follow-ups, accessibility pass, and small reviewable commits | `npm run check` passes; docs distinguish implemented, experimental, and planned behavior |
 
 ## Execution rules
 

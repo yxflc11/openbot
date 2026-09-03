@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 import type { ExecutionNode } from "@openbot/domain";
 import {
   type NodeCapability,
+  type NodeCapabilityRequirement,
   type NodeMessage,
   nodeMessageSchema,
   protocolVersion,
@@ -32,6 +33,7 @@ export interface RunOfferInput {
   instruction: string;
   executionProfile: RunOffer["executionProfile"];
   requiredCapabilities: NodeCapability[];
+  requiredCapabilityManifest: NodeCapabilityRequirement[];
 }
 
 export type RunOfferResult =

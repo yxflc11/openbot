@@ -52,18 +52,16 @@ native desktop. Each native Provider has a separate support level and threat mod
 
 ## Structured host identity
 
-The current `linux | macos | unknown` platform enum is insufficient. A Node registration must
-eventually declare:
+Protocol `0.7.0` already declares:
 
 - operating system and version;
 - CPU architecture;
 - device class: server, desktop, mobile, VM, container, or edge;
 - isolation class: dedicated host, user session, VM, container, or managed device;
-- Provider identities and versions;
-- versioned capabilities and constraints;
-- screen and input transports;
-- trust tier and supported policy profiles;
-- health, capacity, and update channel.
+- trust tier, capacity, temporary legacy aliases, and versioned Provider capability descriptors.
+
+Provider package versions, screen/input transports, supported policy profiles, health details, and
+update channels remain planned. The handshake is an execution claim, not an authorization grant.
 
 Bot configuration should select a capability policy, not an OS enum. It may optionally pin an
 employee to a specific host, but the model cannot change that pin or select another host.
@@ -85,6 +83,11 @@ computer.takeover@1
 
 Provider availability describes possibility; a Server policy and a Run-scoped lease provide
 authority. Advertising `desktop.input@1` never authorizes arbitrary input by itself.
+
+Run offers now require exact capability majors. Server routing and the Worker Host both reject
+missing or incompatible versions; a legacy alias never provides a fallback. See
+[Provider conformance](PROVIDER_CONFORMANCE.md) for the executable matrix and honest support
+levels.
 
 ## Provider layout
 

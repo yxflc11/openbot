@@ -28,7 +28,10 @@ const linuxNode: ExecutionNode = {
   isolation: "unknown",
   trustTier: "development",
   capabilities: ["browser", "shell", "screenshot"],
-  capabilityManifest: [],
+  capabilityManifest: [
+    { id: "browser.observe", version: 1, providerId: "docker", constraints: {} },
+    { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
+  ],
   activeRunIds: [],
   maxConcurrentRuns: 1,
   connectedAt: "2026-09-03T00:00:00.000Z",

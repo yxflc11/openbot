@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const protocolVersion = "0.6.0" as const;
+export const protocolVersion = "0.7.0" as const;
 
 export const nodePlatformSchema = z.enum([
   "linux",
@@ -85,6 +85,52 @@ export const nodeCapabilityDescriptorSchema = z
   })
   .strict();
 export type NodeCapabilityDescriptor = z.infer<typeof nodeCapabilityDescriptorSchema>;
+
+/** An exact capability major required by the Server for one Run. */
+export const nodeCapabilityRequirementSchema = z
+  .object({
+    id: versionedCapabilityIdSchema,
+    version: z.number().int().min(1).max(100),
+  })
+  .strict();
+export type NodeCapabilityRequirement = z.infer<typeof nodeCapabilityRequirementSchema>;
+
+export interface CapabilityRequirementMismatch {
+  capability: VersionedCapabilityId;
+  expectedVersion: number;
+  advertisedVersions: number[];
+  reason: "capability-missing" | "capability-version-unsupported";
+}
+
+/** Compare exact capability majors so callers cannot silently downgrade an execution contract. */
+export function firstCapabilityRequirementMismatch(
+  required: NodeCapabilityRequirement[],
+  advertised: NodeCapabilityDescriptor[],
+): CapabilityRequirementMismatch | undefined {
+  for (const requirement of required) {
+    const advertisedVersions = advertised
+      .filter((capability) => capability.id === requirement.id)
+      .map((capability) => capability.version)
+      .sort((left, right) => left - right);
+    if (advertisedVersions.length === 0) {
+      return {
+        capability: requirement.id,
+        expectedVersion: requirement.version,
+        advertisedVersions,
+        reason: "capability-missing",
+      };
+    }
+    if (!advertisedVersions.includes(requirement.version)) {
+      return {
+        capability: requirement.id,
+        expectedVersion: requirement.version,
+        advertisedVersions,
+        reason: "capability-version-unsupported",
+      };
+    }
+  }
+  return undefined;
+}
 
 export const nodeHelloSchema = z.object({
   type: z.literal("node.hello"),
@@ -257,6 +303,7 @@ export const runOfferSchema = z.object({
   instruction: z.string().trim().min(1).max(8000),
   executionProfile: z.enum(["docker-linux", "macos-cua", "lume-vm", "coder"]),
   requiredCapabilities: z.array(nodeCapabilitySchema).min(1),
+  requiredCapabilityManifest: z.array(nodeCapabilityRequirementSchema).min(1).max(32),
   sentAt: z.string().datetime(),
 });
 

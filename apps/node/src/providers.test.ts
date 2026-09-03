@@ -1,4 +1,8 @@
 import { nodeEnvSchema } from "@openbot/config";
+import { coderProvider } from "@openbot/provider-coder";
+import { cuaProvider } from "@openbot/provider-cua";
+import { lumeProvider } from "@openbot/provider-lume";
+import { inspectProviderDeclaration } from "@openbot/provider-sdk";
 import { describe, expect, it } from "vitest";
 import {
   availableCapabilities,
@@ -39,5 +43,33 @@ describe("configured Node providers", () => {
     ]);
     expect(providerForProfile(providers, "docker-linux")?.id).toBe("docker");
     expect(providerForProfile(providers, "macos-cua")).toBeUndefined();
+  });
+
+  it("does not advertise declarations that cannot execute", () => {
+    const declarations = [
+      {
+        id: "cua",
+        displayName: "Cua declaration",
+        platforms: ["macos" as const],
+        capabilities: ["cua" as const, "screenshot" as const],
+        capabilityManifest: [
+          { id: "desktop.observe" as const, version: 1, providerId: "cua", constraints: {} },
+        ],
+      },
+    ];
+
+    expect(availableCapabilities(declarations)).toEqual([]);
+    expect(availableCapabilityManifest(declarations)).toEqual([]);
+  });
+
+  it("keeps unfinished built-in Provider packages conformant but declaration-only", () => {
+    for (const provider of [cuaProvider, lumeProvider, coderProvider]) {
+      expect(inspectProviderDeclaration(provider)).toMatchObject({
+        providerId: provider.id,
+        conformant: true,
+        executionStatus: "declaration-only",
+        issues: [],
+      });
+    }
   });
 });

@@ -145,8 +145,8 @@ Owner 验证、暂停或永久撤销；每次变化都会追加进化事件，�
 
 1. `Skills: validate quarantined SKILL.md directories with the official skills-ref worker`
 2. `Skills: add bounded proposal expiry, supersession, notification, and full-diff review`
-3. `Protocol: publish cross-platform Provider conformance fixtures`
-4. `Routing: reject unsupported capability versions without fallback`
+3. `Conformance: emit machine-readable Provider reports with explicit expected failures`
+4. `Provider CI: run hermetic and real-device Windows, macOS, and Linux matrices`
 5. `Security: design publisher keys and signed Employee archives`
 6. `Import: add explicit Owner review receipts before activation`
 7. `Memory: add retention, redaction, deletion, and selective export controls`

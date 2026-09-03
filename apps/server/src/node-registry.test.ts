@@ -128,6 +128,10 @@ describe("node enrollment", () => {
         instruction: "打开 https://example.test 并截图",
         executionProfile: "docker-linux",
         requiredCapabilities: ["browser", "screenshot"],
+        requiredCapabilityManifest: [
+          { id: "browser.observe", version: 1 },
+          { id: "screen.capture", version: 1 },
+        ],
       });
       expect(result).toEqual({ status: "accepted" });
       expect(registry.confirmRun("linux-node", runId)).toBe(true);

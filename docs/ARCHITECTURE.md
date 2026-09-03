@@ -177,11 +177,12 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - Node 凭证不能登录 Web，也不能访问其他 Node；
 - 所有消息绑定 connection、node、run 和 sequence。
 
-协议 `0.6.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、
+协议 `0.7.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、
 `approval.request`、`approval.resolved`、completed/failed、持久化后 settled 与 cancel。
 `node.hello` 现在明确上报 Windows/macOS/Linux 等平台、系统版本、架构、设备类型、隔离状态、
-信任等级和版本化 capability manifest；旧字符串能力暂时保留给现有确定性路由，不能把 manifest
-当成授权。`run.frame` 只接受有界 PNG，Server 验证 Run 与 Node 的运行绑定后更新内存中的
+信任等级和版本化 capability manifest；`run.offer` 同时携带精确能力主版本，Server 与 Node
+分别校验，旧字符串能力不能作为缺失或不兼容版本的后备路径。manifest 仍只是能力声明，不是
+授权。`run.frame` 只接受有界 PNG，Server 验证 Run 与 Node 的运行绑定后更新内存中的
 latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 Artifact Storage。审批请求
 绑定 Run、Bot、Node、动作、目标指纹和过期时间，但尚未签发独立的 capability lease。开发阶段
 仍使用部署级共享 `OPENBOT_NODE_TOKEN`，独立 enrollment、证书轮换、吊销和 sequence 防重放
@@ -212,7 +213,7 @@ health / version
 | Android | 受管理 Android Node | 明确设备所有权下的 UI Automator/ADB |
 | Coder | 任意合格 Node | Codex/Claude/Multica 工作区 |
 
-当前只落地了 Docker provider 的第一条 observe 能力。它是对 CopilotKit/OpenBot `agent-computer` `/navigate` 与 `/screenshot` 接口的薄适配器，而不是复制上游控制面；只有 URL 和 token 同时配置后，Node 才声明 `browser`、`screenshot`。其他 provider 目录仍是接口占位，不会虚假上报能力。完整跨平台计划见[跨平台工作主机](CROSS_PLATFORM.zh-CN.md)。
+当前只落地了 Docker provider 的第一条 observe 能力。它是对 CopilotKit/OpenBot `agent-computer` `/navigate` 与 `/screenshot` 接口的薄适配器，而不是复制上游控制面；只有 URL 和 token 同时配置后，Node 才声明 `browser`、`screenshot` 及其版本化能力。其他 Provider 目录仍是 declaration-only 接口占位，没有 `execute` 就不会上报为可执行。平台与能力支持必须经过[Provider 一致性测试](PROVIDER_CONFORMANCE.zh-CN.md)，不能由目录名称推断。完整跨平台计划见[跨平台工作主机](CROSS_PLATFORM.zh-CN.md)。
 
 ## 6. 远程屏幕与接管
 

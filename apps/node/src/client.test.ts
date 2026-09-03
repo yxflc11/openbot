@@ -23,18 +23,40 @@ const offer: RunOffer = {
   instruction: "打开 https://example.test 并截图",
   executionProfile: "docker-linux",
   requiredCapabilities: ["browser", "screenshot"],
+  requiredCapabilityManifest: [
+    { id: "browser.observe", version: 1 },
+    { id: "screen.capture", version: 1 },
+  ],
   sentAt: "2026-09-03T00:00:00.000Z",
 };
 
+const capabilityManifest = [
+  { id: "browser.observe" as const, version: 1, providerId: "docker", constraints: {} },
+  { id: "screen.capture" as const, version: 1, providerId: "docker", constraints: {} },
+];
+
 describe("node run offers", () => {
   it("accepts only offers covered by local capabilities and capacity", () => {
-    expect(runOfferRejectionReason(offer, ["browser", "screenshot"], 0, 1)).toBeUndefined();
-    expect(runOfferRejectionReason(offer, ["browser"], 0, 1)).toBe(
-      "Missing capabilities: screenshot.",
+    expect(
+      runOfferRejectionReason(offer, ["browser", "screenshot"], capabilityManifest, 0, 1),
+    ).toBeUndefined();
+    expect(runOfferRejectionReason(offer, ["browser"], capabilityManifest, 0, 1)).toBe(
+      "Missing legacy capabilities: screenshot.",
     );
-    expect(runOfferRejectionReason(offer, ["browser", "screenshot"], 1, 1)).toBe(
-      "Node is at capacity.",
-    );
+    expect(
+      runOfferRejectionReason(offer, ["browser", "screenshot"], capabilityManifest, 1, 1),
+    ).toBe("Node is at capacity.");
+    expect(
+      runOfferRejectionReason(
+        offer,
+        ["browser", "screenshot"],
+        capabilityManifest.map((item) =>
+          item.id === "browser.observe" ? { ...item, version: 2 } : item,
+        ),
+        0,
+        1,
+      ),
+    ).toBe("Unsupported capability version: browser.observe@1; advertised 2.");
   });
 
   it("executes an assigned run and reports progress and completion", async () => {

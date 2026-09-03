@@ -1,10 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import type { NodeEnv } from "@openbot/config";
-import type { ApprovalOutcome, ComputerProvider, PreparedAction } from "@openbot/provider-sdk";
+import {
+  type ApprovalOutcome,
+  assertProviderDeclarations,
+  type ComputerProvider,
+  type PreparedAction,
+} from "@openbot/provider-sdk";
 import {
   approvalRequestSchema,
+  firstCapabilityRequirementMismatch,
   type NodeCapability,
+  type NodeCapabilityDescriptor,
   type NodeMessage,
   protocolVersion,
   runFrameSchema,
@@ -45,6 +52,7 @@ export class OpenBotNodeClient {
 
   constructor(env: NodeEnv, providers = configuredProviders(env)) {
     this.#env = env;
+    assertProviderDeclarations(providers);
     this.#providers = providers;
   }
 
@@ -113,9 +121,11 @@ export class OpenBotNodeClient {
 
       if (message.type === "run.offer") {
         const capabilities = availableCapabilities(this.#providers);
+        const capabilityManifest = availableCapabilityManifest(this.#providers);
         const rejection = runOfferRejectionReason(
           message,
           capabilities,
+          capabilityManifest,
           this.#assignedRunIds.size,
           this.#env.OPENBOT_NODE_MAX_CONCURRENT_RUNS,
         );
@@ -369,13 +379,23 @@ export class OpenBotNodeClient {
 export function runOfferRejectionReason(
   offer: RunOffer,
   available: NodeCapability[],
+  availableManifest: NodeCapabilityDescriptor[],
   activeRuns: number,
   maxConcurrentRuns: number,
 ): string | undefined {
   if (activeRuns >= maxConcurrentRuns) return "Node is at capacity.";
   const capabilities = new Set(available);
   const missing = offer.requiredCapabilities.filter((capability) => !capabilities.has(capability));
-  return missing.length === 0 ? undefined : `Missing capabilities: ${missing.join(", ")}.`;
+  if (missing.length > 0) return `Missing legacy capabilities: ${missing.join(", ")}.`;
+  const mismatch = firstCapabilityRequirementMismatch(
+    offer.requiredCapabilityManifest,
+    availableManifest,
+  );
+  if (mismatch === undefined) return undefined;
+  if (mismatch.reason === "capability-missing") {
+    return `Missing capability: ${mismatch.capability}@${mismatch.expectedVersion}.`;
+  }
+  return `Unsupported capability version: ${mismatch.capability}@${mismatch.expectedVersion}; advertised ${mismatch.advertisedVersions.join(", ")}.`;
 }
 
 function parseJson(value: string): unknown {

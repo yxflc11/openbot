@@ -97,6 +97,10 @@ describe("node protocol", () => {
       instruction: "打开 https://example.test 并截图",
       executionProfile: "docker-linux",
       requiredCapabilities: ["browser", "screenshot"],
+      requiredCapabilityManifest: [
+        { id: "browser.observe", version: 1 },
+        { id: "screen.capture", version: 1 },
+      ],
       sentAt: new Date().toISOString(),
     };
 
@@ -114,6 +118,12 @@ describe("node protocol", () => {
     ).toBe(true);
     expect(
       runOfferSchema.safeParse({ ...offer, requiredCapabilities: ["root-access"] }).success,
+    ).toBe(false);
+    expect(
+      runOfferSchema.safeParse({
+        ...offer,
+        requiredCapabilityManifest: [{ id: "desktop.superuser", version: 1 }],
+      }).success,
     ).toBe(false);
     expect(
       nodeMessageSchema.safeParse({

@@ -32,8 +32,9 @@
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
 
 在线 Node 投影包含 `platform`、`osVersion`、`architecture`、`deviceClass`、`isolation`、
-`trustTier`、旧版 `capabilities` 和版本化 `capabilityManifest`。当前路由仍使用旧版能力 id；
-manifest 用于兼容性展示和后续策略迁移，本身不授予执行权限。
+`trustTier`、临时保留的旧版 `capabilities` 和权威版本化 `capabilityManifest`。协议 `0.7.0`
+要求 Server 路由与 Node 接单同时匹配精确能力主版本；旧能力 id 不能替代缺失或版本不兼容的
+manifest。能力声明本身仍不授予执行权限。
 
 ## 本地 Owner 会话
 

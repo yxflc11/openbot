@@ -48,7 +48,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批和 SSE 重连 | 可安装 PWA、通知投递、无障碍和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
 | 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查，以及由 Owner 审核的技能候选/验证/暂停/撤销元数据 | 可执行 Agent Skills 包、自动提案、记忆控制、签名员工包、审核后激活、复制和转移 |
-| Node 协议 | 出站 WebSocket 登记、心跳、容量、确定性路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和协议兼容测试 |
+| Node 协议 | 出站 WebSocket 登记、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
 | Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 跨平台浏览器、Windows、macOS、Linux 桌面、受管理 Android 和隔离编码 Provider |
@@ -238,6 +238,7 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | 参与频道体验开发 | [界面方案](docs/INTERFACE.md) |
 | 设计员工身份和迁移 | [可迁移数字员工模型](docs/EMPLOYEE.zh-CN.md) |
 | 增加操作系统或设备 | [跨平台工作主机](docs/CROSS_PLATFORM.zh-CN.md) |
+| 检查工作主机或 Provider 声明 | [Provider 一致性测试](docs/PROVIDER_CONFORMANCE.zh-CN.md) |
 | 理解上游选择 | [上游策略](docs/UPSTREAMS.md) |
 | 遵循开源优先审查流程 | [开源复用规则与当前审查](docs/OPEN_SOURCE_REUSE.zh-CN.md) |
 | 查看一项决策的原因 | [架构决策记录](docs/decisions/) |

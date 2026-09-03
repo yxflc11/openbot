@@ -189,6 +189,7 @@ export class RunDispatcher {
       instruction: run.instruction,
       executionProfile: requirements.executionProfile,
       requiredCapabilities: requirements.capabilities,
+      requiredCapabilityManifest: requirements.capabilityManifest,
     });
     if (result.status !== "accepted") return;
 
