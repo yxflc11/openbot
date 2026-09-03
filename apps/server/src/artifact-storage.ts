@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import type { Artifact } from "@openbot/domain";
 import type { CompletedArtifact } from "@openbot/protocol";
+import writeFileAtomic from "write-file-atomic";
 
 const MAX_ARTIFACT_BYTES = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -34,10 +35,9 @@ export class FileArtifactStorage implements ArtifactStorage {
         const id = randomUUID();
         const storageKey = `runs/${runId}/${id}.png`;
         const destination = this.#pathFor(storageKey);
-        const temporary = `${destination}.${randomUUID()}.tmp`;
         await mkdir(dirname(destination), { recursive: true });
-        await writeFile(temporary, bytes, { flag: "wx", mode: 0o600 });
-        await rename(temporary, destination);
+        // The maintained npm primitive fsyncs, renames, and removes its temporary file on failure.
+        await writeFileAtomic(destination, bytes, { mode: 0o600 });
         persisted.push({
           artifact: {
             id,

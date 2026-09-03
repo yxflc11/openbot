@@ -69,6 +69,8 @@ expansion until its upstream and license review is recorded.
 | Realtime overload recovery | [Hono streaming `e2740d5a`](https://github.com/honojs/hono/blob/e2740d5a1bd0b4254e517e3af8b60789284bc7bd/src/utils/stream.ts) | MIT | Keep Hono's backpressure-aware writer and add only the missing OpenBot per-subscriber policy: a 128-event bound, abort on overflow, and authoritative snapshot recovery. No upstream source was copied. |
 | Node channel authority and liveness | [`ws` 8.21.3 `c791e707`](https://github.com/websockets/ws/tree/c791e707eab3c13dd9a261d2479c3cc4a49a6fed), [Kubernetes node-heartbeat KEP `e849163a`](https://github.com/kubernetes/enhancements/blob/e849163ac4a0a5241ba626bd9a99820bf1dcd279/keps/sig-node/589-efficient-node-heartbeats/README.md), and [Nomad `482b49bf`](https://github.com/hashicorp/nomad/tree/482b49bf1aec006f089bcfc7e632d8f6ac303e5e) | MIT; Apache-2.0; MPL-2.0 | Reuse `ws` limits and ping/pong; separate liveness reports from Server-owned assignment state. Messages and enrollment time are bounded, duplicate hello is rejected, and silent sockets are terminated. No upstream source was copied. |
 | Future per-Node workload identity | [SPIFFE `99470b9a`](https://github.com/spiffe/spiffe/tree/99470b9abc825f14aa364dfa2c3b53b02ba5db5b) and [Tailscale `92ec1026`](https://github.com/tailscale/tailscale/tree/92ec102673bf46d72bab64b0a278b93c01a47f34) | Apache-2.0; BSD-3-Clause | Reviewed for proof-of-possession identity, rotation, and revocation. Deferred until OpenBot defines persisted one-time enrollment and an operator recovery path; the shared development token is not relabeled as production identity. |
+| Atomic artifact files | [`npm/write-file-atomic` 8.0.0](https://github.com/npm/write-file-atomic/tree/v8.0.0) | ISC | Use the released dependency for fsync, atomic rename, per-destination serialization, and temporary-file cleanup instead of maintaining those mechanics locally. Final artifact mode remains `0600`; no upstream source was copied. |
+| Untrusted PNG validation candidates | [`image-js/fast-png` 8.0.0](https://github.com/image-js/fast-png/tree/v8.0.0) and [`sharp` 0.35.0](https://github.com/lovell/sharp/tree/v0.35.0) | MIT; Apache-2.0 | Defer full decode-and-normalize validation. `fast-png` does not expose an input-pixel resource limit; `sharp` does, but its native package must pass the Server's Linux x64/arm64 packaging matrix first. The current signature check is explicitly not a well-formedness claim. |
 | Login rate-limit candidates | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) and [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | Deferred. Neither package can establish a trustworthy remote identity without an authenticated proxy contract. The current small limiter is documented as deployment-scoped; a later adapter must normalize IPv4/IPv6, use shared storage, and fail closed. |
 | Office visualization | Public Tencent Marvis product imagery supplied by the project owner | No reusable source-code license identified | Visual inspiration only. No Marvis code or assets are incorporated; the office remains a deferred optional plugin. |
 
@@ -104,6 +106,8 @@ expansion until its upstream and license review is recorded.
   `__Host-` cookie under HTTPS, and bound every SSE subscriber with snapshot recovery.
 - Node WebSockets now have explicit payload and enrollment bounds, compression disabled, ping/pong
   liveness, and fail-closed socket errors. A heartbeat cannot mutate Server-owned Run assignments.
+- File-backed artifacts reuse `write-file-atomic` for fsync, rename, and failed-temporary cleanup;
+  final files retain verified `0600` permissions.
 
 ## Known gaps from the audit
 
@@ -128,6 +132,9 @@ expansion until its upstream and license review is recorded.
 - Node enrollment still uses one deployment-wide secret. One-time enrollment, per-Node
   proof-of-possession identity, rotation, revocation, replay protection, and persisted
   reconciliation remain open.
+- PNG artifacts are size- and signature-checked but are not yet decoded and normalized. The future
+  decoder must bound pixels/channels and pass the release architecture matrix. The local artifact
+  root is still a trusted operator boundary, not a safe directory shared with untrusted writers.
 
 ## Pull-request evidence
 
