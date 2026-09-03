@@ -74,6 +74,16 @@ export interface Artifact {
   createdAt: string;
 }
 
+export interface RunProgress {
+  id: EntityId;
+  runId: EntityId;
+  channelId: EntityId;
+  nodeId: EntityId;
+  stage: string;
+  message: string;
+  createdAt: string;
+}
+
 export type MessageAuthorType = "human" | "bot" | "system";
 
 export interface Message {
@@ -119,6 +129,27 @@ export type ChannelRealtimeEvent =
       channelId: EntityId;
       run: Run;
       artifacts?: Artifact[];
+    }
+  | {
+      type: "run.progress";
+      channelId: EntityId;
+      progress: RunProgress;
+    };
+
+export type WorkspaceRealtimeEvent =
+  | {
+      type: "workspace.ready";
+      nodes: ExecutionNode[];
+      occurredAt: string;
+    }
+  | {
+      type: "node.upserted";
+      node: ExecutionNode;
+    }
+  | {
+      type: "node.removed";
+      nodeId: EntityId;
+      occurredAt: string;
     };
 
 export interface BootstrapSummary {
@@ -138,6 +169,7 @@ export interface WorkspaceSnapshot {
   nodes: ExecutionNode[];
   runs: Run[];
   artifacts: Artifact[];
+  progress: RunProgress[];
   counts: BootstrapSummary["counts"];
 }
 

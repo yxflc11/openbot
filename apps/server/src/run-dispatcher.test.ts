@@ -53,7 +53,7 @@ describe("run dispatcher", () => {
         return runs.filter((item) => item.status === "queued");
       },
       async appendRunProgress() {
-        return true;
+        return undefined;
       },
       async completeRun() {
         return undefined;
@@ -108,7 +108,7 @@ describe("run dispatcher", () => {
           return [run];
         },
         async appendRunProgress() {
-          return true;
+          return undefined;
         },
         async completeRun() {
           return undefined;
@@ -166,7 +166,7 @@ describe("run dispatcher", () => {
           return run.status === "queued" ? [run] : [];
         },
         async appendRunProgress() {
-          return true;
+          return undefined;
         },
         async completeRun() {
           return undefined;
@@ -226,6 +226,7 @@ describe("run dispatcher", () => {
   it("starts an assigned run and durably completes it before releasing Node capacity", async () => {
     const run = queuedRun();
     const projectedStatuses: Run["status"][] = [];
+    const projectedProgress: string[] = [];
     const settled: Array<{ runId: string; status: "completed" | "failed" }> = [];
     let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
     const dispatcher = new RunDispatcher(
@@ -243,8 +244,16 @@ describe("run dispatcher", () => {
           run.status = "running";
           return run;
         },
-        async appendRunProgress() {
-          return true;
+        async appendRunProgress(_runId, nodeId, stage, message) {
+          return {
+            id: "00000000-0000-4000-8000-000000000004",
+            runId: run.id,
+            channelId: run.channelId,
+            nodeId,
+            stage,
+            message,
+            createdAt: "2026-09-03T00:01:00.000Z",
+          };
         },
         async completeRun(_runId, nodeId, summary, artifacts) {
           if (run.status !== "running" || run.nodeId !== nodeId) return undefined;
@@ -281,6 +290,7 @@ describe("run dispatcher", () => {
       {
         publish(event) {
           if (event.type === "run.updated") projectedStatuses.push(event.run.status);
+          if (event.type === "run.progress") projectedProgress.push(event.progress.message);
         },
       },
       artifactStorage,
@@ -299,6 +309,17 @@ describe("run dispatcher", () => {
     await waitFor(() => run.status === "running");
 
     runHandler?.(linuxNode, {
+      type: "run.progress",
+      protocolVersion,
+      nodeId: linuxNode.id,
+      runId: run.id,
+      stage: "navigate",
+      message: "正在打开测试页",
+      occurredAt: new Date().toISOString(),
+    });
+    await waitFor(() => projectedProgress.length === 1);
+
+    runHandler?.(linuxNode, {
       type: "run.completed",
       protocolVersion,
       nodeId: linuxNode.id,
@@ -310,6 +331,7 @@ describe("run dispatcher", () => {
     await waitFor(() => run.status === "completed");
 
     expect(run.resultSummary).toBe("已打开页面并截图");
+    expect(projectedProgress).toEqual(["正在打开测试页"]);
     expect(settled).toEqual([{ runId: run.id, status: "completed" }]);
     expect(projectedStatuses).toEqual(["assigned", "running", "completed"]);
     dispatcher.stop();

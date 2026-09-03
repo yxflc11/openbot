@@ -7,9 +7,12 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   CreateMessageInput,
+  ExecutionNode,
   Message,
   Run,
+  RunProgress,
   SubmitTaskResult,
+  WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 
@@ -120,6 +123,7 @@ export function subscribeToChannelEvents(
   channelId: string,
   handlers: {
     onMessage(message: Message): void;
+    onProgress(progress: RunProgress): void;
     onRun(run: Run, artifacts: Artifact[]): void;
     onReady(): void;
     onState(state: RealtimeConnectionState): void;
@@ -167,6 +171,18 @@ export function subscribeToChannelEvents(
       // Ignore malformed frames and keep the stream available for the next valid event.
     }
   };
+  const onProgress = (event: Event) => {
+    if (!(event instanceof MessageEvent) || typeof event.data !== "string") return;
+    try {
+      const payload: unknown = JSON.parse(event.data);
+      if (isRunProgressProjectionEvent(payload, channelId)) {
+        markLive();
+        handlers.onProgress(payload.progress);
+      }
+    } catch {
+      // Ignore malformed frames and keep the stream available for the next valid event.
+    }
+  };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
     source?.close();
@@ -191,6 +207,81 @@ export function subscribeToChannelEvents(
     nextSource.addEventListener("message.created", onMessage);
     nextSource.addEventListener("run.created", onRun);
     nextSource.addEventListener("run.updated", onRun);
+    nextSource.addEventListener("run.progress", onProgress);
+  };
+
+  handlers.onState("connecting");
+  connect();
+  const watchdog = window.setInterval(() => {
+    if (Date.now() - lastActivityAt > staleAfterMs) scheduleReconnect();
+  }, 5000);
+
+  return () => {
+    closed = true;
+    source?.close();
+    window.clearInterval(watchdog);
+    if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+  };
+}
+
+export function subscribeToWorkspaceEvents(handlers: {
+  onNode(node: ExecutionNode): void;
+  onNodeRemoved(nodeId: string): void;
+  onReady(nodes: ExecutionNode[]): void;
+  onState(state: RealtimeConnectionState): void;
+}): () => void {
+  const reconnectDelayMs = 2000;
+  const staleAfterMs = 35_000;
+  let source: EventSource | undefined;
+  let reconnectTimer: number | undefined;
+  let closed = false;
+  let lastActivityAt = Date.now();
+
+  const markLive = () => {
+    lastActivityAt = Date.now();
+    handlers.onState("live");
+  };
+  const onReady = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isWorkspaceReadyEvent(payload)) return;
+    markLive();
+    handlers.onReady(payload.nodes);
+  };
+  const onNode = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isNodeUpsertedEvent(payload)) return;
+    markLive();
+    handlers.onNode(payload.node);
+  };
+  const onNodeRemoved = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isNodeRemovedEvent(payload)) return;
+    markLive();
+    handlers.onNodeRemoved(payload.nodeId);
+  };
+  const scheduleReconnect = () => {
+    if (closed || reconnectTimer !== undefined) return;
+    source?.close();
+    source = undefined;
+    handlers.onState("retrying");
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = undefined;
+      connect();
+    }, reconnectDelayMs);
+  };
+  const connect = () => {
+    if (closed) return;
+    const nextSource = new EventSource("/api/v1/workspace/events");
+    source = nextSource;
+    lastActivityAt = Date.now();
+    nextSource.onopen = markLive;
+    nextSource.onerror = () => {
+      if (source === nextSource) scheduleReconnect();
+    };
+    nextSource.addEventListener("workspace.ready", onReady);
+    nextSource.addEventListener("heartbeat", markLive);
+    nextSource.addEventListener("node.upserted", onNode);
+    nextSource.addEventListener("node.removed", onNodeRemoved);
   };
 
   handlers.onState("connecting");
@@ -260,6 +351,22 @@ function isRunProjectionEvent(
   );
 }
 
+function isRunProgressProjectionEvent(
+  value: unknown,
+  channelId: string,
+): value is Extract<ChannelRealtimeEvent, { type: "run.progress" }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "run.progress" &&
+    "channelId" in value &&
+    value.channelId === channelId &&
+    "progress" in value &&
+    isRunProgressProjection(value.progress, channelId)
+  );
+}
+
 function isArtifactProjection(value: unknown): value is Artifact {
   return (
     typeof value === "object" &&
@@ -278,6 +385,101 @@ function isArtifactProjection(value: unknown): value is Artifact {
     typeof value.sizeBytes === "number" &&
     "createdAt" in value &&
     typeof value.createdAt === "string"
+  );
+}
+
+function isRunProgressProjection(value: unknown, channelId: string): value is RunProgress {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "runId" in value &&
+    typeof value.runId === "string" &&
+    "channelId" in value &&
+    value.channelId === channelId &&
+    "nodeId" in value &&
+    typeof value.nodeId === "string" &&
+    "stage" in value &&
+    typeof value.stage === "string" &&
+    "message" in value &&
+    typeof value.message === "string" &&
+    "createdAt" in value &&
+    typeof value.createdAt === "string"
+  );
+}
+
+function parseEventPayload(event: Event): unknown {
+  if (!(event instanceof MessageEvent) || typeof event.data !== "string") return undefined;
+  try {
+    return JSON.parse(event.data);
+  } catch {
+    return undefined;
+  }
+}
+
+function isWorkspaceReadyEvent(
+  value: unknown,
+): value is Extract<WorkspaceRealtimeEvent, { type: "workspace.ready" }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "workspace.ready" &&
+    "nodes" in value &&
+    Array.isArray(value.nodes) &&
+    value.nodes.every(isExecutionNodeProjection)
+  );
+}
+
+function isNodeUpsertedEvent(
+  value: unknown,
+): value is Extract<WorkspaceRealtimeEvent, { type: "node.upserted" }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "node.upserted" &&
+    "node" in value &&
+    isExecutionNodeProjection(value.node)
+  );
+}
+
+function isNodeRemovedEvent(
+  value: unknown,
+): value is Extract<WorkspaceRealtimeEvent, { type: "node.removed" }> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "node.removed" &&
+    "nodeId" in value &&
+    typeof value.nodeId === "string"
+  );
+}
+
+function isExecutionNodeProjection(value: unknown): value is ExecutionNode {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "platform" in value &&
+    (value.platform === "linux" || value.platform === "macos" || value.platform === "unknown") &&
+    "capabilities" in value &&
+    Array.isArray(value.capabilities) &&
+    value.capabilities.every((item) => typeof item === "string") &&
+    "activeRunIds" in value &&
+    Array.isArray(value.activeRunIds) &&
+    value.activeRunIds.every((item) => typeof item === "string") &&
+    "maxConcurrentRuns" in value &&
+    typeof value.maxConcurrentRuns === "number" &&
+    "connectedAt" in value &&
+    typeof value.connectedAt === "string" &&
+    "lastSeenAt" in value &&
+    typeof value.lastSeenAt === "string"
   );
 }
 

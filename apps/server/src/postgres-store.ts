@@ -9,6 +9,7 @@ import type {
   ExecutionNode,
   Message,
   Run,
+  RunProgress,
   SubmitTaskResult,
 } from "@openbot/domain";
 import {
@@ -115,6 +116,22 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
 
     const rows = await this.#db.select().from(runs).orderBy(desc(runs.createdAt)).limit(50);
     return rows.map(toRun);
+  }
+
+  async listRunProgress(channelId?: string): Promise<RunProgress[]> {
+    if (channelId !== undefined) await this.#requireChannel(channelId);
+    const query = this.#db
+      .select()
+      .from(runEvents)
+      .where(
+        channelId === undefined
+          ? eq(runEvents.type, "RUN_PROGRESS")
+          : and(eq(runEvents.type, "RUN_PROGRESS"), eq(runEvents.channelId, channelId)),
+      )
+      .orderBy(desc(runEvents.createdAt))
+      .limit(200);
+    const rows = await query;
+    return rows.reverse().flatMap(toRunProgress);
   }
 
   async listArtifacts(runId?: string): Promise<Artifact[]> {
@@ -405,7 +422,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     nodeId: string,
     stage: string,
     message: string,
-  ): Promise<boolean> {
+  ): Promise<RunProgress | undefined> {
     const now = new Date();
     return this.#db.transaction(async (transaction) => {
       const [updated] = await transaction
@@ -416,17 +433,27 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           channelId: runs.channelId,
           botId: runs.botId,
         });
-      if (updated === undefined) return false;
-      await transaction.insert(runEvents).values({
+      if (updated === undefined) return undefined;
+      const progress: RunProgress = {
         id: randomUUID(),
+        runId,
+        channelId: updated.channelId,
+        nodeId,
+        stage,
+        message,
+        createdAt: now.toISOString(),
+      };
+      await transaction.insert(runEvents).values({
+        id: progress.id,
         runId,
         channelId: updated.channelId,
         botId: updated.botId,
         nodeId,
         type: "RUN_PROGRESS",
         payload: { stage, message },
+        createdAt: now,
       });
-      return true;
+      return progress;
     });
   }
 
@@ -689,6 +716,30 @@ function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
     createdAt: (row.createdAt ?? new Date()).toISOString(),
     updatedAt: (row.updatedAt ?? new Date()).toISOString(),
   };
+}
+
+function toRunProgress(row: typeof runEvents.$inferSelect): RunProgress[] {
+  const payload = asRecord(row.payload);
+  if (
+    row.runId === null ||
+    row.channelId === null ||
+    row.nodeId === null ||
+    typeof payload.stage !== "string" ||
+    typeof payload.message !== "string"
+  ) {
+    return [];
+  }
+  return [
+    {
+      id: row.id,
+      runId: row.runId,
+      channelId: row.channelId,
+      nodeId: row.nodeId,
+      stage: payload.stage,
+      message: payload.message,
+      createdAt: row.createdAt.toISOString(),
+    },
+  ];
 }
 
 function toArtifact(row: typeof artifactsTable.$inferSelect): Artifact {

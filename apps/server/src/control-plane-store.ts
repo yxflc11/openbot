@@ -8,6 +8,7 @@ import type {
   ExecutionNode,
   Message,
   Run,
+  RunProgress,
   SubmitTaskResult,
 } from "@openbot/domain";
 
@@ -33,6 +34,7 @@ export interface ControlPlaneStore {
   listBots(): Promise<Bot[]>;
   listMessages(channelId: string): Promise<Message[]>;
   listRuns(channelId?: string): Promise<Run[]>;
+  listRunProgress(channelId?: string): Promise<RunProgress[]>;
   listArtifacts(runId?: string): Promise<Artifact[]>;
   getArtifact(artifactId: string): Promise<ArtifactRecord | undefined>;
   listDispatchableRuns(limit?: number): Promise<Run[]>;
@@ -47,7 +49,7 @@ export interface ControlPlaneStore {
     nodeId: string,
     stage: string,
     message: string,
-  ): Promise<boolean>;
+  ): Promise<RunProgress | undefined>;
   completeRun(
     runId: string,
     nodeId: string,

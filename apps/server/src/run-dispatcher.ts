@@ -189,9 +189,22 @@ export class RunDispatcher {
         this.#publishUpdates([started]);
         return;
       }
-      case "run.progress":
-        await this.#store.appendRunProgress(message.runId, node.id, message.stage, message.message);
+      case "run.progress": {
+        const progress = await this.#store.appendRunProgress(
+          message.runId,
+          node.id,
+          message.stage,
+          message.message,
+        );
+        if (progress !== undefined) {
+          this.#realtime.publish({
+            type: "run.progress",
+            channelId: progress.channelId,
+            progress,
+          });
+        }
         return;
+      }
       case "run.completed":
         await this.#completeRun(node.id, message.runId, message.summary, message.artifacts);
         return;

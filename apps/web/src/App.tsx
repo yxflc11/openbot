@@ -4,6 +4,7 @@ import type {
   CreateBotInput,
   CreateChannelInput,
   Run,
+  RunProgress,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import { useCallback, useEffect, useState } from "react";
@@ -15,7 +16,9 @@ import {
   joinBotToChannel,
   login,
   logout,
+  type RealtimeConnectionState,
   subscribeToUnauthorized,
+  subscribeToWorkspaceEvents,
 } from "./api";
 import { ChannelWorkspace } from "./components/ChannelWorkspace";
 import { ContextRail } from "./components/ContextRail";
@@ -24,8 +27,16 @@ import { CreateChannelDialog } from "./components/CreateChannelDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
 import { Office } from "./components/Office";
+import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
-import { isActiveRun, mergeArtifacts, mergeRuns, projectRunOnNodes } from "./run-state";
+import {
+  isActiveRun,
+  mergeArtifacts,
+  mergeNodes,
+  mergeProgress,
+  mergeRuns,
+  projectRunOnNodes,
+} from "./run-state";
 
 type Dialog = "bot" | "channel" | undefined;
 
@@ -110,6 +121,10 @@ function AuthenticatedWorkspace({
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [selectedRunId, setSelectedRunId] = useState<string>();
+  const [workspaceRealtimeState, setWorkspaceRealtimeState] =
+    useState<RealtimeConnectionState>("connecting");
+  const closeInspector = useCallback(() => setSelectedRunId(undefined), []);
 
   const projectRun = useCallback((run: Run, artifacts: Artifact[] = []) => {
     setWorkspace((current) => {
@@ -132,10 +147,34 @@ function AuthenticatedWorkspace({
     });
   }, []);
 
+  const projectProgress = useCallback((progress: RunProgress) => {
+    setWorkspace((current) =>
+      current === undefined
+        ? current
+        : { ...current, progress: mergeProgress(current.progress, [progress]) },
+    );
+  }, []);
+
   const refresh = useCallback(async (signal?: AbortSignal) => {
     setError(undefined);
     try {
-      setWorkspace(await getWorkspace(signal));
+      const snapshot = await getWorkspace(signal);
+      setWorkspace((current) => {
+        if (current === undefined) return snapshot;
+        const runs = mergeRuns(snapshot.runs, current.runs);
+        return {
+          ...snapshot,
+          nodes: current.nodes,
+          runs,
+          artifacts: mergeArtifacts(snapshot.artifacts, current.artifacts),
+          progress: mergeProgress(snapshot.progress, current.progress),
+          counts: {
+            ...snapshot.counts,
+            connectedNodes: current.nodes.length,
+            activeRuns: runs.filter(isActiveRun).length,
+          },
+        };
+      });
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
       setError(
@@ -149,6 +188,48 @@ function AuthenticatedWorkspace({
     void refresh(controller.signal);
     return () => controller.abort();
   }, [refresh]);
+
+  const workspaceReady = workspace !== undefined;
+  useEffect(() => {
+    if (!workspaceReady) return;
+    return subscribeToWorkspaceEvents({
+      onReady(nodes) {
+        setWorkspace((current) =>
+          current === undefined
+            ? current
+            : {
+                ...current,
+                nodes,
+                counts: { ...current.counts, connectedNodes: nodes.length },
+              },
+        );
+      },
+      onNode(node) {
+        setWorkspace((current) => {
+          if (current === undefined) return current;
+          const nodes = mergeNodes(current.nodes, [node]);
+          return {
+            ...current,
+            nodes,
+            counts: { ...current.counts, connectedNodes: nodes.length },
+          };
+        });
+      },
+      onNodeRemoved(nodeId) {
+        setWorkspace((current) => {
+          if (current === undefined) return current;
+          const nodes = current.nodes.filter((node) => node.id !== nodeId);
+          if (nodes.length === current.nodes.length) return current;
+          return {
+            ...current,
+            nodes,
+            counts: { ...current.counts, connectedNodes: nodes.length },
+          };
+        });
+      },
+      onState: setWorkspaceRealtimeState,
+    });
+  }, [workspaceReady]);
 
   async function handleCreateBot(input: CreateBotInput) {
     const bot = await createBot(input);
@@ -180,6 +261,7 @@ function AuthenticatedWorkspace({
 
   function selectChannel(channelId: string) {
     setSelectedChannelId(channelId);
+    setSelectedRunId(undefined);
     setMobilePanel(undefined);
   }
 
@@ -199,6 +281,7 @@ function AuthenticatedWorkspace({
   }
 
   const selectedChannel = workspace.channels.find((channel) => channel.id === selectedChannelId);
+  const selectedRun = workspace.runs.find((run) => run.id === selectedRunId);
 
   return (
     <div className="app-shell">
@@ -220,7 +303,10 @@ function AuthenticatedWorkspace({
           channel={selectedChannel}
           bots={workspace.bots}
           artifacts={workspace.artifacts}
+          progress={workspace.progress}
           onJoin={handleJoinBot}
+          onInspectRun={setSelectedRunId}
+          onProgress={projectProgress}
           onRun={projectRun}
         />
       ) : (
@@ -234,7 +320,11 @@ function AuthenticatedWorkspace({
         />
       )}
 
-      <ContextRail workspace={workspace} />
+      <ContextRail
+        realtimeState={workspaceRealtimeState}
+        workspace={workspace}
+        onInspectRun={setSelectedRunId}
+      />
 
       <MobileNavigation
         panel={mobilePanel}
@@ -257,6 +347,17 @@ function AuthenticatedWorkspace({
         }}
         onSelectChannel={selectChannel}
       />
+
+      {selectedRun ? (
+        <RunInspector
+          artifacts={workspace.artifacts.filter((artifact) => artifact.runId === selectedRun.id)}
+          bot={workspace.bots.find((bot) => bot.id === selectedRun.botId)}
+          node={workspace.nodes.find((node) => node.id === selectedRun.nodeId)}
+          progress={workspace.progress.filter((item) => item.runId === selectedRun.id)}
+          run={selectedRun}
+          onClose={closeInspector}
+        />
+      ) : null}
 
       {dialog === "bot" ? (
         <CreateBotDialog onClose={() => setDialog(undefined)} onCreate={handleCreateBot} />

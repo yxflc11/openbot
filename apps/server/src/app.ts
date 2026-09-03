@@ -3,6 +3,7 @@ import type {
   ChannelRealtimeEvent,
   ExecutionNode,
   Run,
+  WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import {
@@ -31,6 +32,7 @@ import {
   StoreValidationError,
   type ControlPlaneStore,
 } from "./control-plane-store.js";
+import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
   allowedOrigins: string[];
@@ -41,6 +43,7 @@ export interface AppDependencies {
   realtime?: ChannelRealtimeHub;
   secureCookies: boolean;
   store: ControlPlaneStore;
+  workspaceRealtime?: WorkspaceRealtimeHub;
 }
 
 export const ownerSessionCookie = "openbot_session";
@@ -48,6 +51,7 @@ export const ownerSessionCookie = "openbot_session";
 export function createApp(dependencies: AppDependencies) {
   const app = new Hono();
   const realtime = dependencies.realtime ?? new ChannelRealtimeHub();
+  const workspaceRealtime = dependencies.workspaceRealtime ?? new WorkspaceRealtimeHub();
 
   app.use(logger());
   app.use(
@@ -132,11 +136,12 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/workspace", async (context) => {
     const nodes = dependencies.listNodes();
-    const [channels, bots, runs, artifacts, persistedCounts] = await Promise.all([
+    const [channels, bots, runs, artifacts, progress, persistedCounts] = await Promise.all([
       dependencies.store.listChannels(),
       dependencies.store.listBots(),
       dependencies.store.listRuns(),
       dependencies.store.listArtifacts(),
+      dependencies.store.listRunProgress(),
       dependencies.store.getCounts(),
     ]);
     const workspace: WorkspaceSnapshot = {
@@ -145,6 +150,7 @@ export function createApp(dependencies: AppDependencies) {
       nodes,
       runs,
       artifacts,
+      progress,
       counts: {
         ...persistedCounts,
         connectedNodes: nodes.length,
@@ -152,6 +158,63 @@ export function createApp(dependencies: AppDependencies) {
     };
     return context.json(workspace);
   });
+
+  app.get("/api/v1/workspace/events", (context) =>
+    streamSSE(context, async (stream) => {
+      const queued: WorkspaceRealtimeEvent[] = [];
+      let wake: (() => void) | undefined;
+      let closed = false;
+      const unsubscribe = workspaceRealtime.subscribe((event) => {
+        queued.push(event);
+        wake?.();
+        wake = undefined;
+      });
+      stream.onAbort(() => {
+        closed = true;
+        wake?.();
+        wake = undefined;
+        unsubscribe();
+      });
+
+      await stream.writeSSE({
+        event: "workspace.ready",
+        retry: 2000,
+        data: JSON.stringify({
+          type: "workspace.ready",
+          nodes: dependencies.listNodes(),
+          occurredAt: new Date().toISOString(),
+        } satisfies WorkspaceRealtimeEvent),
+      });
+
+      try {
+        while (!closed && !stream.aborted) {
+          if (queued.length === 0) {
+            const timedOut = await waitForEventOrTimeout((resume) => {
+              wake = resume;
+            });
+            wake = undefined;
+            if (timedOut && !closed && !stream.aborted) {
+              await stream.writeSSE({ event: "heartbeat", data: new Date().toISOString() });
+            }
+          }
+
+          let event = queued.shift();
+          while (event !== undefined && !closed && !stream.aborted) {
+            await stream.writeSSE({
+              event: event.type,
+              ...(event.type === "workspace.ready"
+                ? {}
+                : { id: event.type === "node.upserted" ? event.node.id : event.nodeId }),
+              data: JSON.stringify(event),
+            });
+            event = queued.shift();
+          }
+        }
+      } finally {
+        unsubscribe();
+      }
+    }),
+  );
 
   app.get("/api/v1/channels", async (context) =>
     context.json({ channels: await dependencies.store.listChannels() }),
@@ -252,7 +315,9 @@ export function createApp(dependencies: AppDependencies) {
                 ? { id: event.message.id }
                 : event.type === "run.created" || event.type === "run.updated"
                   ? { id: event.run.id }
-                  : {}),
+                  : event.type === "run.progress"
+                    ? { id: event.progress.id }
+                    : {}),
               data: JSON.stringify(event),
             });
             event = queued.shift();

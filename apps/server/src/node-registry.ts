@@ -52,6 +52,7 @@ export class NodeRegistry {
   readonly #enrollmentToken: string;
   readonly #offerTimeoutMs: number;
   readonly #availableHandlers = new Set<NodeHandler>();
+  readonly #updatedHandlers = new Set<NodeHandler>();
   readonly #unavailableHandlers = new Set<NodeHandler>();
   readonly #runHandlers = new Set<NodeRunHandler>();
   readonly #pendingOffers = new Map<string, PendingOffer>();
@@ -74,6 +75,11 @@ export class NodeRegistry {
   onUnavailable(handler: NodeHandler): () => void {
     this.#unavailableHandlers.add(handler);
     return () => this.#unavailableHandlers.delete(handler);
+  }
+
+  onUpdated(handler: NodeHandler): () => void {
+    this.#updatedHandlers.add(handler);
+    return () => this.#updatedHandlers.delete(handler);
   }
 
   onRunMessage(handler: NodeRunHandler): () => void {
@@ -140,7 +146,10 @@ export class NodeRegistry {
     };
     try {
       node.socket.send(JSON.stringify(message));
-      if (!node.activeRunIds.includes(runId)) node.activeRunIds.push(runId);
+      if (!node.activeRunIds.includes(runId)) {
+        node.activeRunIds.push(runId);
+        this.#emit(this.#updatedHandlers, node);
+      }
       return true;
     } catch {
       return false;
@@ -174,7 +183,11 @@ export class NodeRegistry {
   settleRun(nodeId: string, runId: string, status: "completed" | "failed"): void {
     const node = this.#nodes.get(nodeId);
     if (node === undefined) return;
-    node.activeRunIds = node.activeRunIds.filter((id) => id !== runId);
+    const activeRunIds = node.activeRunIds.filter((id) => id !== runId);
+    if (activeRunIds.length !== node.activeRunIds.length) {
+      node.activeRunIds = activeRunIds;
+      this.#emit(this.#updatedHandlers, node);
+    }
     if (node.socket.readyState !== WebSocket.OPEN) return;
     const message: ServerMessage = {
       type: "run.settled",
@@ -194,7 +207,11 @@ export class NodeRegistry {
   cancelRun(nodeId: string, runId: string, reason: string): void {
     const node = this.#nodes.get(nodeId);
     if (node === undefined) return;
-    node.activeRunIds = node.activeRunIds.filter((id) => id !== runId);
+    const activeRunIds = node.activeRunIds.filter((id) => id !== runId);
+    if (activeRunIds.length !== node.activeRunIds.length) {
+      node.activeRunIds = activeRunIds;
+      this.#emit(this.#updatedHandlers, node);
+    }
     if (node.socket.readyState !== WebSocket.OPEN) return;
     const message: ServerMessage = {
       type: "run.cancel",
@@ -287,6 +304,7 @@ export class NodeRegistry {
         node.lastSeenAt = now;
         if (message.type === "node.heartbeat") {
           node.activeRunIds = message.activeRunIds.slice(0, node.maxConcurrentRuns);
+          this.#emit(this.#updatedHandlers, node);
           sendAck(socket, true);
           return;
         }

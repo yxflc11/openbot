@@ -1,4 +1,4 @@
-import type { Artifact, Bot, Channel, Message, Run } from "@openbot/domain";
+import type { Artifact, Bot, Channel, Message, Run, RunProgress } from "@openbot/domain";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import {
   createMessage,
@@ -15,13 +15,19 @@ export function ChannelWorkspace({
   channel,
   bots,
   artifacts,
+  progress,
   onJoin,
+  onInspectRun,
+  onProgress,
   onRun,
 }: {
   channel: Channel;
   bots: Bot[];
   artifacts: Artifact[];
+  progress: RunProgress[];
   onJoin(botId: string): Promise<void>;
+  onInspectRun(runId: string): void;
+  onProgress(progress: RunProgress): void;
   onRun(run: Run, artifacts?: Artifact[]): void;
 }) {
   const members = bots.filter((bot) => channel.botIds.includes(bot.id));
@@ -33,6 +39,8 @@ export function ChannelWorkspace({
     items.push(artifact);
     artifactsByRun.set(artifact.runId, items);
   }
+  const latestProgressByRun = new Map<string, RunProgress>();
+  for (const item of progress) latestProgressByRun.set(item.runId, item);
   const [botId, setBotId] = useState(available[0]?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -71,6 +79,7 @@ export function ChannelWorkspace({
       onMessage(message) {
         setMessages((current) => mergeMessages(current, [message]));
       },
+      onProgress,
       onRun(run, projectedArtifacts) {
         setRuns((current) => mergeRuns(current, [run]));
         onRun(run, projectedArtifacts);
@@ -86,7 +95,7 @@ export function ChannelWorkspace({
       controller.abort();
       unsubscribe();
     };
-  }, [channel.id, onRun]);
+  }, [channel.id, onProgress, onRun]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -209,18 +218,24 @@ export function ChannelWorkspace({
               {runs.slice(0, 5).map((run) => {
                 const assignee = botsById.get(run.botId);
                 const runArtifacts = artifactsByRun.get(run.id) ?? [];
+                const latestProgress = latestProgressByRun.get(run.id);
                 return (
                   <article className="run-row-shell" key={run.id}>
-                    <div className="run-row">
+                    <button
+                      className="run-row"
+                      type="button"
+                      aria-label={`查看任务：${run.title}`}
+                      onClick={() => onInspectRun(run.id)}
+                    >
                       {assignee ? <RobotAvatar bot={assignee} compact /> : null}
                       <span className="run-row-copy">
                         <strong>{run.title}</strong>
-                        <small>{assignee?.name ?? "未知 Bot"}</small>
+                        <small>{latestProgress?.message ?? assignee?.name ?? "未知 Bot"}</small>
                       </span>
                       <span className={`run-status ${run.status}`}>
                         {runStatusLabel(run.status)}
                       </span>
-                    </div>
+                    </button>
                     {run.resultSummary || run.errorMessage || runArtifacts.length > 0 ? (
                       <div className={`run-result ${run.errorMessage ? "failed" : ""}`}>
                         <p>{run.errorMessage ?? run.resultSummary}</p>

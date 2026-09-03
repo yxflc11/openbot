@@ -19,6 +19,7 @@ import {
 } from "./control-plane-store.js";
 import { createApp, ownerSessionCookie } from "./app.js";
 import { OwnerAuthService } from "./owner-auth.js";
+import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 import type {
   CreateOwnerSessionInput,
   OwnerSessionStore,
@@ -115,7 +116,52 @@ describe("server app", () => {
 
     expect(await response.json()).toMatchObject({
       counts: { bots: 1, channels: 0, connectedNodes: 1 },
+      progress: [],
     });
+  });
+
+  it("streams the authoritative Node snapshot and later Node changes", async () => {
+    const node: ExecutionNode = {
+      id: "node-1",
+      name: "Linux worker",
+      platform: "linux",
+      capabilities: ["browser"],
+      activeRunIds: [],
+      maxConcurrentRuns: 1,
+      connectedAt: "2026-09-04T00:00:00.000Z",
+      lastSeenAt: "2026-09-04T00:00:00.000Z",
+    };
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const app = createTestApp({
+      listNodes: () => [node],
+      store: createTestStore(),
+      workspaceRealtime,
+    });
+    const cookie = await login(app);
+    const controller = new AbortController();
+    const response = await app.request("/api/v1/workspace/events", {
+      headers: { Cookie: cookie },
+      signal: controller.signal,
+    });
+    const reader = response.body?.getReader();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const ready = new TextDecoder().decode((await reader?.read())?.value);
+    expect(ready).toContain("event: workspace.ready");
+    expect(ready).toContain('"id":"node-1"');
+
+    workspaceRealtime.publish({
+      type: "node.removed",
+      nodeId: node.id,
+      occurredAt: "2026-09-04T00:01:00.000Z",
+    });
+    const removed = new TextDecoder().decode((await reader?.read())?.value);
+    expect(removed).toContain("event: node.removed");
+    expect(removed).toContain('"nodeId":"node-1"');
+
+    await reader?.cancel();
+    controller.abort();
   });
 
   it("serves an authenticated artifact as non-cacheable inline content", async () => {
@@ -384,6 +430,7 @@ describe("server app", () => {
       body: JSON.stringify({ content: "同步给其他设备" }),
     });
     expect(created.status).toBe(201);
+    const createdPayload = (await created.json()) as { run: Run };
     expect(published).toMatchObject([{ channelId: channel.id, content: "同步给其他设备" }]);
     expect(publishedRuns).toMatchObject([
       { channelId: channel.id, botId: bot.id, status: "queued" },
@@ -397,6 +444,23 @@ describe("server app", () => {
       : new TextDecoder().decode((await reader?.read())?.value);
     expect(runEvent).toContain("event: run.created");
     expect(runEvent).toContain('"status":"queued"');
+
+    realtime.publish({
+      type: "run.progress",
+      channelId: channel.id,
+      progress: {
+        id: "00000000-0000-4000-8000-000000000090",
+        runId: createdPayload.run.id,
+        channelId: channel.id,
+        nodeId: "linux-node",
+        stage: "navigate",
+        message: "正在打开测试页",
+        createdAt: "2026-09-04T00:01:00.000Z",
+      },
+    });
+    const progressEvent = new TextDecoder().decode((await reader?.read())?.value);
+    expect(progressEvent).toContain("event: run.progress");
+    expect(progressEvent).toContain("正在打开测试页");
 
     await reader?.cancel();
     controller.abort();
@@ -420,12 +484,14 @@ function createTestApp({
   listNodes = () => [],
   realtime,
   artifactStorage,
+  workspaceRealtime,
 }: {
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
   artifactStorage?: Pick<ArtifactStorage, "read">;
+  workspaceRealtime?: WorkspaceRealtimeHub;
 }) {
   const auth = new OwnerAuthService(createMemorySessionStore(), {
     ownerName: "Test Owner",
@@ -439,6 +505,7 @@ function createTestApp({
     ...(artifactStorage === undefined ? {} : { artifactStorage }),
     listNodes,
     ...(realtime === undefined ? {} : { realtime }),
+    ...(workspaceRealtime === undefined ? {} : { workspaceRealtime }),
     secureCookies: false,
     store,
   });
@@ -519,6 +586,9 @@ function createTestStore(): ControlPlaneStore {
         throw new StoreNotFoundError("Channel not found.");
       }
       return channelId === undefined ? runs : runs.filter((run) => run.channelId === channelId);
+    },
+    async listRunProgress() {
+      return [];
     },
     async listDispatchableRuns(limit = 50) {
       return runs
@@ -607,9 +677,19 @@ function createTestStore(): ControlPlaneStore {
       return run;
     },
     async appendRunProgress(runId: string, nodeId: string) {
-      return runs.some(
-        (run) => run.id === runId && run.nodeId === nodeId && run.status === "running",
+      const run = runs.find(
+        (item) => item.id === runId && item.nodeId === nodeId && item.status === "running",
       );
+      if (run === undefined) return undefined;
+      return {
+        id: id(),
+        runId,
+        channelId: run.channelId,
+        nodeId,
+        stage: "test",
+        message: "Testing",
+        createdAt: new Date().toISOString(),
+      };
     },
     async completeRun(runId: string, nodeId: string, summary: string) {
       const run = runs.find((item) => item.id === runId);

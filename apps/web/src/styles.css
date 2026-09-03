@@ -588,8 +588,14 @@ select:focus-visible {
   border-left: 1px solid var(--line);
   background: #fcfcfd;
 }
-.context-rail > h2 {
-  margin: 0 0 24px;
+.rail-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.rail-title h2 {
+  margin: 0;
   font-size: 16px;
 }
 .stat-grid {
@@ -650,10 +656,21 @@ select:focus-visible {
 }
 .rail-run {
   display: grid;
+  width: 100%;
   grid-template-columns: 1fr auto;
   gap: 5px 10px;
   padding: 12px 0;
   border-top: 1px solid var(--line);
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.rail-run:hover strong,
+.rail-result > button:hover strong {
+  color: var(--blue);
 }
 .rail-run strong {
   overflow: hidden;
@@ -673,13 +690,25 @@ select:focus-visible {
   padding: 12px 0;
   border-top: 1px solid var(--line);
 }
-.rail-result strong {
+.rail-result > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.rail-result > button strong {
   overflow: hidden;
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.rail-result p {
+.rail-result > button p {
+  grid-column: 1 / -1;
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
@@ -905,11 +934,19 @@ select:focus-visible {
 }
 .run-row {
   display: grid;
+  width: 100%;
   grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
   min-height: 58px;
   padding: 8px 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.run-row:hover .run-row-copy strong {
+  color: var(--blue);
 }
 .run-result {
   padding: 0 0 12px 43px;
@@ -1127,6 +1164,216 @@ select:focus-visible {
   place-items: center;
   padding: 24px;
   background: rgba(16, 20, 26, 0.38);
+}
+
+.inspector-backdrop {
+  position: fixed;
+  z-index: 25;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(18, 23, 30, 0.24);
+}
+.run-inspector {
+  width: min(440px, 100%);
+  height: 100vh;
+  overflow-y: auto;
+  border-left: 1px solid #dce1e7;
+  background: #fff;
+  box-shadow: -18px 0 48px rgba(19, 26, 35, 0.12);
+}
+.inspector-header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px 26px 22px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+}
+.inspector-header h2 {
+  margin: 10px 0 0;
+  font-size: 19px;
+  line-height: 1.35;
+}
+.inspector-body {
+  padding: 4px 26px 34px;
+}
+.inspector-section {
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+.inspector-section h3 {
+  margin: 0 0 12px;
+  color: #696f77;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.instruction-copy {
+  margin: 0;
+  color: #30353b;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.inspector-assignment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 20px 0 0;
+}
+.inspector-assignment > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.assignment-icon,
+.assignment-placeholder {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #52606d;
+  background: #f0f2f5;
+}
+.assignment-placeholder {
+  color: #fff;
+  background: #111827;
+  font-size: 10px;
+  font-weight: 800;
+}
+.inspector-assignment span:last-child {
+  min-width: 0;
+}
+.inspector-assignment small,
+.inspector-assignment strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inspector-assignment small {
+  color: #8b929a;
+  font-size: 9px;
+}
+.inspector-assignment strong {
+  margin-top: 4px;
+  font-size: 11px;
+}
+.progress-timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.progress-timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 18px;
+}
+.progress-timeline li:last-child {
+  padding-bottom: 0;
+}
+.progress-timeline li::before {
+  position: absolute;
+  top: 10px;
+  bottom: -2px;
+  left: 4px;
+  width: 1px;
+  background: #dfe4ea;
+  content: "";
+}
+.progress-timeline li:last-child::before {
+  display: none;
+}
+.progress-marker {
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #a9b0b8;
+  box-shadow: 0 0 0 1px #bfc6ce;
+}
+.progress-timeline li.complete .progress-marker {
+  background: var(--green);
+  box-shadow: 0 0 0 1px #78bd91;
+}
+.progress-timeline li.current .progress-marker {
+  background: var(--blue);
+  box-shadow: 0 0 0 1px #77a8ed;
+}
+.progress-timeline li.failed .progress-marker {
+  background: #a14b43;
+  box-shadow: 0 0 0 1px #c99a96;
+}
+.progress-timeline header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+.progress-timeline strong {
+  font-size: 12px;
+}
+.progress-timeline time {
+  color: #9aa0a7;
+  font-size: 9px;
+}
+.progress-timeline p {
+  margin: 4px 0 0;
+  color: #737a83;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.inspector-artifacts {
+  display: grid;
+  gap: 9px;
+}
+.inspector-artifacts a {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.inspector-artifacts a:hover {
+  border-color: #abc8f2;
+}
+.inspector-artifacts img {
+  width: 104px;
+  height: 66px;
+  border-radius: 5px;
+  object-fit: cover;
+  background: #f2f4f6;
+}
+.inspector-artifacts strong,
+.inspector-artifacts small {
+  display: block;
+}
+.inspector-artifacts strong {
+  font-size: 11px;
+}
+.inspector-artifacts small {
+  margin-top: 5px;
+  color: #8a9199;
+  font-size: 9px;
 }
 .create-dialog {
   position: static;
@@ -1459,7 +1706,7 @@ select:focus-visible {
     border-left: 0;
     background: #fff;
   }
-  .context-rail > h2,
+  .context-rail .rail-title,
   .context-rail .attention {
     display: none;
   }
@@ -1573,6 +1820,23 @@ select:focus-visible {
   }
   .context-rail {
     display: none;
+  }
+  .inspector-backdrop {
+    align-items: flex-end;
+  }
+  .run-inspector {
+    width: 100%;
+    height: min(90vh, 760px);
+    border-top: 1px solid #dce1e7;
+    border-left: 0;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -16px 42px rgba(19, 26, 35, 0.14);
+  }
+  .inspector-header {
+    padding: 20px 18px 17px;
+  }
+  .inspector-body {
+    padding: 2px 18px 28px;
   }
   .channel-panel-heading {
     align-items: stretch;

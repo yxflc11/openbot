@@ -4,7 +4,7 @@
 
 OpenBot 自己提供频道、Bot 名册、审批、审计和远程电脑界面。手机、平板和笔记本只需打开私有 Web/PWA；Mac Mini、Linux 服务器或云主机只是可注册、可替换的执行节点。
 
-当前状态：**M1 已跑通第一条完整执行链：含明确公开 URL 的任务会按固定 execution profile 分配给在线 Node，经 CopilotKit/OpenBot `agent-computer` 打开网页并截图；Run 会进入 `running`，结果和截图持久化后实时回到频道。当前仍是只读切片，不会点击、填写或提交表单，也还没有审批和实时画面。**
+当前状态：**M1 已跑通第一条完整执行链：含明确公开 URL 的任务会按固定 execution profile 分配给在线 Node，经 CopilotKit/OpenBot `agent-computer` 打开网页并截图；节点连接/断开、Run 状态和结构化进度会实时同步，结果与截图持久化后可在任务 Inspector 中复查。当前仍是只读切片，不会点击、填写或提交表单，也还没有审批和实时画面。**
 
 ## 产品公式
 
@@ -191,7 +191,7 @@ npm run check
 npm audit
 ```
 
-此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`，完成摘要和 PNG 截图会持久化并通过 SSE 投影到频道和右栏。执行中的 Node 断线会把 Run 明确标记失败，避免对未知外部副作用盲目重试。审批、网页填写/点击、实时屏幕和远程接管仍将按 M1–M2 逐步接入。
+此时可通过本地 Owner 密码登录，并运行 Marvis 式办公室、Bot/频道创建、成员管理、本地频道消息、多浏览器实时同步、任务投影和节点登记。频道任务会自动分派给频道内的 Chief（没有 Chief 时按稳定顺序选择首位成员），再按 Bot 固定的 execution profile 匹配可用 Node；Node 确认接单后进入 `assigned`，Server 单独批准启动后进入 `running`。节点在线状态、容量和执行阶段经 SSE 实时投影；点击频道任务或右栏任务即可打开 Inspector，查看指令、Bot、电脑、进度、结果与 PNG 产物。执行中的 Node 断线会把 Run 明确标记失败，避免对未知外部副作用盲目重试。审批、网页填写/点击、实时屏幕和远程接管仍将按 M1–M2 逐步接入。
 
 生产环境必须使用 HTTPS，把 `OPENBOT_SECURE_COOKIES` 设为 `true`，并让 `OPENBOT_ALLOWED_ORIGINS` 只包含实际 Web/PWA 地址。Owner 密码至少 12 个字符，建议使用密码管理器生成的长随机值。
 
@@ -214,6 +214,7 @@ npm audit
 - [ADR-0008：频道消息到持久化任务](docs/decisions/0008-channel-task-runs.md)
 - [ADR-0009：两阶段 Node 任务分配](docs/decisions/0009-two-phase-node-assignment.md)
 - [ADR-0010：复用 agent-computer 的 provider 边界](docs/decisions/0010-agent-computer-provider-boundary.md)
+- [ADR-0011：Workspace Node 实时投影](docs/decisions/0011-workspace-node-realtime.md)
 - [声明式配置草案](examples/openbot.example.yaml)
 
 ## 开源注意事项

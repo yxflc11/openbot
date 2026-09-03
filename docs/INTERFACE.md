@@ -189,7 +189,7 @@ sequenceDiagram
 
 办公室、频道和移动端由同一份 Server 事件投影，不解析聊天文本猜状态：
 
-频道级 SSE 已投影 `MESSAGE_CREATED`、`RUN_CREATED`、`RUN_ASSIGNED`、`RUN_STARTED`、`RUN_COMPLETED`、`RUN_FAILED` 与 `RUN_REQUEUED`，REST 继续承担写命令。Web 按实体 ID、`updatedAt` 和状态版本合并历史快照与实时事件，把同一任务同步到频道任务卡、Bot 工位和右栏，并避免较旧的 REST 响应覆盖较新的 SSE 状态。节点卡显示活动槽位/并发上限；完成摘要和 PNG Artifact 已显示在频道和右栏。细粒度 progress、实时画面和审批仍待接入。
+频道级 SSE 已投影 `MESSAGE_CREATED`、`RUN_CREATED`、`RUN_ASSIGNED`、`RUN_STARTED`、`RUN_PROGRESS`、`RUN_COMPLETED`、`RUN_FAILED` 与 `RUN_REQUEUED`，全局 Workspace SSE 投影 Node 上线、心跳容量和断开，REST 继续承担写命令。Web 按实体 ID、时间和状态版本合并历史快照与实时事件，把同一任务同步到频道任务卡、Bot 工位、右栏与 Inspector，并避免较旧的 REST 响应覆盖较新的 SSE 状态。Inspector 已显示任务原文、执行 Bot、Node、进度时间线、结果和 PNG Artifact；实时电脑画面和审批仍待接入。
 
 | 事件 | UI 投影 |
 | --- | --- |
@@ -201,7 +201,7 @@ sequenceDiagram
 | `RUN_ASSIGNED` | 已分配状态、Bot 工位绑定 Node、节点槽位占用 |
 | `RUN_REQUEUED` | 回到等待节点并释放原节点槽位 |
 | `RUN_STARTED` | 运行中状态与 Node 占用 |
-| `RUN_PROGRESS` | 结构化执行轨迹；当前已落库，UI 待接入 |
+| `RUN_PROGRESS` | 结构化执行轨迹；实时进入任务卡和 Inspector 时间线 |
 | `RUN_FAILED` | 明确错误与终止反馈 |
 | `RUN_PLAN_UPDATED` | 进度 |
 | `NODE_BOUND` | 工位电脑状态 |

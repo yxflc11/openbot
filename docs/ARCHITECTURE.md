@@ -100,6 +100,8 @@ flowchart LR
 - reconnect cursor 与幂等写入；
 - 不依赖云 license 的完整启动模式。
 
+频道消息和 Run 使用频道 SSE；在线 Node 属于整个工作区，使用独立的 Workspace SSE。Workspace 订阅建立后先发送包含在线 Node 的权威快照，再发送 `node.upserted` / `node.removed` 增量，避免连接建立期间的竞态，也避免把全局机器拓扑复制到每个频道流。
+
 ### Node Registry
 
 记录 Node 的：

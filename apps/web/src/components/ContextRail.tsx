@@ -1,8 +1,17 @@
 import type { ExecutionNode, WorkspaceSnapshot } from "@openbot/domain";
+import type { RealtimeConnectionState } from "../api";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { NodeIcon } from "./Icons";
 
-export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
+export function ContextRail({
+  realtimeState,
+  workspace,
+  onInspectRun,
+}: {
+  realtimeState: RealtimeConnectionState;
+  workspace: WorkspaceSnapshot;
+  onInspectRun(runId: string): void;
+}) {
   const activeRuns = workspace.runs.filter(isActiveRun);
   const recentResults = workspace.runs
     .filter((run) => run.status === "completed" || run.status === "failed")
@@ -11,7 +20,13 @@ export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
   const nodeById = new Map(workspace.nodes.map((node) => [node.id, node]));
   return (
     <aside className="context-rail" aria-label="运行状态">
-      <h2>运行状态</h2>
+      <div className="rail-title">
+        <h2>运行状态</h2>
+        <span className={`realtime-state ${realtimeState}`}>
+          <i />
+          {realtimeState === "live" ? "实时" : realtimeState === "retrying" ? "重连中" : "连接中"}
+        </span>
+      </div>
       <dl className="stat-grid">
         <Metric label="频道" value={workspace.counts.channels} />
         <Metric label="Bots" value={workspace.counts.bots} />
@@ -37,13 +52,18 @@ export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
             const bot = botById.get(run.botId);
             const node = run.nodeId === undefined ? undefined : nodeById.get(run.nodeId);
             return (
-              <article className="rail-run" key={run.id}>
+              <button
+                className="rail-run"
+                type="button"
+                onClick={() => onInspectRun(run.id)}
+                key={run.id}
+              >
                 <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
                 <strong>{run.title}</strong>
                 <small>
                   {bot?.name ?? "未知 Bot"} · {node?.name ?? "等待节点"}
                 </small>
-              </article>
+              </button>
             );
           })
         )}
@@ -56,9 +76,11 @@ export function ContextRail({ workspace }: { workspace: WorkspaceSnapshot }) {
             const artifact = workspace.artifacts.find((item) => item.runId === run.id);
             return (
               <article className="rail-result" key={run.id}>
-                <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
-                <strong>{run.title}</strong>
-                <p>{run.errorMessage ?? run.resultSummary ?? "任务已结束。"}</p>
+                <button type="button" onClick={() => onInspectRun(run.id)}>
+                  <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
+                  <strong>{run.title}</strong>
+                  <p>{run.errorMessage ?? run.resultSummary ?? "任务已结束。"}</p>
+                </button>
                 {artifact ? (
                   <a
                     href={`/api/v1/artifacts/${artifact.id}/content`}

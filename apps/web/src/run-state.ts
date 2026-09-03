@@ -1,4 +1,4 @@
-import type { Artifact, ExecutionNode, Run } from "@openbot/domain";
+import type { Artifact, ExecutionNode, Run, RunProgress } from "@openbot/domain";
 
 const activeStatuses = new Set<Run["status"]>([
   "queued",
@@ -28,6 +28,25 @@ export function mergeArtifacts(primary: Artifact[], secondary: Artifact[]): Arti
   for (const artifact of secondary) byId.set(artifact.id, artifact);
   return Array.from(byId.values()).sort((left, right) =>
     right.createdAt.localeCompare(left.createdAt),
+  );
+}
+
+export function mergeProgress(primary: RunProgress[], secondary: RunProgress[]): RunProgress[] {
+  const byId = new Map(primary.map((progress) => [progress.id, progress]));
+  for (const progress of secondary) byId.set(progress.id, progress);
+  return Array.from(byId.values())
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+    .slice(-200);
+}
+
+export function mergeNodes(primary: ExecutionNode[], secondary: ExecutionNode[]): ExecutionNode[] {
+  const byId = new Map(primary.map((node) => [node.id, node]));
+  for (const node of secondary) {
+    const existing = byId.get(node.id);
+    if (existing === undefined || node.lastSeenAt >= existing.lastSeenAt) byId.set(node.id, node);
+  }
+  return Array.from(byId.values()).sort((left, right) =>
+    right.connectedAt.localeCompare(left.connectedAt),
   );
 }
 

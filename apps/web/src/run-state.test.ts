@@ -4,6 +4,8 @@ import {
   indexActiveRunsByBot,
   isActiveRun,
   mergeArtifacts,
+  mergeNodes,
+  mergeProgress,
   mergeRuns,
   projectRunOnNodes,
   runStatusLabel,
@@ -98,5 +100,47 @@ describe("run projections", () => {
     expect(mergeArtifacts([artifact], [{ ...artifact, name: "renamed.png" }])).toEqual([
       { ...artifact, name: "renamed.png" },
     ]);
+  });
+
+  it("merges progress chronologically without duplicating events", () => {
+    const first = {
+      id: "progress-1",
+      runId: "run-1",
+      channelId: "channel-1",
+      nodeId: "linux-node",
+      stage: "navigate",
+      message: "正在打开页面",
+      createdAt: "2026-01-01T00:01:00.000Z",
+    };
+    const second = {
+      ...first,
+      id: "progress-2",
+      stage: "screenshot",
+      message: "正在截图",
+      createdAt: "2026-01-01T00:02:00.000Z",
+    };
+
+    expect(mergeProgress([second], [first, first])).toEqual([first, second]);
+  });
+
+  it("keeps the latest projection for each connected Node", () => {
+    const node = {
+      id: "linux-node",
+      name: "Linux worker",
+      platform: "linux" as const,
+      capabilities: ["browser"],
+      activeRunIds: [],
+      maxConcurrentRuns: 1,
+      connectedAt: "2026-01-01T00:00:00.000Z",
+      lastSeenAt: "2026-01-01T00:00:00.000Z",
+    };
+    const updated = {
+      ...node,
+      activeRunIds: ["run-1"],
+      lastSeenAt: "2026-01-01T00:01:00.000Z",
+    };
+
+    expect(mergeNodes([node], [updated])).toEqual([updated]);
+    expect(mergeNodes([updated], [node])).toEqual([updated]);
   });
 });

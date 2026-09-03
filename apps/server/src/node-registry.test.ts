@@ -24,7 +24,9 @@ describe("node enrollment", () => {
     const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
     const received: ServerMessage[] = [];
     const runtimeMessages: NodeRunMessage[] = [];
+    const nodeUpdates: string[][] = [];
     registry.onRunMessage((_node, message) => runtimeMessages.push(message));
+    registry.onUpdated((node) => nodeUpdates.push(node.activeRunIds));
     client.on("message", (raw) => {
       const parsed = serverMessageSchema.safeParse(JSON.parse(raw.toString()));
       if (!parsed.success) return;
@@ -98,12 +100,14 @@ describe("node enrollment", () => {
       expect(registry.confirmRun("linux-node", runId)).toBe(true);
       await waitFor(() => received.some((message) => message.type === "run.assigned"));
       expect(registry.list()[0]?.activeRunIds).toEqual([runId]);
+      expect(nodeUpdates.at(-1)).toEqual([runId]);
       await waitFor(() => runtimeMessages.some((message) => message.type === "run.start_request"));
       expect(registry.startRun("linux-node", runId)).toBe(true);
       await waitFor(() => runtimeMessages.some((message) => message.type === "run.completed"));
       registry.settleRun("linux-node", runId, "completed");
       await waitFor(() => received.some((message) => message.type === "run.settled"));
       expect(registry.list()[0]?.activeRunIds).toEqual([]);
+      expect(nodeUpdates.at(-1)).toEqual([]);
     } finally {
       client.close();
       await once(client, "close");
