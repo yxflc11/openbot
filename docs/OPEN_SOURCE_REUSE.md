@@ -57,6 +57,7 @@ Audit date: 2026-09-04. Commit pins are research baselines, not automatic depend
 | Provider conformance scenarios | [MCP Conformance `74edef34`](https://github.com/modelcontextprotocol/conformance/tree/74edef34d674f563537be8c6587cebaa58e830ca) | License transition: new code Apache-2.0, remaining historical code MIT, documentation CC-BY-4.0 | Adopt named executable scenarios, version-frozen requirements, visible expected failures, and independent checks on both ends of a connection. OpenBot uses local Vitest fixtures for its own protocol; no MCP code or documentation has been copied. |
 | Platform conformance claims | [OCI runtime-spec `6999a89a`](https://github.com/opencontainers/runtime-spec/tree/6999a89a76a0329f440d5740497bedb9dd431297) | Apache-2.0 | Adopt the principle that conformance is scoped to an explicit OS/architecture and that a failed required behavior blocks the claim. OpenBot does not implement or copy the OCI runtime contract here. |
 | Agent/UI event protocol candidate | [AG-UI `faee4b13`](https://github.com/ag-ui-protocol/ag-ui/tree/faee4b13eabee191d9974f6b19a91b5668268995) | MIT | Evaluated for future agent-to-user event interoperability. Deferred: current work is the security-sensitive Server/Worker Host protocol, not an agent UI transport migration. No dependency or source was added. |
+| Accessible profile navigation and modal review | [WAI-ARIA APG `7e4034b2`](https://github.com/w3c/aria-practices/tree/7e4034b262bc0d25332e330d8a582aaf34113829), [React Spectrum `50279a10`](https://github.com/adobe/react-spectrum/tree/50279a10ab998572e240e44aa36f84a15c7c4f99), and [WCAG technique H102](https://www.w3.org/WAI/WCAG22/Techniques/html/H102) | W3C Software and Document License; Apache-2.0 | Adopt the standard tab roles/keyboard model and the native modal dialog lifecycle. Keep a thin local React bridge because these fixed controls do not justify a second component/style stack. No upstream source was copied. |
 | Office visualization | Public Tencent Marvis product imagery supplied by the project owner | No reusable source-code license identified | Visual inspiration only. No Marvis code or assets are incorporated; the office remains a deferred optional plugin. |
 
 ## Findings applied to the current code
@@ -78,6 +79,9 @@ Audit date: 2026-09-04. Commit pins are research baselines, not automatic depend
   advertised as executable.
 - Named Windows, macOS, and Linux routing scenarios distinguish simulated contract coverage from
   real-device support. See [Provider conformance](PROVIDER_CONFORMANCE.md).
+- Employee profile tabs now expose the WAI-ARIA relationships and horizontal keyboard behavior;
+  create/import/export dialogs use native modality, Escape handling, focus containment, and focus
+  restoration. See [Accessibility baseline](ACCESSIBILITY.md).
 
 ## Known gaps from the audit
 
@@ -91,6 +95,8 @@ Audit date: 2026-09-04. Commit pins are research baselines, not automatic depend
   inspection Worker, not inside the authoritative Server process.
 - Provider integrations still need hermetic execution suites, machine-readable reports, and
   repeatable real-device CI before a platform is marked supported or certified.
+- Accessibility still needs real screen-reader, forced-colors, zoom/reflow, and custom-overlay
+  evidence before OpenBot can make a conformance claim.
 
 ## Pull-request evidence
 

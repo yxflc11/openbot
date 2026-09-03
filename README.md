@@ -52,7 +52,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Area | Available now | Next step |
 | --- | --- | --- |
 | Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
-| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, and SSE reconnect | Installable PWA, notification delivery, accessibility and localization polish |
+| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, SSE reconnect, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
 | Employee profile | Seven-view profile, safe template export, quarantined import inspection, and Owner-reviewed candidate/verify/suspend/revoke skill metadata | Executable Agent Skills bundles, autonomous proposals, memory controls, signed packages, reviewed activation, cloning, and transfer |
 | Node protocol | Outbound WebSocket registration, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and real-device conformance reports |
@@ -252,6 +252,7 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | Build or integrate against the API | [Local API](docs/API.md) |
 | Review security guarantees | [Threat model](docs/SECURITY.md) |
 | Work on the channel experience | [Interface guide](docs/INTERFACE.md) |
+| Review or improve keyboard and assistive-technology behavior | [Accessibility baseline](docs/ACCESSIBILITY.md) |
 | Design employee identity and portability | [Portable employee model](docs/EMPLOYEE.md) |
 | Add an operating system or device | [Cross-platform Worker Hosts](docs/CROSS_PLATFORM.md) |
 | Test a Worker Host or Provider claim | [Provider conformance](docs/PROVIDER_CONFORMANCE.md) |

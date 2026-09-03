@@ -24,6 +24,8 @@ The development line already contains:
 - default structural exclusion of identity, authority, memories, and work history;
 - strict, bounded, read-only import inspection with checksum, semantic, sensitive-text, and current
   Worker Host compatibility checks.
+- WAI-ARIA-based employee profile tabs and native modal focus behavior for create/import/export
+  flows, with desktop and phone browser evidence.
 
 The current browser Provider is still read-only. Native desktop control, package activation, and
 production Node trust are not part of this baseline.

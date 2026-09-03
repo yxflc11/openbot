@@ -1,9 +1,9 @@
 import type { EmployeeProfile } from "@openbot/domain";
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { runStatusLabel } from "../run-state";
 import { RobotAvatar } from "./RobotAvatar";
 
-type ProfileTab =
+export type ProfileTab =
   | "overview"
   | "evolution"
   | "skills"
@@ -22,6 +22,18 @@ const tabs: Array<{ id: ProfileTab; label: string }> = [
   { id: "configuration", label: "配置" },
 ];
 
+export function profileTabForNavigationKey(
+  current: ProfileTab,
+  key: string,
+): ProfileTab | undefined {
+  const currentIndex = tabs.findIndex((item) => item.id === current);
+  if (key === "Home") return tabs[0]?.id;
+  if (key === "End") return tabs.at(-1)?.id;
+  if (key === "ArrowRight") return tabs[(currentIndex + 1) % tabs.length]?.id;
+  if (key === "ArrowLeft") return tabs[(currentIndex - 1 + tabs.length) % tabs.length]?.id;
+  return undefined;
+}
+
 export function EmployeeProfileView({
   profile,
   loading,
@@ -38,6 +50,8 @@ export function EmployeeProfileView({
   onExport(): void;
 }) {
   const [tab, setTab] = useState<ProfileTab>("overview");
+  const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabSetId = useId();
 
   if (loading || profile === undefined) {
     return (
@@ -77,27 +91,48 @@ export function EmployeeProfileView({
         </div>
       </header>
 
-      <nav className="employee-tabs" aria-label="员工档案页面">
-        {tabs.map((item) => (
+      <div className="employee-tabs" role="tablist" aria-label="员工档案页面">
+        {tabs.map((item, index) => (
           <button
             className={tab === item.id ? "selected" : ""}
             type="button"
-            aria-current={tab === item.id ? "page" : undefined}
+            role="tab"
+            id={`${tabSetId}-${item.id}-tab`}
+            aria-controls={`${tabSetId}-${item.id}-panel`}
+            aria-selected={tab === item.id}
+            tabIndex={tab === item.id ? 0 : -1}
+            ref={(node) => {
+              tabButtons.current[index] = node;
+            }}
             onClick={() => setTab(item.id)}
+            onKeyDown={(event) => {
+              const nextTab = profileTabForNavigationKey(item.id, event.key);
+              if (nextTab === undefined) return;
+              event.preventDefault();
+              setTab(nextTab);
+              tabButtons.current[tabs.findIndex((candidate) => candidate.id === nextTab)]?.focus();
+            }}
             key={item.id}
           >
             {item.label}
           </button>
         ))}
-      </nav>
+      </div>
 
-      {tab === "overview" ? <Overview profile={profile} /> : null}
-      {tab === "evolution" ? <Evolution profile={profile} /> : null}
-      {tab === "skills" ? <Skills profile={profile} /> : null}
-      {tab === "live" ? <LiveWork profile={profile} /> : null}
-      {tab === "memory" ? <Memory profile={profile} /> : null}
-      {tab === "records" ? <Records profile={profile} /> : null}
-      {tab === "configuration" ? <Configuration profile={profile} /> : null}
+      <section
+        className="employee-tab-content"
+        role="tabpanel"
+        id={`${tabSetId}-${tab}-panel`}
+        aria-labelledby={`${tabSetId}-${tab}-tab`}
+      >
+        {tab === "overview" ? <Overview profile={profile} /> : null}
+        {tab === "evolution" ? <Evolution profile={profile} /> : null}
+        {tab === "skills" ? <Skills profile={profile} /> : null}
+        {tab === "live" ? <LiveWork profile={profile} /> : null}
+        {tab === "memory" ? <Memory profile={profile} /> : null}
+        {tab === "records" ? <Records profile={profile} /> : null}
+        {tab === "configuration" ? <Configuration profile={profile} /> : null}
+      </section>
     </main>
   );
 }

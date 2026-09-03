@@ -1254,11 +1254,12 @@ select:focus-visible {
   font-size: 9px;
 }
 .create-dialog {
-  position: static;
+  position: fixed;
+  inset: 0;
   width: min(540px, 100%);
   max-height: calc(100vh - 48px);
   overflow-y: auto;
-  margin: 0;
+  margin: auto;
   padding: 0;
   border: 0;
   border-radius: 12px;

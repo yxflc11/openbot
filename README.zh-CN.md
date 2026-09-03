@@ -45,7 +45,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 | 领域 | 当前已经可用 | 下一步 |
 | --- | --- | --- |
 | 控制平面 | 本地 Owner 认证、PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、恢复工具和多用户信任模型 |
-| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批和 SSE 重连 | 可安装 PWA、通知投递、无障碍和本地化完善 |
+| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、SSE 重连、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
 | 员工档案 | 七视图个人主页、安全模板导出、隔离导入检查，以及由 Owner 审核的技能候选/验证/暂停/撤销元数据 | 可执行 Agent Skills 包、自动提案、记忆控制、签名员工包、审核后激活、复制和转移 |
 | Node 协议 | 出站 WebSocket 登记、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和真实设备一致性报告 |
@@ -236,6 +236,7 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | 基于 API 开发或集成 | [本地 API](docs/API.md) |
 | 审查安全保证 | [威胁模型](docs/SECURITY.md) |
 | 参与频道体验开发 | [界面方案](docs/INTERFACE.md) |
+| 审查或改进键盘与辅助技术行为 | [无障碍基线](docs/ACCESSIBILITY.zh-CN.md) |
 | 设计员工身份和迁移 | [可迁移数字员工模型](docs/EMPLOYEE.zh-CN.md) |
 | 增加操作系统或设备 | [跨平台工作主机](docs/CROSS_PLATFORM.zh-CN.md) |
 | 检查工作主机或 Provider 声明 | [Provider 一致性测试](docs/PROVIDER_CONFORMANCE.zh-CN.md) |

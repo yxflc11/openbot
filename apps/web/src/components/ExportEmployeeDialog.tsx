@@ -7,6 +7,7 @@ import {
 } from "../api";
 import { CloseIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
+import { useModalDialog } from "./useModalDialog";
 
 export function ExportEmployeeDialog({
   employee,
@@ -20,6 +21,7 @@ export function ExportEmployeeDialog({
   const [preview, setPreview] = useState<EmployeeExportPreview>();
   const [error, setError] = useState<string>();
   const [downloading, setDownloading] = useState(false);
+  const { dialogRef, closeDialog } = useModalDialog(onClose);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -49,13 +51,17 @@ export function ExportEmployeeDialog({
 
   return (
     <div className="dialog-backdrop">
-      <dialog className="create-dialog export-employee-dialog" open aria-labelledby="export-title">
+      <dialog
+        ref={dialogRef}
+        className="create-dialog export-employee-dialog"
+        aria-labelledby="export-title"
+      >
         <header className="dialog-header">
           <div>
             <h2 id="export-title">导出员工模板</h2>
             <p>先确认会带走什么，也确认绝不会带走什么。</p>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭" onClick={closeDialog}>
             <CloseIcon />
           </button>
         </header>
@@ -88,7 +94,7 @@ export function ExportEmployeeDialog({
             <strong>导入后会创建新员工</strong>
             <span>模板不携带任何工作主机权限。</span>
           </div>
-          <button className="secondary-button" type="button" onClick={onClose}>
+          <button className="secondary-button" type="button" onClick={closeDialog}>
             取消
           </button>
           <button

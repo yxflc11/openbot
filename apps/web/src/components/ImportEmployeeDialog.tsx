@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { type ApiError, previewEmployeeImport } from "../api";
 import { CloseIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
+import { useModalDialog } from "./useModalDialog";
 
 export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
   const [preview, setPreview] = useState<EmployeeImportPreview>();
@@ -10,6 +11,7 @@ export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
   const requestController = useRef<AbortController | undefined>(undefined);
+  const { dialogRef, closeDialog } = useModalDialog(onClose);
 
   useEffect(() => () => requestController.current?.abort(), []);
 
@@ -33,13 +35,17 @@ export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
 
   return (
     <div className="dialog-backdrop">
-      <dialog className="create-dialog import-employee-dialog" open aria-labelledby="import-title">
+      <dialog
+        ref={dialogRef}
+        className="create-dialog import-employee-dialog"
+        aria-labelledby="import-title"
+      >
         <header className="dialog-header">
           <div>
             <h2 id="import-title">检查员工模板</h2>
             <p>文件只在隔离预览中解析；本阶段不会创建或激活员工。</p>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭" onClick={onClose}>
+          <button className="icon-button" type="button" aria-label="关闭" onClick={closeDialog}>
             <CloseIcon />
           </button>
         </header>
@@ -74,7 +80,7 @@ export function ImportEmployeeDialog({ onClose }: { onClose(): void }) {
               />
             </label>
           ) : null}
-          <button className="primary-button" type="button" onClick={onClose}>
+          <button className="primary-button" type="button" onClick={closeDialog}>
             完成检查
           </button>
         </footer>
