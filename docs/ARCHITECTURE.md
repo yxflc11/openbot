@@ -177,7 +177,7 @@ Node 主动向 Server 建立长连接，避免远程机器开放管理端口。
 - Node 凭证不能登录 Web，也不能访问其他 Node；
 - 所有消息绑定 connection、node、run 和 sequence。
 
-协议 `0.7.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、
+协议 `0.8.0` 已实现 `node.hello`、heartbeat、两阶段分配、显式启动、progress、frame、
 `approval.request`、`approval.resolved`、completed/failed、持久化后 settled 与 cancel。
 `node.hello` 现在明确上报 Windows/macOS/Linux 等平台、系统版本、架构、设备类型、隔离状态、
 信任等级和版本化 capability manifest；`run.offer` 同时携带精确能力主版本，Server 与 Node

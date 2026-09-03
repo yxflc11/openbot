@@ -71,6 +71,7 @@ expansion until its upstream and license review is recorded.
 | Future per-Node workload identity | [SPIFFE `99470b9a`](https://github.com/spiffe/spiffe/tree/99470b9abc825f14aa364dfa2c3b53b02ba5db5b) and [Tailscale `92ec1026`](https://github.com/tailscale/tailscale/tree/92ec102673bf46d72bab64b0a278b93c01a47f34) | Apache-2.0; BSD-3-Clause | Reviewed for proof-of-possession identity, rotation, and revocation. Deferred until OpenBot defines persisted one-time enrollment and an operator recovery path; the shared development token is not relabeled as production identity. |
 | Atomic artifact files | [`npm/write-file-atomic` 8.0.0](https://github.com/npm/write-file-atomic/tree/v8.0.0) | ISC | Use the released dependency for fsync, atomic rename, per-destination serialization, and temporary-file cleanup instead of maintaining those mechanics locally. Final artifact mode remains `0600`; no upstream source was copied. |
 | Untrusted PNG validation candidates | [`image-js/fast-png` 8.0.0](https://github.com/image-js/fast-png/tree/v8.0.0) and [`sharp` 0.35.0](https://github.com/lovell/sharp/tree/v0.35.0) | MIT; Apache-2.0 | Defer full decode-and-normalize validation. `fast-png` does not expose an input-pixel resource limit; `sharp` does, but its native package must pass the Server's Linux x64/arm64 packaging matrix first. The current signature check is explicitly not a well-formedness claim. |
+| Node protocol input validation | [Zod 4.5.4 `e8e206fa`](https://github.com/colinhacks/zod/tree/e8e206fa33ac5fe7ce20a2beb12d57b1cb3df653), [OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035), and [MCP TypeScript SDK `5119ee7f`](https://github.com/modelcontextprotocol/typescript-sdk/tree/5119ee7fd7790e335a3fb60ef36f85334e2a6326) | MIT; documentation CC BY-SA 4.0; MIT | Reuse the existing pinned Zod dependency for strict envelopes and field bounds, and apply OWASP's allowlist/range guidance. OpenBot keeps only the protocol-specific bounded approval-evidence walk; MCP was reviewed as prior art but does not share the Node authority contract. No upstream source was copied. |
 | Login rate-limit candidates | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) and [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | Deferred. Neither package can establish a trustworthy remote identity without an authenticated proxy contract. The current small limiter is documented as deployment-scoped; a later adapter must normalize IPv4/IPv6, use shared storage, and fail closed. |
 | Office visualization | Public Tencent Marvis product imagery supplied by the project owner | No reusable source-code license identified | Visual inspiration only. No Marvis code or assets are incorporated; the office remains a deferred optional plugin. |
 
@@ -89,7 +90,7 @@ expansion until its upstream and license review is recorded.
 - The Server has a tested DSSE/Ed25519 signing and verification primitive that authenticates the
   exact bytes later parsed as an Employee package. It is not exposed until Owner key lifecycle and
   trust policy are implemented.
-- Protocol `0.7.0` now sends exact capability-major requirements in each Run offer. Both Server and
+- Protocol `0.8.0` now sends exact capability-major requirements in each Run offer. Both Server and
   Worker Host reject missing or incompatible versions; legacy aliases cannot silently downgrade the
   contract.
 - Provider declarations are checked before a Node starts, and packages without `execute` are not
@@ -108,6 +109,9 @@ expansion until its upstream and license review is recorded.
   liveness, and fail-closed socket errors. A heartbeat cannot mutate Server-owned Run assignments.
 - File-backed artifacts reuse `write-file-atomic` for fsync, rename, and failed-temporary cleanup;
   final files retain verified `0600` permissions.
+- Node protocol `0.8.0` rejects unknown message fields, malformed or oversized identity metadata,
+  duplicate capabilities, unbounded approval evidence, short/example enrollment secrets, and remote
+  plaintext WebSocket configuration.
 
 ## Known gaps from the audit
 

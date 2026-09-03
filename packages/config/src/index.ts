@@ -6,13 +6,43 @@ const booleanSchema = z
   .enum(["true", "false"])
   .default("false")
   .transform((value) => value === "true");
+const nodeIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/, "Use a stable machine identifier.");
+const nodeEnrollmentTokenSchema = z
+  .string()
+  .min(32)
+  .max(4096)
+  .refine(
+    (value) => value !== "replace-with-an-enrollment-token",
+    "Replace the example Node enrollment token before starting OpenBot.",
+  );
+const nodeServerUrlSchema = z
+  .string()
+  .url()
+  .superRefine((value, context) => {
+    const url = new URL(value);
+    if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+      context.addIssue({ code: "custom", message: "Node Server URLs must use WS or WSS." });
+      return;
+    }
+    if (!isLoopbackHostname(url.hostname) && url.protocol !== "wss:") {
+      context.addIssue({
+        code: "custom",
+        message: "Non-loopback Node Server URLs must use WSS.",
+      });
+    }
+  });
 
 export const serverEnvSchema = z
   .object({
     OPENBOT_HOST: z.string().default("127.0.0.1"),
     OPENBOT_PORT: portSchema.default(3001),
     OPENBOT_DATABASE_URL: z.string().default("postgres://openbot:openbot@localhost:5432/openbot"),
-    OPENBOT_NODE_TOKEN: z.string().min(1),
+    OPENBOT_NODE_TOKEN: nodeEnrollmentTokenSchema,
     OPENBOT_OWNER_NAME: z.string().trim().min(1).max(80).default("Owner"),
     OPENBOT_OWNER_PASSWORD: z
       .string()
@@ -69,9 +99,9 @@ export const serverEnvSchema = z
 
 export const nodeEnvSchema = z
   .object({
-    OPENBOT_NODE_ID: z.string().min(1),
-    OPENBOT_NODE_SERVER_URL: z.string().url().default("ws://localhost:3001/ws/nodes"),
-    OPENBOT_NODE_TOKEN: z.string().min(1),
+    OPENBOT_NODE_ID: nodeIdSchema,
+    OPENBOT_NODE_SERVER_URL: nodeServerUrlSchema.default("ws://localhost:3001/ws/nodes"),
+    OPENBOT_NODE_TOKEN: nodeEnrollmentTokenSchema,
     OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
     OPENBOT_NODE_WORK_DIRECTORY: z.string().default("./data/node"),
     OPENBOT_DOCKER_COMPUTER_URL: z.string().url().optional(),

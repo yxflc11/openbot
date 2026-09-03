@@ -52,7 +52,7 @@ native desktop. Each native Provider has a separate support level and threat mod
 
 ## Structured host identity
 
-Protocol `0.7.0` already declares:
+Protocol `0.8.0` already declares:
 
 - operating system and version;
 - CPU architecture;

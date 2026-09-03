@@ -112,7 +112,7 @@ describe("node run offers", () => {
       nodeEnvSchema.parse({
         OPENBOT_NODE_ID: "test-node",
         OPENBOT_NODE_SERVER_URL: `ws://127.0.0.1:${address.port}`,
-        OPENBOT_NODE_TOKEN: "test-node-token",
+        OPENBOT_NODE_TOKEN: "test-node-enrollment-token-00000001",
       }),
       [provider],
     );

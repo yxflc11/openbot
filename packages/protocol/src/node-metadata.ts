@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const protocolVersion = "0.7.0" as const;
+export const protocolVersion = "0.8.0" as const;
 
 export const nodePlatformSchema = z.enum([
   "linux",

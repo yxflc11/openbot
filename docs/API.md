@@ -32,9 +32,11 @@
 | `GET` | `/api/v1/nodes` | 当前在线执行节点 |
 
 在线 Node 投影包含 `platform`、`osVersion`、`architecture`、`deviceClass`、`isolation`、
-`trustTier`、临时保留的旧版 `capabilities` 和权威版本化 `capabilityManifest`。协议 `0.7.0`
+`trustTier`、临时保留的旧版 `capabilities` 和权威版本化 `capabilityManifest`。协议 `0.8.0`
 要求 Server 路由与 Node 接单同时匹配精确能力主版本；旧能力 id 不能替代缺失或版本不兼容的
-manifest。能力声明本身仍不授予执行权限。
+manifest。该协议使用严格消息对象：未知字段、重复能力、错误或超长 Node 身份信息和无界审批
+现场都会失败，而不会被静默忽略。非 loopback Node Server 地址必须使用 `wss:`；当前共享登记
+秘密必须是 32–4,096 个字符，但仍不等于生产级单 Node 身份。能力声明本身仍不授予执行权限。
 
 ## 本地 Owner 会话
 

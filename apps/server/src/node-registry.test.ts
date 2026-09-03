@@ -5,16 +5,18 @@ import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { isEnrollmentTokenValid, NodeRegistry, type NodeRunMessage } from "./node-registry.js";
 
+const enrollmentToken = "test-node-enrollment-token-00000001";
+
 describe("node enrollment", () => {
   it("accepts only an exact token match", () => {
-    expect(isEnrollmentTokenValid("foundation-token", "foundation-token")).toBe(true);
-    expect(isEnrollmentTokenValid("wrong-token", "foundation-token")).toBe(false);
-    expect(isEnrollmentTokenValid("short", "foundation-token")).toBe(false);
+    expect(isEnrollmentTokenValid(enrollmentToken, enrollmentToken)).toBe(true);
+    expect(isEnrollmentTokenValid("wrong-token", enrollmentToken)).toBe(false);
+    expect(isEnrollmentTokenValid("short", enrollmentToken)).toBe(false);
   });
 
   it("carries assignment and execution lifecycle over the outbound Node socket", async () => {
     const server = createServer();
-    const registry = new NodeRegistry("foundation-token", { offerTimeoutMs: 500 });
+    const registry = new NodeRegistry(enrollmentToken, { offerTimeoutMs: 500 });
     registry.attach(server);
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -102,7 +104,7 @@ describe("node enrollment", () => {
             { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
           ],
           maxConcurrentRuns: 1,
-          token: "foundation-token",
+          token: enrollmentToken,
           sentAt: new Date().toISOString(),
         }),
       );
@@ -171,7 +173,7 @@ describe("node enrollment", () => {
 
   it("allows a socket to enroll exactly once", async () => {
     const server = createServer();
-    const registry = new NodeRegistry("foundation-token", {
+    const registry = new NodeRegistry(enrollmentToken, {
       enrollmentTimeoutMs: 500,
       livenessIntervalMs: 1_000,
     });
@@ -203,7 +205,7 @@ describe("node enrollment", () => {
 
   it("terminates sockets that do not enroll before the deadline", async () => {
     const server = createServer();
-    const registry = new NodeRegistry("foundation-token", {
+    const registry = new NodeRegistry(enrollmentToken, {
       enrollmentTimeoutMs: 20,
       livenessIntervalMs: 1_000,
     });
@@ -228,7 +230,7 @@ describe("node enrollment", () => {
 
   it("terminates an enrolled socket that stops answering ping frames", async () => {
     const server = createServer();
-    const registry = new NodeRegistry("foundation-token", {
+    const registry = new NodeRegistry(enrollmentToken, {
       enrollmentTimeoutMs: 500,
       livenessIntervalMs: 20,
     });
@@ -258,7 +260,7 @@ describe("node enrollment", () => {
 
   it("rejects messages above the configured Node protocol envelope", async () => {
     const server = createServer();
-    const registry = new NodeRegistry("foundation-token", {
+    const registry = new NodeRegistry(enrollmentToken, {
       enrollmentTimeoutMs: 500,
       livenessIntervalMs: 1_000,
       maxPayloadBytes: 128,
@@ -304,7 +306,7 @@ function nodeHello(nodeId: string) {
       { id: "screen.capture" as const, version: 1, providerId: "docker", constraints: {} },
     ],
     maxConcurrentRuns: 1,
-    token: "foundation-token",
+    token: enrollmentToken,
     sentAt: new Date().toISOString(),
   };
 }

@@ -88,16 +88,20 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 
 ### Node
 
-- 生产目标是 Node 主动建立 WSS/mTLS 连接，不接受公网入站控制；当前实现会按配置主动连接
-  WS/WSS，但尚未提供 mTLS。
+- 生产目标是 Node 主动建立 WSS/mTLS 连接，不接受公网入站控制；当前配置只允许 loopback 使用
+  `ws:`，非 loopback Server 地址必须使用 `wss:`，但尚未提供 mTLS。
 - 生产目标是每个 Node 使用独立可吊销身份，enrollment token 只能使用一次；当前共享令牌不满足
   这一要求。
 - `run.accept` 只表示能力与容量校验通过，不授予执行权；只有 Server 持久化条件认领并返回 `run.assigned` 后才能占用任务槽位。
 - 当前 M1 开发切片仍使用部署级共享启动令牌，不具备独立身份和单节点吊销能力，只允许可信私网测试；完成 enrollment、轮换和吊销前不得暴露到不受信任网络。
+- 当前共享启动令牌必须是 32–4,096 个字符，示例值会在启动前被拒绝。这只阻止明显错误配置，
+  不能验证随机性，也不能提供单 Node 身份。
 - 当前 Node 消息体限制为 32 MiB、未登记 socket 最多保留 10 秒，且每条连接只能登记一次。Server
   每 30 秒发送 ping；未回应的连接会被清退并进入断线恢复。Node 心跳只报告存活，不能增加、释放或
-  结算 Server 权威任务槽位。详见
-  [ADR-0017](decisions/0017-node-channel-authority-and-liveness.md)。
+  结算 Server 权威任务槽位。协议 `0.8.0` 还会拒绝未知消息字段、无效或超长 Node 身份信息、重复
+  能力以及无界审批现场；审批 `beforeState` 最多包含 256 个有界 JSON 值。详见
+  [ADR-0017](decisions/0017-node-channel-authority-and-liveness.md)与
+  [ADR-0019](decisions/0019-strict-node-protocol-inputs.md)。
 - Node 不能读取其他 Node、Server 数据库或全局凭证。
 - Docker supervisor、Cua 和 Lume 只监听 loopback/Unix socket。
 - 人接管必须持有 Server 签发的独占 control lease。

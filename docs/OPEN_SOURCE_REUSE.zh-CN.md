@@ -54,6 +54,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | 未来单 Node 工作负载身份 | [SPIFFE `99470b9a`](https://github.com/spiffe/spiffe/tree/99470b9abc825f14aa364dfa2c3b53b02ba5db5b) 与 [Tailscale `92ec1026`](https://github.com/tailscale/tailscale/tree/92ec102673bf46d72bab64b0a278b93c01a47f34) | Apache-2.0；BSD-3-Clause | 已调研持钥证明、轮换与吊销；在 OpenBot 定义持久化一次性登记和管理员恢复路径前暂缓，不能把共享开发令牌包装成生产身份。 |
 | Artifact 原子文件写入 | [`npm/write-file-atomic` 8.0.0](https://github.com/npm/write-file-atomic/tree/v8.0.0) | ISC | 直接使用发布依赖完成 fsync、原子 rename、同目标串行化和失败临时文件清理，不再本地维护这些机制。最终文件仍为 `0600`；没有复制上游源码。 |
 | 不可信 PNG 校验候选 | [`image-js/fast-png` 8.0.0](https://github.com/image-js/fast-png/tree/v8.0.0) 与 [`sharp` 0.35.0](https://github.com/lovell/sharp/tree/v0.35.0) | MIT；Apache-2.0 | 完整解码和归一化暂缓。`fast-png` 没有输入像素资源上限；`sharp` 有上限，但原生包必须先通过 Server 的 Linux x64/arm64 打包矩阵。当前签名检查明确不代表 PNG 完整有效。 |
+| Node 协议输入校验 | [Zod 4.5.4 `e8e206fa`](https://github.com/colinhacks/zod/tree/e8e206fa33ac5fe7ce20a2beb12d57b1cb3df653)、[OWASP Cheat Sheet Series `b8586414`](https://github.com/OWASP/CheatSheetSeries/tree/b8586414a5c47ae68911edb97d4e7b7bc6301035) 与 [MCP TypeScript SDK `5119ee7f`](https://github.com/modelcontextprotocol/typescript-sdk/tree/5119ee7fd7790e335a3fb60ef36f85334e2a6326) | MIT；文档 CC BY-SA 4.0；MIT | 复用现有固定版本的 Zod 实现严格消息与字段边界，并采用 OWASP 的白名单和范围原则。OpenBot 只保留协议特有的有界审批证据遍历；MCP 仅作协议校验先例，不共享 Node 权威语义。没有复制上游源码。 |
 | 登录限速候选 | [hono-rate-limiter `d593af13`](https://github.com/rhinobase/hono-rate-limiter/tree/d593af1315184fdbd172eb9c90fe9021c134596c) 与 [express-rate-limit `c8b3c7ff`](https://github.com/express-rate-limit/express-rate-limit/tree/c8b3c7ff26cc285692f275f26624ad8bfa48f2d7) | MIT | 延期采用。没有经过认证的代理契约时，两者都不能建立可信远程身份。当前小型限速器明确仅属部署级保护；未来适配器必须处理 IPv4/IPv6、共享存储和 fail-closed。 |
 | 办公室可视化 | 项目所有者提供的腾讯 Marvis 产品图片 | 未找到可复用源码许可证 | 只作视觉启发，不引入 Marvis 代码或资源；办公室继续作为延期插件。 |
 
@@ -67,7 +68,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 - 员工导入继续执行校验和、严格 schema、只读和隔离规则。
 - Server 已有经过测试的 DSSE/Ed25519 签名与验证原语，签名覆盖之后实际解析的员工包原始字节；
   Owner 密钥生命周期与信任策略完成前不会对外启用。
-- 协议 `0.7.0` 在每个 Run offer 中发送精确能力主版本；Server 与工作主机都会拒绝缺失或
+- 协议 `0.8.0` 在每个 Run offer 中发送精确能力主版本；Server 与工作主机都会拒绝缺失或
   不兼容版本，旧能力别名不能静默降级契约。
 - Provider 声明会在 Node 启动前检查；没有 `execute` 的包不会上报为可执行能力。
 - Windows、macOS 和 Linux 具名路由场景明确区分模拟契约覆盖与真实设备支持，详见
@@ -82,6 +83,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
   失败关闭；心跳不能再改写 Server 权威 Run 分配。
 - 文件 Artifact 现在复用 `write-file-atomic` 完成 fsync、rename 和失败临时文件清理，最终权限经
   测试保持为 `0600`。
+- Node 协议 `0.8.0` 会拒绝未知消息字段、错误或超长身份信息、重复能力、无界审批证据、过短或
+  示例登记秘密，以及远程明文 WebSocket 配置。
 
 ## 尚未解决
 

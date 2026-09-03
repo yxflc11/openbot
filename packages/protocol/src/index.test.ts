@@ -18,6 +18,8 @@ import {
   updateEmployeeSkillStateInputSchema,
 } from "./index.js";
 
+const enrollmentToken = "test-node-enrollment-token-00000001";
+
 describe("node protocol", () => {
   it("accepts a versioned hello message", () => {
     const result = nodeMessageSchema.safeParse({
@@ -41,7 +43,7 @@ describe("node protocol", () => {
         },
       ],
       maxConcurrentRuns: 1,
-      token: "development-token",
+      token: enrollmentToken,
       sentAt: new Date().toISOString(),
     });
 
@@ -66,7 +68,7 @@ describe("node protocol", () => {
         { id: "desktop.superuser", version: 0, providerId: "unsafe", constraints: {} },
       ],
       maxConcurrentRuns: 1,
-      token: "development-token",
+      token: enrollmentToken,
       sentAt: new Date().toISOString(),
     });
 
@@ -82,11 +84,67 @@ describe("node protocol", () => {
       platform: "linux",
       capabilities: ["root-access"],
       maxConcurrentRuns: 1,
-      token: "development-token",
+      token: enrollmentToken,
       sentAt: new Date().toISOString(),
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("rejects ambiguous or unbounded Node envelopes", () => {
+    const hello = {
+      type: "node.hello",
+      protocolVersion,
+      nodeId: "node-1",
+      name: "Linux worker",
+      platform: "linux",
+      capabilities: ["browser"],
+      maxConcurrentRuns: 1,
+      token: enrollmentToken,
+      sentAt: new Date().toISOString(),
+    };
+
+    expect(nodeMessageSchema.safeParse({ ...hello, unexpectedAuthority: true }).success).toBe(
+      false,
+    );
+    expect(nodeMessageSchema.safeParse({ ...hello, nodeId: "node id" }).success).toBe(false);
+    expect(nodeMessageSchema.safeParse({ ...hello, name: "x".repeat(161) }).success).toBe(false);
+    expect(
+      nodeMessageSchema.safeParse({ ...hello, capabilities: ["browser", "browser"] }).success,
+    ).toBe(false);
+    expect(nodeMessageSchema.safeParse({ ...hello, token: "too-short" }).success).toBe(false);
+  });
+
+  it("bounds approval before-state evidence", () => {
+    const approval = {
+      type: "approval.request",
+      protocolVersion,
+      nodeId: "node-1",
+      runId: "00000000-0000-4000-8000-000000000001",
+      requestId: "00000000-0000-4000-8000-000000000002",
+      action: "form.submit",
+      target: "https://example.test/form",
+      summary: "Submit the form",
+      risk: "write",
+      beforeState: { fields: 3 },
+      expiresInSeconds: 300,
+      requestedAt: new Date().toISOString(),
+    };
+
+    expect(nodeMessageSchema.safeParse(approval).success).toBe(true);
+    expect(
+      nodeMessageSchema.safeParse({
+        ...approval,
+        beforeState: { content: "x".repeat(4097) },
+      }).success,
+    ).toBe(false);
+    expect(
+      nodeMessageSchema.safeParse({
+        ...approval,
+        beforeState: { deep: [[[[[[{}]]]]]] },
+      }).success,
+    ).toBe(false);
+    expect(nodeMessageSchema.safeParse({ ...approval, ignored: true }).success).toBe(false);
   });
 
   it("validates the two-phase run assignment messages", () => {
