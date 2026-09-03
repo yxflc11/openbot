@@ -47,8 +47,8 @@
 
 ## Verification plan
 
-- Automated tests: serve matching bytes, then replace them with same-length changed bytes and
-  require a failure before delivery.
+- Automated tests: serve matching bytes, then reject both a wrong size and same-length changed bytes
+  before delivery.
 - Platforms and devices: deterministic Server-side byte verification on supported Node.js hosts.
 - Support level: corruption detection at the authenticated read boundary, not storage attestation.
 

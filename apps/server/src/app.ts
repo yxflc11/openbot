@@ -373,8 +373,11 @@ export function createApp(dependencies: AppDependencies) {
       throw new Error("Artifact storage is not configured.");
     }
     const bytes = await dependencies.artifactStorage.read(record.storageKey);
+    if (bytes.byteLength !== record.sizeBytes) {
+      throw new Error("Artifact content does not match its authoritative metadata.");
+    }
     const actualDigest = createHash("sha256").update(bytes).digest("hex");
-    if (bytes.byteLength !== record.sizeBytes || actualDigest !== record.sha256) {
+    if (actualDigest !== record.sha256) {
       throw new Error("Artifact content does not match its authoritative metadata.");
     }
     return new Response(bytes, {

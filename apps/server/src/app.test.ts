@@ -391,6 +391,12 @@ describe("server app", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
 
+    storedBytes = Buffer.concat([bytes, Buffer.from([0x00])]);
+    const wrongSize = await app.request(`/api/v1/artifacts/${artifact.id}/content`, {
+      headers: { Cookie: cookie },
+    });
+    expect(wrongSize.status).toBe(500);
+
     storedBytes = Buffer.from([0x89, 0x50, 0x4e, 0x46]);
     const corrupted = await app.request(`/api/v1/artifacts/${artifact.id}/content`, {
       headers: { Cookie: cookie },
