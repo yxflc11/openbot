@@ -216,6 +216,8 @@ Implemented on the `feat/cross-platform-employees` development line:
 - a 2 MiB-bounded, strict-schema import inspection endpoint and UI that validate checksum, skill
   dependency/capability consistency, sensitive text, and connected Worker Host compatibility,
   then show the role, optional biography, requested capabilities, and zero-authority boundary;
+- complete metadata review for every imported skill: Agent Skills description, version, required
+  capabilities, dependency slugs, and explicit disabled-pending-review state;
 - a read-only quarantine projection that cannot create an Employee, activate a skill, persist
   memory, bind a host, or grant authority;
 - an authenticated activation command that revalidates the package and current-host compatibility,

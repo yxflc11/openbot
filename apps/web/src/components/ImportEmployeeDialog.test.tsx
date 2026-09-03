@@ -17,9 +17,10 @@ const preview: EmployeeImportPreview = {
     {
       slug: "source-review",
       name: "来源审核",
+      description: "检查多个独立来源，并保留可以复核的引用。",
       version: "1.0.0",
       requiredCapabilities: ["browser"],
-      dependencySlugs: [],
+      dependencySlugs: ["evidence-core"],
     },
   ],
   requestedCapabilities: ["browser"],
@@ -73,6 +74,8 @@ describe("ImportPreviewDetails", () => {
     expect(html).toContain("研究与事实核查");
     expect(html).toContain("比较多个独立来源，并明确记录证据与限制。");
     expect(html).toContain("browser");
+    expect(html).toContain("检查多个独立来源，并保留可以复核的引用。");
+    expect(html).toContain("evidence-core");
     expect(html).toContain("未签名 / 不受信任");
     expect(html).toContain("不会授予技能、电脑或账号权限");
     expect(html).toContain("禁用，等待审核");

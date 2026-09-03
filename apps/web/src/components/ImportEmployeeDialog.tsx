@@ -293,17 +293,32 @@ export function ImportPreviewDetails({
             <ul className="import-skill-list">
               {preview.skills.map((skill) => (
                 <li key={skill.slug}>
-                  <div>
-                    <strong>{skill.name}</strong>
-                    <span>
-                      {skill.slug} · {skill.version}
-                    </span>
+                  <div className="import-skill-heading">
+                    <div>
+                      <strong>{skill.name}</strong>
+                      <span>
+                        {skill.slug} · {skill.version}
+                      </span>
+                    </div>
+                    <small>禁用，待审核</small>
                   </div>
-                  <small>
-                    {skill.requiredCapabilities.length > 0
-                      ? skill.requiredCapabilities.join("、")
-                      : "不请求能力"}
-                  </small>
+                  <p>{skill.description}</p>
+                  <dl>
+                    <div>
+                      <dt>请求能力</dt>
+                      <dd>
+                        {skill.requiredCapabilities.length > 0
+                          ? skill.requiredCapabilities.join("、")
+                          : "无"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>依赖技能</dt>
+                      <dd>
+                        {skill.dependencySlugs.length > 0 ? skill.dependencySlugs.join("、") : "无"}
+                      </dd>
+                    </div>
+                  </dl>
                 </li>
               ))}
             </ul>

@@ -42,3 +42,6 @@ existing revision mutation path and Hermes/Kubernetes conflict semantics for des
 The [Portable Employee profile review](portable-employee-profile-review.md) closes the matching
 transfer-safety gap by showing that biography inside the existing digest-bound quarantine before
 activation.
+The [Portable Employee skill disclosure](portable-employee-skill-disclosure.md) then applies the
+Agent Skills and OpenClaw review boundary so descriptions and dependencies are visible while every
+imported skill remains disabled.

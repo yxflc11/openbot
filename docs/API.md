@@ -239,7 +239,9 @@ Worker Host compatibility. A successful preview is still read-only quarantine: i
 skill, memory, host binding, or authority. Its `employee` projection includes the name, role,
 optional biography, and appearance that were checked in the package. Clients should show the
 biography and `requestedCapabilities` before confirmation and must describe both as untrusted input,
-not as granted authority.
+not as granted authority. Each `skills` item retains its required Agent Skills description,
+version, requested capabilities, and dependency slugs so the Owner can review what will become a
+disabled candidate; no executable skill files are present in v1.
 
 Activation body:
 

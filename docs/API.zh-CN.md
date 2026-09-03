@@ -245,6 +245,8 @@ Server 会拒绝启动而不是退回无签名模式。使用方法见[员工包
 不写入 Bot、技能、记忆、Node 绑定或权限。`integrity.digest` 是严格解析后员工包的规范摘要，
 客户端必须在激活时原样提交。`employee` 投影会返回已检查的名称、职责、可选简介与外观；客户端
 应在确认前展示简介和 `requestedCapabilities`，并明确它们只是未受信任的输入，不是已经授予的权限。
+每个 `skills` 项都会保留 Agent Skills 要求的说明、版本、请求能力和依赖 slug，方便 Owner 检查
+将要创建的禁用候选技能；v1 不携带任何可执行技能文件。
 
 `POST /api/v1/employees/import/activate` 接受如下 JSON：
 

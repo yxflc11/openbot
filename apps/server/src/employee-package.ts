@@ -527,9 +527,10 @@ export function inspectEmployeeTemplate(
     },
     recommendedExecutionProfile: payload.configuration.recommendedExecutionProfile,
     skills: payload.skills.map(
-      ({ slug, name, version, requiredCapabilities, dependencySlugs }) => ({
+      ({ slug, name, description, version, requiredCapabilities, dependencySlugs }) => ({
         slug,
         name,
+        description,
         version,
         requiredCapabilities,
         dependencySlugs,

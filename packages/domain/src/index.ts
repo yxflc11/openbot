@@ -349,6 +349,8 @@ export interface EmployeeImportPreview {
   skills: Array<{
     slug: string;
     name: string;
+    /** Required Agent Skills discovery metadata; still untrusted package content. */
+    description: string;
     version: string;
     requiredCapabilities: string[];
     dependencySlugs: string[];

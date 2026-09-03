@@ -119,6 +119,14 @@ describe("employee template package", () => {
     expect(preview.employee.description).toBe(
       "Navigate approved sites and return evidence-backed outcomes.",
     );
+    expect(preview.skills).toEqual([
+      expect.objectContaining({
+        slug: "browse-web",
+        description: "Navigate approved websites.",
+        dependencySlugs: [],
+        requiredCapabilities: ["browser"],
+      }),
+    ]);
     expect(preview.compatibility.compatibleHosts).toEqual([
       expect.objectContaining({ id: "node-1", platform: "linux" }),
     ]);

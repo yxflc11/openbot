@@ -31,3 +31,5 @@ OpenBot 的每项行为变化都要先证明已经调研维护中的开源代码
 Hermes/Kubernetes 的冲突语义，只开放说明性字段。
 [可迁移员工资料审核](portable-employee-profile-review.md)继续补齐传输安全：接收方会在激活前，
 从现有摘要绑定的隔离预览中看清员工简介。
+[可迁移员工技能披露](portable-employee-skill-disclosure.md)随后采用 Agent Skills 与 OpenClaw 的
+审核边界，在所有导入技能仍被禁用时显示技能说明与依赖。
