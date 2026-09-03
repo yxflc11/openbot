@@ -7,8 +7,9 @@
 - Acceptance journey: an Owner previews one portable Employee package, reviews its exact digest and
   trust state, explicitly accepts any unsigned-package risk, and activates one new local Employee
   whose imported skills remain disabled until separately verified.
-- Security boundary: preview and activation validate the same package bytes. Activation creates a
-  new identity and candidate skill assignments only; it never imports credentials, memory, work
+- Security boundary: preview and activation validate the same canonical package content and trusted
+  publisher identity. Cosmetic JSON whitespace is not package identity. Activation creates a new
+  identity and candidate skill assignments only; it never imports credentials, memory, work
   history, host bindings, sessions, approvals, or authority.
 
 ## Search evidence
@@ -16,7 +17,10 @@
 - Search date: 2026-09-04
 - GitHub queries: `Backstage software template dry run preview review create`, `Kubernetes server
   dry run no side effects`, `OpenClaw third party skill quarantine approval`, and `agent skill
-  import quarantine disabled until trust`.
+  import quarantine disabled until trust`. Follow-up audit queries on 2026-09-04:
+  `site:github.com/in-toto/attestation subject digest statement specification v1`,
+  `site:github.com/sigstore/cosign verify blob digest certificate identity source`, and
+  `site:github.com/theupdateframework/specification trusted target hash length metadata`.
 - Standards and primary documentation queries: Backstage Software Templates authoring and dry-run
   behavior; Kubernetes API dry-run semantics; OpenClaw third-party skill installation policy.
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked: ADR-0014, ADR-0020, ADR-0024,
@@ -30,6 +34,8 @@
 | Backstage Software Templates | [`v1.51.0`](https://github.com/backstage/backstage/tree/v1.51.0), especially [`writing-templates.md`](https://github.com/backstage/backstage/blob/v1.51.0/docs/features/software-templates/writing-templates.md) | Apache-2.0 | Mature CNCF project with maintained template preview, review, create, and dry-run flows | Strong user-journey model; its catalog/scaffolder runtime is much larger than OpenBot's portable Employee transaction | Adopt preview → review → create; do not embed Backstage |
 | Kubernetes API dry-run | [`v1.36.2`](https://github.com/kubernetes/kubernetes/tree/v1.36.2) and [`api-concepts.md`](https://github.com/kubernetes/website/blob/main/content/en/docs/reference/using-api/api-concepts.md) | Apache-2.0 | Mature, heavily tested API semantics | Strong contract that preview performs validation without persistence or side effects; Kubernetes admission machinery is out of scope | Adopt no-side-effect preview semantics |
 | OpenClaw third-party skills | [`v2026.7.1-2`](https://github.com/openclaw/openclaw/tree/v2026.7.1-2), especially [`docs/tools/skills.md`](https://github.com/openclaw/openclaw/blob/v2026.7.1-2/docs/tools/skills.md) | MIT | Active multi-platform agent project with explicit skill-discovery and install policy | Strong default-untrusted and pending-approval behavior; OpenClaw skill installation does not create an OpenBot Employee | Adopt disabled/pending-review default; keep the existing OpenBot skill schema |
+| in-toto Attestation Framework | [`v1.2.0`](https://github.com/in-toto/attestation/tree/v1.2.0), especially the [v1 Statement subject](https://github.com/in-toto/attestation/blob/v1.2.0/spec/v1/statement.md) | Apache-2.0 | CNCF project with versioned schemas and multiple language implementations | Its immutable subject is identified by digest, matching OpenBot's reviewed canonical-package binding; adopting the full attestation statement would duplicate the existing package and DSSE schema | Adopt the digest-as-identity invariant; do not add a format |
+| Sigstore Cosign | [`v3.1.2` / `193d215`](https://github.com/sigstore/cosign/tree/v3.1.2), especially [`cosign verify-blob`](https://github.com/sigstore/cosign/blob/v3.1.2/doc/cosign_verify-blob.md) | Apache-2.0 | Maintained, security-reviewed signing client with blob, bundle, key, KMS, and identity verification | Confirms that artifact content and expected signer identity are separate verification inputs; the Go CLI is not a Server dependency for OpenBot's existing DSSE verifier | Adopt the signer-identity review invariant; retain `@sigstore/core` |
 | OmniScientist-V2 compatibility policy | [`main`](https://github.com/tsinghua-fib-lab/OmniScientist-V2/blob/master/cli/docs/compatibility.md), reviewed 2026-09-04 | Apache-2.0 | Public research project but low adoption and no stable release selected | Its quarantined, non-executable external-skill behavior corroborates the boundary but is not mature enough to lead the design | Corroborating evidence only |
 | `skill-suitcase` | GitHub repository reviewed 2026-09-04 | repository-specific | Small project with transaction journal, receipt, and idempotency ideas, but insufficient adoption/release evidence | Some vocabulary fits; importing its implementation would add risk rather than reduce it | Reject as an implementation source |
 | Existing OpenBot PostgreSQL control plane | Current branch, ADR-0005 and migration `0013` | MIT | Existing transactional store, ordered advisory-lock usage, strict schemas, uniqueness constraints, and repository tests | Exact domain and security fit | Extend with one atomic, serialized OpenBot-specific activation transaction |
@@ -43,8 +49,9 @@
 - Why this is the first viable option: the reviewed projects supply proven interaction and trust
   semantics, but none implements OpenBot's signed `openbot.employee/v1` package, fresh local Bot
   identity, skill graph, audit log, or Owner-authenticated self-hosted control plane.
-- Exact OpenBot-specific gap: atomically bind one reviewed package digest to one new local Employee,
-  candidate-only skill assignments, an append-only import event, and an idempotent receipt.
+- Exact OpenBot-specific gap: atomically bind one reviewed canonical package digest—including signed
+  payload publisher metadata—to one new local Employee, candidate-only skill assignments, an
+  append-only import event, and an idempotent receipt.
 - Upgrade, replacement, or exit plan: keep parsing, inspection, and persistence behind protocol and
   store interfaces. A future registry or policy engine may replace trust distribution without
   changing the package format or candidate-only import rule.
@@ -66,8 +73,8 @@
   identity, candidate-only skills, dependency graph, audit event, and idempotent replay.
 - Negative and fail-closed tests: changed digest or package id, `ownerReviewed` absent, unsigned risk
   not accepted, blocked compatibility, reused idempotency key with different input, duplicate
-  package activation, conflicting skill definition, untrusted or revoked publisher, and malformed
-  body.
+  package activation, conflicting skill definition, substitution by a different trusted publisher,
+  untrusted or revoked publisher, and malformed body.
 - Platforms and devices: portable Server behavior in Linux CI and local macOS PostgreSQL; activation
   grants no Worker Host authority and therefore makes no Windows GUI-execution claim.
 - User-visible documentation and translations: API, Employee, security, roadmap, and reuse-ledger

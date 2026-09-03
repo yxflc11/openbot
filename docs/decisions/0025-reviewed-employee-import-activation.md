@@ -9,9 +9,10 @@ without side effects. It cannot yet turn an Owner-reviewed package into a local 
 step must preserve the current trust boundary: a portable Employee describes configuration and
 skills, but carries no identity, credentials, memory, history, host binding, or authority.
 
-Preview and activation also need a stable binding. Reviewing a name while activating different
-bytes would make the preview meaningless. Retries must be safe, and one portable package must not
-silently create several Employees on the same Server.
+Preview and activation also need a stable binding. Reviewing one canonical package or authenticated
+publisher while activating another would make the preview meaningless. Cosmetic JSON whitespace is
+not package identity. Retries must be safe, and one portable package must not silently create
+several Employees on the same Server.
 
 The upstream comparison is recorded in
 [the research note](../research/reviewed-employee-import-activation.md).
@@ -24,6 +25,9 @@ The upstream comparison is recorded in
   no persisted change or side effect.
 - OpenClaw `v2026.7.1-2` treats third-party skills as untrusted and favors explicit approval before
   installation or execution.
+- in-toto Attestation Framework `v1.2.0` identifies immutable subjects by digest, while Cosign
+  `v3.1.2` verifies both blob content and expected signer identity; both corroborate the follow-up
+  review-binding audit.
 - OmniScientist-V2 provides corroborating quarantine behavior but lacks the release and adoption
   evidence required to lead this decision.
 - The existing OpenBot PostgreSQL store already supplies the exact transaction, uniqueness, skill
@@ -47,9 +51,10 @@ research note and reuse ledger.
 
 ## Verification plan
 
-- Unit and HTTP integration tests cover exact package-id and SHA-256 digest binding, explicit Owner
-  review, signed and explicitly accepted unsigned activation, fresh identity, candidate-only skills,
-  no imported authority, and idempotent replay.
+- Unit and HTTP integration tests cover exact package-id and canonical SHA-256 digest binding,
+  explicit Owner review, signed and explicitly accepted unsigned activation, trusted-publisher
+  substitution rejection, fresh identity, candidate-only skills, no imported authority, and
+  idempotent replay.
 - Negative tests cover changed content, blocked previews, conflicting receipts, reused idempotency
   keys, conflicting skill definitions, unsigned activation without risk acceptance, and untrusted
   or revoked signatures.

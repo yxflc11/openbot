@@ -37,6 +37,7 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import {
+  buildEmployeeTemplate,
   signEmployeeTemplateEnvelope,
   verifyEmployeeTemplateChecksum,
   verifyEmployeeTemplateEnvelope,
@@ -1222,14 +1223,21 @@ describe("server app", () => {
       evidence: [],
       ownerReviewed: true,
     });
-    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const publisherOne = generateKeyPairSync("ed25519");
+    const publisherTwo = generateKeyPairSync("ed25519");
     const employeePublisher = {
       activeKeyId: "owner-key-1",
       sign(document: Parameters<typeof signEmployeeTemplateEnvelope>[0]) {
-        return signEmployeeTemplateEnvelope(document, { keyid: this.activeKeyId, privateKey });
+        return signEmployeeTemplateEnvelope(document, {
+          keyid: this.activeKeyId,
+          privateKey: publisherOne.privateKey,
+        });
       },
       verify(input: unknown) {
-        return verifyEmployeeTemplateEnvelope(input, [{ keyid: this.activeKeyId, publicKey }]);
+        return verifyEmployeeTemplateEnvelope(input, [
+          { keyid: this.activeKeyId, publicKey: publisherOne.publicKey },
+          { keyid: "owner-key-2", publicKey: publisherTwo.publicKey },
+        ]);
       },
     };
     const app = createTestApp({
@@ -1287,6 +1295,32 @@ describe("server app", () => {
     };
     expect(signedPreview).toMatchObject({
       preview: { signature: { status: "dsse", trusted: true, keyid: "owner-key-1" } },
+    });
+
+    const alternateDocument = buildEmployeeTemplate(await store.getEmployeeProfile(bot.id), {
+      packageId: verifiedDownload.document.payload.packageId,
+      generatedAt: verifiedDownload.document.payload.generatedAt,
+    }).document;
+    const alternatePublisherEnvelope = signEmployeeTemplateEnvelope(alternateDocument, {
+      keyid: "owner-key-2",
+      privateKey: publisherTwo.privateKey,
+    });
+    const changedPublisher = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        package: alternatePublisherEnvelope,
+        expectedPackageId: signedPreview.preview.packageId,
+        expectedDigest: signedPreview.preview.integrity.digest,
+        ownerReviewed: true,
+        allowUnsigned: false,
+        idempotencyKey: "00000000-0000-4000-8000-000000000704",
+        employeeName: "Publisher Changed",
+      }),
+    });
+    expect(changedPublisher.status).toBe(409);
+    expect(await changedPublisher.json()).toMatchObject({
+      error: expect.stringContaining("changed after preview"),
     });
 
     const activated = await app.request("/api/v1/employees/import/activate", {

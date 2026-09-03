@@ -289,8 +289,10 @@ Activation body:
 }
 ```
 
-Activation repeats every preview check and binds the reviewed package id and digest. Unsigned input
-requires `allowUnsigned: true`. One PostgreSQL transaction creates a fresh Employee id, imports
+Activation repeats every preview check and binds the reviewed package id and canonical digest. For
+a signed package, that digest includes the authenticated publisher key id, so substitution by a
+different trusted publisher also requires a new review. Cosmetic JSON whitespace is not identity.
+Unsigned input requires `allowUnsigned: true`. One PostgreSQL transaction creates a fresh Employee id, imports
 skills as `candidate` with confidence `0`, appends an `imported` evolution event, and stores an
 immutable receipt. It imports no memory, history, credential, session, Node binding, capability, or
 authority. An exact idempotent retry returns the original receipt; changed reuse or a duplicate
