@@ -1,6 +1,6 @@
 # OpenBot
 
-**A self-hosted control plane for always-on digital workers.**
+**A self-hosted workspace for multi-channel, multi-agent digital workers.**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -10,22 +10,26 @@
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#project-status)
 
 OpenBot is an early-stage, open-source, self-hosted platform for running named AI employees on
-computers you control. You talk to employees in persistent local channels; the OpenBot Server
-routes each task to an authorized, replaceable Worker Host and keeps identity, skills, memory,
-messages, approvals, artifacts, and audit events under your ownership.
+computers you control. OpenBot itself is an agent focused on multi-channel, multi-agent task work;
+it can delegate bounded work to external agents while the OpenBot Server remains authoritative for
+identity, routing, policy, approval, persistence, and audit.
 
-A Mac mini is the first practical Worker Host, not the product boundary. Windows, macOS, and Linux
-computers can become employee work machines through the same Server-authorized Node protocol. The
-Server can run on Linux, macOS, a NAS, or a cloud VM, and you can reach it from any browser over a
-private network.
+The target product has two complete clients. OpenBot Desktop is the guided path: install the same
+application on each computer, then enable any combination of Client, Server, and Worker roles.
+OpenBot Web connects to the same workspace and can also be the primary client for an advanced user
+who deploys Server, Web, PostgreSQL, and Worker services separately.
 
-OpenBot is inspired by the always-on, channel-based experience of products such as Grok Bot while
-remaining self-hosted, provider-neutral, and designed for explicit human control.
+A Mac mini is one practical Worker Host, not the product boundary. Windows, macOS, and Linux
+computers can all be everyday user computers and authorized work machines. OpenBot is inspired by
+the always-on, channel-based experience of products such as Grok Bot and the browser-managed agent
+experience of DeepSeek Harness while remaining self-hosted, provider-neutral, extensible, and
+designed for explicit human control.
 
 > [!WARNING]
-> OpenBot is pre-alpha software. The current computer provider is read-only and does **not** fill,
-> click, submit, or control production accounts. Do not connect payment methods, primary accounts,
-> or production credentials. Read [Security](#security) before exposing a deployment.
+> OpenBot is pre-alpha source code, not the finished Desktop product described below. The current
+> computer provider is read-only and does **not** fill, click, submit, or control production
+> accounts. Do not connect payment methods, primary accounts, or production credentials. Read
+> [Security](#security) before exposing a deployment.
 
 ## Why OpenBot
 
@@ -37,8 +41,14 @@ remaining self-hosted, provider-neutral, and designed for explicit human control
   skill graph, decision trace, memory, work record, configuration, and safe portability controls.
 - **Approval before side effects.** Sensitive actions enter an explicit, auditable approval state.
   Models cannot grant themselves additional privileges.
-- **One control plane on every device.** Desktop and mobile browsers share the same channel state
-  through authenticated realtime updates.
+- **One workspace through Desktop or Web.** Both clients use the same Server-owned channels,
+  agents, tasks, approvals, devices, plugins, and history.
+- **Composable roles on every computer.** The same Desktop installation can act as a Client, host
+  the Server, run the Worker service, or combine those roles.
+- **Native OpenBot plus external agents.** OpenBot remains the coordinating agent and can delegate
+  bounded work to Hermes, Pi, OpenClaw, and future adapters.
+- **Open extension without self-authorization.** Plugins may change presentation or add tools,
+  channels, agents, and automation, but only the Server can grant authority.
 - **Composable Bot identities.** Bot appearance is stored as five independent layers: head, body,
   mobility, accessory, and accent color.
 - **Adapters over lock-in.** Models, computer runtimes, and upstream projects connect through typed,
@@ -49,6 +59,37 @@ The Employee evolution and learning direction is explicitly inspired by
 OpenBot keeps its own Server-owned evidence, review, permission, and portability model; it does not
 present the learning-graph concept as an OpenBot invention.
 
+## Target product model
+
+> [!NOTE]
+> This section defines the accepted product direction. It does not claim that Desktop, guided
+> service installation, external-agent adapters, or the plugin platform are available today.
+
+| Entry path | Intended experience |
+| --- | --- |
+| OpenBot Desktop | The recommended full client for macOS, Windows, and Linux, with guided workspace creation, connection, service installation, permissions, diagnostics, and recovery. |
+| OpenBot Web | A full browser client for remote access to the same workspace, or the primary client for a modular self-hosted deployment. |
+| Modular self-hosting | An advanced path that installs Server, Web, PostgreSQL, and one or more Worker services separately without requiring Desktop. |
+
+Desktop roles are capabilities, not separate editions:
+
+| Role | Responsibility |
+| --- | --- |
+| Client | Channels, messages, tasks, approvals, settings, and observation. |
+| Server | Workspace truth, identity, routing, policy, approvals, persistence, and audit. |
+| Worker | Background execution on the current computer through explicitly authorized Providers. |
+
+A computer may enable all three roles. A “five computers” choice is onboarding progress, not a
+license or permission limit; every computer enrolls separately and can be revoked separately.
+
+OpenBot's first external-agent integration mode is bounded delegation. Direct channel membership
+for external agents comes later, after identity, memory, lifecycle, and permission behavior has
+passed the same conformance tests as the native OpenBot agent.
+
+The plugin model will support UI/themes, channels, agent adapters, tools/providers, automation, and
+optional experiences. Plugins can decide how a feature looks or works inside their granted
+capabilities, but they cannot decide what authority they have.
+
 ## Project status
 
 OpenBot currently provides a tested vertical slice from a local channel to a remote execution Node
@@ -56,18 +97,23 @@ and back. The table deliberately separates working code from planned capabilitie
 
 | Area | Available now | Next step |
 | --- | --- | --- |
-| Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, Employee memory lifecycle, content-free multi-device profile invalidation, and audit events | Durable routines, memory retrieval/retention, automated recovery tooling, and multi-user trust |
-| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
+| Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, Employee memory lifecycle, content-free multi-device profile invalidation, and audit events | Desktop bootstrap, durable routines, memory retrieval/retention, automated recovery tooling, and multi-user trust |
+| Clients | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | A sandboxed Electron Desktop sharing the React UI, guided role setup, installable Web/PWA access, notifications, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
 | Employee profile | Seven-view profile, revision-checked Owner editing for role and biography, Hermes-inspired dated evolution archive with filters and full evidence references, inspectable Owner skill review, Owner-managed typed memory with content-free audit, biography-preserving safe template export with exact reviewed-download binding, quarantined import, reviewed fresh-identity activation, and experimental DSSE signing | Display-name/model/host/appearance policy editors, memory retrieval/retention and autonomous proposals, native keyring/KMS and public trust adapters, executable Agent Skills bundles with full-diff review, selective cloning, registry distribution, and ownership transfer |
-| Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, disconnect recovery, and experimental Linux system/user service profiles with contract-tested Secret Service | Proof-of-possession identity, mTLS, rotation, replay protection, Windows/macOS keyrings, signed installers, and real-device conformance reports |
+| Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, disconnect recovery, and experimental Linux system/user service profiles with contract-tested Secret Service | Guided Worker-role installation, proof-of-possession identity, mTLS, rotation, replay protection, native keyrings, signed installers, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
 | Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
-| Office view | Isolated `@openbot/office-plugin` package with no core-app dependency | Optional plugin lifecycle after the channel workflow is mature |
+| Agent runtime | Server-owned Bot, channel, Run, result, profile, skill, memory, and audit foundations | A native OpenBot agent, durable multi-agent handoff, and bounded Hermes, Pi, and OpenClaw adapters |
+| Plugins | Isolated `@openbot/office-plugin` package with no core-app dependency | Permissioned manifests, lifecycle, sandboxed host APIs, UI slots, local development, and later trusted distribution |
+| Distribution | Source code and an older source-only foundation preview | Signed Desktop installers in GitHub Releases, Worker artifacts, upgrade/rollback evidence, and separately useful SDK or container packages |
 
 ### What the current release does not claim
 
+- There is no public OpenBot Desktop client, guided multi-role installer, installable Worker Host,
+  or OpenBot artifact in GitHub Packages today. The older `v0.1.0-alpha.1` release is a source-only
+  foundation preview and does not represent the current repository or the target Desktop product.
 - It does not perform unattended form submissions or arbitrary desktop actions.
 - It does not yet issue cryptographic, single-use capability leases after approval.
 - It does not provide continuous remote desktop control.
@@ -87,9 +133,14 @@ and back. The table deliberately separates working code from planned capabilitie
   requires an exact preview digest, explicit Owner review, a fresh local identity, and
   candidate-only skills with no memory or host authority.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
+- Hermes, Pi, and OpenClaw are planned integrations, not working adapters in the current build.
+- There is no plugin install, permission, sandbox, update, or rollback lifecycle yet.
 - The optional office visualization is not part of the current product navigation or Web build.
 
 ## Quick start
+
+This is a developer source setup for the current Web/Server/Node slice. It is not the planned
+Desktop installation flow.
 
 ### Requirements
 
@@ -169,16 +220,22 @@ stores the final screenshot, and posts the result under the selected Bot's ident
 ## How it fits together
 
 ```text
-Any device  ->  OpenBot Server  <- outbound connections -  Worker Hosts  ->  Providers
-                 source of truth                         Windows/macOS/Linux/etc.
+Desktop (planned) --+
+                    +--> OpenBot Server --> OpenBot agent / bounded adapters (planned)
+Web (available) ----+       source of truth          |
+                                                    v
+                                      outbound Worker connections --> Providers
+                                      Windows / macOS / Linux
 ```
 
 | Component | Owns | Does not own |
 | --- | --- | --- |
-| Client | Interaction, observation, approval input | Policy decisions or execution authority |
+| Desktop / Web Client | Interaction, observation, configuration, and approval input | Policy decisions or execution authority |
 | Server | Identity, channels, Runs, routing, policy, approvals, audit, and persistence | Host-specific computer capabilities |
+| OpenBot agent / Agent adapter | Planning, bounded task work, structured progress, and results | Permission grants, device authorization, or audit truth |
 | Worker Host / Node | Capability discovery, local capacity, provider execution, progress, and artifacts | Employee identity, skills, long-term memory, or authorization policy |
 | Provider | One narrow execution backend such as Docker/browser, Cua, Lume, or coder | Cross-Node routing or privilege escalation |
+| Plugin | Presentation or behavior within declared and granted capabilities | Self-authorization or bypassing Server policy |
 
 The Server is the only source of truth. Nodes connect outward and never require a public management
 port. Routing is deterministic: a Run's fixed execution profile is intersected with online Node
@@ -186,6 +243,25 @@ capabilities; the model cannot select an unauthorized machine.
 
 For the detailed design, read [Architecture](docs/ARCHITECTURE.md) and the
 [Server/Node decision record](docs/decisions/0002-local-channel-server-node.md).
+
+## Development baseline
+
+OpenBot minimizes language count so that most contributors need only Node.js and npm:
+
+| Area | Baseline |
+| --- | --- |
+| Shared product code | TypeScript for Web, Server, Node, protocols, Agent adapters, plugin SDKs, and tests |
+| User interface | React and Vite shared by Web and the planned Electron Desktop |
+| Production JavaScript runtime | Node.js 24 LTS as the preferred development and deployment line; the current source still follows the wider engine range in `package.json` |
+| Persistence | PostgreSQL and reviewed SQL migrations |
+| macOS-only integration | A thin Swift layer for Keychain, service lifecycle, permissions, and native control |
+| Windows-only integration | A thin C#/.NET layer for Service lifecycle, protected credentials, process supervision, and native control |
+| External agents | Their upstream language behind a typed OpenBot adapter; Hermes remaining Python does not make Python an OpenBot core language |
+
+Electron is the accepted Desktop direction because it maximizes reuse of the current
+TypeScript/React system. Its exact release must still be pinned by the repository's research and
+ADR process before implementation. Rust is not a core language unless a later, evidenced platform
+gap justifies adding it.
 
 ## Security
 
@@ -215,26 +291,34 @@ outcomes rather than add an isolated demo.
 
 | Milestone | Outcome |
 | --- | --- |
-| M0 — Local control plane | Channels, Bots, authentication, persistence, and audit run without a proprietary cloud service. The foundation is available today. |
-| M1 — Server/Node loop | A replaceable Node receives a browser task and returns progress and a screenshot. The read-only vertical slice is available; safe interaction remains active work. |
-| M2 — Remote control and approval | Mobile access, signed single-use approvals, notifications, and exclusive human takeover. Persisted approval decisions are available; leases and takeover are next. |
-| M3 — Portable employees | Profile, evolution ledger, skill graph, typed memory, review-bound safe templates, and reviewed new-identity activation. |
-| M4 — Native Worker Hosts | Windows, macOS, and Linux Providers use one capability and approval contract. |
-| M5 — Multi-Bot operations | Structured handoffs, routines, durable queues, coder Providers, and authenticated employee transfer. |
-| M6 — Distribution | Managed mobile devices, reproducible installers, signed releases, SBOMs, upgrades, backup, and recovery. |
+| Foundation — available now | Local channels, Bots, authentication, PostgreSQL persistence, audit, employee profiles, Node routing, approvals, and a read-only browser round trip. |
+| R0 — Product and technology contract | Align the bilingual documentation, record the Desktop/Web/role model, and pin researched technology decisions. |
+| R1 — Shared Desktop and Web | Reuse the React UI in a sandboxed Electron Desktop while retaining the full browser client. |
+| R2 — Guided roles and multiple computers | Create or join a workspace, enable Client/Server/Worker roles, install services, pair each computer, diagnose failures, and revoke devices. |
+| R3 — Modular self-hosting | Operate Server, Web, PostgreSQL, and Worker services without requiring Desktop, with backup, recovery, and private-network guidance. |
+| R4 — Native OpenBot and external agents | Make OpenBot a durable coordinating agent, then add bounded Hermes, Pi, and OpenClaw adapters behind the same authority boundary. |
+| R5 — Plugin platform | Add permissioned UI, theme, channel, Agent, tool/provider, automation, and optional-experience plugins with lifecycle and rollback. |
+| R6 — Safe computer control | Add observe/fill/act, single-use capability leases, continuous frames, exclusive takeover, and evidenced native Providers. |
+| R7 — Distribution | Ship signed Desktop installers through GitHub Releases, verified Worker artifacts, SBOMs, upgrades, rollback, backup, and recovery. |
 
-The complete acceptance gates live in [docs/ROADMAP.md](docs/ROADMAP.md).
+The focused product, architecture, and roadmap documents will be aligned with this accepted
+sequence before R1 implementation begins. Existing capability gates remain in
+[docs/ROADMAP.md](docs/ROADMAP.md) until that documentation task is reviewed.
 
 ## Contributing
 
 OpenBot is meant to be built in the open. You do not need to understand the entire system before
 contributing.
 
+Most contributors need only the preferred Node.js 24 LTS line and npm. Swift is required only for
+macOS-native work, and .NET is required only for Windows-native work; hosted CI supplies the
+cross-platform verification lanes.
+
 Good places to start:
 
 | Interest | Start in |
 | --- | --- |
-| Product and mobile UX | `apps/web`, [interface guide](docs/INTERFACE.md) |
+| Shared Desktop and Web UX | `apps/web`, the future `apps/desktop`, [interface guide](docs/INTERFACE.md) |
 | APIs, persistence, and realtime | `apps/server`, `packages/db`, [API reference](docs/API.md) |
 | Node protocol and reliability | `apps/node`, `packages/protocol`, [architecture](docs/ARCHITECTURE.md) |
 | Computer backends | `providers/*`, `packages/provider-sdk` |
@@ -249,6 +333,10 @@ Contribution flow:
 3. Keep execution capabilities behind typed provider boundaries and fail-closed tests.
 4. Run `npm run check` and `npm audit` before opening a pull request.
 5. Complete the pull request template, including verification and security impact.
+
+Use a fork or focused feature branch and submit a pull request; feature work does not go directly
+to `main`. A contributor only needs the platform toolchain for the platform-specific code they
+change.
 
 Documentation is part of the feature. English is the canonical project language; maintained
 translations should preserve the same claims, warnings, and section structure. New translations
@@ -307,10 +395,13 @@ multiple control planes into one repository:
 - [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) — current `agent-computer` provider
   boundary and product research.
 - [Cua](https://github.com/trycua/cua) and Lume — planned macOS execution providers.
-- [OpenClaw](https://github.com/openclaw/openclaw) — optional runtime, skills, and operational
-  reference; not a second source of truth.
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — product reference for the
-  employee evolution archive, learning graph, skill/memory separation, and reviewed skill writes.
+- [OpenClaw](https://github.com/openclaw/openclaw) — planned bounded adapter candidate plus skills
+  and operational reference; never a second source of truth.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — first external-agent adapter
+  candidate and the attributed product reference for the employee evolution archive, learning
+  graph, skill/memory separation, and reviewed skill writes.
+- Pi — planned external-agent adapter candidate; the exact upstream and release must be recorded in
+  a research note before implementation.
 - [Agent Skills](https://github.com/agentskills/agentskills) — planned standard format and official
   validator for executable skill bundles.
 - Codex, Claude, and Multica — planned isolated coding-provider integrations.

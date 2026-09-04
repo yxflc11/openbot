@@ -1,6 +1,6 @@
 # OpenBot
 
-**一套用于常驻数字员工的自托管控制平面。**
+**一套面向多频道、多 Agent 数字员工的自托管工作空间。**
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
@@ -9,21 +9,22 @@
 [![Node.js 22.22.2+](https://img.shields.io/badge/Node.js-22.22.2%2B-339933.svg)](package.json)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#项目状态)
 
-OpenBot 是一个早期阶段的开源、自托管平台，用来在你掌控的电脑上运行具名 AI 员工。你在
-持久化本地频道中与员工对话；OpenBot Server 将每项任务路由到获得授权且可以替换的工作主机，
-并把身份、技能、记忆、消息、审批、产物和审计事件保存在你自己的系统中。
+OpenBot 是一个早期阶段的开源、自托管平台，用来在你掌控的电脑上运行具名 AI 员工。OpenBot
+本身也是一个 Agent，专注于多频道、多 Agent 的任务模式；它可以把有界任务交给外部 Agent，
+同时由 OpenBot Server 统一掌握身份、路由、策略、审批、持久化和审计。
 
-Mac mini 是第一种实用工作主机，不是产品边界。Windows、macOS 和 Linux 主流电脑都可以通过
-同一套 Server 授权的 Node 协议成为员工的工作电脑。Server 可以运行在 Linux、macOS、NAS
-或云主机上，你可以通过私有网络从任意浏览器访问。
+目标产品提供两个完整客户端。OpenBot Desktop 是推荐的引导式路径：每台电脑安装同一个应用，
+然后自由启用 Client、Server 和 Worker 角色。OpenBot Web 连接同一个工作空间，也可以成为高级
+用户拆分部署 Server、Web、PostgreSQL 和 Worker 服务后的主要客户端。
 
-OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员工体验，同时坚持自托管、
-模型与 Provider 中立，以及明确的人类控制边界。
+Mac mini 只是一种实用工作主机，不是产品边界。Windows、macOS 和 Linux 电脑都可以同时作为
+日常使用电脑和获得授权的工作电脑。OpenBot 参考 Grok Bot 所代表的常驻频道体验和 DeepSeek
+Harness 的网页 Agent 管理体验，同时坚持自托管、Provider 中立、自由扩展和明确的人类控制边界。
 
 > [!WARNING]
-> OpenBot 仍处于 pre-alpha 阶段。当前电脑 Provider 只有只读能力，**不会**填写、点击、
-> 提交或控制生产账号。请勿连接付款方式、主账号或生产凭证。对外部署前请先阅读
-> [安全说明](#安全)。
+> OpenBot 目前是 pre-alpha 源代码，并不是下文描述的完整 Desktop 产品。当前电脑 Provider
+> 只有只读能力，**不会**填写、点击、提交或控制生产账号。请勿连接付款方式、主账号或生产
+> 凭证。对外部署前请先阅读[安全说明](#安全)。
 
 ## 为什么做 OpenBot
 
@@ -33,7 +34,14 @@ OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员�
 - **员工可以成长和迁移。** 每个员工都有可追溯的进化档案、技能图谱、决策轨迹、记忆、工作
   记录、配置和安全迁移控制。
 - **副作用前审批。** 敏感动作必须进入明确且可审计的审批状态，模型不能自行扩大权限。
-- **所有设备共享一个控制平面。** 桌面和手机浏览器通过经过认证的实时更新看到同一频道状态。
+- **Desktop 与 Web 共享一个工作空间。** 两个客户端使用同一套 Server 管理的频道、Agent、
+  任务、审批、设备、插件和历史。
+- **每台电脑自由组合角色。** 同一个 Desktop 可以作为 Client、承载 Server、运行 Worker 服务，
+  或同时承担多个角色。
+- **OpenBot 原生 Agent 加外部 Agent。** OpenBot 负责组织任务，并可以把有界工作交给 Hermes、
+  Pi、OpenClaw 和未来适配器。
+- **自由扩展但不能自授权。** 插件可以改变呈现方式，或增加工具、频道、Agent 和自动化，但只有
+  Server 可以授予权限。
 - **可组合的 Bot 身份。** Bot 外观由头型、身体、移动方式、配件和强调色五个独立层保存。
 - **通过适配器避免锁定。** 模型、电脑运行时和上游项目通过有类型、带版本的边界接入。
 
@@ -42,6 +50,35 @@ OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员�
 启发。OpenBot 使用自己的 Server 权威证据、审核、权限和迁移模型，不会把学习图谱概念说成
 OpenBot 原创。
 
+## 目标产品模式
+
+> [!NOTE]
+> 本节定义已经确认的产品方向，但不代表 Desktop、引导式服务安装、外部 Agent 适配器或插件
+> 平台目前已经可用。
+
+| 使用入口 | 目标体验 |
+| --- | --- |
+| OpenBot Desktop | macOS、Windows 和 Linux 的推荐完整客户端，负责引导创建工作空间、连接、服务安装、权限、诊断和恢复。 |
+| OpenBot Web | 远程访问同一工作空间的完整浏览器客户端，也可以作为模块化自部署的主要客户端。 |
+| 模块化自部署 | 不安装 Desktop，分别安装 Server、Web、PostgreSQL 和一个或多个 Worker 服务的高级路径。 |
+
+Desktop 角色是可以组合的能力，不是不同产品版本：
+
+| 角色 | 责任 |
+| --- | --- |
+| Client | 频道、消息、任务、审批、设置和观察。 |
+| Server | 工作空间真相、身份、路由、策略、审批、持久化和审计。 |
+| Worker | 通过明确授权的 Provider 在当前电脑后台执行任务。 |
+
+一台电脑可以同时启用三个角色。“五台电脑”只是接入进度，不是许可证或权限上限；每台电脑都
+独立登记，也可以被单独撤销。
+
+OpenBot 接入外部 Agent 的第一种方式是有界任务委派。只有在身份、记忆、生命周期和权限行为
+通过与原生 OpenBot Agent 相同的一致性测试后，外部 Agent 才会成为频道的直接成员。
+
+插件将支持 UI/主题、频道、Agent 适配器、工具/Provider、自动化和可选体验。插件可以在已经
+授予的能力内决定功能如何呈现和运行，但不能决定自己拥有什么权限。
+
 ## 项目状态
 
 OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道”的受测试垂直切片。下表刻意
@@ -49,18 +86,22 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 
 | 领域 | 当前已经可用 | 下一步 |
 | --- | --- | --- |
-| 控制平面 | 本地 Owner 认证、带漂移检查的 PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物、员工记忆生命周期、不含正文的多设备档案失效通知和审计事件 | 持久 routine、记忆检索/保留、自动恢复工具和多用户信任模型 |
-| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、工作主机管理、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
+| 控制平面 | 本地 Owner 认证、带漂移检查的 PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物、员工记忆生命周期、不含正文的多设备档案失效通知和审计事件 | Desktop 引导、持久 routine、记忆检索/保留、自动恢复工具和多用户信任模型 |
+| 客户端 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、工作主机管理、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 共享 React UI 的沙箱化 Electron Desktop、角色设置引导、可安装 Web/PWA、通知和本地化完善 |
 | Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
 | 员工档案 | 七视图个人主页、带 revision 冲突检查的职责/简介编辑、受 Hermes 启发且可按类型和时间检查完整证据引用的进化档案、Owner 技能审核、带无内容审计的 Owner 管理分类记忆、保留简介并精确绑定审核后下载的安全模板导出、隔离导入、审核后生成新身份，以及实验性 DSSE 签名 | 显示名/模型/主机/外观策略编辑、记忆检索/保留和自主提案、系统钥匙串/KMS 与公开信任适配器、带完整 diff 审核的可执行 Agent Skills 包、选择性复制、注册表分发和所有权转移 |
-| Node 协议 | 出站 WebSocket 登记、Owner 界面配对/列表/吊销、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成、断线恢复，以及带契约测试 Secret Service 的实验性 Linux 系统/用户服务配置 | 持有证明身份、mTLS、轮换、防重放、Windows/macOS 密钥库、签名安装器和真实设备一致性报告 |
+| Node 协议 | 出站 WebSocket 登记、Owner 界面配对/列表/吊销、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成、断线恢复，以及带契约测试 Secret Service 的实验性 Linux 系统/用户服务配置 | Worker 角色安装引导、持有证明身份、mTLS、轮换、防重放、原生密钥库、签名安装器和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
 | Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 跨平台浏览器、Windows、macOS、Linux 桌面、受管理 Android 和隔离编码 Provider |
-| 办公室视图 | 与核心应用无依赖的 `@openbot/office-plugin` 隔离包 | 等频道工作流成熟后再建设可选插件生命周期 |
+| Agent runtime | Server 掌握的 Bot、频道、Run、结果、档案、技能、记忆和审计基础 | OpenBot 原生 Agent、持久多 Agent 交接，以及有界 Hermes、Pi 和 OpenClaw 适配器 |
+| 插件 | 与核心应用无依赖的 `@openbot/office-plugin` 隔离包 | 权限清单、生命周期、沙箱化 Host API、UI 插槽、本地开发和未来可信分发 |
+| 分发 | 源代码和一个较早的源码基础预览 | GitHub Releases 中的签名 Desktop 安装包、Worker 产物、升级/回滚证据，以及可独立使用的 SDK 或容器包 |
 
 ### 当前版本不作出的承诺
 
+- 目前没有公开的 OpenBot Desktop、引导式多角色安装器、可安装 Worker Host 或 GitHub
+  Packages 产物；旧 `v0.1.0-alpha.1` 只是源码基础预览，不代表当前仓库或目标 Desktop 产品。
 - 不执行无人值守的表单提交或任意桌面动作。
 - 审批后还不会签发加密的单次 capability lease。
 - 尚不提供连续远程桌面控制。
@@ -76,9 +117,13 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
   导入激活仍须绑定预览摘要、由 Owner 明确确认、生成新身份，并让全部技能保持候选禁用，且不带
   记忆或主机权限。
 - Cua、Lume 和 coder Provider 目前是扩展边界，不是已完成的运行时。
+- Hermes、Pi 和 OpenClaw 目前只是计划集成，不是当前构建中可用的适配器。
+- 目前还没有插件安装、权限、沙箱、更新或回滚生命周期。
 - 可选办公室可视化不进入当前产品导航和 Web 构建。
 
 ## 快速开始
+
+以下是当前 Web/Server/Node 切片的开发者源码安装方式，不是计划中的 Desktop 安装流程。
 
 ### 环境要求
 
@@ -156,22 +201,46 @@ Bot 的身份把结果发回频道。
 ## 系统如何协作
 
 ```text
-任意设备  ->  OpenBot Server  <- Node 主动出站连接 -  工作主机  ->  Providers
-                唯一真相源                         Windows/macOS/Linux 等
+Desktop（计划）--+
+                 +--> OpenBot Server --> OpenBot Agent / 有界适配器（计划）
+Web（已可用）----+       唯一真相源              |
+                                                v
+                                  Worker 主动出站连接 --> Providers
+                                  Windows / macOS / Linux
 ```
 
 | 组件 | 负责 | 不负责 |
 | --- | --- | --- |
-| Client | 交互、观察和提交审批决定 | 策略决定或执行授权 |
+| Desktop / Web Client | 交互、观察、配置和提交审批决定 | 策略决定或执行授权 |
 | Server | 身份、频道、Run、路由、策略、审批、审计和持久化 | 特定宿主机的电脑能力 |
+| OpenBot Agent / Agent 适配器 | 规划、有界任务、结构化进度和结果 | 授予权限、设备授权或审计真相 |
 | 工作主机 / Node | 能力发现、本地容量、Provider 执行、进度和产物 | 员工身份、技能、长期记忆或授权策略 |
 | Provider | 一个窄执行后端，例如 Docker/browser、Cua、Lume 或 coder | 跨 Node 路由或权限升级 |
+| 插件 | 在声明并获准的能力内改变呈现或行为 | 自行授权或绕过 Server 策略 |
 
 Server 是唯一真相源。Node 主动连接 Server，不需要开放公网管理端口。路由是确定性的：Run
 固化的 execution profile 与在线 Node 能力求交集，模型不能选择未获授权的机器。
 
 详细设计见[系统架构](docs/ARCHITECTURE.md)和
 [Server/Node 决策记录](docs/decisions/0002-local-channel-server-node.md)。
+
+## 开发技术基线
+
+OpenBot 尽量减少语言数量，让大多数贡献者只需 Node.js 和 npm：
+
+| 范围 | 基线 |
+| --- | --- |
+| 共享产品代码 | Web、Server、Node、协议、Agent 适配器、插件 SDK 和测试统一使用 TypeScript |
+| 用户界面 | Web 和计划中的 Electron Desktop 共用 React 与 Vite |
+| JavaScript 生产运行时 | 推荐 Node.js 24 LTS；当前源码仍遵循 `package.json` 中更宽的 engine 范围 |
+| 持久化 | PostgreSQL 和经过审核的 SQL migration |
+| macOS 专属集成 | 只用一层很薄的 Swift 处理 Keychain、服务生命周期、权限和原生控制 |
+| Windows 专属集成 | 只用一层很薄的 C#/.NET 处理 Service、受保护凭证、进程监管和原生控制 |
+| 外部 Agent | 保留上游语言并放在有类型的 OpenBot 适配器之后；Hermes 使用 Python 不会让 Python 成为 OpenBot 核心语言 |
+
+Electron 是已经接受的 Desktop 方向，因为它可以最大程度复用现有 TypeScript/React 系统；正式
+实现前仍必须按照仓库调研与 ADR 流程固定精确版本。Rust 不是核心语言，除非以后有经过证据确认的
+平台缺口必须引入。
 
 ## 安全
 
@@ -197,25 +266,31 @@ OpenBot 按用户验收结果推进。贡献应当推动一个完整用户结果
 
 | 里程碑 | 用户结果 |
 | --- | --- |
-| M0 — 本地控制平面 | 频道、Bot、认证、持久化和审计不依赖专有云服务。目前基础已经可用。 |
-| M1 — Server/Node 闭环 | 可替换 Node 接收浏览器任务并回传进度和截图。只读垂直切片已经可用，安全交互仍在开发。 |
-| M2 — 远程控制与审批 | 手机访问、签名单次审批、通知和独占人工接管。持久化审批决定已经可用，lease 与接管是下一步。 |
-| M3 — 可迁移员工 | 个人主页、进化档案、技能图谱、类型化记忆、审核绑定的安全员工模板和审核后新身份激活。 |
-| M4 — 原生工作主机 | Windows、macOS 和 Linux Provider 使用统一能力与审批协议。 |
-| M5 — 多 Bot 运营 | 结构化交接、Routine、持久队列、Coder Provider 和认证员工转移。 |
-| M6 — 发布 | 受管理移动设备、可复现安装器、签名发布、SBOM、升级、备份和恢复。 |
+| 基础——当前已可用 | 本地频道、Bot、认证、PostgreSQL 持久化、审计、员工档案、Node 路由、审批和只读浏览器闭环。 |
+| R0——产品与技术契约 | 对齐双语文档，记录 Desktop/Web/角色模型，并固定经过调研的技术决策。 |
+| R1——共享 Desktop 与 Web | 在沙箱化 Electron Desktop 中复用 React UI，同时保留完整浏览器客户端。 |
+| R2——引导式角色与多电脑 | 创建或加入工作空间，启用 Client/Server/Worker 角色，安装服务，逐台配对、诊断和撤销电脑。 |
+| R3——模块化自部署 | 不安装 Desktop 也能运维 Server、Web、PostgreSQL 和 Worker，并具备备份、恢复和私网指引。 |
+| R4——原生 OpenBot 与外部 Agent | 让 OpenBot 成为持久协调 Agent，再把 Hermes、Pi 和 OpenClaw 作为有界适配器接入同一权限边界。 |
+| R5——插件平台 | 提供有权限控制的 UI、主题、频道、Agent、工具/Provider、自动化和可选体验插件，并支持生命周期与回滚。 |
+| R6——安全电脑控制 | 提供 observe/fill/act、单次 capability lease、连续画面、独占接管和有真实证据的原生 Provider。 |
+| R7——分发 | 通过 GitHub Releases 提供签名 Desktop 安装包、经过验证的 Worker 产物、SBOM、升级、回滚、备份和恢复。 |
 
-完整过线标准见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+在 R1 实现开始前，聚焦的产品、架构与路线图文档将与这套已确认顺序同步。同步任务通过审核前，
+[docs/ROADMAP.md](docs/ROADMAP.md)继续保留现有能力过线标准。
 
 ## 参与共建
 
 OpenBot 的目标是开放共建。你不需要先理解整个系统才能参与。
 
+大多数贡献者只需要推荐的 Node.js 24 LTS 和 npm。只有修改 macOS 原生代码时才需要 Swift，
+只有修改 Windows 原生代码时才需要 .NET；跨平台验证由托管 CI 承担。
+
 可以从这些方向开始：
 
 | 你的兴趣 | 建议入口 |
 | --- | --- |
-| 产品与移动端体验 | `apps/web`、[界面方案](docs/INTERFACE.md) |
+| Desktop 与 Web 共享体验 | `apps/web`、未来的 `apps/desktop`、[界面方案](docs/INTERFACE.md) |
 | API、持久化与实时通信 | `apps/server`、`packages/db`、[API 文档](docs/API.zh-CN.md) |
 | Node 协议与可靠性 | `apps/node`、`packages/protocol`、[系统架构](docs/ARCHITECTURE.md) |
 | 电脑执行后端 | `providers/*`、`packages/provider-sdk` |
@@ -230,6 +305,9 @@ OpenBot 的目标是开放共建。你不需要先理解整个系统才能参与
 3. 所有执行能力都必须位于有类型的 Provider 边界后，并提供 fail-closed 测试。
 4. 提交 PR 前运行 `npm run check` 和 `npm audit`。
 5. 完整填写 PR 模板，包括验证方式和安全影响。
+
+请使用 fork 或聚焦的功能分支提交 PR，功能代码不直接进入 `main`。贡献者只需安装自己修改的
+平台专属代码所要求的工具链。
 
 文档也是功能的一部分。英文是项目的权威原文；维护中的翻译必须保持相同的能力声明、警告与
 章节结构。欢迎贡献更多语言。
@@ -286,9 +364,11 @@ OpenBot 通过窄接口融合现有开源工作，不会把多个控制平面复
 - [CopilotKit/OpenBot](https://github.com/CopilotKit/OpenBot) — 当前 `agent-computer` Provider
   边界与产品研究来源。
 - [Cua](https://github.com/trycua/cua) 与 Lume — 计划中的 macOS 执行 Provider。
-- [OpenClaw](https://github.com/openclaw/openclaw) — 可选运行时、技能与运维参考，不作为第二真相源。
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — 员工进化档案、学习图谱、技能与
-  记忆分离以及技能写入审核的产品参考。
+- [OpenClaw](https://github.com/openclaw/openclaw) — 计划中的有界适配器候选、技能与运维参考，
+  永远不作为第二真相源。
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — 第一项外部 Agent 适配器候选，
+  也是员工进化档案、学习图谱、技能与记忆分离以及技能写入审核的明确署名产品参考。
+- Pi——计划中的外部 Agent 适配器候选；实现前必须在调研记录中确定准确上游和版本。
 - [Agent Skills](https://github.com/agentskills/agentskills) — 未来可执行技能包采用的开放格式与
   官方校验器。
 - Codex、Claude 与 Multica — 计划中的隔离编码 Provider 集成。
