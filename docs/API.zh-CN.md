@@ -67,7 +67,9 @@ secret，不等于生产级持有证明身份。能力声明本身仍不授予�
 数据库只保存随机 Token 的 SHA-256 摘要，不保存 Token 或 Owner 密码；退出与过期会话均无法
 继续访问 API。
 
-所有非只读请求都必须携带与 `OPENBOT_ALLOWED_ORIGINS` 精确匹配的 `Origin`；部署密码至少 15 个字符。
+所有非只读请求都必须携带与请求自身 origin 或 `OPENBOT_ALLOWED_ORIGINS` 中某一项精确匹配的
+`Origin`。浏览器 CORS 访问仍只允许配置列表；Desktop main process 只会在用户验证并通过原生窗口
+确认 Server origin 后使用同源情况。部署密码至少 15 个字符。
 五分钟内第五次尝试后，同一客户端桶会阻止后续尝试五分钟；PostgreSQL 会在 Server 进程和重启之间
 原子保存该状态。桶键是直接对端 IP 的域分隔摘要；只有直接对端等于
 `OPENBOT_TRUSTED_PROXY_ADDRESS` 时才接受单个 `Forwarded: for=...` 跳。这是经摘要化的滥用防护，
@@ -368,7 +370,7 @@ Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `p
 ## 错误约定
 
 - `401`：未登录、会话已过期或登录密码错误；
-- `403`：非只读请求缺少可信 `Origin`，或来源不在允许列表；
+- `403`：非只读请求既不匹配请求自身 origin，也不匹配配置的精确 Origin；
 - `429`：登录失败次数过多，调用方应遵循 `Retry-After`；
 - `409`：频道或 Bot 名称冲突，审批已决定或已过期；
 - `422`：输入字段或 roster 无效；

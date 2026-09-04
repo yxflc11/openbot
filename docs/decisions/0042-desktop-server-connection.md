@@ -23,9 +23,10 @@ Full evidence is recorded in the
 
 Electron `44.2.0` custom protocols, dedicated Sessions, Chromium-backed fetch/cookies, context
 bridge and sender validation; WHATWG Fetch/URL; Node.js `24.20.0`; the existing
-`write-file-atomic` `8.0.0`; rejected `electron-store` `11.0.2`; direct renderer networking; a local
-HTTP proxy; remote UI loading; and a generic IPC request bridge were reviewed. Exact versions,
-maintenance, tests, issues, fit, licenses, and rejection reasons are in the research record.
+`write-file-atomic` `8.0.0`; build-only `@electron/asar` `4.3.0`; rejected `electron-store`
+`11.0.2`; direct renderer networking; a local HTTP proxy; remote UI loading; and a generic IPC
+request bridge were reviewed. Exact versions, maintenance, tests, issues, fit, licenses, and
+rejection reasons are in the research record.
 
 A process-level Electron 44.2.0 experiment proved that `Session.fetch()` retains an HttpOnly cookie
 when the request Origin equals the target origin. A custom `openbot://app` Origin became opaque
@@ -37,10 +38,11 @@ ordinary same-origin case in addition to configured Web origins.
 
 Use the pinned Electron Session and protocol APIs for the streaming data plane, the existing typed
 context bridge pattern for two configuration operations, and the already-reviewed
-`write-file-atomic` dependency for the fixed public configuration file. Do not add a general
-preference framework, another HTTP listener, or a generic IPC request bridge. OpenBot implements
-only the destination validation, health proof, confirmation, proxy policy, and Server same-origin
-gap that none of those upstream APIs owns.
+`write-file-atomic` dependency for the fixed public configuration file. Use the official
+`@electron/asar` package only at build time to fail if the reviewed runtime closure is missing or
+widened. Do not add a general preference framework, another HTTP listener, or a generic IPC request
+bridge. OpenBot implements only the destination validation, health proof, confirmation, proxy
+policy, package allowlist, and Server same-origin gap that none of those upstream APIs owns.
 
 ## Decision
 

@@ -63,7 +63,10 @@ Loopback HTTP development uses an `openbot_session` cookie. HTTPS uses the host-
 variant is also `Secure`. PostgreSQL stores only the random session token's SHA-256 digest, never
 the token or deployment password.
 
-Every mutating request must send an `Origin` that exactly matches `OPENBOT_ALLOWED_ORIGINS`.
+Every mutating request must send an `Origin` that exactly matches either its own request origin or
+an entry in `OPENBOT_ALLOWED_ORIGINS`. Browser CORS access remains limited to the configured list;
+the Desktop main process uses the same-origin case only after the user verifies and natively
+confirms that Server origin.
 Non-loopback origins require HTTPS and `OPENBOT_SECURE_COOKIES=true`; an unsafe configuration
 stops the Server before it listens. The deployment password must contain at least 15 characters.
 Five attempts in five minutes block the same client bucket for five minutes; PostgreSQL serializes
@@ -388,7 +391,7 @@ network. See [Node enrollment](NODE_ENROLLMENT.md).
 | Status | Meaning |
 | --- | --- |
 | `401` | Missing, expired, or invalid Owner Session |
-| `403` | A mutating request has no trusted exact-match Origin |
+| `403` | A mutating request has neither the exact request origin nor a configured exact-match Origin |
 | `404` | The requested channel, Bot, Employee record, or Node identity does not exist |
 | `409` | Name conflict, stale revision, already-decided approval, or changed/reused reviewed input |
 | `413` | A request exceeds its transport-level size bound |

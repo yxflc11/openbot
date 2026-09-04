@@ -108,7 +108,8 @@ support remain later gates.
 The accepted [Desktop local content protocol](desktop-local-content-protocol.md) follow-on applies
 Electron's custom-protocol guidance to a dedicated session and an exact packaged-resource
 allowlist, keeping `file://` extra privileges disabled and rejecting traversal before file access.
-The accepted [Desktop Server connection](desktop-server-connection.md) review then keeps that local
-Client same-origin while a bounded main-process adapter uses Electron's dedicated Session to reach
-one verified Server. It persists only the confirmed public origin, retains HttpOnly cookies outside
-preload, and rejects opaque origins, redirects, excess bodies, and remote executable UI.
+The implemented [Desktop Server connection](desktop-server-connection.md) review then keeps that
+local Client same-origin while a bounded main-process adapter uses Electron's dedicated Session to
+reach one verified Server. It persists only the confirmed public origin, retains HttpOnly cookies
+outside preload, rejects opaque origins, redirects, excess bodies, and remote executable UI, and
+validates the exact runtime dependency closure after ASAR packaging.

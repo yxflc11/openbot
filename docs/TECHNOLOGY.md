@@ -34,6 +34,12 @@ An onboarding answer such as “I will add five computers” creates a five-devi
 is not a license limit and it does not produce a different application. Every Worker computer can
 still be used as a normal OpenBot Client.
 
+The implemented Desktop Client slice currently covers the first composition: on first launch it
+accepts one existing Server origin, verifies `/health`, presents a native confirmation, stores only
+that public origin, and then opens the shared sign-in and channel UI. Remote Servers require HTTPS;
+loopback development may use HTTP. Changing the Server clears the dedicated Desktop browser
+session. Installing or managing Server and Worker Host services remains the next onboarding slice.
+
 ## Selected languages and runtimes
 
 | Boundary | Selection | Why |
@@ -42,6 +48,7 @@ still be used as a normal OpenBot Client.
 | Standalone development runtime | Node.js `24.20.0` LTS | It is the current LTS reviewed on 2026-09-04; Current releases are not the production default. |
 | Desktop shell | Electron `44.2.0` | It reuses the existing web stack and ships one tested Chromium/Node baseline across desktop systems. |
 | Desktop packaging and hardening | `@electron/packager` `20.3.0` and `@electron/fuses` `2.1.3` | Current stable Electron packages provide the narrow package/ASAR and strict fuse APIs OpenBot needs without Forge 7's incompatible and vulnerable development graph. Installers, signing, and publishing remain separately reviewed release adapters. |
+| Desktop Server transport and configuration | Electron `44.2.0` custom protocol, dedicated `Session.fetch`, typed IPC, `write-file-atomic` `8.0.0`, and `@electron/asar` `4.3.0` for build-time inventory validation | The packaged renderer stays same-origin while the main process connects only to one verified and confirmed Server. The archive contains exactly the reviewed runtime dependency closure. |
 | Shared UI | React `19.2.8` and Vite `8.2.2` | These exact versions are already locked, built, and tested in this repository. |
 | Server HTTP runtime | Hono on Node.js | The current Server, security middleware, SSE, and shutdown behavior already use and test this boundary. |
 | Authoritative persistence | PostgreSQL 17 | Existing migrations, conditional transitions, scheduling, approvals, and audit require one transactional source of truth. |
@@ -67,8 +74,8 @@ The Desktop application is a trusted local client, not a replacement authority:
   process, environment, or unrestricted network primitives;
 - the main process validates the sender, schema, size, state, and authority for every IPC request;
 - navigation, new windows, permissions, downloads, and external URL opening deny by default;
-- a restrictive Content Security Policy permits only packaged application code and declared Server
-  connections;
+- a restrictive Content Security Policy permits renderer connections only to the packaged
+  application origin; the main process separately enforces the one declared Server connection;
 - Server, Worker Host, external Agent, and plugin actions remain subject to Server policy and
   approval even when Desktop starts their local processes;
 - secrets stay in the platform key store or a dedicated service boundary, never renderer state or
@@ -102,4 +109,6 @@ in TypeScript.
 
 The durable decision and candidate evidence are recorded in
 [ADR-0041](decisions/0041-desktop-application-foundation.md) and the
-[Desktop foundation research](research/desktop-application-foundation.md).
+[Desktop foundation research](research/desktop-application-foundation.md). The implemented Server
+connection boundary is recorded in [ADR-0042](decisions/0042-desktop-server-connection.md) and its
+[research evidence](research/desktop-server-connection.md).
