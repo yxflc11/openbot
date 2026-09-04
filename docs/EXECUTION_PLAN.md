@@ -154,7 +154,10 @@ Every non-trivial slice follows the same sequence:
   future bootstrap and activation without automatic stale takeover. A private-import adapter now
   copies the untrusted archive once through an opened handle into an exclusive `0600` file, binds
   cleanup to its digest and the same lease, and rejects path/source changes before provenance. Its
-  four real-byte tests pass. A bounded verifier adapter now requires the exact `gh 2.93.0` binary contract,
+  four real-byte tests pass. A fixed privileged-layout validator now requires effective root,
+  root-owned ancestry that ordinary users cannot write, exact child modes, and the required
+  same-filesystem relationships;
+  four policy tests pass. A bounded verifier adapter now requires the exact `gh 2.93.0` binary contract,
   certificate identity, tag, source commit, GitHub issuer, hosted runner, one matching statement,
   and stable archive digest; seven fail-closed tests pass. A safe-extraction adapter adds strict
   inventory, stream, private-root, tree, and final digest gates; six tests and a corrected real

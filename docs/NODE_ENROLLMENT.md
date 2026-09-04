@@ -210,9 +210,14 @@ synced destination identity, size, and SHA-256. Cleanup removes only that exact 
 file. A changed source, symlink, existing target, forged lease, or digest mismatch is preserved or
 rejected without entering provenance or extraction.
 
+The privileged layout policy is now executable but not yet wired to a command. It fixes every
+destination and requires Linux effective uid/gid 0, root-owned non-symlinked ancestors that ordinary
+users cannot write, exact private/public child modes, and the filesystem relationships needed for
+atomic version movement. There is no option to substitute a different destination or trusted owner.
+
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
 unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted
-bootstrap, root ownership and privileged extraction/install serialization, a wired privileged
+bootstrap, root-owned directory creation and privileged stage composition, a wired privileged
 recovery command, and native x64/arm64 proof of the systemd adapter are still required before an
 installation command can be published. The rootless safe-extraction adapter now rejects unsafe
 inventories, extracts into a private empty root, rechecks the archive digest, and rebuilds the

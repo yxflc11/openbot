@@ -107,8 +107,15 @@
 - Four import tests copy a real 20 MiB sparse archive and cover exact-byte import/removal, symlink/
   undersized/changed-source rejection, no-overwrite creation, and digest-bound cleanup that preserves
   unexpected bytes. Provenance, extraction, and import now share one archive size policy.
-- These are temporary-filesystem concurrency and byte-import tests. Root ownership, full bootstrap
-  composition, process-kill recovery, and native systemd remain pending.
+- A fixed-layout validator now requires Linux effective uid/gid 0; real root-owned, non-symlinked,
+  non-group/other-writable `/`, `/opt`, `/var`, and `/var/lib` ancestors; exact `0755` install/version
+  and `0700` staging/state/import modes; and same-filesystem pairs for staging-to-version rename and
+  private import state. It has no caller-supplied destination or ownership override.
+- Four snapshot tests cover the only accepted runtime/layout and reject non-root/non-Linux execution,
+  links, owner/group drift, writable ancestors, child-mode drift, unknown paths, and cross-filesystem
+  layouts. These are policy tests, not a successful native root execution.
+- These are temporary-filesystem concurrency, byte-import, and layout-policy tests. Directory
+  creation, full bootstrap composition, process-kill recovery, and native systemd remain pending.
 
 ## Unresolved questions
 
