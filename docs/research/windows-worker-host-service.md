@@ -106,11 +106,12 @@
 
 ## Implementation checkpoint
 
-- `OPENBOT_NODE_SERVICE_CONTROL=stdio-v1` currently proves only the shutdown half with four stream
-  tests. Service-host implementation review exposed a post-start Job-assignment window, so this mode
-  must be replaced before a host launches it. The selected `stdio-v2` contract requires exact
-  `OPENBOT_NODE_CONTROL/2 START\n` before constructing or starting the Node client, followed only by
-  exact `OPENBOT_NODE_CONTROL/2 SHUTDOWN\n`; total lifetime input is capped at 96 bytes.
+- `OPENBOT_NODE_SERVICE_CONTROL=stdio-v2` is now the only accepted service mode. Four stream tests
+  prove that no start occurs before the complete frame, ordered fragmented start/shutdown succeeds,
+  malformed/out-of-order/repeated/extra/excessive input fails, parent EOF before shutdown fails, and
+  detach is inert. The exact `OPENBOT_NODE_CONTROL/2 START\n` frame arrives before the Node client is
+  constructed or started; only exact `OPENBOT_NODE_CONTROL/2 SHUTDOWN\n` may follow, and total
+  lifetime input is capped at 96 bytes.
 - `OpenBotNodeClient.stop()` is asynchronous and idempotent. It aborts active executions, rejects
   pending approvals, closes the Server socket, and waits for cooperative Provider cleanup plus
   in-flight identity loading. Two focused lifecycle tests prove both waits.

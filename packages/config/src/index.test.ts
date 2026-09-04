@@ -190,7 +190,7 @@ describe("node environment", () => {
     expect(nodeEnvSchema.safeParse(valid).success).toBe(true);
     expect(nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_ID: "node id" }).success).toBe(false);
     expect(
-      nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_SERVICE_CONTROL: "stdio-v1" }).success,
+      nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_SERVICE_CONTROL: "stdio-v2" }).success,
     ).toBe(true);
     expect(
       nodeEnvSchema.safeParse({ ...valid, OPENBOT_NODE_SERVICE_CONTROL: "named-pipe" }).success,

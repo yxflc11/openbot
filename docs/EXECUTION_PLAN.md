@@ -180,10 +180,11 @@ Every non-trivial slice follows the same sequence:
   the child process tree, and fail closed on identity, ACL, release, or credential uncertainty.
   Redirected child standard input is the exact bounded lifecycle channel, and a pinned maintained
   Job Object package supplies forced process-tree containment. Implementation review found that
-  post-start Job assignment otherwise leaves a scheduling window, so `stdio-v2` must keep the Node
-  inert until the service assigns it and sends `START`, then accept only `SHUTDOWN`. The existing v1
-  tests prove the shutdown parser and two client lifecycle tests prove that repeated stop waits for
-  Provider cleanup and identity loading; v2 replacement tests are next. The current macOS host still
+  post-start Job assignment otherwise leaves a scheduling window, so `stdio-v2` now keeps the Node
+  inert until the service assigns it and sends `START`, then accepts only `SHUTDOWN`. Four parser
+  tests prove ordered fragmented frames and fail-closed malformed, out-of-order, excessive, EOF,
+  and detach behavior; two client lifecycle tests prove that repeated stop waits for Provider
+  cleanup and identity loading. The Node/config suites pass with 30/10 tests. The current macOS host still
   lacks a Windows/.NET toolchain, so no Windows service build, native lifecycle evidence, or support
   claim exists.
 - G4 build-lane research now pins `actions/setup-dotnet` `v5.3.0` by full commit, .NET SDK
