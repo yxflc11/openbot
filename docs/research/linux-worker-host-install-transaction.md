@@ -161,10 +161,16 @@
   Ubuntu 24.04 `linux/amd64` container. The resulting candidate revalidated as version
   `0.1.0-dev.1`, source commit `9644451b6014620a6b7e6b2568d056046ae2c1c2`, and x64. This remains
   container-emulated command evidence, not native-host or privileged-install evidence.
+- A system-profile adapter now pins `/usr/bin/systemctl` to the Ubuntu 24.04 systemd 255 version
+  line, caches that check for one adapter lifetime, forwards transaction cancellation to the child
+  process, and uses only fixed `show` and `restart openbot-node.service` requests. Three contract
+  tests cover exact commands, version caching, active/inactive parsing, missing/masked/failed/
+  transitional/duplicated/extra state, non-zero results, and redacted diagnostics. The shared
+  bounded process test also proves that an external abort terminates an in-flight child.
 - These tests use real temporary directories, manifests, checksums, renames, symlinks, durable state
   writes, real bounded child processes, and injected verifier/service outcomes. They do not accept a
-  live remote attestation or exercise root ownership, serialized privileged extraction, systemd,
-  reboot recovery, or a native Linux host.
+  live remote attestation or exercise root ownership, serialized privileged extraction, a native
+  systemd manager, reboot recovery, or a native Linux host.
 
 ## Unresolved questions
 

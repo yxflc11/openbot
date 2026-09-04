@@ -145,6 +145,7 @@ export async function runBoundedCommand(request) {
       if (finished) return;
       finished = true;
       clearTimeout(timeout);
+      request.signal?.removeEventListener("abort", fail);
       child?.kill("SIGKILL");
       reject(new Error("Linux provenance verifier command failed."));
     };
@@ -169,6 +170,8 @@ export async function runBoundedCommand(request) {
     }
 
     timeout = setTimeout(fail, request.timeoutMs);
+    request.signal?.addEventListener("abort", fail, { once: true });
+    if (request.signal?.aborted) return fail();
     child.stdout.on("data", (chunk) => capture(stdout, "stdout", chunk));
     child.stderr.on("data", (chunk) => capture(stderr, "stderr", chunk));
     child.once("error", fail);
@@ -176,6 +179,7 @@ export async function runBoundedCommand(request) {
       if (finished) return;
       finished = true;
       clearTimeout(timeout);
+      request.signal?.removeEventListener("abort", fail);
       resolve({
         exitCode,
         signal,
@@ -277,6 +281,10 @@ function assertCommandRequest(request) {
         value.length > 4_096 ||
         value.includes("\0"),
     ) ||
+    (request.signal !== undefined &&
+      (typeof request.signal.addEventListener !== "function" ||
+        typeof request.signal.removeEventListener !== "function" ||
+        typeof request.signal.aborted !== "boolean")) ||
     !Number.isSafeInteger(request.timeoutMs) ||
     request.timeoutMs < 1 ||
     request.timeoutMs > maximumCommandDeadlineMs ||

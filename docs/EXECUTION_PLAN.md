@@ -154,8 +154,9 @@ Every non-trivial slice follows the same sequence:
   inventory, stream, private-root, tree, and final digest gates; six tests and a corrected real
   extraction of the existing x64 archive in the pinned Ubuntu container pass. It is not a privileged
   installer. Authorized provenance observation, a separately trusted bootstrap, privileged
-  ownership/serialization/systemd adapters, explicit recovery, and real x64/arm64 systemd plus
-  locked/unlocked keyring evidence remain in progress under ADR-0033 and ADR-0034.
+  ownership/serialization, explicit recovery, and real x64/arm64 systemd plus locked/unlocked
+  keyring evidence remain in progress under ADR-0033 and ADR-0034. The system-profile adapter itself
+  now has three fail-closed command/state tests but no native systemd evidence.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

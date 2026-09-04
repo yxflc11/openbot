@@ -195,12 +195,15 @@ are never read or modified.
 
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
 unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted
-bootstrap, root ownership and extraction/install serialization, a systemd command adapter, an
-explicit recovery command, and native x64/arm64 evidence are still required before an installation
-command can be published. The rootless safe-extraction adapter now rejects unsafe inventories,
+bootstrap, root ownership and extraction/install serialization, an explicit recovery command, and
+native x64/arm64 proof of the systemd adapter are still required before an installation command can
+be published. The rootless safe-extraction adapter now rejects unsafe inventories,
 extracts into a private empty root, rechecks the archive digest, and rebuilds the candidate manifest;
 the existing x64 archive passed this path under Ubuntu container emulation. No live remote
-attestation has been accepted yet.
+attestation has been accepted yet. The system-profile command adapter is also contract-tested: it
+pins `/usr/bin/systemctl` to the Ubuntu systemd 255 line, reads only loaded active/inactive machine
+state, and restarts only the fixed `openbot-node.service`. It has not run against a native systemd
+host, so it is not yet part of a published privileged installer.
 
 ## Revoke or replace a Node
 

@@ -83,6 +83,19 @@
 - Support level that the evidence permits: contract-tested experimental Linux storage/service
   configuration only. It is not yet Linux support, device attestation, or a signed installer.
 
+## Implementation verification
+
+- The system-profile command adapter uses only `/usr/bin/systemctl` from the Ubuntu 24.04 systemd
+  255 line, a fixed `openbot-node.service`, machine-readable `LoadState`/`ActiveState`, and restart.
+  It never accepts a caller-provided unit name or enables, starts, stops, reloads, or resets a unit.
+- Three command/state tests cover the exact fixed requests, version caching, active and inactive
+  state, missing/masked/failed/transitional/duplicate/extra output, failed execution, and diagnostic
+  redaction. The transaction's existing service deadline now aborts the actual child-process
+  boundary rather than only abandoning its promise.
+- This is injected process-contract evidence only. Native Ubuntu 24.04 x64/arm64 systemd lifecycle,
+  reboot, ownership, service-account, failure rollback, and user-session Secret Service evidence
+  remain required.
+
 ## Unresolved questions
 
 - Signed archive layout, bundled Node runtime, checksums, SBOM, upgrade/rollback transaction, and

@@ -234,6 +234,18 @@ test("bounds subprocess time and output without exposing child output", async ()
       return true;
     },
   );
+
+  const controller = new AbortController();
+  const aborted = runBoundedCommand({
+    executable: process.execPath,
+    arguments: ["-e", "setInterval(() => {}, 1000)"],
+    environment,
+    timeoutMs: 1_000,
+    maximumBytes: 64,
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assert.rejects(aborted, /command failed/);
 });
 
 async function withArchive(operation) {
