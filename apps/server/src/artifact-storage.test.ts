@@ -32,7 +32,11 @@ describe("file artifact storage", () => {
       sizeBytes: onePixelPng.byteLength,
     });
     expect(await storage.read(persisted?.storageKey ?? "")).toEqual(onePixelPng);
-    expect((await stat(join(root, persisted?.storageKey ?? ""))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      // Windows mode bits do not represent owner/group/other ACLs, so only POSIX hosts can
+      // provide evidence that the requested private creation mode reached the final file.
+      expect((await stat(join(root, persisted?.storageKey ?? ""))).mode & 0o777).toBe(0o600);
+    }
     await storage.remove([persisted?.storageKey ?? ""]);
     await expect(storage.read(persisted?.storageKey ?? "")).rejects.toMatchObject({
       code: "ENOENT",

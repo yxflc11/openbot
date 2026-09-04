@@ -20,7 +20,8 @@
   fail-fast max-parallel`.
 - Standards and primary documentation queries: GitHub-hosted runner hardware/architecture labels,
   runner-image GA and update policy, matrix failure behavior, least workflow permissions, and
-  `setup-node` lockfile/cache behavior; Git `gitattributes` `text` and `eol=lf` checkout semantics.
+  `setup-node` lockfile/cache behavior; Git `gitattributes` `text` and `eol=lf` checkout semantics;
+  Node.js `fs` creation modes and the documented Windows permission-model caveat.
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked: `.github/workflows/ci.yml`,
   `docs/PROVIDER_CONFORMANCE.md`, ADR-0015, `docs/CROSS_PLATFORM.md`, the CI/research entries in
   `docs/OPEN_SOURCE_REUSE.md`, and the current Node/config/Provider SDK package scripts.
@@ -33,21 +34,25 @@
 | Moving `*-latest` labels | Same runner-images review | MIT; GitHub service terms | Maintained, but GitHub intentionally migrates the aliases over time | Convenient but changes the OS/architecture evidence without a repository change; `macos-latest` has already moved across architecture families | Reject for conformance evidence |
 | OpenBot's existing pinned actions | [`actions/checkout@11d5960a`](https://github.com/actions/checkout/tree/11d5960a326750d5838078e36cf38b85af677262) and [`actions/setup-node@49933ea5`](https://github.com/actions/setup-node/tree/49933ea5288caeca8642d1e84afbd3f7d6820020) | MIT | Already reviewed and exercised by the current Ubuntu jobs | Full-commit pins, `persist-credentials: false`, exact Node 22.22.2, committed npm lockfile, and read-only workflow permissions fit this slice without adding another action | Reuse unchanged |
 | Git line-ending attributes | Git `2.55.0` `gitattributes` contract, reviewed 2026-09-04 | GPL-2.0; documentation license | Mature cross-platform source-control contract and Git test suite | `text eol=lf` keeps systemd distribution files LF in the index and working tree, while test-side CRLF normalization keeps semantic assertions independent of the checkout platform | Select narrowly for `deploy/node/systemd/*.service`; do not impose a repository-wide conversion |
+| Node.js file-mode contract | [Node.js `v22.22.2` / `2645dc73`](https://github.com/nodejs/node/tree/2645dc73720b1b4f27c49f395d3c66025ce126cc) filesystem documentation and tests | Node.js license | Pinned project runtime with upstream cross-platform filesystem tests | Creation `mode` is a POSIX permission contract; Node documents that Windows implements only the write bit and does not distinguish owner, group, and others. A numeric `0600` result is therefore not portable ACL evidence | Keep the `0600` write request everywhere, but assert its final permission bits only on non-Windows platforms; Windows ACL protection remains a separate reviewed feature |
 | Self-hosted real-device matrix | GitHub Actions runner service documentation reviewed 2026-09-04 | GitHub service terms; runner source MIT | Maintained service, but machine enrollment, cleanup, secrets, physical security, and fleet operations belong to the repository owner | Required later for service/keyring/GUI evidence, but adding labels without enrolled controlled machines would leave jobs queued or expose an unsafe runner | Defer to the G2 real-device contract and owner-provided infrastructure |
 | Repeat the full Ubuntu authority job three times | Current OpenBot branch | MIT | Existing full check is green on local macOS and hosted Ubuntu is pending observation | Would multiply docs, research, security-workflow, and Linux-oriented checks without improving their evidence; Windows cannot run the Docker-based history scanner | Keep the current Ubuntu authority jobs and add one narrower portable matrix |
 
 ## Reuse decision
 
 - Selected option: open GitHub Actions matrix contract plus the existing released/pinned actions.
-- Selected upstream or standard: explicit GitHub-hosted runner labels and
-  `jobs.<job_id>.strategy.matrix`, with `fail-fast: false` so all platform outcomes remain visible.
+- Selected upstream or standard: explicit GitHub-hosted runner labels,
+  `jobs.<job_id>.strategy.matrix`, Git line-ending attributes, and the pinned Node.js filesystem
+  contract, with `fail-fast: false` so all platform outcomes remain visible.
 - Why this is the first viable option: the repository already uses GitHub Actions and its pinned
   first-party actions. A small native matrix needs no dependency, adapter, service account, secret,
   or custom runner code.
 - Exact OpenBot-specific gap: add a non-database `portable` job that performs `npm ci`, type checking,
   unit tests, and builds on `ubuntu-24.04`, `windows-2025`, and `macos-15`. Keep PostgreSQL and
   security scanning on their existing Ubuntu jobs. Protect shipped systemd units with a narrow LF
-  attribute and normalize CRLF only at the semantic test boundary.
+  attribute and normalize CRLF only at the semantic test boundary. Keep requesting `0600` for local
+  artifacts, but gate the POSIX final-mode assertion by platform because Windows does not implement
+  owner/group/other permission classes.
 - Upgrade, replacement, or exit plan: review GitHub's runner-image release/announcement before an
   explicit label reaches deprecation; change the label only in a focused commit after the
   replacement matrix is observed. A future self-hosted real-device fleet consumes the same package
@@ -60,8 +65,9 @@
 ## Source incorporation
 
 - Source copied or substantially adapted: no.
-- Files and upstream locations: no upstream workflow text is copied. The implementation uses the
-  documented matrix keys and reuses OpenBot's existing pinned action invocations.
+- Files and upstream locations: no upstream workflow or filesystem-test text is copied. The
+  implementation uses the documented matrix keys, reuses OpenBot's existing pinned action
+  invocations, and applies a local platform guard to the existing artifact assertion.
 - Required copyright or license notice location: none; no upstream source is incorporated or
   distributed.
 
@@ -69,7 +75,9 @@
 
 - Automated tests: validate workflow policy locally, install from `package-lock.json`, then run
   `npm run typecheck`, `npm run test`, and `npm run build` on every matrix member. Assert the
-  systemd LF attribute and exercise the service-contract assertion with synthetic CRLF input.
+  systemd LF attribute and exercise the service-contract assertion with synthetic CRLF input. On
+  POSIX, continue proving that artifact creation yields `0600`; on Windows, prove persistence,
+  integrity, reading, traversal rejection, and removal without treating emulated mode bits as ACLs.
 - Negative and fail-closed tests: `fail-fast: false` preserves diagnostics from all members, while
   every member remains required. The repository security-workflow checker must assert exact runner
   labels, exact Node version, pinned actions, disabled checkout credential persistence, and absence
