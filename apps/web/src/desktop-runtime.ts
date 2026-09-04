@@ -34,11 +34,41 @@ export type SaveDesktopSetupPlanResult =
   | Extract<DesktopSetupPlanState, { status: "configured" }>
   | Readonly<{ status: "failed"; code: "invalid_plan" | "storage_unavailable" }>;
 
+export type DesktopLocalWorkerState = Readonly<{
+  status:
+    | "not-selected"
+    | "unavailable"
+    | "not-configured"
+    | "disabled"
+    | "requires-approval"
+    | "enabled"
+    | "invalid";
+}>;
+
+export type DesktopLocalWorkerOperationResult =
+  | Readonly<{ status: "succeeded"; state: DesktopLocalWorkerState }>
+  | Readonly<{
+      status: "failed";
+      code:
+        | "invalid_node_id"
+        | "not_selected"
+        | "unavailable"
+        | "authentication_required"
+        | "server_unavailable"
+        | "already_configured"
+        | "busy"
+        | "native_failed";
+    }>;
+
 export interface OpenBotDesktopBridge {
   getConnectionState(): Promise<DesktopConnectionState>;
   configureServer(serverUrl: string): Promise<ConfigureDesktopServerResult>;
   getSetupPlanState(): Promise<DesktopSetupPlanState>;
   saveSetupPlan(plan: DesktopSetupPlanInput): Promise<SaveDesktopSetupPlanResult>;
+  getLocalWorkerState(): Promise<DesktopLocalWorkerState>;
+  setupLocalWorker(nodeId: string): Promise<DesktopLocalWorkerOperationResult>;
+  enableLocalWorker(): Promise<DesktopLocalWorkerOperationResult>;
+  openLocalWorkerSettings(): Promise<DesktopLocalWorkerOperationResult>;
 }
 
 declare global {
@@ -55,7 +85,11 @@ export function getOpenBotDesktopBridge(): OpenBotDesktopBridge | undefined {
     typeof bridge.getConnectionState !== "function" ||
     typeof bridge.configureServer !== "function" ||
     typeof bridge.getSetupPlanState !== "function" ||
-    typeof bridge.saveSetupPlan !== "function"
+    typeof bridge.saveSetupPlan !== "function" ||
+    typeof bridge.getLocalWorkerState !== "function" ||
+    typeof bridge.setupLocalWorker !== "function" ||
+    typeof bridge.enableLocalWorker !== "function" ||
+    typeof bridge.openLocalWorkerSettings !== "function"
   ) {
     return undefined;
   }

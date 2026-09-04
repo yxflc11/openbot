@@ -31,6 +31,7 @@ import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
 import { DesktopConnectionScreen } from "./components/DesktopConnectionScreen";
+import { DesktopLocalWorkerScreen } from "./components/DesktopLocalWorkerScreen";
 import { DesktopSetupScreen } from "./components/DesktopSetupScreen";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView } from "./components/EmployeeProfileView";
@@ -43,6 +44,7 @@ import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import {
   type DesktopConnectionState,
+  type DesktopLocalWorkerState,
   type DesktopSetupPlanState,
   getOpenBotDesktopBridge,
 } from "./desktop-runtime";
@@ -67,6 +69,10 @@ export function App() {
   >(() => (desktopBridge === undefined ? null : undefined));
   const [showConnectionSetup, setShowConnectionSetup] = useState(false);
   const [showSetupPlan, setShowSetupPlan] = useState(false);
+  const [desktopLocalWorker, setDesktopLocalWorker] = useState<
+    DesktopLocalWorkerState | null | undefined
+  >(() => (desktopBridge === undefined ? null : undefined));
+  const [skipLocalWorkerSetup, setSkipLocalWorkerSetup] = useState(false);
   const [session, setSession] = useState<AuthSessionSnapshot>();
   const [sessionError, setSessionError] = useState<string>();
 
@@ -128,6 +134,33 @@ export function App() {
   useEffect(() => subscribeToUnauthorized(() => setSession({ authenticated: false })), []);
 
   useEffect(() => {
+    if (
+      desktopBridge === undefined ||
+      desktopSetupPlan?.status !== "configured" ||
+      !desktopSetupPlan.plan.localWorker
+    ) {
+      setDesktopLocalWorker(null);
+      return;
+    }
+    if (session?.authenticated !== true) {
+      setDesktopLocalWorker(undefined);
+      return;
+    }
+    let active = true;
+    void desktopBridge
+      .getLocalWorkerState()
+      .then((state) => {
+        if (active) setDesktopLocalWorker(state);
+      })
+      .catch(() => {
+        if (active) setDesktopLocalWorker({ status: "invalid" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [desktopBridge, desktopSetupPlan, session]);
+
+  useEffect(() => {
     if (session?.authenticated !== true) return;
     const remainingMs = new Date(session.expiresAt).getTime() - Date.now();
     if (remainingMs <= 0) {
@@ -167,6 +200,7 @@ export function App() {
           const result = await desktopBridge.saveSetupPlan(plan);
           if (result.status === "configured") {
             setDesktopSetupPlan(result);
+            setSkipLocalWorkerSetup(false);
             setShowSetupPlan(false);
           }
           return result;
@@ -230,6 +264,51 @@ export function App() {
 
   if (!session.authenticated) {
     return <LoginScreen onLogin={async (password) => setSession(await login(password))} />;
+  }
+
+  if (
+    desktopBridge !== undefined &&
+    desktopSetupPlan?.status === "configured" &&
+    desktopSetupPlan.plan.localWorker &&
+    !skipLocalWorkerSetup
+  ) {
+    if (desktopLocalWorker === undefined || desktopLocalWorker === null) {
+      return (
+        <main className="loading-screen">
+          <span className="loading-mark">O</span>
+          <h1>正在检查本机 Worker</h1>
+          <p>正在读取原生组件、身份与 macOS 后台项目的真实状态…</p>
+        </main>
+      );
+    }
+    if (desktopLocalWorker.status !== "enabled") {
+      return (
+        <DesktopLocalWorkerScreen
+          state={desktopLocalWorker}
+          onContinue={() => setSkipLocalWorkerSetup(true)}
+          onSetup={async (nodeId) => {
+            const result = await desktopBridge.setupLocalWorker(nodeId);
+            if (result.status === "succeeded") setDesktopLocalWorker(result.state);
+            return result;
+          }}
+          onEnable={async () => {
+            const result = await desktopBridge.enableLocalWorker();
+            if (result.status === "succeeded") setDesktopLocalWorker(result.state);
+            return result;
+          }}
+          onOpenSettings={async () => {
+            const result = await desktopBridge.openLocalWorkerSettings();
+            if (result.status === "succeeded") setDesktopLocalWorker(result.state);
+            return result;
+          }}
+          onRefresh={async () => {
+            const state = await desktopBridge.getLocalWorkerState();
+            setDesktopLocalWorker(state);
+            return state;
+          }}
+        />
+      );
+    }
   }
 
   return (

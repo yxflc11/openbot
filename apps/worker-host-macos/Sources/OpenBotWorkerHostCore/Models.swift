@@ -11,6 +11,12 @@ public enum OpenBotMacOSError: Error, Equatable, Sendable {
     case registrationFailure
     case invalidBundle
     case childFailure
+    case invalidControlRequest
+}
+
+public func isValidEnrollmentToken(_ value: String) -> Bool {
+    value.count >= 48 && value.count <= 256 &&
+        value.range(of: #"^obenr_[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil
 }
 
 public struct MacOSNodeConfiguration: Codable, Equatable, Sendable {

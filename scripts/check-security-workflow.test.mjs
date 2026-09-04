@@ -99,9 +99,12 @@ test("rejects removal or broadening of the native macOS plist gate", () => {
   assert.throws(
     () =>
       validateSecurityWorkflow(
-        workflow.replace("        if: runner.os == 'macOS'", "        if: runner.os != 'Windows'"),
+        workflow.replace(
+          "name: Validate macOS LaunchAgent contract with native plist parser\n        if: runner.os == 'macOS'",
+          "name: Validate macOS LaunchAgent contract with native plist parser\n        if: runner.os != 'Windows'",
+        ),
       ),
-    /missing required fragment/,
+    /missing required fragment|build the pinned macOS companion/,
   );
   assert.throws(
     () =>
@@ -119,5 +122,35 @@ test("rejects removal or broadening of the native macOS plist gate", () => {
         workflow.replace("          npm run worker-host:macos:native-check\n", ""),
       ),
     /missing required fragment/,
+  );
+});
+
+test("rejects removal or network broadening of the macOS Desktop companion gate", () => {
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace("node scripts/build-macos-worker-host-candidate.mjs", "echo skipped"),
+      ),
+    /missing required fragment/,
+  );
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace(
+          "curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error",
+          "curl --location",
+        ),
+      ),
+    /build the pinned macOS companion/,
+  );
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace(
+          "name: Build the pinned macOS Worker companion",
+          "name: Package the unsigned Desktop development artifact",
+        ),
+      ),
+    /missing required fragment|build the pinned macOS companion/,
   );
 });

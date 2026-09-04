@@ -3,9 +3,12 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { join, resolve } from "node:path";
 import {
   createDesktopFuseConfig,
+  desktopMacOSWorkerCompanionSource,
+  DESKTOP_MACOS_WORKER_COMPANION_NAME,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
   packagedAsarPath,
+  packagedDesktopMacOSWorkerCompanion,
   packagedElectronTarget,
   shouldIgnoreDesktopSource,
   validateDesktopAsarEntries,
@@ -66,6 +69,25 @@ describe("Desktop package source policy", () => {
       join("/tmp/OpenBot-linux-x64", "resources", "app.asar"),
     );
     expect(() => packagedAsarPath("/tmp/OpenBot", "freebsd")).toThrow(/Unsupported/u);
+  });
+
+  it("allows only one explicit macOS companion source and fixed packaged destination", () => {
+    const source = resolve("workspace", DESKTOP_MACOS_WORKER_COMPANION_NAME);
+    expect(desktopMacOSWorkerCompanionSource(undefined, "darwin")).toBeUndefined();
+    expect(desktopMacOSWorkerCompanionSource(source, "darwin")).toBe(source);
+    expect(() => desktopMacOSWorkerCompanionSource(source, "win32")).toThrow();
+    expect(() => desktopMacOSWorkerCompanionSource("relative/Worker.app", "darwin")).toThrow();
+    expect(() => desktopMacOSWorkerCompanionSource("/tmp/Other.app", "darwin")).toThrow();
+    expect(packagedDesktopMacOSWorkerCompanion("/tmp/OpenBot-darwin-arm64", "darwin")).toBe(
+      join(
+        "/tmp/OpenBot-darwin-arm64",
+        "OpenBot.app",
+        "Contents",
+        "Resources",
+        DESKTOP_MACOS_WORKER_COMPANION_NAME,
+      ),
+    );
+    expect(packagedDesktopMacOSWorkerCompanion("/tmp/OpenBot-win32-x64", "win32")).toBeUndefined();
   });
 
   it("pins and validates the exact packaged runtime dependency closure", () => {

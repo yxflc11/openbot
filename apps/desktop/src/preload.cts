@@ -9,6 +9,14 @@ const DESKTOP_SETUP_PLAN_STATE_CHANNEL: typeof import("./runtime-contract.js").D
   "openbot:desktop-setup-plan-state";
 const DESKTOP_SAVE_SETUP_PLAN_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SAVE_SETUP_PLAN_CHANNEL =
   "openbot:desktop-save-setup-plan";
+const DESKTOP_LOCAL_WORKER_STATE_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_LOCAL_WORKER_STATE_CHANNEL =
+  "openbot:desktop-local-worker-state";
+const DESKTOP_SETUP_LOCAL_WORKER_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SETUP_LOCAL_WORKER_CHANNEL =
+  "openbot:desktop-setup-local-worker";
+const DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL =
+  "openbot:desktop-enable-local-worker";
+const DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL =
+  "openbot:desktop-open-local-worker-settings";
 
 const shellVersion = process.versions.electron;
 if (shellVersion === undefined || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(shellVersion)) {
@@ -36,6 +44,15 @@ const bridge: OpenBotDesktopBridge = Object.freeze({
     }
     return ipcRenderer.invoke(DESKTOP_SAVE_SETUP_PLAN_CHANNEL, plan);
   },
+  getLocalWorkerState: () => ipcRenderer.invoke(DESKTOP_LOCAL_WORKER_STATE_CHANNEL),
+  setupLocalWorker: (nodeId: string) => {
+    if (!isBoundedNodeId(nodeId)) {
+      return Promise.resolve({ status: "failed", code: "invalid_node_id" });
+    }
+    return ipcRenderer.invoke(DESKTOP_SETUP_LOCAL_WORKER_CHANNEL, nodeId);
+  },
+  enableLocalWorker: () => ipcRenderer.invoke(DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL),
+  openLocalWorkerSettings: () => ipcRenderer.invoke(DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL),
 });
 
 contextBridge.exposeInMainWorld("openbotDesktop", bridge);
@@ -56,5 +73,14 @@ function isBoundedSetupPlanInput(
     Number.isInteger(value.plannedWorkerCount) &&
     Number(value.plannedWorkerCount) >= 0 &&
     Number(value.plannedWorkerCount) <= 100
+  );
+}
+
+function isBoundedNodeId(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 128 &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(value)
   );
 }

@@ -91,6 +91,12 @@ export function validateSecurityWorkflow(workflow) {
     "- run: npm run typecheck",
     "- run: npm run test",
     "- run: npm run build",
+    "name: Build the pinned macOS Worker companion",
+    "https://nodejs.org/dist/v22.22.2/node-v22.22.2-darwin-arm64.tar.gz",
+    "node scripts/build-macos-worker-host-candidate.mjs",
+    "OPENBOT_DESKTOP_MACOS_WORKER_COMPANION=$companion_root/OpenBot Worker Host.app",
+    "name: Package the unsigned Desktop development artifact",
+    "npm run package --workspace @openbot/desktop",
     "name: Validate macOS LaunchAgent contract with native plist parser",
     "if: runner.os == 'macOS'",
     "npm run worker-host:macos:check",
@@ -104,6 +110,28 @@ export function validateSecurityWorkflow(workflow) {
     if (!portableJob.includes(fragment)) {
       throw new Error(`CI portable matrix is missing required fragment: ${fragment}`);
     }
+  }
+
+  const companionBuild = portableJob.indexOf("name: Build the pinned macOS Worker companion");
+  const desktopPackage = portableJob.indexOf(
+    "name: Package the unsigned Desktop development artifact",
+  );
+  const nativeValidation = portableJob.indexOf(
+    "name: Validate macOS LaunchAgent contract with native plist parser",
+  );
+  if (
+    companionBuild === -1 ||
+    desktopPackage <= companionBuild ||
+    nativeValidation <= desktopPackage ||
+    !portableJob.slice(companionBuild, desktopPackage).includes("if: runner.os == 'macOS'") ||
+    !portableJob.slice(nativeValidation).includes("if: runner.os == 'macOS'") ||
+    !portableJob
+      .slice(companionBuild, desktopPackage)
+      .includes("curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error")
+  ) {
+    throw new Error(
+      "CI must build the pinned macOS companion before Desktop packaging and native validation.",
+    );
   }
 
   if (/continue-on-error:|(?:ubuntu|windows|macos)-latest/.test(portableJob)) {

@@ -1,6 +1,6 @@
 # Research: Desktop-guided macOS Worker Host onboarding
 
-- Status: Accepted for implementation
+- Status: Implemented locally; hosted packaging and controlled-device evidence pending
 - Date: 2026-09-05
 - Owner: @yxflc11
 - Related issue: phase 3 in `docs/ROADMAP.md`; stacked after pull request #10
@@ -126,9 +126,25 @@
   Keychain, registration, approval, login/reboot, disable, upgrade, rollback, and uninstall.
 - User-visible documentation and translations: update technology, roadmap, execution checkpoint,
   Node enrollment, and both reuse/research indexes in English and Simplified Chinese where paired.
-- Support level that the evidence permits: experimental source-complete Desktop-guided macOS
-  onboarding with hosted package evidence. No signed distribution or macOS/Windows/Linux support
-  claim until the corresponding real-device gates pass.
+- Support level that the current evidence permits: experimental, locally source-complete
+  Desktop-guided macOS onboarding. Hosted nested-package evidence is still required. No signed
+  distribution or macOS/Windows/Linux support claim is permitted until the corresponding
+  real-device gates pass.
+
+## Evidence observed locally
+
+- Desktop and shared Web suites pass with 120 and 54 tests, including authentication, preflight,
+  private token delivery, fixed path/argv/environment, concurrency, output bounds, restart state,
+  and the approval journey.
+- The unsigned macOS arm64 Desktop package completes its fuse and inventory gates without a
+  companion and launches successfully after the browser V8-snapshot fuse regression fix. This is
+  launch evidence only, not distribution evidence.
+- The extended Swift product compiles and links against the compatible macOS SDK available on this
+  development machine. The installed beta Command Line Tools cannot load a matching
+  `TestingMacros` plugin for the native tests, so hosted native test execution remains required.
+- The security workflow validator requires the macOS companion candidate to be built before the
+  Desktop package and passed only through the fixed packaging environment variable. The hosted
+  workflow itself has not yet been observed for this change.
 
 ## Unresolved questions
 

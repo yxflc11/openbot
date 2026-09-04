@@ -19,7 +19,7 @@ struct OpenBotWorkerHostControlApp: App {
 @main
 enum OpenBotWorkerHostEntrypoint {
     @MainActor
-    static func main() {
+    static func main() async {
         switch Array(CommandLine.arguments.dropFirst()) {
         case []:
             OpenBotWorkerHostControlApp.main()
@@ -30,10 +30,64 @@ enum OpenBotWorkerHostEntrypoint {
                 fputs("OpenBot Worker Host failed.\n", stderr)
                 exit(1)
             }
+        case ["--desktop-control"]:
+            exit(await runDesktopControl())
         default:
             fputs("OpenBot Worker Host received invalid arguments.\n", stderr)
             exit(64)
         }
+    }
+
+    private static func runDesktopControl() async -> Int32 {
+        var input = Data()
+        defer {
+            if !input.isEmpty { input.resetBytes(in: 0..<input.count) }
+        }
+        do {
+            guard getuid() > 0 else { throw OpenBotMacOSError.invalidConfiguration }
+            input = try readBoundedControlFrame()
+            let request = try DesktopWorkerHostControlRequest.decodeFrame(input)
+            let hostURL = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
+            let application = try InstalledWorkerHostApplication(hostURL: hostURL)
+            try application.validate()
+            let configurationStore = try MacOSConfigurationStore(
+                homeDirectory: currentUserHomeDirectory()
+            )
+            let identityStore = try SystemNodeIdentityStore(
+                accessGroup: MacOSAccessGroup.current()
+            )
+            let controller = DesktopWorkerHostController(
+                configurationStore: configurationStore,
+                enrollmentClient: URLSessionNodeEnrollmentClient(),
+                identityStore: identityStore,
+                registration: SystemWorkerHostRegistration()
+            )
+            try FileHandle.standardOutput.write(contentsOf: await controller.handle(request).encodedFrame())
+            return 0
+        } catch {
+            let response = DesktopWorkerHostControlResponse(status: .invalid)
+            try? FileHandle.standardOutput.write(contentsOf: response.encodedFrame())
+            return 1
+        }
+    }
+
+    private static func readBoundedControlFrame() throws -> Data {
+        var result = Data()
+        while result.count <= DesktopWorkerHostControlRequest.maximumBytes + 1 {
+            let remaining = DesktopWorkerHostControlRequest.maximumBytes + 2 - result.count
+            guard remaining > 0 else { break }
+            guard let chunk = try FileHandle.standardInput.read(
+                upToCount: min(4 * 1024, remaining)
+            ), !chunk.isEmpty
+            else {
+                break
+            }
+            result.append(chunk)
+        }
+        guard result.count <= DesktopWorkerHostControlRequest.maximumBytes + 1 else {
+            throw OpenBotMacOSError.invalidControlRequest
+        }
+        return result
     }
 
     private static func runWorkerHost() throws -> Int32 {

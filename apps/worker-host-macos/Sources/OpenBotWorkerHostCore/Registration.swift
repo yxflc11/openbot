@@ -8,8 +8,14 @@ public enum WorkerHostRegistrationStatus: String, CaseIterable, Sendable {
     case notFound
 }
 
+public protocol WorkerHostRegistrationManaging: Sendable {
+    func status() -> WorkerHostRegistrationStatus
+    func register() throws
+    func openSystemSettingsLoginItems()
+}
+
 @available(macOS 13.0, *)
-public struct SystemWorkerHostRegistration: Sendable {
+public struct SystemWorkerHostRegistration: WorkerHostRegistrationManaging, Sendable {
     public static let propertyListName = "com.openbot.worker-host.node.plist"
 
     public init() {}
@@ -32,6 +38,10 @@ public struct SystemWorkerHostRegistration: Sendable {
         } catch {
             throw OpenBotMacOSError.registrationFailure
         }
+    }
+
+    public func openSystemSettingsLoginItems() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 
     public static func map(_ status: SMAppService.Status) -> WorkerHostRegistrationStatus {

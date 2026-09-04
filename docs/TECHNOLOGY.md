@@ -40,8 +40,13 @@ restores the plan after restart. The number is a user-interface safety bound, no
 The next screen accepts one existing Server origin, verifies `/health`, presents a native
 confirmation, stores only that public origin, and then opens the shared sign-in and channel UI.
 Remote Servers require HTTPS; loopback development may use HTTP. Changing the Server clears the
-dedicated Desktop browser session. Saving a plan never installs, enrolls, connects, authorizes, or
-proves support for a Server or Worker Host; those effects remain the next onboarding slice.
+dedicated Desktop browser session. Saving a plan still performs no side effect. After an Owner
+signs in and explicitly starts local-Worker setup, the implemented macOS adapter preflights the
+fixed nested companion, obtains a ten-minute single-use token inside the main process, and lets the
+Swift component redeem it, store the Server-bound identity in Keychain, and register its
+LaunchAgent. The renderer receives only actual allowlisted state. Signed distribution and
+controlled-device evidence remain pending, and Windows/Linux Desktop service adapters are not yet
+implemented.
 
 ## Selected languages and runtimes
 
@@ -53,6 +58,7 @@ proves support for a Server or Worker Host; those effects remain the next onboar
 | Desktop packaging and hardening | `@electron/packager` `20.3.0` and `@electron/fuses` `2.1.3` | Current stable Electron packages provide the narrow package/ASAR and strict fuse APIs OpenBot needs without Forge 7's incompatible and vulnerable development graph. Installers, signing, and publishing remain separately reviewed release adapters. |
 | Desktop Server transport and configuration | Electron `44.2.0` custom protocol, dedicated `Session.fetch`, typed IPC, `write-file-atomic` `8.0.0`, and `@electron/asar` `4.3.0` for build-time inventory validation | The packaged renderer stays same-origin while the main process connects only to one verified and confirmed Server. The archive contains exactly the reviewed runtime dependency closure. |
 | Desktop setup planning | React `19.2.8` native form controls, typed Electron IPC, and the existing restricted `write-file-atomic` store | Four role compositions and the Worker checklist need one discriminated plan, not another form or state-machine dependency. The main process validates and persists public intent; the renderer cannot turn it into service authority. |
+| Desktop-guided macOS Worker setup | Existing Swift Worker Host, Apple `SMAppService` and Security, a bounded private stdin/stdout envelope, and the authenticated Electron Session | One top-level Desktop installation can guide setup while the independently signed native companion still owns Keychain and service lifecycle. Node ids enter through typed IPC; enrollment tokens never enter renderer state, argv, environment, files, or logs. |
 | Shared UI | React `19.2.8` and Vite `8.2.2` | These exact versions are already locked, built, and tested in this repository. |
 | Server HTTP runtime | Hono on Node.js | The current Server, security middleware, SSE, and shutdown behavior already use and test this boundary. |
 | Authoritative persistence | PostgreSQL 17 | Existing migrations, conditional transitions, scheduling, approvals, and audit require one transactional source of truth. |
@@ -84,6 +90,8 @@ The Desktop application is a trusted local client, not a replacement authority:
   approval even when Desktop starts their local processes;
 - secrets stay in the platform key store or a dedicated service boundary, never renderer state or
   browser local storage;
+- local Worker setup preflights actual native state before token issuance, never persists an
+  `enabled` flag, and treats macOS approval as incomplete until `SMAppService` reports enabled;
 - packaging disables unused Electron fuses, verifies ASAR integrity, and signs before release;
 - unsigned local builds are development evidence only and cannot be described as distributable.
 
@@ -118,3 +126,6 @@ connection boundary is recorded in [ADR-0042](decisions/0042-desktop-server-conn
 [research evidence](research/desktop-server-connection.md). The four-mode setup intent and its
 no-side-effect boundary are recorded in [ADR-0043](decisions/0043-desktop-setup-intent.md) and the
 [setup-plan research](research/desktop-setup-plan.md).
+The macOS effectful follow-on is recorded in
+[ADR-0044](decisions/0044-desktop-macos-worker-onboarding.md) and the
+[Desktop-guided Worker research](research/desktop-macos-worker-onboarding.md).

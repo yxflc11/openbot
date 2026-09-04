@@ -36,8 +36,11 @@ Desktop 首次引导提供同一产品的四种组合：
 100 台 Worker 电脑，并在重启后恢复。这个数字只是界面的安全上限，不是授权限制。下一屏会接收一个
 已有 Server origin，验证 `/health`、显示原生确认、只保存这个公开 origin，然后打开共享的登录和
 频道界面。远程 Server 必须使用 HTTPS；本机开发可以使用 HTTP。更换 Server 会清除 Desktop 的
-独立浏览器 Session。保存计划绝不会安装、登记、连接、授权 Server 或 Worker Host，也不证明平台
-支持；这些真实操作仍属于下一段引导切片。
+独立浏览器 Session。保存计划本身仍不会产生副作用。Owner 登录并明确开始本机 Worker 配置后，
+已经实现的 macOS 适配器会先检查固定内嵌 companion，在 main process 中申请十分钟有效的单次
+token，再由 Swift 组件兑换 token、把绑定 Server 的身份存入 Keychain，并登记 LaunchAgent。
+renderer 只接收白名单内的真实状态。签名分发和受控真实设备证据仍未完成，Windows/Linux Desktop
+服务适配器也尚未实现。
 
 ## 选择的语言与运行时
 
@@ -49,6 +52,7 @@ Desktop 首次引导提供同一产品的四种组合：
 | Desktop 打包与加固 | `@electron/packager` `20.3.0` 与 `@electron/fuses` `2.1.3` | 这两个当前稳定 Electron 软件包提供 OpenBot 所需的窄打包/ASAR 和严格 fuse API，同时避开 Forge 7 不兼容且含已知漏洞的开发依赖图。安装器、签名和发布仍使用后续单独审查的发布适配器。 |
 | Desktop Server 传输与配置 | Electron `44.2.0` 自定义协议、专用 `Session.fetch`、类型化 IPC、`write-file-atomic` `8.0.0`，以及只在构建时验证清单的 `@electron/asar` `4.3.0` | 安装包 renderer 保持同源；main process 只连接一个已经验证并确认的 Server。归档只携带经过审查的精确运行时依赖闭包。 |
 | Desktop 安装计划 | React `19.2.8` 原生表单控件、类型化 Electron IPC 与现有受限 `write-file-atomic` 存储 | 四种角色组合与 Worker 清单只需要一个可辨识计划，不需要新增表单或状态机依赖。main process 验证并保存公开意图；renderer 不能把它变成服务权限。 |
+| Desktop 引导的 macOS Worker 配置 | 现有 Swift Worker Host、Apple `SMAppService` 与 Security、有界私有 stdin/stdout 信封和已鉴权 Electron Session | 一个顶层 Desktop 安装即可引导配置，同时由独立签名的原生 companion 继续掌管 Keychain 与服务生命周期。Node id 通过类型化 IPC 进入；登记 token 绝不进入 renderer 状态、argv、环境变量、文件或日志。 |
 | 共享 UI | React `19.2.8` 与 Vite `8.2.2` | 这些精确版本已经在当前仓库中锁定、构建并通过测试。 |
 | Server HTTP 运行时 | Node.js 上的 Hono | 当前 Server、安全中间件、SSE 和停机流程已经使用并测试这个边界。 |
 | 权威数据 | PostgreSQL 17 | 已有 migration、条件状态变更、调度、审批和审计需要唯一事务真相源。 |
@@ -78,6 +82,8 @@ Desktop 是受信任的本地 Client，不是新的权威：
 - 即使 Desktop 启动了本地 Server、Worker Host、外部 Agent 或插件进程，它们的动作仍然必须通过
   Server 策略和审批；
 - 密钥只保存在平台密钥库或独立服务边界，不进入 renderer 状态或浏览器 local storage；
+- 本机 Worker 配置会在签发 token 前检查真实原生状态，不保存可能漂移的 `enabled` 标记；只有
+  `SMAppService` 实际返回 enabled，macOS 批准步骤才算完成；
 - 发布打包会关闭未使用的 Electron fuse、校验 ASAR 完整性，并在签名后发布；
 - 未签名的本地构建只能作为开发证据，不能称为可分发版本。
 
@@ -108,4 +114,6 @@ Agent 重写成 TypeScript。
 [ADR-0042](decisions/0042-desktop-server-connection.md)及其
 [调研证据](research/desktop-server-connection.md)。四模式安装意图及其无副作用边界见
 [ADR-0043](decisions/0043-desktop-setup-intent.md)和
-[安装计划调研](research/desktop-setup-plan.md)。
+[安装计划调研](research/desktop-setup-plan.md)。产生真实操作的 macOS 后续见
+[ADR-0044](decisions/0044-desktop-macos-worker-onboarding.md)和
+[Desktop 引导 Worker 调研](research/desktop-macos-worker-onboarding.md)。
