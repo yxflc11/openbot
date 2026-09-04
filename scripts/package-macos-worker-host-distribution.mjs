@@ -8,6 +8,7 @@ import {
   assertMacOSExtendedAttributes,
   distributionSigningPlan,
   expandEntitlementsTemplate,
+  sealMacOSWorkerHostApplicationMetadata,
   validateMacOSWorkerHostApplication,
 } from "./macos-worker-host-release.mjs";
 
@@ -30,7 +31,7 @@ const plan = distributionSigningPlan({
 });
 if (
   plan.map((step) => step.role).join(",") !==
-  "node,launcher,application,verify-application,package,verify-package,notarize,staple,gatekeeper"
+  "node,launcher,seal-metadata,application,verify-application,package,verify-package,notarize,staple,gatekeeper"
 ) {
   throw new Error("macOS distribution signing order is invalid.");
 }
@@ -82,6 +83,7 @@ try {
     entitlements,
     launcher,
   ]);
+  await sealMacOSWorkerHostApplicationMetadata(application);
   run("/usr/bin/codesign", [
     "--force",
     "--sign",

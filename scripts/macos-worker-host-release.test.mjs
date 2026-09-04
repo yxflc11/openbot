@@ -10,6 +10,7 @@ import {
   assertMacOSExtendedAttributes,
   distributionSigningPlan,
   expandEntitlementsTemplate,
+  sealMacOSWorkerHostApplicationMetadata,
   stageMacOSWorkerHostApplication,
   validateMacOSWorkerHostApplication,
 } from "./macos-worker-host-release.mjs";
@@ -95,6 +96,28 @@ test("rejects dangerous extended attributes while tolerating system provenance",
   );
 });
 
+test("refreshes signed runtime bytes before the outer application seal", async (context) => {
+  const fixture = await createFixture(context);
+  const application = path.join(fixture.root, "Signing.app");
+  await stage(fixture, application);
+  const node = path.join(application, "Contents/Resources/node/bin/node");
+  await writeFile(node, Buffer.alloc(20 * 1024 * 1024, "s"));
+  await assert.rejects(
+    validateMacOSWorkerHostApplication(application, { expectedOwner: process.getuid?.() }),
+    /manifest/,
+  );
+
+  await sealMacOSWorkerHostApplicationMetadata(application);
+  await validateMacOSWorkerHostApplication(application, {
+    expectedOwner: process.getuid?.(),
+    expectedSigned: true,
+  });
+  const build = JSON.parse(
+    await readFile(path.join(application, "Contents/Resources/build.json"), "utf8"),
+  );
+  assert.equal(build.signed, true);
+});
+
 test("locks distribution to inside-out signing and notarization", () => {
   const plan = distributionSigningPlan({
     applicationPath: "/tmp/OpenBot Worker Host.app",
@@ -110,6 +133,7 @@ test("locks distribution to inside-out signing and notarization", () => {
     [
       "node",
       "launcher",
+      "seal-metadata",
       "application",
       "verify-application",
       "package",

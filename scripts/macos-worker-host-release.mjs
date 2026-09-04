@@ -7,6 +7,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -33,6 +34,11 @@ export const MACOS_NCC_OUTPUTS = Object.freeze([
   "third-party-licenses.txt",
   "worker.js",
   "worker1.js",
+]);
+
+export const MACOS_CRITICAL_FILES = Object.freeze([
+  "Contents/Resources/node/app/index.js",
+  "Contents/Resources/node/bin/node",
 ]);
 
 export const MACOS_APP_FILES = Object.freeze(
@@ -180,10 +186,7 @@ export async function stageMacOSWorkerHostApplication(options) {
   await writeExclusive(path.join(destination, "Contents/Info.plist"), info);
 
   const criticalFiles = [];
-  for (const relativePath of [
-    "Contents/Resources/node/app/index.js",
-    "Contents/Resources/node/bin/node",
-  ]) {
+  for (const relativePath of MACOS_CRITICAL_FILES) {
     const metadata = await stat(path.join(destination, relativePath));
     criticalFiles.push({
       path: relativePath,
@@ -215,7 +218,11 @@ export async function stageMacOSWorkerHostApplication(options) {
 
 export async function validateMacOSWorkerHostApplication(
   applicationPath,
-  { expectedOwner, allowDistributionArtifacts = false } = {},
+  {
+    expectedOwner,
+    allowDistributionArtifacts = false,
+    expectedSigned = allowDistributionArtifacts,
+  } = {},
 ) {
   const root = path.resolve(applicationPath);
   const rootMetadata = await lstat(root);
@@ -268,29 +275,52 @@ export async function validateMacOSWorkerHostApplication(
   const manifest = JSON.parse(
     await readFile(path.join(root, "Contents/Resources/manifest.json"), "utf8"),
   );
-  if (
-    manifest?.format !== "openbot.macos-worker-host-manifest/v1" ||
-    JSON.stringify(Object.keys(manifest).sort()) !==
-      JSON.stringify(["architecture", "files", "format", "sourceCommit", "version"]) ||
-    !Array.isArray(manifest.files) ||
-    manifest.files.length !== 2
-  ) {
-    throw new Error("macOS application runtime manifest is invalid.");
-  }
+  assertRuntimeManifestShape(manifest);
   for (const record of manifest.files) {
     if (
-      JSON.stringify(Object.keys(record).sort()) !==
-        JSON.stringify(["mode", "path", "sha256", "size"]) ||
-      !["Contents/Resources/node/app/index.js", "Contents/Resources/node/bin/node"].includes(
-        record.path,
-      ) ||
       record.sha256 !== (await sha256File(path.join(root, record.path))) ||
       record.size !== (await stat(path.join(root, record.path))).size
     ) {
       throw new Error("macOS application runtime manifest does not match its payload.");
     }
   }
+  const build = JSON.parse(
+    await readFile(path.join(root, "Contents/Resources/build.json"), "utf8"),
+  );
+  assertBuildMetadataShape(build);
+  if (
+    build.version !== manifest.version ||
+    build.sourceCommit !== manifest.sourceCommit ||
+    build.architecture !== manifest.architecture ||
+    build.signed !== expectedSigned
+  ) {
+    throw new Error("macOS application build metadata does not match its payload.");
+  }
   return manifest;
+}
+
+export async function sealMacOSWorkerHostApplicationMetadata(applicationPath) {
+  const root = path.resolve(applicationPath);
+  const manifestPath = path.join(root, "Contents/Resources/manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  assertRuntimeManifestShape(manifest);
+  const files = [];
+  for (const relativePath of MACOS_CRITICAL_FILES) {
+    const filePath = path.join(root, relativePath);
+    const metadata = await stat(filePath);
+    files.push({
+      path: relativePath,
+      sha256: await sha256File(filePath),
+      size: metadata.size,
+      mode: relativePath.endsWith("/node") ? "0755" : "0644",
+    });
+  }
+  await replaceJsonFile(manifestPath, { ...manifest, files });
+
+  const buildPath = path.join(root, "Contents/Resources/build.json");
+  const build = JSON.parse(await readFile(buildPath, "utf8"));
+  assertBuildMetadataShape(build);
+  await replaceJsonFile(buildPath, { ...build, signed: true });
 }
 
 export function expandEntitlementsTemplate(source, accessGroup) {
@@ -331,6 +361,11 @@ export function distributionSigningPlan({
       target: `${app}/Contents/Resources/OpenBotWorkerHostLauncher`,
       role: "launcher",
     },
+    {
+      tool: "internal",
+      target: `${app}/Contents/Resources/manifest.json`,
+      role: "seal-metadata",
+    },
     { tool: "/usr/bin/codesign", target: app, role: "application" },
     { tool: "/usr/bin/codesign", target: app, role: "verify-application" },
     { tool: "/usr/bin/productbuild", target: output, role: "package" },
@@ -368,6 +403,77 @@ async function writeExclusive(destination, source) {
 
 async function writeJsonExclusive(destination, value) {
   await writeExclusive(destination, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function replaceJsonFile(destination, value) {
+  const metadata = await lstat(destination);
+  if (
+    !metadata.isFile() ||
+    metadata.isSymbolicLink() ||
+    metadata.nlink !== 1 ||
+    (metadata.mode & 0o777) !== 0o644
+  ) {
+    throw new Error("macOS metadata file is outside the reviewed boundary.");
+  }
+  const replacement = `${destination}.next`;
+  await assertAbsent(replacement);
+  await writeJsonExclusive(replacement, value);
+  await rename(replacement, destination);
+}
+
+function assertRuntimeManifestShape(manifest) {
+  if (
+    manifest?.format !== "openbot.macos-worker-host-manifest/v1" ||
+    JSON.stringify(Object.keys(manifest).sort()) !==
+      JSON.stringify(["architecture", "files", "format", "sourceCommit", "version"]) ||
+    assertReleaseVersion(manifest.version) !== manifest.version ||
+    assertSourceCommit(manifest.sourceCommit) !== manifest.sourceCommit ||
+    assertMacOSArchitecture(manifest.architecture) !== manifest.architecture ||
+    !Array.isArray(manifest.files) ||
+    JSON.stringify(manifest.files.map((record) => record?.path)) !==
+      JSON.stringify(MACOS_CRITICAL_FILES)
+  ) {
+    throw new Error("macOS application runtime manifest is invalid.");
+  }
+  for (const record of manifest.files) {
+    const executable = record.path.endsWith("/node");
+    if (
+      JSON.stringify(Object.keys(record).sort()) !==
+        JSON.stringify(["mode", "path", "sha256", "size"]) ||
+      typeof record.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(record.sha256) ||
+      !Number.isSafeInteger(record.size) ||
+      record.size < 1 ||
+      record.size > (executable ? 128 * 1024 * 1024 : 16 * 1024 * 1024) ||
+      record.mode !== (executable ? "0755" : "0644")
+    ) {
+      throw new Error("macOS application runtime manifest is invalid.");
+    }
+  }
+}
+
+function assertBuildMetadataShape(build) {
+  if (
+    build?.format !== "openbot.macos-worker-host-build/v1" ||
+    JSON.stringify(Object.keys(build).sort()) !==
+      JSON.stringify([
+        "architecture",
+        "buildVersion",
+        "format",
+        "nodeVersion",
+        "signed",
+        "sourceCommit",
+        "version",
+      ]) ||
+    assertReleaseVersion(build.version) !== build.version ||
+    assertMacOSBuildVersion(build.buildVersion) !== build.buildVersion ||
+    assertSourceCommit(build.sourceCommit) !== build.sourceCommit ||
+    assertMacOSArchitecture(build.architecture) !== build.architecture ||
+    build.nodeVersion !== "22.22.2" ||
+    typeof build.signed !== "boolean"
+  ) {
+    throw new Error("macOS application build metadata is invalid.");
+  }
 }
 
 async function assertAbsent(target) {
