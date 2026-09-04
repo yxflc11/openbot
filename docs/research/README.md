@@ -88,3 +88,8 @@ The accepted-platform [Windows Worker Host installer](windows-worker-host-instal
 selects Windows Installer 5.0 standard transactions and prohibits credentials, downloads, custom
 actions, mutable paths, or pre-enrollment auto-start. WiX v7 is technically viable but remains
 unused until the Owner explicitly decides its OSMF EULA and any fee obligation.
+The accepted [macOS Worker Host launchd boundary](macos-worker-host-launchd.md) next selects a
+user-approved macOS 13+ `SMAppService` LaunchAgent for the dedicated standard account. A narrow
+app-relative launcher will replace itself with the fixed packaged Node so launchd owns restart,
+logout, and bounded shutdown without a third-party supervisor; signing, packaging, Keychain, TCC,
+and real-device evidence remain separate gates.
