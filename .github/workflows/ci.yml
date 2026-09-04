@@ -185,3 +185,35 @@ jobs:
       - run: npm run db:verify
         env:
           OPENBOT_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_test
+
+  server-container:
+    name: Server container (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux amd64
+            runner: ubuntu-24.04
+            arch: amd64
+          - name: Linux arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate the Server Compose contract
+        run: docker compose --file deploy/server/compose.yaml config --quiet
+        env:
+          OPENBOT_OWNER_PASSWORD: openbot-compose-ci-validation-only
+      - name: Run Dockerfile build checks
+        run: docker build --check --file deploy/server/Dockerfile .
+      - name: Build the native Server image without publication
+        run: docker build --platform "linux/${{ matrix.arch }}" --tag openbot-server:smoke --file deploy/server/Dockerfile .
+      - name: Exercise production dependencies, PostgreSQL migrations, health, restart, and SIGTERM
+        run: bash scripts/smoke-server-container.sh
+        env:
+          OPENBOT_TEST_IMAGE: openbot-server:smoke
+          OPENBOT_TEST_PLATFORM: ${{ matrix.arch }}

@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "npm run docs:check && npm run research:check && npm run migrations:check && npm run security:config-check && npm run worker-host:macos:check && npm run release:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "check": "npm run docs:check && npm run research:check && npm run server:container:check && npm run migrations:check && npm run security:config-check && npm run worker-host:macos:check && npm run release:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "db:up": "docker compose --env-file .env -f deploy/server/compose.yaml up -d postgres",
     "db:stop": "docker compose --env-file .env -f deploy/server/compose.yaml stop postgres",
     "db:verify": "turbo run build --filter=@openbot/server && node scripts/verify-database.mjs",
@@ -39,6 +39,7 @@
     "release:node-linux:candidate": "npm run build && node scripts/build-node-linux-candidate.mjs",
     "release:node-linux:smoke": "node scripts/smoke-node-linux-candidate.mjs",
     "security:config-check": "node --test scripts/check-security-workflow.test.mjs scripts/check-node-release-workflow.test.mjs scripts/check-windows-worker-host-workflow.test.mjs && node scripts/check-security-workflow.mjs && node scripts/check-node-release-workflow.mjs && node scripts/check-windows-worker-host-workflow.mjs",
+    "server:container:check": "node --test scripts/check-server-container.test.mjs && node scripts/check-server-container.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "worker-host:macos:check": "node --test scripts/check-macos-worker-host.test.mjs scripts/macos-worker-host-release.test.mjs && node scripts/check-macos-worker-host.mjs",

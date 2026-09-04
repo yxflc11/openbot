@@ -56,7 +56,7 @@ cd openbot
 cp .env.example .env
 ```
 
-Replace `OPENBOT_OWNER_PASSWORD` and `OPENBOT_NODE_TOKEN` in `.env`, then run:
+Replace `OPENBOT_OWNER_PASSWORD` in `.env`, then run:
 
 ```bash
 npm install

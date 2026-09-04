@@ -7,7 +7,8 @@
     "OPENBOT_DATABASE_URL",
     "OPENBOT_NODE_ID",
     "OPENBOT_NODE_SERVER_URL",
-    "OPENBOT_OWNER_PASSWORD"
+    "OPENBOT_OWNER_PASSWORD",
+    "OPENBOT_PORT"
   ],
   "tasks": {
     "build": {
