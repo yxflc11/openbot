@@ -34,7 +34,9 @@
   `.github/workflows/ci.yml`, `.github/workflows/node-linux-release.yml`, ADR-0020,
   `docs/research/cross-platform-node-ci.md`, and both open-source reuse ledgers. Main run
   `33906423917` passed all seven jobs but identified setup-node v4 as the remaining Node 20 Action;
-  predecessor PR run `33877239948` passed all seven jobs with v7 before later main changes.
+  predecessor PR run `33877239948` passed all seven jobs with v7 before later main changes. Current
+  PR #14 run `33907383439` then passed all seven jobs from current main; its complete log contains no
+  Node 20 Action-runtime warning.
 
 ## Candidate comparison
 
@@ -89,5 +91,5 @@
 
 ## Unresolved questions
 
-- None. The new current-main PR must still demonstrate all seven hosted jobs and a warning-free
-  combined checkout/setup-node Action runtime before this checkpoint is ready for Owner review.
+- None. PR #14 run `33907383439` demonstrated all seven hosted jobs and a warning-free combined
+  checkout/setup-node Action runtime. This remains an Owner-reviewed, unmerged checkpoint.
