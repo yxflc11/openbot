@@ -80,6 +80,7 @@ The accepted [Windows Worker Host service boundary](windows-worker-host-service.
 first-party .NET Service lifetime over generic WinSW and `node-windows` wrappers, while keeping
 LocalService identity, fixed-child supervision, and native x64 evidence as explicit fail-closed
 gates.
-The accepted [Windows Worker Host build lane](windows-worker-host-build-lane.md) then pins the
+The implemented-local [Windows Worker Host build lane](windows-worker-host-build-lane.md) pins the
 first-party setup action, exact .NET 10 SDK, locked NuGet restore, explicit Windows x64 runner, and
-non-uploading artifact-shape gate before privileged service source is introduced.
+non-uploading artifact-shape gate around the experimental host source. Hosted and native Windows
+execution remain required before any support claim.

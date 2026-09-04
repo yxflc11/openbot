@@ -98,11 +98,12 @@
 - User-visible documentation and translations: Keep the English execution plan, reuse ledger,
   installer/operator guide, and their Simplified Chinese counterparts aligned. Do not change the
   support matrix before reviewed native evidence exists.
-- Support level that the evidence permits: The portable Node-side control parser and cooperative
-  drain are implemented and locally tested only. This macOS development host has no .NET,
-  PowerShell, Windows SDK, or Windows SCM, so it cannot produce Windows service build or lifecycle
-  evidence. Service-host source must begin with a pinned Windows build lane and remain experimental
-  until a controlled native x64 report passes.
+- Support level that the evidence permits: The portable Node-side control parser, cooperative drain,
+  and experimental .NET host supervision are implemented and locally tested. An exact temporary
+  .NET `10.0.400` SDK restored the locked graph, built the projects, passed six pure host contracts,
+  and cross-published the `win-x64` PE. This macOS development host still has no PowerShell, Windows
+  SDK, or Windows SCM, so it cannot produce native service lifecycle evidence. The source remains
+  experimental until the pinned hosted build and a controlled native x64 report pass.
 
 ## Implementation checkpoint
 
@@ -117,6 +118,11 @@
   in-flight identity loading. Two focused lifecycle tests prove both waits.
 - The Node and config suites pass locally with 30 and 10 tests respectively, plus typecheck and
   repository lint. This is portable contract evidence, not a Windows service or Job Object result.
+- The .NET host now fixes the release paths and child environment, creates a kill-on-close Job,
+  assigns and verifies the child before sending `START`, bounds graceful stop to 15 seconds, and
+  requires an empty Job before success. Six pure contract tests pass, including assignment ordering
+  and forced deadline termination. These tests use a fake launcher; real Job Object, SCM, identity,
+  ACL, and restart behavior remain unproved until native Windows execution.
 
 ## Unresolved questions
 

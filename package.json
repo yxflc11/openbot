@@ -36,7 +36,7 @@
     "release:node-linux:archive": "node scripts/pack-node-linux-candidate.mjs",
     "release:node-linux:candidate": "npm run build && node scripts/build-node-linux-candidate.mjs",
     "release:node-linux:smoke": "node scripts/smoke-node-linux-candidate.mjs",
-    "security:config-check": "node --test scripts/check-security-workflow.test.mjs scripts/check-node-release-workflow.test.mjs && node scripts/check-security-workflow.mjs && node scripts/check-node-release-workflow.mjs",
+    "security:config-check": "node --test scripts/check-security-workflow.test.mjs scripts/check-node-release-workflow.test.mjs scripts/check-windows-worker-host-workflow.test.mjs && node scripts/check-security-workflow.mjs && node scripts/check-node-release-workflow.mjs && node scripts/check-windows-worker-host-workflow.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },

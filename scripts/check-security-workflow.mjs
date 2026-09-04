@@ -25,12 +25,19 @@ export function validateSecurityWorkflow(workflow) {
   }
 
   const portableJobStart = workflow.indexOf("\n  portable:\n");
+  const windowsWorkerHostJobStart = workflow.indexOf("\n  windows-worker-host:\n");
   const databaseJobStart = workflow.indexOf("\n  database:\n");
-  if (portableJobStart === -1 || databaseJobStart <= portableJobStart) {
-    throw new Error("CI must define the portable matrix before the database job.");
+  if (
+    portableJobStart === -1 ||
+    windowsWorkerHostJobStart <= portableJobStart ||
+    databaseJobStart <= windowsWorkerHostJobStart
+  ) {
+    throw new Error(
+      "CI must define the portable matrix before the Windows Worker Host and database jobs.",
+    );
   }
 
-  const portableJob = workflow.slice(portableJobStart, databaseJobStart);
+  const portableJob = workflow.slice(portableJobStart, windowsWorkerHostJobStart);
   const requiredPortableFragments = [
     "name: Portable ($" + "{{ matrix.name }})",
     "runs-on: $" + "{{ matrix.runner }}",

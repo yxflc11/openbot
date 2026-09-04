@@ -11,7 +11,8 @@ test("accepts the pinned required portable matrix", () => {
 
 test("rejects a missing platform or moving runner label", () => {
   assert.throws(
-    () => validateSecurityWorkflow(workflow.replace("runner: windows-2025", "runner: windows-latest")),
+    () =>
+      validateSecurityWorkflow(workflow.replace("runner: windows-2025", "runner: windows-latest")),
     /missing required fragment|explicit runner labels/,
   );
 });
@@ -26,10 +27,10 @@ test("rejects a matrix member that is allowed to fail", () => {
 
 test("rejects action, Node, or checkout-security drift in the portable job", () => {
   const portableStart = workflow.indexOf("\n  portable:\n");
-  const databaseStart = workflow.indexOf("\n  database:\n");
+  const windowsWorkerHostStart = workflow.indexOf("\n  windows-worker-host:\n");
   const beforePortable = workflow.slice(0, portableStart);
-  const portableJob = workflow.slice(portableStart, databaseStart);
-  const afterPortable = workflow.slice(databaseStart);
+  const portableJob = workflow.slice(portableStart, windowsWorkerHostStart);
+  const afterPortable = workflow.slice(windowsWorkerHostStart);
 
   assert.throws(
     () =>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>OpenBot.WorkerHost.Windows.ContractTests</AssemblyName>
+    <RootNamespace>OpenBot.WorkerHost.Windows.ContractTests</RootNamespace>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../OpenBot.WorkerHost.Windows/OpenBot.WorkerHost.Windows.csproj" />
+  </ItemGroup>
+</Project>

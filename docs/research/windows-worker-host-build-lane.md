@@ -1,6 +1,6 @@
 # Research: Windows Worker Host reproducible build lane
 
-- Status: Accepted for staged implementation; hosted execution pending
+- Status: Implemented locally; hosted execution pending
 - Date: 2026-09-04
 - Owner: OpenBot maintainers
 - Related issue: G4 in `docs/EXECUTION_PLAN.md`
@@ -48,9 +48,10 @@
   the executable action, compiler, architecture, dependency graph, and restore mode explicit.
   Preinstalled SDK selection drifts, a repository-owned install script duplicates the selected
   action, and a Windows container is broader without proving SCM behavior.
-- Exact OpenBot-specific gap: Add the minimal project and solution layout, exact SDK and package
-  locks, a full-SHA-pinned Windows build job, local workflow-policy checks, bounded contract tests,
-  and an artifact-inventory assertion that does not upload or claim support.
+- Exact OpenBot-specific gap: The minimal project layout, exact SDK and package locks,
+  full-SHA-pinned Windows build job, local workflow-policy checks, bounded contract tests, and
+  non-uploading artifact-inventory assertion are now implemented. Hosted Windows execution and
+  native Service Control Manager evidence remain open.
 - Upgrade, replacement, or exit plan: Review each SDK servicing update and action release, replace
   the exact pins and regenerated lock in one focused change, and retain project-local build commands
   so the action can be replaced without changing the host contract.
@@ -81,9 +82,28 @@
   tests remain separate, and Windows arm64 remains unclaimed.
 - User-visible documentation and translations: Keep the English and Simplified Chinese execution
   plan, research index, reuse ledger, and future operator guide aligned.
-- Support level that the evidence permits: Accepted design until the job is committed; hosted build
-  evidence only after an authorized push runs it. Neither state permits a Windows service support
-  claim.
+- Support level that the evidence permits: The exact SDK locally restored the locked graph, built
+  with zero warnings, passed six host contract tests, and cross-published a 76,277,833-byte PE
+  executable plus the matching notice file. Four workflow-policy tests cover pin, runner, lock,
+  ordering, cache/upload, package, and artifact-boundary drift. The PowerShell inventory check and
+  hosted job still require Windows execution after an authorized push. None of this permits a
+  Windows service support claim.
+
+## Implementation checkpoint
+
+- `apps/worker-host-windows/global.json` selects only SDK `10.0.400`; both projects commit NuGet lock
+  files and CI restores with `--locked-mode`.
+- The build-only `windows-2025` job uses the full `actions/setup-dotnet` commit, builds with warnings
+  as errors, runs the pure contract harness, and cross-publishes `win-x64` without uploading it.
+- The host launches only the fixed Node release path with an allowlisted environment. It assigns the
+  process to a kill-on-close Job Object before sending the exact `START` frame. Graceful shutdown is
+  bounded; timeout or non-zero exit terminates the complete job and fails the service lifecycle.
+- Six contract tests cover the fixed launch plan, start-after-assignment ordering, failed start
+  write, graceful stop, deadline termination, and stop-before-start behavior.
+- The publish check rejects directories, reparse points, extra files, a non-PE header, an executable
+  outside the reviewed size range, or a notice hash that differs from the repository copy. Local
+  macOS verification reproduced the same two-file inventory and hashes; native PowerShell execution
+  remains part of the pending hosted run.
 
 ## Unresolved questions
 

@@ -84,6 +84,38 @@ jobs:
       - run: npm run test
       - run: npm run build
 
+  windows-worker-host:
+    name: Windows Worker Host (build only)
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/worker-host-windows
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: true
+      NUGET_XMLDOC_MODE: skip
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        with:
+          global-json-file: apps/worker-host-windows/global.json
+      - name: Record selected .NET SDK and runner information
+        run: dotnet --info
+      - name: Restore the reviewed package graph
+        run: dotnet restore OpenBot.WorkerHost.Windows.ContractTests/OpenBot.WorkerHost.Windows.ContractTests.csproj --locked-mode
+      - name: Build with warnings treated as errors
+        run: dotnet build OpenBot.WorkerHost.Windows.ContractTests/OpenBot.WorkerHost.Windows.ContractTests.csproj --configuration Release --no-restore
+      - name: Run host contract tests
+        run: dotnet run --project OpenBot.WorkerHost.Windows.ContractTests/OpenBot.WorkerHost.Windows.ContractTests.csproj --configuration Release --no-build --no-restore
+      - name: Publish the self-contained Windows x64 host
+        run: dotnet publish OpenBot.WorkerHost.Windows/OpenBot.WorkerHost.Windows.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output "$env:RUNNER_TEMP\openbot-windows-host"
+      - name: Inspect bounded publish inventory
+        shell: pwsh
+        run: ../../scripts/check-windows-worker-host-artifact.ps1 -PublishDirectory "$env:RUNNER_TEMP\openbot-windows-host"
+
   database:
     runs-on: ubuntu-latest
     timeout-minutes: 10

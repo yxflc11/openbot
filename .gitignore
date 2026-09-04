@@ -8,6 +8,8 @@ build/
 coverage/
 .turbo/
 .vite/
+apps/worker-host-windows/**/bin/
+apps/worker-host-windows/**/obj/
 data/
 logs/
 backups/
