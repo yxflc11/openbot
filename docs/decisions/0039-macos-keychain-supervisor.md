@@ -50,7 +50,9 @@ and stapling.
 
 ## Decision
 
-- launchd starts one nested app-like native Host from the fixed outer app bundle.
+- launchd starts the fixed app's main executable with the sole `--worker-host` argument. With no
+  arguments the same executable opens the controller. Both paths therefore share one app-like bundle,
+  application identifier, provisioning profile, and Keychain access-group entitlement.
 - The Host runs as the dedicated non-root user, validates one fixed public configuration, derives
   one expected shared Keychain access group from its signed entitlement, and queries one exact
   generic-password item from the data-protection Keychain.
@@ -74,7 +76,7 @@ general helper output. A fixed native process becomes the only local bridge betw
 identity, Keychain policy, and the bundled Node, while launchd retains restart and final shutdown
 bounds.
 
-The cost is a small supervisor, a versioned private pipe protocol, a nested app-like signed helper,
-an embedded provisioning profile, and additional native lifecycle tests. launchd owns the Host PID
-rather than the Node PID. No signing identity, entitlement success, package, notarization, real
-Keychain behavior, or macOS support is claimed until those artifacts are observed.
+The cost is a small supervisor, a versioned private pipe protocol, a dual-mode signed main
+executable, an embedded provisioning profile, and additional native lifecycle tests. launchd owns
+the Host PID rather than the Node PID. No Developer ID identity, entitlement success, notarization,
+real Keychain behavior, or macOS support is claimed until those artifacts are observed.

@@ -65,6 +65,65 @@ Linux 明确提供两种配置，因为 Secret Service 属于用户的 D-Bus 登
 不存在、密钥库锁定或拒绝、超时、身份格式错误、工具报错或输出超限，都会中止身份初始化。
 OpenBot 不会创建或自动解锁密钥库。不要让桌面配置使用 Owner 的主登录账号或主密码集合。
 
+## macOS App 登记（源码已完成的候选）
+
+macOS Worker Host 是供单个专用标准账号使用的用户级后台项。同一个 App 主程序在普通打开时显示
+控制器，只有应用内 LaunchAgent 传入固定 `--worker-host` 参数时才运行原生 Host。因此两种模式
+共享同一个签名 application identifier、provisioning profile 与 Keychain access group。
+
+仓库可以从干净提交构建精确的 arm64 或 x64 未签名 App。需提供源码中已固定 SHA-256 的官方
+Node `22.22.2` 压缩包、精确 npm `10.9.8` 可执行文件和一个已存在的真实输出目录：
+
+```bash
+npm run release:node-macos:candidate -- \
+  --arch arm64 \
+  --build-version 1 \
+  --node-archive /trusted-inputs/node-v22.22.2-darwin-arm64.tar.gz \
+  --npm-cli /trusted-tools/npm-10.9.8 \
+  --out-dir /safe-output \
+  --source-commit 0123456789abcdef0123456789abcdef01234567 \
+  --version 0.1.0
+```
+
+候选门槛会检查干净源码提交、Node 压缩包、npm 版本、ncc 清单、单一 Mach-O 架构、固定 App
+文件、权限、property list 与运行时 SHA-256 清单。产物是 `signed: false` 的
+`OpenBot Worker Host.app`，不能作为可安装分发证据。
+
+发布人员还必须单独提供匹配的 Developer ID Application/Installer 身份、带 Team ID 前缀的
+access group、面向 `com.openbot.worker-host` 的 Developer ID provisioning profile，以及已配置
+的 `notarytool` Keychain profile：
+
+```bash
+npm run release:node-macos:package -- \
+  --app "/safe-output/OpenBot Worker Host.app" \
+  --access-group A1B2C3D4E5.com.openbot.worker-host.shared \
+  --application-identity "Developer ID Application: OpenBot (A1B2C3D4E5)" \
+  --installer-identity "Developer ID Installer: OpenBot (A1B2C3D4E5)" \
+  --provisioning-profile /trusted-inputs/OpenBot-DeveloperID.provisionprofile \
+  --entitlements-template "$PWD/apps/worker-host-macos/Resources/OpenBotWorkerHost.entitlements.template.plist" \
+  --notary-profile openbot-notary \
+  --output /safe-output/OpenBotWorkerHost-0.1.0-arm64.pkg
+```
+
+只有身份、Team ID、application identifier、access-group 授权、profile 类型与有效期、内层签名、
+重算后的运行时清单、外层签名、安装包签名、公证、staple、Gatekeeper、payload 清单以及“不含
+安装脚本”全部通过，打包才会成功；不存在 ad hoc 分发回退。
+
+验证过的安装包把 App 放入 `/Applications/OpenBot Worker Host.app` 后，专用用户打开它，输入
+准确 Node id、`wss:` Server URL 和一次性登记令牌，然后选择 **Enroll & Enable**。令牌会立即
+清空；返回的身份绑定 Server URL，并作为唯一一个不同步、`WhenUnlockedThisDeviceOnly` 的数据
+保护 Keychain 条目保存。如果 macOS 显示 **requires approval**，请在 **系统设置 > 通用 >
+登录项**中批准 OpenBot。Keychain 锁定/拒绝、entitlement 缺失、App 被移动/篡改或批准未完成时，
+Host 都保持停止。
+
+替换 App 前先禁用后台项，替换后再启用。卸载时先选 **Disable**，可选 **Remove Local
+Identity**，然后由管理员把固定 App 移到废纸篓并忘记其 package receipt。安装器不会选择用户、
+处理登记令牌、修改 home 目录或启动服务。
+
+这台开发 Mac 没有匹配的 Developer ID 身份、profile 或 notary 凭据。本机 arm64 构建、Swift
+测试、候选校验与 ad hoc 签名机制已经通过，但分发、Keychain 授权、登记、安装/升级/回滚/卸载、
+重启与 Intel 仍属于受控真实设备证据门槛。
+
 ## 可验证的 Linux 发布候选目录
 
 仓库现在可以在安装器获准使用前，生成一个有界、未签名的 x64 或 arm64 候选目录。设置这一层，

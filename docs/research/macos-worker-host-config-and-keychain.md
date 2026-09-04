@@ -1,7 +1,7 @@
 # Research: macOS Worker Host configuration and Keychain handoff
 
-- Status: Node fixed-config and private-handoff boundary implemented locally; native Host,
-  registration, signed Keychain, and real-device evidence pending
+- Status: Native Host, registration UI, Security queries, and private handoff implemented locally;
+  distribution-signed Keychain and real-device evidence pending
 - Date: 2026-09-04
 - Owner: OpenBot maintainers
 - Related issue: G5 in `docs/EXECUTION_PLAN.md`
@@ -73,7 +73,7 @@
 ## Source incorporation
 
 - Source copied or substantially adapted: no.
-- Files and upstream locations: implementation will call public Apple Security/POSIX APIs and reuse
+- Files and upstream locations: implementation calls public Apple Security/POSIX APIs and reuses
   existing OpenBot schemas and lifecycle frames. Candidate packages were inspected only.
 - Required copyright or license notice location: no new third-party runtime dependency or source is
   incorporated. The separately packaged official Node runtime retains its notices under the macOS
@@ -97,8 +97,8 @@
 - User-visible documentation and translations: update the English and Simplified Chinese execution,
   cross-platform, enrollment, and installation journeys together when runtime or registration
   behavior lands.
-- Support level that the evidence permits: accepted design only. Source compilation and pure tests
-  are development evidence; they do not prove a signed Host, valid profile, accessible Keychain,
+- Support level that the evidence permits: source-complete arm64 candidate. Source compilation and
+  pure tests are development evidence; they do not prove a Developer-ID-signed Host, valid profile, accessible Keychain,
   registered LaunchAgent, notarized package, or macOS support.
 
 ## Implementation verification
@@ -116,17 +116,21 @@
   only one `SHUTDOWN`. Four focused control tests cover fragmentation, ordering, replay, wrong Node,
   invalid UTF-8/schema, truncation, excess bytes, EOF, handler failure, and detach. Config and
   credential-store suites cover the corresponding fixed-file and one-shot invariants.
-- The new Node/config focused suite passes 37 tests and both workspaces type-check. This proves the
-  portable child boundary only; no native Host has yet queried a Keychain item or started this entry.
+- The Node/config focused suite passes 39 tests. The dependency-free Swift package builds and its
+  eight tests cover strict configuration, Server-bound identity envelopes, exact data-protection
+  Keychain dictionaries, access-group selection, launch policy, private config files, and manifest
+  tamper rejection. Direct Security calls and child supervision are compiled into the arm64 Host;
+  a distribution-authorized Keychain access remains a controlled-device gate.
 
 ## Unresolved questions
 
-- The registration app must perform one-time enrollment and atomically store/verify the exact shared
-  Keychain item before registration. Its UI, protocol reuse, deletion, transfer, and recovery need a
-  separate implementation slice.
-- The nested Host needs an app-like signed bundle and embedded provisioning profile for the shared
-  restricted entitlement. Exact Developer ID identities, Team ID, profile, hardened-runtime options,
-  nested signing order, notarization, and staple checks remain distribution inputs and must not be
-  invented locally.
+- The registration app now performs bounded one-time enrollment, stores and rereads the exact
+  Server-bound Keychain envelope, writes one public config, and then registers. Disable and exact
+  local identity removal remain separate user actions. Native UI and recovery behavior still need
+  controlled-user observation.
+- One main app executable now owns both controller and fixed `--worker-host` modes, so the restricted
+  entitlement has one app-like bundle. The package gate validates exact Developer ID classes, Team
+  ID, application identifier, access group, profile authorization/expiry, hardened runtime, signing
+  order, notarization, and staple checks; the required credentials must be supplied externally.
 - Process-group and Keychain outcomes need real-device evidence before replacing the current pending
   support label.

@@ -49,8 +49,12 @@ install lifecycle require the controlled real-device gate described in the resea
   config change therefore cannot redirect the bearer credential to another Server.
 - Use one shared, Team-ID-prefixed Keychain access group derived from each executable's signed
   entitlement. Missing, malformed, or ambiguous groups fail closed.
-- Stage one allowlisted app bundle with a hash manifest and separately signed controller, Host, and
-  fixed `--jitless` Node runtime. No executable path, Provider, token, or credential is configurable.
+- Use one app main executable in two exact modes: no arguments opens the controller, while the fixed
+  LaunchAgent passes only `--worker-host`. This keeps the foreground and background Keychain clients
+  inside the same app-like bundle and provisioning profile instead of relying on a nonbundled helper
+  with an unauthorized restricted entitlement.
+- Stage one allowlisted app bundle with a hash manifest and separately signed app and fixed
+  `--jitless` Node runtime. No executable path, Provider, token, or credential is configurable.
 - Build an app-only flat package with Apple `productbuild`. It contains no installer script and does
   not enroll, register, choose a user, or mutate a home directory.
 - Disable before replacement and re-enable afterward. Rollback is an explicitly rebuilt and reviewed
@@ -59,7 +63,10 @@ install lifecycle require the controlled real-device gate described in the resea
 - Distribution scripts require explicit Developer ID Application/Installer identities, access group,
   provisioning profile, and notarytool profile. They sign inside-out, require hardened runtime and
   timestamps, verify nested code and package signatures, notarize, staple, and evaluate Gatekeeper.
-  Missing external inputs do not fall back to ad hoc distribution.
+  The identities, Team ID, application identifier, access group, profile authorization, and expiry
+  must match. The runtime manifest is recomputed after nested Node signing and sealed by the outer
+  app signature. AppleDouble payloads and installer scripts are rejected. Missing external inputs do
+  not fall back to ad hoc distribution.
 
 ## Consequences
 

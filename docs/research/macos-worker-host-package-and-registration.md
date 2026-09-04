@@ -1,6 +1,6 @@
 # Research: macOS Worker Host registration and distribution package
 
-- Status: Accepted design; implementation and local unsigned evidence pending
+- Status: Implemented locally; Developer ID, notarization, and controlled-device evidence pending
 - Date: 2026-09-04
 - Owner: OpenBot maintainers
 - Related issue: G5 in `docs/EXECUTION_PLAN.md`
@@ -25,6 +25,14 @@
   status and user approval; data-protection Keychain access groups and
   `WhenUnlockedThisDeviceOnly`; Developer ID Application versus Installer identities; hardened
   runtime, nested-code signing, `productbuild`, `pkgutil`, `notarytool`, stapling, and Gatekeeper.
+- Follow-up primary sources: Apple [TN3137](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains)
+  and [TN3125](https://developer.apple.com/documentation/technotes/tn3125-inside-code-signing-provisioning-profiles)
+  require restricted Keychain entitlements to be authorized by a provisioning profile embedded in
+  an app-like bundle. Apple's
+  [Keychain sharing guidance](https://developer.apple.com/documentation/security/sharing-access-to-keychain-items-among-a-collection-of-apps)
+  defines the application identifier and access-group relationship. Apple's
+  [QA1940](https://developer.apple.com/library/archive/qa/qa1940/_index.html) documents the
+  resource-fork/Finder-info signing hazard and `xattr` inspection/removal workflow.
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked: ADR-0038 and ADR-0039,
   `docs/EXECUTION_PLAN.md`, `docs/CROSS_PLATFORM.md`, `docs/NODE_ENROLLMENT.md`, the existing macOS
   plist/config/private-pipe code, Linux release transaction, Windows installer decision, and both
@@ -71,9 +79,12 @@
 
 ## Distribution and lifecycle contract
 
-- The main controller and native Host share one explicitly signed access group whose suffix is
-  `com.openbot.worker-host.shared`. Runtime code derives the complete Team-ID-prefixed value from
-  its signed entitlement and rejects zero, duplicate, malformed, or additional matching groups.
+- One app main executable has two exact modes: no arguments opens the controller and the fixed
+  `--worker-host` argument runs the background Host. The LaunchAgent selects that mode through its
+  fixed `BundleProgram` and `ProgramArguments`. This lets both paths use the same app-like bundle,
+  explicit application identifier, Team identifier, provisioning profile, and signed Keychain
+  access group. Runtime code derives the complete Team-ID-prefixed group from its signed entitlement
+  and rejects zero, duplicate, malformed, or additional matching groups.
 - The Keychain value is a strict `openbot.macos-keychain-node/v1` envelope containing the exact
   public Server WebSocket URL and the strict `openbot.node-identity/v1` response. This prevents a
   modified public config from redirecting a valid bearer credential to a different Server.
@@ -96,7 +107,9 @@
   Installer for the flat package, hardened runtime plus timestamp, inside-out nested signing, strict
   verification, notarization, stapling, and Gatekeeper/package verification. The Node runtime runs
   with the fixed `--jitless` argument so it does not need JIT or unsigned-executable-memory
-  entitlements.
+  entitlements. Signing the nested Node changes its Mach-O bytes, so the packager recomputes the
+  runtime manifest after nested signing and before the outer app signature seals that manifest.
+  The package gate also rejects AppleDouble payload files and any installer `Scripts` entry.
 
 ## Verification plan
 
@@ -104,7 +117,8 @@
   exact Keychain query/add/update/delete dictionaries, bounded enrollment exchange, atomic config
   plan, registration-state mapping, fixed child arguments/environment/process group, graceful then
   forced shutdown, exact app/package inventory, manifest hashes, nested signing order, and tool
-  argument bounds.
+  argument bounds, Developer ID/Team binding, provisioning authorization, post-signature manifest
+  refresh, unexpected extended attributes, AppleDouble payloads, and installer scripts.
 - Negative and fail-closed tests: root/wrong user, malformed or extra config/envelope fields,
   different Server/Node, locked/denied/classic/synchronizing Keychain, missing/duplicate entitlement,
   redirected enrollment, large or invalid response, partial write, approval required, moved or
@@ -121,6 +135,19 @@
 - Support level that the evidence permits: source-complete macOS candidate after local gates;
   production macOS support remains pending external Developer ID/notary inputs and controlled-device
   evidence.
+
+## Local evidence
+
+- The dependency-free Swift package builds on local arm64 macOS with the reviewed SDK workaround;
+  eight native tests pass, including strict config, Server-bound Keychain envelopes, fixed queries,
+  launch policy, private files, and runtime-manifest tamper rejection.
+- The candidate builder produced a real arm64 app from a clean commit with official Node `22.22.2`,
+  npm `10.9.8`, the exact ncc inventory, two arm64 Mach-O programs, valid property lists, and matching
+  SHA-256 runtime records. The repository-wide `npm run check` also passes.
+- Ad hoc nested and outer code signing validates locally, but is deliberately not distribution
+  evidence. The machine has no Developer ID Application/Installer identity, matching profiles, or
+  notary credentials, so a signed/notarized package and a working restricted Keychain claim cannot
+  be produced or claimed here.
 
 ## Unresolved questions
 

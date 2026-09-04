@@ -56,7 +56,8 @@ rollback, uninstall, and TCC.
 - A fixed app in `/Applications` registers the agent through `SMAppService`; installers do not
   select a user, enroll, store credentials, or start the service from a privileged script.
 - The plist uses `BundleProgram`, `KeepAlive.SuccessfulExit=false`, `ThrottleInterval=30`,
-  `ProcessType=Background`, `ExitTimeOut=25`, and `Umask=077`.
+  `ProcessType=Background`, `ExitTimeOut=25`, and `Umask=077`. It passes one fixed
+  `--worker-host` mode argument to the app's main executable.
 - A narrow native Host validates fixed per-user configuration and signed bundle paths, then starts
   only the fixed packaged Node. ADR-0039 keeps the Host alive as the Keychain gate and bounded child
   supervisor; it accepts no arbitrary command and adds no restart loop or public control endpoint.
@@ -73,5 +74,5 @@ removes a third-party supervisor and avoids giving a headless root daemon deskto
 
 The cost is a macOS 13 floor, a login requirement, explicit user approval, an app-bundle registration
 shell, and separate distribution credentials. FileVault means cold boot cannot become unattended
-until the dedicated user logs in. None of this is yet a macOS support, signing, notarization,
-Keychain, or desktop-control claim.
+until the dedicated user logs in. The native source and arm64 candidate now exist, but this is not
+yet a Developer-ID signing, notarization, validated Keychain, real-device, or desktop-control claim.

@@ -77,6 +77,72 @@ After either first start succeeds, remove the enrollment token and restart. A mi
 error, or oversized output stops identity setup. OpenBot does not create or automatically unlock a
 keyring. Do not run the desktop profile against the Owner's primary login or password collection.
 
+## macOS app registration (source-complete candidate)
+
+The macOS Worker Host is a user-scoped background item for one dedicated standard account. Its
+single app executable opens the controller normally and runs the native Host only when the bundled
+LaunchAgent supplies the fixed `--worker-host` argument. Both modes therefore use the same signed
+application identifier, provisioning profile, and Keychain access group.
+
+The repository can build an exact unsigned arm64 or x64 app from a clean commit. Supply the official
+Node `22.22.2` archive whose SHA-256 is pinned in the source, the exact npm `10.9.8` executable, and
+an existing real output directory:
+
+```bash
+npm run release:node-macos:candidate -- \
+  --arch arm64 \
+  --build-version 1 \
+  --node-archive /trusted-inputs/node-v22.22.2-darwin-arm64.tar.gz \
+  --npm-cli /trusted-tools/npm-10.9.8 \
+  --out-dir /safe-output \
+  --source-commit 0123456789abcdef0123456789abcdef01234567 \
+  --version 0.1.0
+```
+
+The candidate gate verifies the clean source commit, Node archive, npm version, ncc inventory,
+single Mach-O architecture, fixed app inventory, modes, property lists, and runtime SHA-256
+manifest. It creates `OpenBot Worker Host.app` with `signed: false`; this is not installable
+distribution evidence.
+
+A release operator must separately supply matching Developer ID Application and Installer
+identities, the Team-ID-prefixed access group, a Developer ID provisioning profile for
+`com.openbot.worker-host`, and a configured `notarytool` Keychain profile:
+
+```bash
+npm run release:node-macos:package -- \
+  --app "/safe-output/OpenBot Worker Host.app" \
+  --access-group A1B2C3D4E5.com.openbot.worker-host.shared \
+  --application-identity "Developer ID Application: OpenBot (A1B2C3D4E5)" \
+  --installer-identity "Developer ID Installer: OpenBot (A1B2C3D4E5)" \
+  --provisioning-profile /trusted-inputs/OpenBot-DeveloperID.provisionprofile \
+  --entitlements-template "$PWD/apps/worker-host-macos/Resources/OpenBotWorkerHost.entitlements.template.plist" \
+  --notary-profile openbot-notary \
+  --output /safe-output/OpenBotWorkerHost-0.1.0-arm64.pkg
+```
+
+Packaging fails unless identities, Team ID, application identifier, access-group authorization,
+profile type/expiry, nested signature, refreshed runtime manifest, outer signature, package
+signature, notarization, staple, Gatekeeper result, payload inventory, and absence of installer
+scripts all pass. There is no ad hoc distribution fallback.
+
+After a verified package places the app at `/Applications/OpenBot Worker Host.app`, the dedicated
+user opens it, enters the exact Node id, `wss:` Server URL, and one-time enrollment token, then
+selects **Enroll & Enable**. The token is cleared immediately; the returned identity is bound to the
+Server URL and stored as one non-synchronizing `WhenUnlockedThisDeviceOnly` data-protection Keychain
+item. If macOS reports **requires approval**, approve OpenBot under **System Settings > General >
+Login Items**. A locked/denied Keychain, missing entitlement, moved/tampered app, or incomplete
+approval leaves the Host stopped.
+
+Disable the background item before replacing the app and re-enable it afterward. To uninstall,
+first choose **Disable**, optionally choose **Remove Local Identity**, then have an administrator
+move the fixed app to Trash and forget its package receipt. The installer never chooses a user,
+handles an enrollment token, edits a home directory, or starts the service.
+
+This development Mac has no matching Developer ID identities, profiles, or notary credentials.
+Local arm64 build, Swift tests, candidate validation, and ad hoc signing mechanics pass, but
+distribution, Keychain authorization, registration, install/upgrade/rollback/uninstall, reboot,
+and Intel remain controlled-device evidence gates.
+
 ## Verifiable Linux release candidate
 
 The repository can now build a bounded, unsigned x64 or arm64 candidate directory before an

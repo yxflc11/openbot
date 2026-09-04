@@ -1,7 +1,7 @@
 # Research: macOS Worker Host launchd boundary
 
-- Status: Static LaunchAgent contract implemented locally; process model superseded by ADR-0039;
-  native Host, registration, signing, packaging, Keychain, and real-device evidence pending
+- Status: Native Host, registration, candidate, and package gates implemented locally; Developer ID,
+  notarization, and real-device evidence pending
 - Date: 2026-09-04
 - Owner: OpenBot maintainers
 - Related issue: G5 in `docs/EXECUTION_PLAN.md`
@@ -47,7 +47,7 @@
 
 ## Reuse decision
 
-- Selected option: open platform standard plus a narrow OpenBot launcher and registration adapter.
+- Selected option: open platform standard plus a narrow OpenBot Host mode and registration adapter.
 - Selected upstream or standard: macOS 13+ `SMAppService`, LaunchAgent, `BundleProgram`, and launchd
   lifecycle semantics.
 - Why this is the first viable option: launchd already supplies process start, crash restart,
@@ -59,7 +59,7 @@
   constructs an allowlisted environment, and starts only the hash-manifested Node runtime; validate
   the plist, app layout, configuration boundary, and lifecycle without parsing diagnostic prose.
   ADR-0039 adds the exact Keychain handoff and child-containment gap.
-- Upgrade, replacement, or exit plan: keep the plist schema and launcher contract local and small.
+- Upgrade, replacement, or exit plan: keep the plist schema and Host-mode contract local and small.
   Package versions replace the whole signed app, preserve only the separately validated per-user
   configuration and Keychain item, and reregister after a compatible upgrade. If Apple replaces
   Service Management, keep the immutable Node/config contract and swap only the registration
@@ -78,8 +78,10 @@
   validation. Disabled or approval-required state remains visible and fails closed.
 - Store the single plist at
   `Contents/Library/LaunchAgents/com.openbot.worker-host.node.plist`. It uses one app-relative
-  `BundleProgram`, no shell-selected command, no credential-bearing argument or environment value,
-  and no mutable `PATH` lookup.
+  `BundleProgram` plus one fixed `--worker-host` argument, no shell-selected command, no
+  credential-bearing argument or environment value, and no mutable `PATH` lookup. The same main
+  executable opens the controller with no arguments, so both modes share one app-like signed bundle
+  and provisioning profile.
 - The native Host performs path/config preflight and starts only the fixed bundled Node. ADR-0039
   supersedes immediate `exec`: the Host remains alive as the Keychain gate and bounded child-process
   supervisor. It does not add a restart loop, daemonize, fork into the background, open a control
@@ -109,17 +111,20 @@
 
 ## Implementation verification
 
-- The first checked-in plist contains only the exact label, app-relative `BundleProgram`,
+- The checked-in plist contains only the exact label, app-relative `BundleProgram`, fixed Host-mode
+  argument,
   conditional unsuccessful-exit restart, 30-second throttle, background process class, 25-second
-  stop bound, and `077` umask. It has no command arguments, environment, credential, stdin, user,
+  stop bound, and `077` umask. It has no caller-selected argument, environment, credential, stdin, user,
   group, root-directory, pressured-exit, or abandoned-process-group key.
 - Four portable contract tests accept only the canonical regular file and reject lifecycle,
   executable, environment, symlink, size, and diagnostic drift. The local macOS 27 `plutil` parser
   also accepts the plist.
-- The required portable macOS hosted lane now runs both the contract suite and native `plutil`. It
-  uploads nothing and remains unobserved until this branch is pushed with separate authorization.
-- This evidence validates a static service definition only. The referenced launcher does not yet
-  exist, and no service was registered or started on the development Mac.
+- The required portable macOS hosted lane now runs the contract suite, native Swift build/tests, and
+  `plutil`. It uploads nothing; a matching remote macOS job remains unobserved until a PR or main
+  event runs that lane.
+- The main executable's fixed background mode, registration adapter, child supervision, app staging,
+  and arm64 candidate build now exist and pass local gates. No service was registered on the
+  development Mac because a real Keychain access group requires external signing/profile inputs.
 
 ## Verification plan
 
@@ -137,16 +142,17 @@
 - User-visible documentation and translations: explain the dedicated-user login requirement,
   background-item approval, FileVault cold-start tradeoff, configuration/Keychain separation,
   disable/uninstall journey, and the absence of desktop control in English and Simplified Chinese.
-- Support level that the evidence permits: accepted design only. A local unsigned app or disposable
-  LaunchAgent test is development evidence, not a signed package, notarization, Keychain support,
-  desktop control, or production macOS support.
+- Support level that the evidence permits: source-complete arm64 candidate. Local unsigned/ad hoc
+  evidence is not a signed package, notarization, validated Keychain access group, desktop control,
+  or production macOS support.
 
 ## Unresolved questions
 
-- The macOS archive, universal versus split-architecture app, component package, upgrade/rollback,
-  uninstall, Developer ID Application/Installer signing, notarization, stapling, and detached
-  provenance need a separate packaging review before distributable artifacts are added.
-- Keychain item class, data-protection selection, access group, provisioning profile, accessibility,
-  migration, and non-exportable proof-of-possession key rules need a separate credential review.
+- Split-architecture candidate and component-package policy are implemented. Developer ID
+  Application/Installer signing, notarization, stapling, install/upgrade/rollback/uninstall, and
+  Intel evidence still require external credentials and controlled devices.
+- Keychain item class, data-protection selection, access group, profile validation, and accessibility
+  are implemented locally. Locked/unlocked device behavior and the later non-exportable
+  proof-of-possession key still require real-device evidence and G6.
 - `SMAppService.register()` can require user approval. Native acceptance must test every documented
   status and cannot automate or bypass that consent.
