@@ -224,10 +224,18 @@ extraction, candidate identity check, transactional activation, then digest-boun
 stops the sequence and retains the imported evidence. Privileged recovery uses the same fixed paths,
 service, and lease. This is locally contract-tested code, not a distributed or supported command.
 
+Its dormant operator entry point accepts only `install` with one absolute archive path, version, and
+40-hex source commit, or `recover` with no install options. It derives x64/arm64 from the running
+Linux process, generates all operation ids itself, rejects duplicate and unknown input, and never
+accepts a GitHub token in argv. Output contains only an allowlisted result; failures return one
+generic code so untrusted paths, credentials, and helper diagnostics are not reflected into logs.
+Do not run this file from an arbitrary checkout: the bootstrap itself still needs a separately
+authenticated distribution channel.
+
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
 unrelated rollback implementations. It is not yet publishable: a separately delivered trusted
-bootstrap distribution, a reviewed operator command surface, and native x64/arm64 proof of the
-directory and systemd adapters are still required before an installation command can be published.
+bootstrap distribution and native x64/arm64 proof of the command, directory, and systemd adapters
+are still required before an installation command can be published.
 The rootless safe-extraction adapter now rejects unsafe
 inventories, extracts into a private empty root, rechecks the archive digest, and rebuilds the
 candidate manifest; the existing x64 archive passed this path under Ubuntu container emulation. No

@@ -151,10 +151,17 @@
 - Four composition tests prove exact stage order and one shared lease, prevent verification of the
   user-writable source path, prevent activation/cleanup of an invalid candidate, and require explicit
   recovery plus empty work roots before import. Failed stages preserve the private import for review.
+- A dormant command now uses Node core strict/token parsing for exactly `install` or `recover`.
+  Install requires one canonical absolute archive, version, and source commit; runtime architecture
+  and all operation ids are derived internally. Only the optional `GH_TOKEN` environment value is
+  read, and it is validated before install side effects. The command emits allowlisted result fields
+  or a generic failure record and is intentionally absent from npm scripts and release archives.
+- Five command tests cover exact install/recovery dispatch, generated ids, duplicate/unknown/missing/
+  malformed input, unsupported runtime or credential data before adapters, and output redaction.
 - These are temporary-filesystem concurrency, byte-import, layout-policy/provisioning, and injected-
-  composition tests. Trusted bootstrap distribution, process-kill recovery, and native privileged
-  directory/systemd execution remain pending. The privileged wrapper has not been run successfully
-  as root.
+  composition/command tests. Trusted bootstrap distribution, process-kill recovery, and native
+  command/privileged-directory/systemd execution remain pending. The privileged wrapper has not been
+  run successfully as root.
 
 ## Unresolved questions
 

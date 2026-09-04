@@ -161,14 +161,17 @@ Every non-trivial slice follows the same sequence:
   handles, and never changes unsafe existing paths; eight policy/provisioning tests pass. A dormant
   wrapper now composes preflight,
   import, provenance, extraction, activation, cleanup, and recovery under the fixed layout and one
-  lease; four order/fail-closed tests pass. A bounded verifier adapter now requires the exact
+  lease; four order/fail-closed tests pass. Its strict two-operation command derives architecture and
+  ids, rejects unknown/duplicate input, excludes credentials from argv, and emits only allowlisted
+  success or generic failure records; five contract tests pass. A bounded verifier adapter now
+  requires the exact
   `gh 2.93.0` binary contract,
   certificate identity, tag, source commit, GitHub issuer, hosted runner, one matching statement,
   and stable archive digest; seven fail-closed tests pass. A safe-extraction adapter adds strict
   inventory, stream, private-root, tree, and final digest gates; six tests and a corrected real
   extraction of the existing x64 archive in the pinned Ubuntu container pass. It is not a privileged
-  installer. Authorized provenance observation, trusted bootstrap distribution, a reviewed operator
-  command surface, and real x64/arm64 privileged-layout/systemd plus
+  installer. Authorized provenance observation, trusted bootstrap distribution, and real x64/arm64
+  operator-command/privileged-layout/systemd plus
   locked/unlocked keyring evidence remain in progress under ADR-0033 and ADR-0034. The system-profile
   adapter itself now has three fail-closed command/state tests but no native systemd evidence.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
