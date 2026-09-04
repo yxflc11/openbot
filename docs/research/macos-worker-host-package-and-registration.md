@@ -142,7 +142,7 @@
   eight native tests pass, including strict config, Server-bound Keychain envelopes, fixed queries,
   launch policy, private files, and runtime-manifest tamper rejection.
 - The candidate builder produced a real arm64 app from a clean commit with official Node `22.22.2`,
-  npm `10.9.8`, the exact ncc inventory, two arm64 Mach-O programs, valid property lists, and matching
+  npm `10.9.9`, the exact ncc inventory, two arm64 Mach-O programs, valid property lists, and matching
   SHA-256 runtime records. The repository-wide `npm run check` also passes.
 - Ad hoc nested and outer code signing validates locally, but is deliberately not distribution
   evidence. The machine has no Developer ID Application/Installer identity, matching profiles, or

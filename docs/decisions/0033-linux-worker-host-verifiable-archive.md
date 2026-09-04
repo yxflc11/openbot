@@ -18,7 +18,7 @@ The reviewed alternatives and exact pins are recorded in
 - `@vercel/ncc` `0.45.0` has current release and platform test evidence and emits bundle license and
   stats files; its documented ESM and multi-output edge cases require an OpenBot-specific gate.
 - Node SEA remains stability 1.1 with a Linux arm64 container caveat; `vercel/pkg` is archived.
-- npm `10.9.8` already emits SPDX 2.3, while `actions/attest` `v4.2.2` provides Sigstore-backed
+- npm `10.9.9` already emits SPDX 2.3, while `actions/attest` `v4.2.2` provides Sigstore-backed
   provenance only when the release workflow has the required eligibility and authority.
 - GNU tar 1.35 documents the selected reproducibility flags. XZ explicitly warns that compressed
   bytes can differ across versions/builds and threading modes, so the release job must pin the
@@ -42,7 +42,7 @@ injection, archived packager, or second SBOM dependency is needed.
 3. Runtime inputs are local explicit paths. The builder validates the exact official x64/arm64
    SHA-256 before listing or extraction and never fetches a fallback. Archive paths, link targets,
    counts, and sizes are bounded and validated.
-4. npm `10.9.8` generates SPDX 2.3 from a tested production-only projection of the existing lock.
+4. npm `10.9.9` generates SPDX 2.3 from a tested production-only projection of the existing lock.
    The build rejects test-only packages, missing reachable packages, ambiguous versions, or a
    dependency list that differs from the ncc bundle inventory.
 5. Staged paths, file modes, manifest key/file order, ownership metadata, timestamps, and

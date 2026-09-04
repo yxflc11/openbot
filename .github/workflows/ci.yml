@@ -21,6 +21,12 @@ jobs:
         with:
           node-version: 22.22.2
           cache: npm
+      - name: Select the reviewed npm CLI
+        run: |
+          npm install --global npm@10.9.9 --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = "10.9.9"
+      - name: Validate the dependency tree from the lockfile
+        run: npm ci --ignore-scripts --audit=false
       - name: Audit production dependency advisories
         run: npm audit --omit=dev --audit-level=high
       - name: Scan Git history for credential patterns without verification or uploads

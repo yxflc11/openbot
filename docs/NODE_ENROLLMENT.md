@@ -85,7 +85,7 @@ LaunchAgent supplies the fixed `--worker-host` argument. Both modes therefore us
 application identifier, provisioning profile, and Keychain access group.
 
 The repository can build an exact unsigned arm64 or x64 app from a clean commit. Supply the official
-Node `22.22.2` archive whose SHA-256 is pinned in the source, the exact npm `10.9.8` executable, and
+Node `22.22.2` archive whose SHA-256 is pinned in the source, the exact npm `10.9.9` executable, and
 an existing real output directory:
 
 ```bash
@@ -93,7 +93,7 @@ npm run release:node-macos:candidate -- \
   --arch arm64 \
   --build-version 1 \
   --node-archive /trusted-inputs/node-v22.22.2-darwin-arm64.tar.gz \
-  --npm-cli /trusted-tools/npm-10.9.8 \
+  --npm-cli /trusted-tools/npm-10.9.9 \
   --out-dir /safe-output \
   --source-commit 0123456789abcdef0123456789abcdef01234567 \
   --version 0.1.0
@@ -166,7 +166,7 @@ Build all workspaces and stage a candidate with the exact reviewed inputs:
 npm run release:node-linux:candidate -- \
   --arch x64 \
   --node-archive /trusted-inputs/node-v22.22.2-linux-x64.tar.xz \
-  --npm-cli /trusted-tools/npm-10.9.8 \
+  --npm-cli /trusted-tools/npm-10.9.9 \
   --out-dir /safe-output \
   --source-commit 0123456789abcdef0123456789abcdef01234567 \
   --source-date-epoch 1788480000 \
@@ -174,7 +174,7 @@ npm run release:node-linux:candidate -- \
 ```
 
 The source commit must equal `HEAD`, the worktree must be clean, the output candidate must not
-already exist, and the npm executable must report exactly `10.9.8`. The result includes the bundled
+already exist, and the npm executable must report exactly `10.9.9`. The result includes the bundled
 app and its allowlisted worker assets, official Node executable and notice, both systemd profiles,
 English/Chinese enrollment guidance, SPDX SBOM, `manifest.json`, and `SHA256SUMS`.
 

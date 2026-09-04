@@ -72,14 +72,14 @@ macOS Worker Host 是供单个专用标准账号使用的用户级后台项。�
 共享同一个签名 application identifier、provisioning profile 与 Keychain access group。
 
 仓库可以从干净提交构建精确的 arm64 或 x64 未签名 App。需提供源码中已固定 SHA-256 的官方
-Node `22.22.2` 压缩包、精确 npm `10.9.8` 可执行文件和一个已存在的真实输出目录：
+Node `22.22.2` 压缩包、精确 npm `10.9.9` 可执行文件和一个已存在的真实输出目录：
 
 ```bash
 npm run release:node-macos:candidate -- \
   --arch arm64 \
   --build-version 1 \
   --node-archive /trusted-inputs/node-v22.22.2-darwin-arm64.tar.gz \
-  --npm-cli /trusted-tools/npm-10.9.8 \
+  --npm-cli /trusted-tools/npm-10.9.9 \
   --out-dir /safe-output \
   --source-commit 0123456789abcdef0123456789abcdef01234567 \
   --version 0.1.0
@@ -146,7 +146,7 @@ Identity**，然后由管理员把固定 App 移到废纸篓并忘记其 package
 npm run release:node-linux:candidate -- \
   --arch x64 \
   --node-archive /trusted-inputs/node-v22.22.2-linux-x64.tar.xz \
-  --npm-cli /trusted-tools/npm-10.9.8 \
+  --npm-cli /trusted-tools/npm-10.9.9 \
   --out-dir /safe-output \
   --source-commit 0123456789abcdef0123456789abcdef01234567 \
   --source-date-epoch 1788480000 \
@@ -154,7 +154,7 @@ npm run release:node-linux:candidate -- \
 ```
 
 源码提交必须等于 `HEAD`，工作树必须干净，目标候选目录不能已经存在，npm 可执行文件必须准确
-报告 `10.9.8`。结果包含打包后的应用及白名单 worker 配套文件、官方 Node 可执行文件和声明、两种
+报告 `10.9.9`。结果包含打包后的应用及白名单 worker 配套文件、官方 Node 可执行文件和声明、两种
 systemd 配置、中英文登记说明、SPDX SBOM、`manifest.json` 与 `SHA256SUMS`。
 
 在 Ubuntu 24.04 上，把这个已验证目录转换成确定性传输压缩包：

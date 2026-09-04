@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 
 const systemUnit = new URL("../../../deploy/node/systemd/openbot-node.service", import.meta.url);
 const userUnit = new URL("../../../deploy/node/systemd/openbot-node-user.service", import.meta.url);
+const repositoryAttributes = new URL("../../../.gitattributes", import.meta.url);
 
 describe("Linux systemd service profiles", () => {
   it("pins the headless system service to a dedicated file-backed identity", async () => {
-    const source = await readFile(systemUnit, "utf8");
+    const source = normalizeLineEndings(await readFile(systemUnit, "utf8"));
 
     expect(source).toContain("User=openbot\nGroup=openbot");
     expect(source).toContain("StateDirectory=openbot-node");
@@ -19,7 +20,7 @@ describe("Linux systemd service profiles", () => {
   });
 
   it("pins the logged-in user service to Secret Service without a file fallback", async () => {
-    const source = await readFile(userUnit, "utf8");
+    const source = normalizeLineEndings(await readFile(userUnit, "utf8"));
 
     expect(source).toContain("PartOf=graphical-session.target");
     expect(source).toContain("EnvironmentFile=%h/.config/openbot/node.env");
@@ -30,7 +31,19 @@ describe("Linux systemd service profiles", () => {
     expect(source).not.toContain("User=");
     expectCommonHardening(source);
   });
+
+  it("keeps distribution units LF and evaluates CRLF checkouts semantically", async () => {
+    const attributes = normalizeLineEndings(await readFile(repositoryAttributes, "utf8"));
+    expect(attributes).toContain("deploy/node/systemd/*.service text eol=lf");
+
+    const windowsCheckout = "User=openbot\r\nGroup=openbot\r\n";
+    expect(normalizeLineEndings(windowsCheckout)).toContain("User=openbot\nGroup=openbot");
+  });
 });
+
+function normalizeLineEndings(source: string): string {
+  return source.replaceAll("\r\n", "\n");
+}
 
 function expectCommonHardening(source: string): void {
   for (const directive of [

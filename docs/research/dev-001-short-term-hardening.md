@@ -25,7 +25,8 @@
 - Standards and primary documentation queries: OWASP Authentication, Logging, and SSRF Prevention
   Cheat Sheets; NIST SP 800-63B-4 password and rate-limit requirements; RFC 7239 `Forwarded` trust
   model; Hono Node `getConnInfo`; PostgreSQL transaction advisory locks and `INSERT ... ON
-  CONFLICT`; GitHub Actions immutable pinning; npm CLI `audit` data and exit behavior.
+  CONFLICT`; GitHub Actions immutable pinning; npm CLI `ci`, `audit`, `ignore-scripts`, lock-tree,
+  and exit behavior; Corepack npm-shim behavior.
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked: `AGENTS.md`, ADRs 0001, 0004, 0013,
   0021, 0022, 0025, 0026, and 0027; `docs/SECURITY.md`, `docs/API.md`,
   `docs/NODE_ENROLLMENT.md`, `docs/OPEN_SOURCE_REUSE.md`, and every DEV-001 candidate code/test
@@ -49,7 +50,7 @@
 | Vitest browser mode with Playwright | package set `4.1.11` matching repository Vitest | MIT | Maintained in Vitest's browser suite | Best for rendered cross-browser integration, but introduces a Playwright peer plus browser binaries for two deterministic component state tests; retain for future e2e coverage | Defer; do not add |
 | TruffleHog OSS | `3.97.1`, `20652fbbdefffcdaa493a5bf57ab2ac6b1db715b`; multi-arch image digest `sha256:deb2af10659a488a14d262a323addcde099d99827a1cf1dc4e93c17915c39f08` | AGPL-3.0 | Active releases, extensive detectors and tests; reviewed open Windows local-git issue | Run as a read-only CI tool, not linked or distributed; disable verification and updates so candidates and credentials are not sent to providers | Select for CI |
 | Gitleaks | `v8.27.2`, `c7acf33` | MIT | Mature; project states feature-complete/security-fix maintenance | Good static alternative, but the official action has a separate organization license and the selected container path avoids that ambiguity | Reserve alternative |
-| npm CLI audit | repository-pinned npm `10.9.8` | Artistic-2.0 | Mature package-manager tests and registry advisory service | Uses the committed lock tree, has severity exit codes, and is already available after `npm ci`; submits package/version metadata, not repository source | Select for production dependencies |
+| npm CLI audit | npm `10.9.9`, `745d8d90b5403110d26ba332ba83d8c5a51f0578`, registry integrity `sha512-1g+6jLQvaIuB4zwvHL7yrXuXcWZwDsCtBX8bbWDqbvJSSr9nPiDDWTHNgwXR27iIcTTW7v3A57hDW9RYv2W4Yg==` | Artistic-2.0 | Maintained CLI and registry advisory service; `10.9.9` replaces `tar` with `7.5.22`, while the prior `10.9.8` tool pin contains the vulnerable `tar` `7.5.11` tracked in npm/cli#9824 | Use the committed lock tree, verify the exact CLI version, construct the complete clean dependency tree with `npm ci --ignore-scripts`, then audit only production dependencies with severity exit codes; an `--omit=dev` install leaves the quick-audit fallback an incomplete tree, lifecycle scripts remain disabled in this read-only job, and only package/version metadata is submitted | Select `10.9.9` for production dependency audit |
 | OWASP SSRF guidance plus current `agent-computer` | OWASP `b8586414`; OpenBot `agent-computer` `257c1280` | CC BY-SA 4.0 docs; MIT | Maintained guidance; upstream adapter has tests | Guidance requires redirect/DNS enforcement at the requester or network layer. The current separate browser service cannot honor the Provider's prior DNS lookup | Defer M2 and keep trusted-test-only claim |
 
 ## Reuse decision
@@ -58,7 +59,7 @@
 - Selected upstream or standard: RFC 7239 and Hono `getConnInfo` for peer attribution; OWASP/NIST
   authentication and logging requirements; PostgreSQL transaction locks/upserts; Pino 10.3.1;
   jsdom 30.0.1 for development-only component interaction tests; TruffleHog 3.97.1 by immutable
-  container digest; repository-pinned npm audit.
+  container digest; repository-pinned npm 10.9.9 audit after a clean lockfile install.
 - Why this is the first viable option: it reuses the existing authoritative Server and PostgreSQL
   boundary, adds one maintained runtime primitive for structured logs, and makes CI checks
   reproducible without sending repository content or candidate secrets to verification services.
@@ -72,8 +73,9 @@
 - Failure behavior when the upstream is missing, incompatible, or compromised: Server startup or
   type checks fail for runtime dependencies; login fails closed when the durable store fails;
   malformed/untrusted forwarding data is rejected or ignored according to the explicit proxy
-  contract; CI fails on audit/scanner errors or findings; no fallback accepts Node-supplied policy or
-  raw public errors.
+  contract; CI fails when the exact npm version cannot be selected, the lockfile cannot produce a
+  clean tree, the audit service errors, an in-scope advisory meets the threshold, or the credential
+  scanner errors or finds a candidate; no fallback accepts Node-supplied policy or raw public errors.
 
 ## Source incorporation
 
@@ -94,7 +96,8 @@
   duplicate-action suppression, error recovery, semantic labels, and alert announcements.
 - Negative and fail-closed tests: missing peer, spoofed `Forwarded`, multiple proxy hops, database
   throttle failure, Node token/path in `run.failed`, logger secret keys, unknown actions, and a lower
-  Node risk than the catalog floor.
+  Node risk than the catalog floor; security-workflow drift that removes the exact npm version,
+  clean lockfile install, disabled lifecycle scripts, audit ordering, or non-zero audit behavior.
 - Platforms and devices: Linux CI plus local macOS; Windows remains Development until native
   credential protection has real-Windows evidence. The Docker browser Provider remains a trusted
   test adapter, not an SSRF boundary.

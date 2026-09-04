@@ -9,6 +9,50 @@ test("accepts the pinned required portable matrix", () => {
   assert.doesNotThrow(() => validateSecurityWorkflow(workflow));
 });
 
+test("requires the exact npm CLI and a clean lock tree before auditing", () => {
+  assert.throws(
+    () => validateSecurityWorkflow(workflow.replace("npm@10.9.9", "npm@latest")),
+    /missing required fragment/,
+  );
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace("npm ci --ignore-scripts --audit=false", "npm install"),
+      ),
+    /missing required fragment/,
+  );
+  const auditFirst = workflow
+    .replace("        run: npm ci --ignore-scripts --audit=false\n", "")
+    .replace(
+      "        run: npm audit --omit=dev --audit-level=high\n",
+      "        run: npm audit --omit=dev --audit-level=high\n      - run: npm ci --ignore-scripts --audit=false\n",
+    );
+  assert.throws(() => validateSecurityWorkflow(auditFirst), /install the lock tree, then audit/);
+});
+
+test("rejects dependency audit bypasses and mutation", () => {
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace(
+          "run: npm audit --omit=dev --audit-level=high",
+          "run: npm audit --omit=dev --audit-level=high || true",
+        ),
+      ),
+    /read-only and fail closed/,
+  );
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace(
+          "run: npm audit --omit=dev --audit-level=high",
+          "run: npm audit fix --force",
+        ),
+      ),
+    /missing required fragment|read-only and fail closed/,
+  );
+});
+
 test("rejects a missing platform or moving runner label", () => {
   assert.throws(
     () =>

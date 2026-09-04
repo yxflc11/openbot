@@ -39,7 +39,7 @@ const lockfile = JSON.parse(await readFile(path.join(repositoryRoot, "package-lo
 test("pins the reviewed Linux release inputs", () => {
   assert.equal(NODE_RUNTIME_VERSION, "22.22.2");
   assert.equal(NCC_VERSION, "0.45.0");
-  assert.equal(RELEASE_NPM_VERSION, "10.9.8");
+  assert.equal(RELEASE_NPM_VERSION, "10.9.9");
   assert.deepEqual(Object.keys(NODE_RUNTIME_TARGETS).sort(), ["arm64", "x64"]);
   assert.match(NODE_RUNTIME_TARGETS.x64.sha256, /^[0-9a-f]{64}$/);
   assert.match(NODE_RUNTIME_TARGETS.arm64.sha256, /^[0-9a-f]{64}$/);

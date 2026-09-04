@@ -65,14 +65,14 @@ jobs:
             "https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-${RELEASE_ARCH}.tar.xz" \
             --output "$runtime_archive"
 
-          npm pack --silent --ignore-scripts --pack-destination "$RELEASE_ROOT/npm" npm@10.9.8
-          npm_archive="$RELEASE_ROOT/npm/npm-10.9.8.tgz"
+          npm pack --silent --ignore-scripts --pack-destination "$RELEASE_ROOT/npm" npm@10.9.9
+          npm_archive="$RELEASE_ROOT/npm/npm-10.9.9.tgz"
           printf '%s  %s\n' \
-            '7d8c1be8e0d298792aac9410682c58dccda53dffe6a600bb8a4d074b3cc8c06e421ad69b469e1b36a8a46adbc2a13e366f920d412aae7551f447bc95982f6156' \
+            'd60fba8cb42f688b81e33c2f1cbef2ad7b977166700ec0ad057f1b6d60ea6ef2524abf673e20c35931cd8305d1dbb8887134d6eefdc0e7b8435bd458bf65b862' \
             "$npm_archive" | sha512sum --check --status
           tar --extract --gzip --file "$npm_archive" --directory "$RELEASE_ROOT/npm"
           npm_cli="$RELEASE_ROOT/npm/package/bin/npm-cli.js"
-          test "$("$npm_cli" --version)" = '10.9.8'
+          test "$("$npm_cli" --version)" = '10.9.9'
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "source-date-epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"

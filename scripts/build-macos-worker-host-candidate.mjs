@@ -30,8 +30,8 @@ const outputMetadata = await lstat(options.outputDirectory);
 if (!outputMetadata.isDirectory() || outputMetadata.isSymbolicLink()) {
   throw new Error("macOS candidate output must be a real existing directory.");
 }
-if (run(options.npmCli, ["--version"]).trim() !== "10.9.8") {
-  throw new Error("The macOS candidate requires npm 10.9.8.");
+if (run(options.npmCli, ["--version"]).trim() !== "10.9.9") {
+  throw new Error("The macOS candidate requires npm 10.9.9.");
 }
 run(options.npmCli, ["run", "build", "--workspace", "@openbot/node"]);
 

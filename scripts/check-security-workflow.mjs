@@ -6,7 +6,6 @@ export function validateSecurityWorkflow(workflow) {
     "permissions:\n  contents: read",
     "fetch-depth: 0",
     "persist-credentials: false",
-    "npm audit --omit=dev --audit-level=high",
     "ghcr.io/trufflesecurity/trufflehog@sha256:deb2af10659a488a14d262a323addcde099d99827a1cf1dc4e93c17915c39f08",
     "--no-verification",
     "--no-update",
@@ -22,6 +21,43 @@ export function validateSecurityWorkflow(workflow) {
 
   if (/trufflehog-action@|upload-sarif|--verifier/.test(workflow)) {
     throw new Error("CI secret scanning must stay digest-pinned, local, and non-uploading.");
+  }
+
+  const securityJobStart = workflow.indexOf("\n  security:\n");
+  const checkJobStart = workflow.indexOf("\n  check:\n");
+  if (securityJobStart === -1 || checkJobStart <= securityJobStart) {
+    throw new Error("CI must define the security job before the check job.");
+  }
+  const securityJob = workflow.slice(securityJobStart, checkJobStart);
+  const requiredSecurityFragments = [
+    "npm install --global npm@10.9.9 --ignore-scripts --no-audit --no-fund",
+    'test "$(npm --version)" = "10.9.9"',
+    "npm ci --ignore-scripts --audit=false",
+    "npm audit --omit=dev --audit-level=high",
+  ];
+  for (const fragment of requiredSecurityFragments) {
+    if (!securityJob.includes(fragment)) {
+      throw new Error(`CI security job is missing required fragment: ${fragment}`);
+    }
+  }
+  const selectedNpm = securityJob.indexOf(requiredSecurityFragments[0]);
+  const verifiedNpm = securityJob.indexOf(requiredSecurityFragments[1]);
+  const cleanInstall = securityJob.indexOf(requiredSecurityFragments[2]);
+  const audit = securityJob.indexOf(requiredSecurityFragments[3]);
+  if (
+    selectedNpm === -1 ||
+    verifiedNpm <= selectedNpm ||
+    cleanInstall <= verifiedNpm ||
+    audit <= cleanInstall
+  ) {
+    throw new Error(
+      "CI security job must select and verify npm, install the lock tree, then audit.",
+    );
+  }
+  if (
+    /continue-on-error:|npm audit fix|(?:npm ci|npm audit)[^\n]*(?:\|\||;)\s*true/.test(securityJob)
+  ) {
+    throw new Error("CI dependency auditing must remain read-only and fail closed.");
   }
 
   const portableJobStart = workflow.indexOf("\n  portable:\n");
