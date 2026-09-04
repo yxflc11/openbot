@@ -84,7 +84,7 @@ export function validateSecurityWorkflow(workflow) {
     "- name: macOS arm64\n            runner: macos-15",
     "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
     "persist-credentials: false",
-    "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
     "node-version: 22.22.2",
     "cache: npm",
     "- run: npm ci",

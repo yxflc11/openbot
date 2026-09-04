@@ -80,8 +80,8 @@ test("rejects action, Node, or checkout-security drift in the portable job", () 
     () =>
       validateSecurityWorkflow(
         `${beforePortable}${portableJob.replace(
-          "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4\n        with:\n          node-version: 22.22.2",
-          "actions/setup-node@v4\n        with:\n          node-version: 22",
+          "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n        with:\n          node-version: 22.22.2",
+          "actions/setup-node@v7\n        with:\n          node-version: 22",
         )}${afterPortable}`,
       ),
     /missing required fragment/,
