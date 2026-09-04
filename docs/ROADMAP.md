@@ -31,8 +31,11 @@ v1 员工包仍排除全部记忆。员工变更还会向其他已连接设备�
 完整 diff 审核、注册表分发、选择性复制和认证所有权转移。
 
 新版产品方向已经确定：Desktop 是主要安装入口，Web 是完整远程入口和模块化自部署入口；同一个
-Desktop 可以组合 Client、Server 与 Worker Host。当前只完成技术选择，还不能宣称 Desktop 已实现
-或任何桌面平台已经 Supported。精确语言、版本和安全边界见[技术基线](TECHNOLOGY.zh-CN.md)。
+Desktop 可以组合 Client、Server 与 Worker Host。技术选择已经完成；首个 Desktop 安全外壳切片
+已经实现本地打包界面、沙盒 renderer、最小 preload、受限 `openbot://` 资源协议、严格 ASAR/fuse
+策略，并在 Windows、macOS 与 Linux CI 中构建未签名开发包。Server 连接配置、引导、签名、更新
+和真实设备矩阵仍未完成，因此还不能宣称任何桌面平台已经 Supported。精确语言、版本和安全边界
+见[技术基线](TECHNOLOGY.zh-CN.md)。
 
 ## 新版产品交付顺序
 

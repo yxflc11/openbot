@@ -81,3 +81,6 @@ Apple Security 与现有 Node core/Zod，并用私有凭证管道和有界固定
 Packager/Fuses 适配器，交付同一个可安装的 TypeScript/React/Vite Client，同时保留完整 Web Client、
 Server 唯一权威，并把 Swift 与 C# 限制在很薄的平台适配器内。实现验证发现稳定版 Forge 7 存在
 Fuses 不兼容和未解决的开发依赖漏洞，因此不采用；签名、更新和真实设备支持仍是后续门槛。
+[Desktop 本地内容协议](desktop-local-content-protocol.md)后续审查采用 Electron 的自定义协议
+建议，通过专用 Session 和精确安装包资源白名单加载界面；`file://` 额外权限保持关闭，并在读取
+文件前拒绝路径穿越。

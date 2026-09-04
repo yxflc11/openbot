@@ -1,0 +1,24 @@
+{
+  "name": "@openbot/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Installable OpenBot Desktop client.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "npm run build:renderer && npm run build:main",
+    "build:main": "tsc -p tsconfig.json",
+    "build:renderer": "npm run build:desktop --workspace @openbot/web",
+    "package": "npm run build && node scripts/package.mjs",
+    "start": "npm run build && electron .",
+    "test": "vitest run src scripts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@electron/fuses": "2.1.3",
+    "@electron/packager": "20.3.0",
+    "@openbot/web": "0.0.0",
+    "electron": "44.2.0"
+  }
+}
