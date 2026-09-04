@@ -5,6 +5,7 @@ import { runBoundedCommand } from "./node-linux-provenance.mjs";
 import {
   assertReleaseVersion,
   assertSourceCommit,
+  LINUX_RELEASE_ARCHIVE_BOUNDS,
   sha256File,
   verifyCandidateDirectory,
 } from "./node-linux-release.mjs";
@@ -16,8 +17,6 @@ export const LINUX_ARCHIVE_EXTRACTION_TOOLS = Object.freeze({
   xzVersionLine: "xz (XZ Utils) 5.4.5",
 });
 
-const minimumArchiveBytes = 20 * 1024 * 1024;
-const maximumArchiveBytes = 96 * 1024 * 1024;
 const maximumEntryBytes = 160 * 1024 * 1024;
 const maximumExpandedBytes = 256 * 1024 * 1024;
 const maximumMembers = 300;
@@ -144,8 +143,8 @@ export async function extractVerifiedLinuxRelease(options) {
   if (
     archiveMetadata.isSymbolicLink() ||
     !archiveMetadata.isFile() ||
-    archiveMetadata.size < minimumArchiveBytes ||
-    archiveMetadata.size > maximumArchiveBytes
+    archiveMetadata.size < LINUX_RELEASE_ARCHIVE_BOUNDS.minimumBytes ||
+    archiveMetadata.size > LINUX_RELEASE_ARCHIVE_BOUNDS.maximumBytes
   ) {
     throw new Error("Linux release archive is not a reviewed-size regular file.");
   }

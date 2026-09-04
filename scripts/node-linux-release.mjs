@@ -16,6 +16,10 @@ import path from "node:path";
 export const NODE_RUNTIME_VERSION = "22.22.2";
 export const NCC_VERSION = "0.45.0";
 export const RELEASE_NPM_VERSION = "10.9.8";
+export const LINUX_RELEASE_ARCHIVE_BOUNDS = Object.freeze({
+  maximumBytes: 96 * 1024 * 1024,
+  minimumBytes: 20 * 1024 * 1024,
+});
 
 export const NODE_RUNTIME_TARGETS = Object.freeze({
   x64: Object.freeze({

@@ -5,7 +5,12 @@ import {
   LINUX_INSTALL_PROVENANCE_POLICY,
   linuxProvenanceCertificateIdentity,
 } from "./node-linux-install-transaction.mjs";
-import { assertReleaseVersion, assertSourceCommit, sha256File } from "./node-linux-release.mjs";
+import {
+  assertReleaseVersion,
+  assertSourceCommit,
+  LINUX_RELEASE_ARCHIVE_BOUNDS,
+  sha256File,
+} from "./node-linux-release.mjs";
 
 export const LINUX_PROVENANCE_VERIFIER = Object.freeze({
   executable: "/usr/bin/gh",
@@ -13,8 +18,6 @@ export const LINUX_PROVENANCE_VERIFIER = Object.freeze({
   versionLine: "gh version 2.93.0 (2026-05-27)",
 });
 
-const minimumArchiveBytes = 20 * 1024 * 1024;
-const maximumArchiveBytes = 96 * 1024 * 1024;
 const maximumVersionOutputBytes = 4 * 1024;
 const maximumVerificationOutputBytes = 2 * 1024 * 1024;
 const versionDeadlineMs = 5_000;
@@ -81,8 +84,8 @@ export async function verifyLinuxReleaseProvenance(options) {
   if (
     metadata.isSymbolicLink() ||
     !metadata.isFile() ||
-    metadata.size < minimumArchiveBytes ||
-    metadata.size > maximumArchiveBytes
+    metadata.size < LINUX_RELEASE_ARCHIVE_BOUNDS.minimumBytes ||
+    metadata.size > LINUX_RELEASE_ARCHIVE_BOUNDS.maximumBytes
   ) {
     throw new Error("Linux release archive is not a reviewed-size regular file.");
   }

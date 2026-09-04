@@ -99,8 +99,16 @@
 - Four lease tests cover nested ownership, standalone acquisition, forged/released/cross-root/
   concurrent rejection, and replacement detection without deleting the replacement. A fourteenth
   transaction test proves activation joins the outer lease and leaves it held.
-- These are temporary-filesystem concurrency and composition tests. Root ownership, private archive
-  import, full bootstrap composition, process-kill recovery, and native systemd remain pending.
+- A private archive-import adapter now accepts only a reviewed-size ordinary source, compares its
+  path and opened-handle identity before and after a bounded copy, exclusively creates one `0600`
+  single-link file below the same-owner `0700` imports root, syncs it, and returns its SHA-256 only
+  after the lease is revalidated. Cleanup requires the same lease, exact private path, unchanged
+  file identity, and matching digest.
+- Four import tests copy a real 20 MiB sparse archive and cover exact-byte import/removal, symlink/
+  undersized/changed-source rejection, no-overwrite creation, and digest-bound cleanup that preserves
+  unexpected bytes. Provenance, extraction, and import now share one archive size policy.
+- These are temporary-filesystem concurrency and byte-import tests. Root ownership, full bootstrap
+  composition, process-kill recovery, and native systemd remain pending.
 
 ## Unresolved questions
 

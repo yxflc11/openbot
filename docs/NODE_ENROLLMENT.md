@@ -203,6 +203,13 @@ bootstrap can hold its opaque lease across import, verification, extraction, and
 activation revalidates but cannot release that outer lease. Existing locks are never reclaimed by
 age because a paused privileged writer must not overlap a second one.
 
+The rootless private-import adapter closes the user-writable archive path race before those stages
+are composed. It copies a bounded regular source through an opened handle into an exclusively
+created `0600` file below the lease-protected private state root, then rechecks source identity,
+synced destination identity, size, and SHA-256. Cleanup removes only that exact digest-bound private
+file. A changed source, symlink, existing target, forged lease, or digest mismatch is preserved or
+rejected without entering provenance or extraction.
+
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
 unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted
 bootstrap, root ownership and privileged extraction/install serialization, a wired privileged
