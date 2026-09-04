@@ -17,15 +17,15 @@ import {
 
 const temporaryDirectories: string[] = [];
 const timestamp = "2026-09-04T00:00:00.000Z";
-// This lifecycle performs repeated encrypted private-key generation and loading; keep the slower
-// hosted Windows allowance local to this test instead of weakening the suite-wide timeout.
-const encryptedKeyLifecycleTimeoutMs = process.platform === "win32" ? 15_000 : 5_000;
+// These integration-style tests intentionally exercise the production key derivation settings.
+// Keep their bounded CPU allowance local instead of weakening the repository-wide test timeout.
+const encryptedKeyringTestTimeoutMs = 20_000;
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
 });
 
-describe("Employee publisher keyring", () => {
+describe("Employee publisher keyring", { timeout: encryptedKeyringTestTimeoutMs }, () => {
   it("creates an encrypted Owner key without exposing private material in status", async () => {
     const location = await temporaryLocation();
     const status = await initializeEmployeePublisherKeyring(location, { now: new Date(timestamp) });
@@ -41,41 +41,37 @@ describe("Employee publisher keyring", () => {
     });
   });
 
-  it(
-    "rotates the signer while retaining verification and can revoke the retired key",
-    async () => {
-      const location = await temporaryLocation();
-      const initial = await initializeEmployeePublisherKeyring(location, {
-        now: new Date("2026-09-04T00:00:00.000Z"),
-      });
-      const firstKeyring = await EmployeePublisherKeyring.load(location);
-      const oldEnvelope = firstKeyring.sign(buildEmployeeTemplate(createProfile()).document);
+  it("rotates the signer while retaining verification and can revoke the retired key", async () => {
+    const location = await temporaryLocation();
+    const initial = await initializeEmployeePublisherKeyring(location, {
+      now: new Date("2026-09-04T00:00:00.000Z"),
+    });
+    const firstKeyring = await EmployeePublisherKeyring.load(location);
+    const oldEnvelope = firstKeyring.sign(buildEmployeeTemplate(createProfile()).document);
 
-      const rotated = await rotateEmployeePublisherKeyring(location, {
-        now: new Date("2026-09-05T00:00:00.000Z"),
-      });
-      const secondKeyring = await EmployeePublisherKeyring.load(location);
+    const rotated = await rotateEmployeePublisherKeyring(location, {
+      now: new Date("2026-09-05T00:00:00.000Z"),
+    });
+    const secondKeyring = await EmployeePublisherKeyring.load(location);
 
-      expect(rotated.activeKeyId).not.toBe(initial.activeKeyId);
-      expect(rotated.keys).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ keyid: initial.activeKeyId, status: "retired" }),
-          expect.objectContaining({ keyid: rotated.activeKeyId, status: "active" }),
-        ]),
-      );
-      expect(secondKeyring.verify(oldEnvelope)).toMatchObject({ status: "verified" });
+    expect(rotated.activeKeyId).not.toBe(initial.activeKeyId);
+    expect(rotated.keys).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ keyid: initial.activeKeyId, status: "retired" }),
+        expect.objectContaining({ keyid: rotated.activeKeyId, status: "active" }),
+      ]),
+    );
+    expect(secondKeyring.verify(oldEnvelope)).toMatchObject({ status: "verified" });
 
-      await revokeEmployeePublisherKey(location, initial.activeKeyId, {
-        now: new Date("2026-09-06T00:00:00.000Z"),
-      });
-      const revokedKeyring = await EmployeePublisherKeyring.load(location);
-      expect(revokedKeyring.verify(oldEnvelope)).toMatchObject({
-        status: "rejected",
-        code: "no-trusted-signature",
-      });
-    },
-    encryptedKeyLifecycleTimeoutMs,
-  );
+    await revokeEmployeePublisherKey(location, initial.activeKeyId, {
+      now: new Date("2026-09-06T00:00:00.000Z"),
+    });
+    const revokedKeyring = await EmployeePublisherKeyring.load(location);
+    expect(revokedKeyring.verify(oldEnvelope)).toMatchObject({
+      status: "rejected",
+      code: "no-trusted-signature",
+    });
+  });
 
   it("refuses to revoke the active signer", async () => {
     const location = await temporaryLocation();
