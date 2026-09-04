@@ -191,6 +191,11 @@ Every non-trivial slice follows the same sequence:
   `actions/setup-dotnet` `v5.3.0` by full commit, rejects unlocked dependency or artifact-shape
   drift, and uploads nothing. The current macOS host has no PowerShell or Windows SCM, so the hosted
   job, real Job Object/SCM lifecycle, installer, ACL, and support evidence are still pending.
+- G4 installer research selects Windows Installer 5.0 standard transactions so file, service,
+  repair, upgrade, and rollback state remain operating-system managed. It prohibits custom actions,
+  downloads, credential properties, mutable install paths, and auto-start before enrollment. WiX
+  `v7.0.0` is the first viable technical authoring candidate, but its OSMF EULA/fee decision requires
+  separate Owner authorization; no tool or MSI has been added.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

@@ -84,3 +84,7 @@ The implemented-local [Windows Worker Host build lane](windows-worker-host-build
 first-party setup action, exact .NET 10 SDK, locked NuGet restore, explicit Windows x64 runner, and
 non-uploading artifact-shape gate around the experimental host source. Hosted and native Windows
 execution remain required before any support claim.
+The accepted-platform [Windows Worker Host installer](windows-worker-host-installer.md) review then
+selects Windows Installer 5.0 standard transactions and prohibits credentials, downloads, custom
+actions, mutable paths, or pre-enrollment auto-start. WiX v7 is technically viable but remains
+unused until the Owner explicitly decides its OSMF EULA and any fee obligation.

@@ -66,3 +66,6 @@ x64 证据仍是必须通过的失败关闭门槛。
 本地已实现的 [Windows Worker Host 构建门槛](windows-worker-host-build-lane.md)会围绕实验性主机
 源码固定第一方 setup action、精确 .NET 10 SDK、锁定的 NuGet 恢复、明确的 Windows x64 runner，
 以及不上传产物的输出形态检查。任何支持声明前，仍必须完成托管与原生 Windows 执行。
+已接受平台契约的 [Windows Worker Host 安装器](windows-worker-host-installer.md)调研随后选择
+Windows Installer 5.0 标准事务，并禁止凭证、下载、自定义动作、可变路径或登记前自动启动。WiX v7
+在技术上可行，但 Owner 明确决定其 OSMF EULA 和可能的费用义务前不会使用。

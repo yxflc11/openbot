@@ -75,10 +75,12 @@
 ## Source incorporation
 
 - Source copied or substantially adapted: no.
-- Files and upstream locations: none. This record selects a future package reference and platform
-  contract; no Windows service source or binary is added in this slice.
-- Required copyright or license notice location: Record both MIT packages and all transitive
-  shipped licenses in `THIRD_PARTY_NOTICES.md` and the release SBOM when implementation begins.
+- Files and upstream locations: the OpenBot-owned host and pure contract harness live under
+  `apps/worker-host-windows`; no upstream source or tests were copied. The reviewed packages are
+  consumed through exact references and checked-in NuGet locks.
+- Required copyright or license notice location: Both direct MIT packages and the shipped runtime
+  family are recorded in `THIRD_PARTY_NOTICES.md`; a future release must also carry the complete
+  lock-derived SBOM.
 
 ## Verification plan
 
