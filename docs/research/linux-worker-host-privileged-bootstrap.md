@@ -88,6 +88,20 @@
 - Support level that the evidence permits: accepted local bootstrap-boundary design only. It does
   not establish a distributable trusted bootstrap, privileged installer, or Linux support claim.
 
+## Implementation verification
+
+- The first shared-lease slice uses a process-private `WeakMap` identity and one `0700` directory
+  below the private installer state root. It checks the state-root and lock inode/mode before use and
+  release, refuses concurrent or unexplained existing locks, and never performs age-based takeover.
+- Standalone install and recovery operations still acquire and release their own lease. An outer
+  bootstrap can instead pass the opaque lease through activation; nested completion revalidates but
+  cannot release the outer lock.
+- Four lease tests cover nested ownership, standalone acquisition, forged/released/cross-root/
+  concurrent rejection, and replacement detection without deleting the replacement. A fourteenth
+  transaction test proves activation joins the outer lease and leaves it held.
+- These are temporary-filesystem concurrency and composition tests. Root ownership, private archive
+  import, full bootstrap composition, process-kill recovery, and native systemd remain pending.
+
 ## Unresolved questions
 
 - The trusted bootstrap still cannot be distributed inside the archive it verifies. Its signed

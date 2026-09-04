@@ -149,9 +149,10 @@ Every non-trivial slice follows the same sequence:
   immutable versions, atomically switches `current`, restores the prior active version on failure,
   and retains a recovery journal if rollback also fails. Its explicit recovery operation validates
   canonical private state and both release directories, restores only the recorded previous target,
-  rechecks only a previously active service, and preserves failed-retry evidence. Its thirteen tests
-  pass on real temporary filesystem state. A bounded verifier adapter now requires the exact
-  `gh 2.93.0` binary contract,
+  rechecks only a previously active service, and preserves failed-retry evidence. Its fourteen tests
+  pass on real temporary filesystem state. One opaque fail-closed directory lease can now span a
+  future bootstrap and activation without automatic stale takeover. A bounded verifier adapter now
+  requires the exact `gh 2.93.0` binary contract,
   certificate identity, tag, source commit, GitHub issuer, hosted runner, one matching statement,
   and stable archive digest; seven fail-closed tests pass. A safe-extraction adapter adds strict
   inventory, stream, private-root, tree, and final digest gates; six tests and a corrected real

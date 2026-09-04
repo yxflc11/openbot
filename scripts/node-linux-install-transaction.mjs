@@ -8,13 +8,13 @@ import {
   readlink,
   rename,
   rm,
-  rmdir,
   stat,
   symlink,
   unlink,
 } from "node:fs/promises";
 import path from "node:path";
 import writeFileAtomic from "write-file-atomic";
+import { enterLinuxInstallLease } from "./node-linux-install-lease.mjs";
 import {
   linuxInstalledReleaseName,
   verifyCandidateDirectory,
@@ -96,8 +96,7 @@ export async function installStagedLinuxRelease(options) {
   if (path.dirname(candidate) !== stagingRoot) {
     throw new Error("Linux release candidate must be an immediate child of the staging root.");
   }
-  const lock = path.join(stateRoot, "transaction.lock");
-  await acquireLock(lock);
+  const leaveInstallLease = await enterLinuxInstallLease(stateRoot, options.installLease);
   const journalPath = path.join(stateRoot, "transaction.json");
   const receiptPath = path.join(stateRoot, "last-success.json");
   let journal;
@@ -211,7 +210,7 @@ export async function installStagedLinuxRelease(options) {
     }
     throw new Error("Linux Worker Host activation failed; the previous release was restored.");
   } finally {
-    await rmdir(lock);
+    await leaveInstallLease();
   }
 }
 
@@ -235,8 +234,7 @@ export async function recoverLinuxInstallTransaction(options) {
   await assertExistingDirectory(versionsRoot, false);
   await assertExistingDirectory(stateRoot, true);
 
-  const lock = path.join(stateRoot, "transaction.lock");
-  await acquireLock(lock);
+  const leaveInstallLease = await enterLinuxInstallLease(stateRoot, options.installLease);
   const journalPath = path.join(stateRoot, "transaction.json");
   const receiptPath = path.join(stateRoot, "last-success.json");
   let journal;
@@ -305,7 +303,7 @@ export async function recoverLinuxInstallTransaction(options) {
     await writeState(journalPath, { ...journal, phase: "recovery-failed" });
     throw new Error("Linux Worker Host recovery failed; manual recovery is required.");
   } finally {
-    await rmdir(lock);
+    await leaveInstallLease();
   }
 }
 
@@ -505,17 +503,6 @@ async function validateRecoveryReleaseSet(installRoot, journal) {
   }
   if (journal.previousTarget !== null) {
     await verifyInstalledLinuxReleaseDirectory(path.join(installRoot, journal.previousTarget));
-  }
-}
-
-async function acquireLock(lock) {
-  try {
-    await mkdir(lock, { mode: 0o700 });
-  } catch (error) {
-    if (error?.code === "EEXIST") {
-      throw new Error("Another Linux install transaction or stale lock exists.");
-    }
-    throw error;
   }
 }
 

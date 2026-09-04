@@ -198,6 +198,10 @@ file, revalidates both referenced release directories, and accepts only the reco
 selection. It restores only the recorded previous target and rechecks the old service only when it
 was active before the upgrade. It never starts a previously inactive service. Unexpected state is
 left untouched; a failed retry retains both releases and marks the journal for manual handling.
+Standalone install and recovery operations now use the same fail-closed directory lease. A future
+bootstrap can hold its opaque lease across import, verification, extraction, and activation;
+activation revalidates but cannot release that outer lease. Existing locks are never reclaimed by
+age because a paused privileged writer must not overlap a second one.
 
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
 unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted

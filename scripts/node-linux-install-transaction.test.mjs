@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { withLinuxInstallLease } from "./node-linux-install-lease.mjs";
 import {
   installStagedLinuxRelease,
   LINUX_INSTALL_PROVENANCE_POLICY,
@@ -120,6 +121,30 @@ test("active upgrade restarts only after the atomic version switch", async () =>
     JSON.parse(await readFile(path.join(fixture.stateRoot, "last-success.json"))).outcome,
     "activated",
   );
+});
+
+test("installation joins an outer bootstrap lease without releasing it", async () => {
+  const fixture = await createFixture();
+  await mkdir(fixture.stateRoot, { recursive: true, mode: 0o700 });
+  const candidate = await createCandidate(fixture.installRoot, "1.0.0", "3".repeat(40));
+  const lockPath = path.join(fixture.stateRoot, "transaction.lock");
+
+  await withLinuxInstallLease({ stateRoot: fixture.stateRoot }, async (installLease) => {
+    await installStagedLinuxRelease({
+      architecture: "x64",
+      candidate,
+      installLease,
+      installRoot: fixture.installRoot,
+      now: () => fixedTime,
+      service: scriptedService({ activeResults: [false] }),
+      stateRoot: fixture.stateRoot,
+      transactionId: transactionIds[1],
+      verifiedProvenance: provenanceFor(manifestFor("1.0.0", "3".repeat(40))),
+    });
+    assert.equal((await lstat(lockPath)).isDirectory(), true);
+  });
+
+  assert.equal(await pathType(lockPath), "missing");
 });
 
 test("failed upgrade restores and rechecks the previous active release", async () => {
