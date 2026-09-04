@@ -24,6 +24,10 @@ test("accepts the locked build-only Windows Worker Host lane", () => {
 
 test("rejects moving SDK action pins, runners, caches, and uploads", () => {
   for (const changed of [
+    fixture.workflow.replaceAll(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "actions/checkout@v7",
+    ),
     fixture.workflow.replace(
       "actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2",
       "actions/setup-dotnet@v5",
