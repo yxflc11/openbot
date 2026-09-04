@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    # Debian avoids the documented PostgreSQL 17 / Alpine 3.23 ARM64 crash on Apple Silicon.
+    image: postgres:17.11-bookworm
     restart: unless-stopped
     environment:
       POSTGRES_DB: openbot

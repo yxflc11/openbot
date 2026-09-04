@@ -1,25 +1,44 @@
 import { randomUUID } from "node:crypto";
-import { hostname, platform } from "node:os";
+import { hostname } from "node:os";
+import { join } from "node:path";
 import type { NodeEnv } from "@openbot/config";
-import type { ApprovalOutcome, ComputerProvider, PreparedAction } from "@openbot/provider-sdk";
 import {
   approvalRequestSchema,
+  firstCapabilityRequirementMismatch,
   type NodeCapability,
+  type NodeCapabilityDescriptor,
   type NodeMessage,
+  nodeEnrollmentResultSchema,
   protocolVersion,
-  runFrameSchema,
   type RunOffer,
+  runFrameSchema,
   serverMessageSchema,
 } from "@openbot/protocol";
+import {
+  type ApprovalOutcome,
+  assertProviderDeclarations,
+  type ComputerProvider,
+  type PreparedAction,
+} from "@openbot/provider-sdk";
 import WebSocket from "ws";
-import { availableCapabilities, configuredProviders, providerForProfile } from "./providers.js";
+import { FileNodeCredentialStore, type NodeCredentialStore } from "./credential-store.js";
+import { detectWorkerHost } from "./host.js";
+import {
+  availableCapabilities,
+  availableCapabilityManifest,
+  configuredProviders,
+  providerForProfile,
+} from "./providers.js";
 
 const heartbeatIntervalMs = 10_000;
 const reconnectDelayMs = 2_000;
+const maxServerMessageBytes = 1024 * 1024;
 
 export class OpenBotNodeClient {
   readonly #env: NodeEnv;
   readonly #providers: ComputerProvider[];
+  readonly #credentialStore: NodeCredentialStore;
+  #credential?: string;
   #socket?: WebSocket;
   #heartbeat?: NodeJS.Timeout;
   #reconnect?: NodeJS.Timeout;
@@ -37,14 +56,30 @@ export class OpenBotNodeClient {
   >();
   #stopped = false;
 
-  constructor(env: NodeEnv, providers = configuredProviders(env)) {
+  constructor(
+    env: NodeEnv,
+    providers = configuredProviders(env),
+    credentialStore: NodeCredentialStore = new FileNodeCredentialStore(
+      env.OPENBOT_NODE_CREDENTIAL_PATH ?? join(env.OPENBOT_NODE_WORK_DIRECTORY, "identity.json"),
+    ),
+  ) {
     this.#env = env;
+    assertProviderDeclarations(providers);
     this.#providers = providers;
+    this.#credentialStore = credentialStore;
   }
 
   start(): void {
     this.#stopped = false;
-    this.#connect();
+    void this.#prepareIdentity()
+      .then((credential) => {
+        if (this.#stopped) return;
+        this.#credential = credential;
+        this.#connect();
+      })
+      .catch((error: unknown) => {
+        console.error(error instanceof Error ? error.message : "Node identity setup failed.");
+      });
   }
 
   stop(): void {
@@ -58,37 +93,33 @@ export class OpenBotNodeClient {
   }
 
   #connect(): void {
-    const socket = new WebSocket(this.#env.OPENBOT_NODE_SERVER_URL);
+    const credential = this.#credential;
+    if (credential === undefined) throw new Error("Node credential is unavailable.");
+    const socket = new WebSocket(this.#env.OPENBOT_NODE_SERVER_URL, {
+      // Server commands are small structured messages. Reject an unexpectedly large control frame.
+      maxPayload: maxServerMessageBytes,
+      // ws enables client compression by default; control messages do not justify its memory cost.
+      perMessageDeflate: false,
+    });
     this.#socket = socket;
+    let authenticated = false;
+    let authenticationRejected = false;
 
     socket.on("open", () => {
-      const currentPlatform = platform() === "darwin" ? "macos" : "linux";
+      const host = detectWorkerHost();
       const hello: NodeMessage = {
         type: "node.hello",
         protocolVersion,
         nodeId: this.#env.OPENBOT_NODE_ID,
         name: hostname(),
-        platform: currentPlatform,
+        ...host,
         capabilities: availableCapabilities(this.#providers),
+        capabilityManifest: availableCapabilityManifest(this.#providers),
         maxConcurrentRuns: this.#env.OPENBOT_NODE_MAX_CONCURRENT_RUNS,
-        token: this.#env.OPENBOT_NODE_TOKEN,
+        credential,
         sentAt: new Date().toISOString(),
       };
       socket.send(JSON.stringify(hello));
-
-      this.#heartbeat = setInterval(() => {
-        if (socket.readyState !== WebSocket.OPEN) {
-          return;
-        }
-        const heartbeat: NodeMessage = {
-          type: "node.heartbeat",
-          protocolVersion,
-          nodeId: this.#env.OPENBOT_NODE_ID,
-          activeRunIds: Array.from(this.#assignedRunIds),
-          sentAt: new Date().toISOString(),
-        };
-        socket.send(JSON.stringify(heartbeat));
-      }, heartbeatIntervalMs);
     });
 
     socket.on("message", (raw) => {
@@ -100,15 +131,35 @@ export class OpenBotNodeClient {
 
       const message = parsed.data;
       if (message.type === "server.ack") {
-        if (!message.accepted) console.error(message.reason ?? "Server rejected the node message.");
+        if (!message.accepted) {
+          if (!authenticated) authenticationRejected = true;
+          console.error(message.reason ?? "Server rejected the node message.");
+          return;
+        }
+        if (!authenticated) {
+          authenticated = true;
+          this.#heartbeat = setInterval(() => {
+            if (socket.readyState !== WebSocket.OPEN) return;
+            const heartbeat: NodeMessage = {
+              type: "node.heartbeat",
+              protocolVersion,
+              nodeId: this.#env.OPENBOT_NODE_ID,
+              activeRunIds: Array.from(this.#assignedRunIds),
+              sentAt: new Date().toISOString(),
+            };
+            socket.send(JSON.stringify(heartbeat));
+          }, heartbeatIntervalMs);
+        }
         return;
       }
 
       if (message.type === "run.offer") {
         const capabilities = availableCapabilities(this.#providers);
+        const capabilityManifest = availableCapabilityManifest(this.#providers);
         const rejection = runOfferRejectionReason(
           message,
           capabilities,
+          capabilityManifest,
           this.#assignedRunIds.size,
           this.#env.OPENBOT_NODE_MAX_CONCURRENT_RUNS,
         );
@@ -175,7 +226,7 @@ export class OpenBotNodeClient {
       this.#abortExecutions();
       this.#assignedRunIds.clear();
       this.#acceptedOffers.clear();
-      if (!this.#stopped) {
+      if (!this.#stopped && !authenticationRejected) {
         this.#reconnect = setTimeout(() => this.#connect(), reconnectDelayMs);
       }
     });
@@ -183,6 +234,35 @@ export class OpenBotNodeClient {
     socket.on("error", (error) => {
       console.warn(`Node connection failed: ${error.message || error.name || "connection error"}`);
     });
+  }
+
+  async #prepareIdentity(): Promise<string> {
+    if (this.#env.OPENBOT_NODE_CREDENTIAL !== undefined) {
+      return this.#env.OPENBOT_NODE_CREDENTIAL;
+    }
+    const stored = await this.#credentialStore.load(this.#env.OPENBOT_NODE_ID);
+    if (stored !== undefined) return stored.credential;
+
+    const token = this.#env.OPENBOT_NODE_ENROLLMENT_TOKEN;
+    if (token === undefined) {
+      throw new Error(
+        "Node is not enrolled. Set OPENBOT_NODE_ENROLLMENT_TOKEN once or provide a credential.",
+      );
+    }
+    const response = await fetch(nodeEnrollmentUrl(this.#env.OPENBOT_NODE_SERVER_URL), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: this.#env.OPENBOT_NODE_ID, token }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const body = await readBoundedResponse(response, 8 * 1024);
+    if (!response.ok) throw new Error("Server rejected the one-time Node enrollment token.");
+    const parsed = nodeEnrollmentResultSchema.safeParse(JSON.parse(body));
+    if (!parsed.success || parsed.data.nodeId !== this.#env.OPENBOT_NODE_ID) {
+      throw new Error("Server returned an invalid Node identity.");
+    }
+    await this.#credentialStore.save(parsed.data);
+    return parsed.data.credential;
   }
 
   async #executeRun(runId: string): Promise<void> {
@@ -362,13 +442,55 @@ export class OpenBotNodeClient {
 export function runOfferRejectionReason(
   offer: RunOffer,
   available: NodeCapability[],
+  availableManifest: NodeCapabilityDescriptor[],
   activeRuns: number,
   maxConcurrentRuns: number,
 ): string | undefined {
   if (activeRuns >= maxConcurrentRuns) return "Node is at capacity.";
   const capabilities = new Set(available);
   const missing = offer.requiredCapabilities.filter((capability) => !capabilities.has(capability));
-  return missing.length === 0 ? undefined : `Missing capabilities: ${missing.join(", ")}.`;
+  if (missing.length > 0) return `Missing legacy capabilities: ${missing.join(", ")}.`;
+  const mismatch = firstCapabilityRequirementMismatch(
+    offer.requiredCapabilityManifest,
+    availableManifest,
+  );
+  if (mismatch === undefined) return undefined;
+  if (mismatch.reason === "capability-missing") {
+    return `Missing capability: ${mismatch.capability}@${mismatch.expectedVersion}.`;
+  }
+  return `Unsupported capability version: ${mismatch.capability}@${mismatch.expectedVersion}; advertised ${mismatch.advertisedVersions.join(", ")}.`;
+}
+
+export function nodeEnrollmentUrl(serverUrl: string): string {
+  const url = new URL(serverUrl);
+  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+  url.pathname = "/api/v1/nodes/enroll";
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+async function readBoundedResponse(response: Response, maximumBytes: number): Promise<string> {
+  const declaredSize = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredSize) && declaredSize > maximumBytes) {
+    throw new Error("Node enrollment response is too large.");
+  }
+  if (response.body === null) return "";
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const item = await reader.read();
+    if (item.done) break;
+    total += item.value.byteLength;
+    if (total > maximumBytes) {
+      await reader.cancel();
+      throw new Error("Node enrollment response is too large.");
+    }
+    chunks.push(item.value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function parseJson(value: string): unknown {

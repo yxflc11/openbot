@@ -1,35 +1,57 @@
+import { createHash, generateKeyPairSync } from "node:crypto";
 import type {
   Approval,
   Bot,
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeSkillInput,
   CreateMessageInput,
+  EmployeeEvolutionEvent,
+  EmployeeExportPreview,
+  EmployeeImportActivationResult,
+  EmployeeMemory,
+  EmployeeMemoryEvent,
+  EmployeeProfile,
+  EmployeeSkill,
   ExecutionNode,
   Message,
   Run,
+  RunProgress,
+  WorkspaceRealtimeEvent,
 } from "@openbot/domain";
-import { protocolVersion } from "@openbot/protocol";
+import {
+  dsseEnvelopeSchema,
+  employeeTemplatePackageSchema,
+  protocolVersion,
+} from "@openbot/protocol";
 import { describe, expect, it, vi } from "vitest";
+import { createApp, ownerSessionCookie, secureOwnerSessionCookie } from "./app.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
+  type ArtifactRecord,
+  type ControlPlaneStore,
   StoreConflictError,
   StoreNotFoundError,
   StoreValidationError,
-  type ArtifactRecord,
-  type ControlPlaneStore,
 } from "./control-plane-store.js";
-import { createApp, ownerSessionCookie } from "./app.js";
+import {
+  buildEmployeeTemplate,
+  signEmployeeTemplateEnvelope,
+  verifyEmployeeTemplateChecksum,
+  verifyEmployeeTemplateEnvelope,
+} from "./employee-package.js";
+import { NodeIdentityService, type NodeIdentityStore } from "./node-identity.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { RunFrameStore } from "./run-frame-store.js";
-import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 import type {
   CreateOwnerSessionInput,
   OwnerSessionStore,
   StoredOwnerSession,
 } from "./session-store.js";
 import { selectChannelAssignee } from "./task-routing.js";
+import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 const testOrigin = "http://localhost:5173";
 
@@ -40,6 +62,10 @@ describe("server app", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, phase: "m1" });
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+    expect(response.headers.get("strict-transport-security")).toBeNull();
   });
 
   it("reports an anonymous session and protects control-plane data", async () => {
@@ -87,6 +113,121 @@ describe("server app", () => {
     expect(await revoked.json()).toEqual({ authenticated: false });
   });
 
+  it("uses an HTTPS-bound host cookie and HSTS for remote deployments", async () => {
+    const app = createTestApp({ secureCookies: true, store: createTestStore() });
+    const response = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+
+    expect(response.status).toBe(200);
+    const cookie = response.headers.get("set-cookie");
+    expect(cookie).toContain(`${secureOwnerSessionCookie}=`);
+    expect(cookie).toContain("Secure");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Strict");
+    expect(response.headers.get("strict-transport-security")).toContain("max-age=");
+
+    const active = await app.request("/api/v1/auth/session", {
+      headers: { Cookie: cookie?.split(";", 1)[0] ?? "" },
+    });
+    expect(await active.json()).toMatchObject({ authenticated: true });
+  });
+
+  it("issues, exchanges, and revokes a per-Node credential", async () => {
+    const nodeIdentity = new NodeIdentityService(createMemoryNodeIdentityStore());
+    const disconnectNode = vi.fn(() => true);
+    const app = createTestApp({
+      disconnectNode,
+      nodeIdentity,
+      store: createTestStore(),
+    });
+
+    const anonymousIssue = await app.request("/api/v1/nodes/enrollment-tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({ nodeId: "linux-node" }),
+    });
+    expect(anonymousIssue.status).toBe(401);
+    const anonymousList = await app.request("/api/v1/node-identities");
+    expect(anonymousList.status).toBe(401);
+
+    const cookie = await login(app);
+    const issued = await app.request("/api/v1/nodes/enrollment-tokens", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ nodeId: "linux-node", expiresInSeconds: 600 }),
+    });
+    expect(issued.status).toBe(201);
+    const enrollment = (await issued.json()) as { token: string };
+    expect(enrollment.token).toMatch(/^obenr_/);
+
+    const exchange = await app.request("/api/v1/nodes/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: "linux-node", token: enrollment.token }),
+    });
+    expect(exchange.status).toBe(201);
+    expect(await exchange.json()).toMatchObject({
+      format: "openbot.node-identity/v1",
+      nodeId: "linux-node",
+      credential: expect.stringMatching(/^obn_/),
+    });
+    expect(disconnectNode).toHaveBeenCalledWith("linux-node");
+    disconnectNode.mockClear();
+
+    const identities = await app.request("/api/v1/node-identities", {
+      headers: { Cookie: cookie },
+    });
+    expect(identities.status).toBe(200);
+    const identityBody = await identities.json();
+    expect(identityBody).toEqual({
+      identities: [
+        expect.objectContaining({
+          nodeId: "linux-node",
+          status: "active",
+          connected: false,
+        }),
+      ],
+    });
+    expect(JSON.stringify(identityBody)).not.toMatch(/credential|digest|token/i);
+
+    const replay = await app.request("/api/v1/nodes/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: "linux-node", token: enrollment.token }),
+    });
+    expect(replay.status).toBe(401);
+
+    const oversized = await app.request("/api/v1/nodes/enroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nodeId: "linux-node", token: `obenr_${"x".repeat(9_000)}` }),
+    });
+    expect(oversized.status).toBe(413);
+
+    const revoked = await app.request("/api/v1/nodes/linux-node/revoke", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+    });
+    expect(revoked.status).toBe(204);
+    expect(disconnectNode).toHaveBeenCalledWith("linux-node");
+
+    const revokedIdentities = await app.request("/api/v1/node-identities", {
+      headers: { Cookie: cookie },
+    });
+    expect(await revokedIdentities.json()).toEqual({
+      identities: [
+        expect.objectContaining({
+          nodeId: "linux-node",
+          status: "revoked",
+          connected: false,
+        }),
+      ],
+    });
+  });
+
   it("rejects mutations without a trusted Origin", async () => {
     const app = createTestApp({ store: createTestStore() });
     const response = await app.request("/api/v1/auth/login", {
@@ -106,7 +247,13 @@ describe("server app", () => {
           id: "node-1",
           name: "Linux worker",
           platform: "linux",
+          osVersion: "6.8.0",
+          architecture: "x64",
+          deviceClass: "server",
+          isolation: "unknown",
+          trustTier: "development",
           capabilities: ["browser"],
+          capabilityManifest: [],
           activeRunIds: [],
           maxConcurrentRuns: 1,
           connectedAt: "2026-01-01T00:00:00.000Z",
@@ -129,7 +276,13 @@ describe("server app", () => {
       id: "node-1",
       name: "Linux worker",
       platform: "linux",
+      osVersion: "6.8.0",
+      architecture: "x64",
+      deviceClass: "server",
+      isolation: "unknown",
+      trustTier: "development",
       capabilities: ["browser"],
+      capabilityManifest: [],
       activeRunIds: [],
       maxConcurrentRuns: 1,
       connectedAt: "2026-09-04T00:00:00.000Z",
@@ -182,18 +335,30 @@ describe("server app", () => {
     expect(updated).toContain(`id: ${run.id}`);
     expect(updated).toContain('"status":"completed"');
 
+    workspaceRealtime.publish({
+      type: "employee.profile.changed",
+      botId: run.botId,
+      sections: ["memory"],
+      occurredAt: "2026-09-04T00:03:00.000Z",
+    });
+    const employeeChanged = new TextDecoder().decode((await reader?.read())?.value);
+    expect(employeeChanged).toContain("event: employee.profile.changed");
+    expect(employeeChanged).toContain(`id: ${run.botId}`);
+    expect(employeeChanged).not.toContain("content");
+
     await reader?.cancel();
     controller.abort();
   });
 
   it("serves an authenticated artifact as non-cacheable inline content", async () => {
     const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+    let storedBytes = bytes;
     const artifact: ArtifactRecord = {
       id: "00000000-0000-4000-8000-000000000010",
       runId: "00000000-0000-4000-8000-000000000011",
       name: "result.png",
       mediaType: "image/png",
-      sha256: "0".repeat(64),
+      sha256: createHash("sha256").update(bytes).digest("hex"),
       sizeBytes: bytes.byteLength,
       createdAt: "2026-09-03T00:00:00.000Z",
       storageKey:
@@ -206,7 +371,7 @@ describe("server app", () => {
       artifactStorage: {
         read: async (storageKey) => {
           expect(storageKey).toBe(artifact.storageKey);
-          return bytes;
+          return storedBytes;
         },
       },
       store,
@@ -225,6 +390,18 @@ describe("server app", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes);
+
+    storedBytes = Buffer.concat([bytes, Buffer.from([0x00])]);
+    const wrongSize = await app.request(`/api/v1/artifacts/${artifact.id}/content`, {
+      headers: { Cookie: cookie },
+    });
+    expect(wrongSize.status).toBe(500);
+
+    storedBytes = Buffer.from([0x89, 0x50, 0x4e, 0x46]);
+    const corrupted = await app.request(`/api/v1/artifacts/${artifact.id}/content`, {
+      headers: { Cookie: cookie },
+    });
+    expect(corrupted.status).toBe(500);
   });
 
   it("serves the latest authenticated live frame without persistence", async () => {
@@ -256,7 +433,10 @@ describe("server app", () => {
   });
 
   it("creates a Bot through the validated API", async () => {
-    const app = createTestApp({ store: createTestStore() });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store: createTestStore(), workspaceRealtime });
     const cookie = await login(app);
     const response = await app.request("/api/v1/bots", {
       method: "POST",
@@ -284,6 +464,599 @@ describe("server app", () => {
         appearance: { head: "cat", body: "cape", mobility: "hover" },
       },
     });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        sections: ["identity", "evolution", "configuration"],
+      }),
+    ]);
+  });
+
+  it("returns an authenticated, evidence-oriented employee profile", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Ops",
+      role: "Browser and operations",
+      computerProfile: "docker-linux",
+    });
+    const channel = await store.createChannel({
+      name: "Operations",
+      description: "Daily work",
+      botIds: [bot.id],
+    });
+    const submitted = await store.submitTask(channel.id, { content: "Open the test page" });
+    await store.assignRun(submitted.run.id, "node-1");
+    await store.startRun(submitted.run.id, "node-1");
+    await store.appendRunProgress(
+      submitted.run.id,
+      "node-1",
+      "observing",
+      "Reading the page before acting.",
+    );
+
+    const app = createTestApp({ store });
+    expect((await app.request(`/api/v1/bots/${bot.id}/profile`)).status).toBe(401);
+
+    const cookie = await login(app);
+    const response = await app.request(`/api/v1/bots/${bot.id}/profile`, {
+      headers: { Cookie: cookie },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      profile: {
+        employee: { id: bot.id, name: "Ops" },
+        evolution: [{ type: "created", source: "manual" }],
+        skills: [],
+        memories: [],
+        records: {
+          runs: [{ id: submitted.run.id, status: "running" }],
+          decisions: [
+            {
+              stage: "observing",
+              summary: "Reading the page before acting.",
+            },
+          ],
+        },
+        statistics: { totalRuns: 1, verifiedSkills: 0 },
+        configuration: { portabilityFormat: "openbot.employee/v1" },
+      },
+    });
+
+    const missing = await app.request("/api/v1/bots/missing/profile", {
+      headers: { Cookie: cookie },
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("manages bounded Employee memory with revision conflicts and content-free audit", async () => {
+    const store = createTestStore();
+    const employee = await store.createBot({
+      name: "Memory Worker",
+      role: "Retain reviewed operating preferences",
+      computerProfile: "none",
+    });
+    const otherEmployee = await store.createBot({
+      name: "Other Worker",
+      role: "Prove memory ownership isolation",
+      computerProfile: "none",
+    });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, workspaceRealtime });
+
+    const unauthenticated = await app.request(`/api/v1/bots/${employee.id}/memories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({}),
+    });
+    expect(unauthenticated.status).toBe(401);
+
+    const cookie = await login(app);
+    const created = await app.request(`/api/v1/bots/${employee.id}/memories`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        kind: "semantic",
+        title: "Report preference",
+        content: "Lead with a concise summary.",
+        sensitivity: "internal",
+        portability: "owner-selectable",
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = (await created.json()) as {
+      memory: EmployeeMemory;
+      event: EmployeeMemoryEvent;
+    };
+    expect(createdBody).toMatchObject({
+      memory: { botId: employee.id, revision: 1, title: "Report preference" },
+      event: { action: "created", revision: 1, actor: "owner" },
+    });
+    expect(JSON.stringify(createdBody.event)).not.toContain("Lead with a concise summary.");
+
+    const crossEmployee = await app.request(
+      `/api/v1/bots/${otherEmployee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "PATCH",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 1, content: "Cross-employee overwrite" }),
+      },
+    );
+    expect(crossEmployee.status).toBe(404);
+
+    const updated = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "PATCH",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 1, content: "Lead with the outcome." }),
+      },
+    );
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      memory: { revision: 2, content: "Lead with the outcome." },
+      event: { action: "updated", revision: 2, changedFields: ["content"] },
+    });
+
+    const staleUpdate = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "PATCH",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 1, content: "Overwrite stale state" }),
+      },
+    );
+    expect(staleUpdate.status).toBe(409);
+
+    const unreviewedDelete = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "DELETE",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 2, ownerReviewed: false }),
+      },
+    );
+    expect(unreviewedDelete.status).toBe(422);
+
+    const deleted = await app.request(
+      `/api/v1/bots/${employee.id}/memories/${createdBody.memory.id}`,
+      {
+        method: "DELETE",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({ expectedRevision: 2, ownerReviewed: true }),
+      },
+    );
+    expect(deleted.status).toBe(200);
+    const deletedBody = (await deleted.json()) as { event: EmployeeMemoryEvent };
+    expect(deletedBody.event).toMatchObject({ action: "deleted", revision: 3 });
+    expect(JSON.stringify(deletedBody.event)).not.toContain("Lead with the outcome.");
+    expect(JSON.stringify(deletedBody.event)).not.toContain("Report preference");
+
+    const profile = await store.getEmployeeProfile(employee.id);
+    expect(profile.memories).toEqual([]);
+    expect(profile.memoryEvents.map((event) => event.action)).toEqual([
+      "deleted",
+      "updated",
+      "created",
+    ]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["memory"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["memory"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["memory"],
+      }),
+    ]);
+  });
+
+  it("updates descriptive Employee profile fields with revision conflicts", async () => {
+    const store = createTestStore();
+    const employee = await store.createBot({
+      name: "Profile Worker",
+      role: "General operations",
+      computerProfile: "docker-linux",
+    });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, workspaceRealtime });
+
+    const unauthenticated = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 1,
+      }),
+    });
+    expect(unauthenticated.status).toBe(401);
+
+    const cookie = await login(app);
+    const updated = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 1,
+      }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      employee: { id: employee.id, role: "Evidence reviewer" },
+      details: {
+        description: "Review evidence without changing host authority.",
+        revision: 2,
+      },
+      evolution: {
+        type: "role_changed",
+        summary: "Owner updated: role, description.",
+        evidence: [],
+      },
+    });
+
+    const stale = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Stale writer",
+        description: "Should not win.",
+        expectedRevision: 1,
+      }),
+    });
+    expect(stale.status).toBe(409);
+
+    const unchanged = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 2,
+      }),
+    });
+    expect(unchanged.status).toBe(422);
+
+    const authoritySmuggling = await app.request(`/api/v1/bots/${employee.id}/profile`, {
+      method: "PATCH",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        role: "Evidence reviewer",
+        description: "Review evidence without changing host authority.",
+        expectedRevision: 2,
+        computerProfile: "macos-cua",
+      }),
+    });
+    expect(authoritySmuggling.status).toBe(422);
+
+    const profile = await store.getEmployeeProfile(employee.id);
+    expect(profile.employee.role).toBe("Evidence reviewer");
+    expect(profile.details).toMatchObject({ revision: 2 });
+    expect(profile.evolution.at(-1)).toMatchObject({
+      summary: "Owner updated: role, description.",
+    });
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: employee.id,
+        sections: ["identity", "configuration", "evolution"],
+      }),
+    ]);
+    expect(events[0]).not.toHaveProperty("description");
+  });
+
+  it("keeps learned skills pending until the Owner reviews an auditable transition", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Researcher",
+      role: "Evidence-backed research",
+      computerProfile: "docker-linux",
+    });
+    const node: ExecutionNode = {
+      id: "linux-worker",
+      name: "Linux worker",
+      platform: "linux",
+      osVersion: "6.8",
+      architecture: "x64",
+      deviceClass: "server",
+      isolation: "container",
+      trustTier: "dedicated",
+      capabilities: ["browser"],
+      capabilityManifest: [],
+      maxConcurrentRuns: 1,
+      activeRunIds: [],
+      status: "online",
+      connectedAt: "2026-09-04T00:00:00.000Z",
+      lastSeenAt: "2026-09-04T00:00:00.000Z",
+    };
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, listNodes: () => [node], workspaceRealtime });
+
+    const unauthenticated = await app.request(`/api/v1/bots/${bot.id}/skills`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({}),
+    });
+    expect(unauthenticated.status).toBe(401);
+
+    const cookie = await login(app);
+    const created = await app.request(`/api/v1/bots/${bot.id}/skills`, {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        slug: "source-triangulation",
+        name: "Source triangulation",
+        description: "Compare independent primary sources before reporting a conclusion.",
+        version: "1.0.0",
+        source: "learned",
+        requiredCapabilities: ["browser.observe", "browser.observe"],
+        reason: "Repeated research Runs produced a reusable procedure.",
+        evidence: [{ kind: "run", id: "research-run-42", label: "Evaluation fixture" }],
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdPayload = (await created.json()) as {
+      skill: EmployeeSkill;
+      evolution: EmployeeEvolutionEvent;
+    };
+    expect(createdPayload).toMatchObject({
+      skill: {
+        state: "candidate",
+        confidence: 0,
+        requiredCapabilities: ["browser.observe"],
+      },
+      evolution: {
+        type: "skill_discovered",
+        summary: "Repeated research Runs produced a reusable procedure.",
+      },
+    });
+
+    const unreviewed = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "verified",
+          confidence: 88,
+          reason: "The fixture passed, but review was not asserted.",
+        }),
+      },
+    );
+    expect(unreviewed.status).toBe(422);
+
+    const verified = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "verified",
+          confidence: 88,
+          reason: "The Owner reviewed the procedure and its evidence.",
+          ownerReviewed: true,
+          evidence: [{ kind: "manual", id: "owner-review-1" }],
+        }),
+      },
+    );
+    expect(verified.status).toBe(200);
+    expect(await verified.json()).toMatchObject({
+      skill: { state: "verified", confidence: 88 },
+      evolution: { type: "skill_verified" },
+    });
+
+    const profile = await app.request(`/api/v1/bots/${bot.id}/profile`, {
+      headers: { Cookie: cookie },
+    });
+    expect(await profile.json()).toMatchObject({
+      profile: {
+        skills: [{ id: createdPayload.skill.id, state: "verified" }],
+        evolution: [{ type: "created" }, { type: "skill_discovered" }, { type: "skill_verified" }],
+        statistics: { verifiedSkills: 1 },
+      },
+    });
+
+    const nodes = await app.request("/api/v1/nodes", { headers: { Cookie: cookie } });
+    expect(await nodes.json()).toEqual({ nodes: [node] });
+
+    const revoked = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "revoked",
+          reason: "The procedure is no longer safe for current sources.",
+          ownerReviewed: true,
+        }),
+      },
+    );
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toMatchObject({ skill: { state: "revoked" } });
+
+    const restoreRevoked = await app.request(
+      `/api/v1/bots/${bot.id}/skills/${createdPayload.skill.id}/state`,
+      {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify({
+          state: "verified",
+          confidence: 90,
+          reason: "Attempt to restore a terminal skill.",
+          ownerReviewed: true,
+        }),
+      },
+    );
+    expect(restoreRevoked.status).toBe(409);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: bot.id,
+        sections: ["skills", "evolution"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: bot.id,
+        sections: ["skills", "evolution"],
+      }),
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: bot.id,
+        sections: ["skills", "evolution"],
+      }),
+    ]);
+  });
+
+  it("previews and downloads an identity-free employee template", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Ops",
+      role: "Browser and operations",
+      computerProfile: "docker-linux",
+    });
+    const app = createTestApp({ store });
+    expect((await app.request(`/api/v1/bots/${bot.id}/export/preview`)).status).toBe(401);
+
+    const cookie = await login(app);
+    const previewResponse = await app.request(`/api/v1/bots/${bot.id}/export/preview`, {
+      headers: { Cookie: cookie },
+    });
+    expect(previewResponse.status).toBe(200);
+    const previewBody = (await previewResponse.json()) as { preview: EmployeeExportPreview };
+    const previewEtag = `"${previewBody.preview.downloadReviewToken}"`;
+    expect(previewResponse.headers.get("etag")).toBeNull();
+    expect(previewBody).toMatchObject({
+      preview: {
+        blocked: false,
+        employeeName: "Ops",
+        fileName: "ops.openbot-employee.json",
+        hostAuthority: "none",
+        identityOnImport: "new",
+        includedMemoryCount: 0,
+        signatureStatus: "unsigned",
+      },
+    });
+
+    const downloadUrl = employeeExportDownloadUrl(bot.id, previewBody.preview);
+    const missingReview = await app.request(downloadUrl, {
+      headers: { Cookie: cookie },
+    });
+    expect(missingReview.status).toBe(428);
+    expect(await missingReview.json()).toMatchObject({
+      error: expect.stringContaining("requires a reviewed preview"),
+    });
+
+    const legacyUnreviewedDownload = await app.request(`/api/v1/bots/${bot.id}/export`, {
+      headers: { Cookie: cookie },
+    });
+    expect(legacyUnreviewedDownload.status).toBe(428);
+
+    const unknownParameter = await app.request(`${downloadUrl}&unexpected=true`, {
+      headers: { Cookie: cookie, "If-Match": previewEtag },
+    });
+    expect(unknownParameter.status).toBe(422);
+
+    const weakReview = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": `W/${previewEtag}` },
+    });
+    expect(weakReview.status).toBe(422);
+
+    const staleReview = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": `"${"0".repeat(64)}"` },
+    });
+    expect(staleReview.status).toBe(412);
+
+    const downloadResponse = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": previewEtag },
+    });
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("etag")).toBe(previewEtag);
+    expect(downloadResponse.headers.get("content-type")).toContain(
+      "application/vnd.openbot.employee+json",
+    );
+    expect(downloadResponse.headers.get("content-disposition")).toBe(
+      'attachment; filename="ops.openbot-employee.json"',
+    );
+    const downloadedBody = await downloadResponse.text();
+    expect(createHash("sha256").update(downloadedBody).digest("hex")).toBe(
+      previewBody.preview.downloadReviewToken,
+    );
+    const employeePackage = employeeTemplatePackageSchema.parse(JSON.parse(downloadedBody));
+    expect(employeePackage.payload.packageId).toBe(previewBody.preview.packageId);
+    expect(employeePackage.payload.generatedAt).toBe(previewBody.preview.generatedAt);
+    expect(employeePackage.integrity.digest).toBe(previewBody.preview.checksum);
+    expect(employeePackage.payload.employee).not.toHaveProperty("id");
+    expect(employeePackage.payload.portability.authority).toBe("none");
+    expect(verifyEmployeeTemplateChecksum(employeePackage)).toBe(true);
+
+    const importPreviewResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(employeePackage),
+    });
+    expect(importPreviewResponse.status).toBe(200);
+    expect(await importPreviewResponse.json()).toMatchObject({
+      preview: {
+        employee: { name: "Ops" },
+        integrity: { valid: true },
+        signature: { status: "unsigned", trusted: false },
+        quarantine: {
+          active: true,
+          createsNewIdentity: true,
+          hostAuthority: "none",
+          canActivate: false,
+        },
+      },
+    });
+
+    await store.updateEmployeeProfileDetails(bot.id, {
+      role: "Changed after export review",
+      description: "",
+      expectedRevision: 1,
+    });
+    const changedAfterReview = await app.request(downloadUrl, {
+      headers: { Cookie: cookie, "If-Match": previewEtag },
+    });
+    expect(changedAfterReview.status).toBe(412);
+
+    const unknownFieldResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...employeePackage, credentials: { token: "hidden" } }),
+    });
+    expect(unknownFieldResponse.status).toBe(422);
+    expect(await unknownFieldResponse.json()).toMatchObject({
+      error: "Employee package does not match a supported format.",
+    });
+
+    const unverifiedSignedDocumentResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        ...employeePackage,
+        payload: {
+          ...employeePackage.payload,
+          signature: { status: "dsse", algorithm: "ed25519", keyid: "unverified-key" },
+        },
+      }),
+    });
+    expect(unverifiedSignedDocumentResponse.status).toBe(422);
+    expect(await unverifiedSignedDocumentResponse.json()).toMatchObject({
+      error: "Employee package does not match a supported format.",
+    });
   });
 
   it("rejects invalid Bot input before reaching storage", async () => {
@@ -298,6 +1071,321 @@ describe("server app", () => {
     expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({
       error: "Please correct the highlighted fields.",
+    });
+  });
+
+  it("rejects oversized employee packages before parsing", async () => {
+    const app = createTestApp({ store: createTestStore() });
+    const cookie = await login(app);
+    const response = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ padding: "x".repeat(2 * 1024 * 1024) }),
+    });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: "Employee package must not exceed 2 MiB.",
+      fields: {},
+    });
+  });
+
+  it("activates an Owner-reviewed package once with a fresh identity and safe replay", async () => {
+    const store = createTestStore();
+    const source = await store.createBot({
+      name: "Portable Analyst",
+      role: "Read-only analysis",
+      computerProfile: "none",
+    });
+    const workspaceRealtime = new WorkspaceRealtimeHub();
+    const events: WorkspaceRealtimeEvent[] = [];
+    workspaceRealtime.subscribe((event) => events.push(event));
+    const app = createTestApp({ store, workspaceRealtime });
+    const cookie = await login(app);
+    const { response: downloaded } = await reviewAndDownloadEmployee(app, source.id, cookie);
+    const employeePackage = employeeTemplatePackageSchema.parse(await downloaded.json());
+    const previewed = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(employeePackage),
+    });
+    const previewBody = (await previewed.json()) as {
+      preview: {
+        packageId: string;
+        integrity: { digest: string };
+        quarantine: { canActivate: boolean };
+      };
+    };
+    expect(previewBody.preview.quarantine.canActivate).toBe(true);
+
+    const idempotencyKey = "00000000-0000-4000-8000-000000000701";
+    const activationBody = {
+      package: employeePackage,
+      expectedPackageId: previewBody.preview.packageId,
+      expectedDigest: previewBody.preview.integrity.digest,
+      ownerReviewed: true,
+      allowUnsigned: true,
+      idempotencyKey,
+      employeeName: "Portable Analyst Copy",
+    };
+
+    const unsignedNotAccepted = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...activationBody, allowUnsigned: false }),
+    });
+    expect(unsignedNotAccepted.status).toBe(422);
+
+    const changedDigest = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...activationBody, expectedDigest: "0".repeat(64) }),
+    });
+    expect(changedDigest.status).toBe(409);
+
+    const activated = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(activationBody),
+    });
+    expect(activated.status).toBe(201);
+    const activation = (await activated.json()) as EmployeeImportActivationResult;
+    expect(activation).toMatchObject({
+      employee: {
+        name: "Portable Analyst Copy",
+        role: "Read-only analysis",
+        computerProfile: "none",
+      },
+      receipt: {
+        packageId: employeePackage.payload.packageId,
+        packageDigest: previewBody.preview.integrity.digest,
+        signatureStatus: "unsigned",
+        reviewedBy: "owner",
+        importedSkillCount: 0,
+      },
+      replayed: false,
+    });
+    expect(activation.employee.id).not.toBe(source.id);
+
+    const replayed = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(activationBody),
+    });
+    expect(replayed.status).toBe(200);
+    expect(await replayed.json()).toMatchObject({
+      employee: { id: activation.employee.id },
+      receipt: { id: activation.receipt.id },
+      replayed: true,
+    });
+
+    const changedReplay = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({ ...activationBody, employeeName: "Different Copy" }),
+    });
+    expect(changedReplay.status).toBe(409);
+
+    const duplicatePackage = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        ...activationBody,
+        idempotencyKey: "00000000-0000-4000-8000-000000000702",
+      }),
+    });
+    expect(duplicatePackage.status).toBe(409);
+
+    const importedProfile = await store.getEmployeeProfile(activation.employee.id);
+    expect(importedProfile.memories).toEqual([]);
+    expect(importedProfile.skills).toEqual([]);
+    expect(importedProfile.evolution).toEqual([
+      expect.objectContaining({ type: "imported", source: "import" }),
+    ]);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "employee.profile.changed",
+        botId: activation.employee.id,
+        sections: ["identity", "evolution", "skills", "configuration", "portability"],
+      }),
+    ]);
+  });
+
+  it("exports DSSE and accepts only a signature from configured publisher trust", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({
+      name: "Portable Ops",
+      role: "Browser and operations",
+      computerProfile: "docker-linux",
+    });
+    const candidate = await store.createEmployeeSkill(bot.id, {
+      slug: "browse-web",
+      name: "Browse the web",
+      description: "Navigate public pages and collect read-only evidence.",
+      version: "1.0.0",
+      source: "installed",
+      requiredCapabilities: ["browser"],
+      dependencySkillIds: [],
+      evidence: [],
+      reason: "Installed for portability test.",
+    });
+    await store.updateEmployeeSkillState(bot.id, candidate.skill.id, {
+      state: "verified",
+      confidence: 90,
+      reason: "Reviewed for portability test.",
+      evidence: [],
+      ownerReviewed: true,
+    });
+    const publisherOne = generateKeyPairSync("ed25519");
+    const publisherTwo = generateKeyPairSync("ed25519");
+    const employeePublisher = {
+      activeKeyId: "owner-key-1",
+      sign(document: Parameters<typeof signEmployeeTemplateEnvelope>[0]) {
+        return signEmployeeTemplateEnvelope(document, {
+          keyid: this.activeKeyId,
+          privateKey: publisherOne.privateKey,
+        });
+      },
+      verify(input: unknown) {
+        return verifyEmployeeTemplateEnvelope(input, [
+          { keyid: this.activeKeyId, publicKey: publisherOne.publicKey },
+          { keyid: "owner-key-2", publicKey: publisherTwo.publicKey },
+        ]);
+      },
+    };
+    const app = createTestApp({
+      store,
+      employeePublisher,
+      listNodes: () => [createCompatibleBrowserNode()],
+    });
+    const cookie = await login(app);
+
+    const previewResponse = await app.request(`/api/v1/bots/${bot.id}/export/preview`, {
+      headers: { Cookie: cookie },
+    });
+    const previewBody = (await previewResponse.json()) as { preview: EmployeeExportPreview };
+    const previewEtag = `"${previewBody.preview.downloadReviewToken}"`;
+    expect(previewBody).toMatchObject({
+      preview: {
+        fileName: "portable-ops.openbot-employee.dsse.json",
+        signatureStatus: "dsse",
+        publisherKeyId: "owner-key-1",
+      },
+    });
+
+    const downloadResponse = await app.request(
+      employeeExportDownloadUrl(bot.id, previewBody.preview),
+      {
+        headers: { Cookie: cookie, "If-Match": previewEtag },
+      },
+    );
+    expect(downloadResponse.headers.get("content-type")).toContain(
+      "application/vnd.openbot.employee.dsse+json",
+    );
+    const signedBody = await downloadResponse.text();
+    expect(createHash("sha256").update(signedBody).digest("hex")).toBe(
+      previewBody.preview.downloadReviewToken,
+    );
+    const envelope = dsseEnvelopeSchema.parse(JSON.parse(signedBody));
+    const verifiedDownload = employeePublisher.verify(envelope);
+    expect(verifiedDownload.status).toBe("verified");
+    if (verifiedDownload.status !== "verified") throw new Error("Expected a verified export.");
+    expect(verifiedDownload.document.payload.packageId).toBe(previewBody.preview.packageId);
+    expect(verifiedDownload.document.payload.generatedAt).toBe(previewBody.preview.generatedAt);
+    expect(verifiedDownload.document.integrity.digest).toBe(previewBody.preview.checksum);
+    const importResponse = await app.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify(envelope),
+    });
+    expect(importResponse.status).toBe(200);
+    const signedPreview = (await importResponse.json()) as {
+      preview: {
+        packageId: string;
+        integrity: { digest: string };
+        signature: { status: "dsse"; trusted: true; keyid: string };
+      };
+    };
+    expect(signedPreview).toMatchObject({
+      preview: { signature: { status: "dsse", trusted: true, keyid: "owner-key-1" } },
+    });
+
+    const alternateDocument = buildEmployeeTemplate(await store.getEmployeeProfile(bot.id), {
+      packageId: verifiedDownload.document.payload.packageId,
+      generatedAt: verifiedDownload.document.payload.generatedAt,
+    }).document;
+    const alternatePublisherEnvelope = signEmployeeTemplateEnvelope(alternateDocument, {
+      keyid: "owner-key-2",
+      privateKey: publisherTwo.privateKey,
+    });
+    const changedPublisher = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        package: alternatePublisherEnvelope,
+        expectedPackageId: signedPreview.preview.packageId,
+        expectedDigest: signedPreview.preview.integrity.digest,
+        ownerReviewed: true,
+        allowUnsigned: false,
+        idempotencyKey: "00000000-0000-4000-8000-000000000704",
+        employeeName: "Publisher Changed",
+      }),
+    });
+    expect(changedPublisher.status).toBe(409);
+    expect(await changedPublisher.json()).toMatchObject({
+      error: expect.stringContaining("changed after preview"),
+    });
+
+    const activated = await app.request("/api/v1/employees/import/activate", {
+      method: "POST",
+      headers: authenticatedHeaders(cookie),
+      body: JSON.stringify({
+        package: envelope,
+        expectedPackageId: signedPreview.preview.packageId,
+        expectedDigest: signedPreview.preview.integrity.digest,
+        ownerReviewed: true,
+        allowUnsigned: false,
+        idempotencyKey: "00000000-0000-4000-8000-000000000703",
+        employeeName: "Portable Ops Copy",
+      }),
+    });
+    expect(activated.status).toBe(201);
+    const signedActivation = (await activated.json()) as EmployeeImportActivationResult;
+    expect(signedActivation).toMatchObject({
+      employee: { name: "Portable Ops Copy" },
+      receipt: {
+        signatureStatus: "dsse",
+        publisherKeyId: "owner-key-1",
+        importedSkillCount: 1,
+      },
+    });
+    const importedProfile = await store.getEmployeeProfile(signedActivation.employee.id);
+    expect(importedProfile.skills).toEqual([
+      expect.objectContaining({
+        slug: "browse-web",
+        source: "imported",
+        state: "candidate",
+        confidence: 0,
+      }),
+    ]);
+
+    const untrustedApp = createTestApp({
+      store,
+      employeePublisher: {
+        ...employeePublisher,
+        verify: (input: unknown) => verifyEmployeeTemplateEnvelope(input, []),
+      },
+    });
+    const untrustedCookie = await login(untrustedApp);
+    const rejected = await untrustedApp.request("/api/v1/employees/import/preview", {
+      method: "POST",
+      headers: authenticatedHeaders(untrustedCookie),
+      body: JSON.stringify(envelope),
+    });
+    expect(rejected.status).toBe(422);
+    expect(await rejected.json()).toMatchObject({
+      error: "Signed Employee package verification failed.",
+      fields: { package: [expect.stringContaining("no-trusted-signature")] },
     });
   });
 
@@ -616,24 +1704,55 @@ describe("server app", () => {
   });
 });
 
+function createCompatibleBrowserNode(): ExecutionNode {
+  const now = new Date().toISOString();
+  return {
+    id: "browser-node",
+    name: "Browser worker",
+    platform: "linux",
+    osVersion: "test",
+    architecture: "x64",
+    deviceClass: "server",
+    isolation: "container",
+    trustTier: "development",
+    capabilities: ["browser", "screenshot"],
+    capabilityManifest: [
+      { id: "browser.observe", version: 1, providerId: "test", constraints: {} },
+      { id: "screen.capture", version: 1, providerId: "test", constraints: {} },
+    ],
+    activeRunIds: [],
+    maxConcurrentRuns: 1,
+    connectedAt: now,
+    lastSeenAt: now,
+  };
+}
+
 function createTestApp({
   store,
   dispatchRun,
+  disconnectNode,
+  nodeIdentity,
   resolveApproval,
   listNodes = () => [],
   realtime,
   artifactStorage,
+  employeePublisher,
   runFrames,
   workspaceRealtime,
+  secureCookies = false,
 }: {
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
+  disconnectNode?: (nodeId: string) => boolean;
+  nodeIdentity?: NodeIdentityService;
   resolveApproval?: Parameters<typeof createApp>[0]["resolveApproval"];
   listNodes?: () => ExecutionNode[];
   realtime?: ChannelRealtimeHub;
   artifactStorage?: Pick<ArtifactStorage, "read">;
+  employeePublisher?: Parameters<typeof createApp>[0]["employeePublisher"];
   runFrames?: Pick<RunFrameStore, "get">;
   workspaceRealtime?: WorkspaceRealtimeHub;
+  secureCookies?: boolean;
 }) {
   const auth = new OwnerAuthService(createMemorySessionStore(), {
     ownerName: "Test Owner",
@@ -644,15 +1763,106 @@ function createTestApp({
     allowedOrigins: [testOrigin],
     auth,
     ...(dispatchRun === undefined ? {} : { dispatchRun }),
+    ...(disconnectNode === undefined ? {} : { disconnectNode }),
     ...(resolveApproval === undefined ? {} : { resolveApproval }),
     ...(artifactStorage === undefined ? {} : { artifactStorage }),
+    ...(employeePublisher === undefined ? {} : { employeePublisher }),
     listNodes,
+    ...(nodeIdentity === undefined ? {} : { nodeIdentity }),
     ...(realtime === undefined ? {} : { realtime }),
     ...(runFrames === undefined ? {} : { runFrames }),
     ...(workspaceRealtime === undefined ? {} : { workspaceRealtime }),
-    secureCookies: false,
+    secureCookies,
     store,
   });
+}
+
+function createMemoryNodeIdentityStore(): NodeIdentityStore {
+  const enrollments = new Map<
+    string,
+    { nodeId: string; tokenDigest: string; expiresAt: Date; consumedAt?: Date }
+  >();
+  const credentials = new Map<
+    string,
+    { digest: string; enrolledAt: Date; lastAuthenticatedAt?: Date; revokedAt?: Date }
+  >();
+  return {
+    async replaceEnrollmentToken(record) {
+      for (const enrollment of enrollments.values()) {
+        if (enrollment.nodeId === record.nodeId && enrollment.consumedAt === undefined) {
+          enrollment.consumedAt = record.createdAt;
+        }
+      }
+      enrollments.set(record.tokenDigest, { ...record });
+    },
+    async exchangeEnrollmentToken(record) {
+      const enrollment = enrollments.get(record.tokenDigest);
+      if (
+        enrollment === undefined ||
+        enrollment.nodeId !== record.nodeId ||
+        enrollment.consumedAt !== undefined ||
+        enrollment.expiresAt <= record.enrolledAt
+      ) {
+        return false;
+      }
+      enrollment.consumedAt = record.enrolledAt;
+      credentials.set(record.nodeId, {
+        digest: record.credentialDigest,
+        enrolledAt: record.enrolledAt,
+      });
+      return true;
+    },
+    async authenticateCredential(nodeId, credentialDigest, now) {
+      const credential = credentials.get(nodeId);
+      if (credential?.revokedAt !== undefined || credential?.digest !== credentialDigest) {
+        return false;
+      }
+      credential.lastAuthenticatedAt = now;
+      return true;
+    },
+    async revokeCredential(nodeId, now) {
+      const credential = credentials.get(nodeId);
+      if (credential === undefined || credential.revokedAt !== undefined) return false;
+      credential.revokedAt = now;
+      return true;
+    },
+    async listCredentials() {
+      return Array.from(credentials, ([nodeId, credential]) => ({
+        nodeId,
+        enrolledAt: credential.enrolledAt,
+        lastAuthenticatedAt: credential.lastAuthenticatedAt ?? null,
+        revokedAt: credential.revokedAt ?? null,
+      }));
+    },
+  };
+}
+
+function employeeExportDownloadUrl(botId: string, preview: EmployeeExportPreview): string {
+  const parameters = new URLSearchParams({
+    packageId: preview.packageId,
+    generatedAt: preview.generatedAt,
+  });
+  return `/api/v1/bots/${encodeURIComponent(botId)}/export?${parameters.toString()}`;
+}
+
+async function reviewAndDownloadEmployee(
+  app: ReturnType<typeof createApp>,
+  botId: string,
+  cookie: string,
+): Promise<{ preview: EmployeeExportPreview; response: Response }> {
+  const previewResponse = await app.request(`/api/v1/bots/${botId}/export/preview`, {
+    headers: { Cookie: cookie },
+  });
+  expect(previewResponse.status).toBe(200);
+  const { preview } = (await previewResponse.json()) as { preview: EmployeeExportPreview };
+  const response = await app.request(employeeExportDownloadUrl(botId, preview), {
+    headers: {
+      Cookie: cookie,
+      "If-Match": `"${preview.downloadReviewToken}"`,
+    },
+  });
+  expect(response.status).toBe(200);
+  return { preview, response };
 }
 
 async function login(app: ReturnType<typeof createApp>): Promise<string> {
@@ -707,6 +1917,21 @@ function createTestStore(): ControlPlaneStore {
   const messages: Message[] = [];
   const runs: Run[] = [];
   const approvals: Approval[] = [];
+  const evolution: EmployeeEvolutionEvent[] = [];
+  const skillAssignments: EmployeeSkill[] = [];
+  const skillOwners = new Map<string, string>();
+  const memories: EmployeeMemory[] = [];
+  const memoryEvents: EmployeeMemoryEvent[] = [];
+  const profileDetails = new Map<
+    string,
+    { description: string; revision: number; updatedAt: string }
+  >();
+  const progress: RunProgress[] = [];
+  const importReceipts = new Map<
+    string,
+    { fingerprint: string; result: EmployeeImportActivationResult }
+  >();
+  const activatedPackageIds = new Set<string>();
   let nextId = 0;
   const id = () => `00000000-0000-4000-8000-${String(++nextId).padStart(12, "0")}`;
 
@@ -716,6 +1941,41 @@ function createTestStore(): ControlPlaneStore {
     },
     async listBots() {
       return bots;
+    },
+    async getEmployeeProfile(botId: string): Promise<EmployeeProfile> {
+      const bot = bots.find((item) => item.id === botId);
+      if (bot === undefined) throw new StoreNotFoundError("Bot not found.");
+      const employeeRuns = runs.filter((run) => run.botId === botId);
+      const details = profileDetails.get(botId);
+      if (details === undefined) throw new Error("Employee profile details were not initialized.");
+      return {
+        employee: bot,
+        details,
+        evolution: evolution.filter((event) => event.botId === botId),
+        skills: skillAssignments.filter((skill) => skillOwners.get(skill.id) === botId),
+        memories: memories.filter((memory) => memory.botId === botId),
+        memoryEvents: memoryEvents.filter((event) => event.botId === botId).toReversed(),
+        records: {
+          runs: employeeRuns,
+          approvals: approvals.filter((approval) => approval.botId === botId),
+          artifacts: [],
+          decisions: progress
+            .filter((item) => employeeRuns.some((run) => run.id === item.runId))
+            .map((item) => ({ ...item, summary: item.message })),
+        },
+        statistics: {
+          totalRuns: employeeRuns.length,
+          completedRuns: employeeRuns.filter((run) => run.status === "completed").length,
+          failedRuns: employeeRuns.filter((run) => run.status === "failed").length,
+          verifiedSkills: skillAssignments.filter(
+            (skill) => skillOwners.get(skill.id) === botId && skill.state === "verified",
+          ).length,
+        },
+        configuration: {
+          executionProfile: bot.computerProfile,
+          portabilityFormat: "openbot.employee/v1",
+        },
+      };
     },
     async listChannels() {
       return channels;
@@ -735,8 +1995,10 @@ function createTestStore(): ControlPlaneStore {
     async listApprovals() {
       return approvals;
     },
-    async listRunProgress() {
-      return [];
+    async listRunProgress(channelId?: string) {
+      return channelId === undefined
+        ? progress
+        : progress.filter((item) => item.channelId === channelId);
     },
     async listDispatchableRuns(limit = 50) {
       return runs
@@ -762,7 +2024,368 @@ function createTestStore(): ControlPlaneStore {
         createdAt: new Date().toISOString(),
       };
       bots.push(bot);
+      profileDetails.set(bot.id, {
+        description: "",
+        revision: 1,
+        updatedAt: bot.createdAt,
+      });
+      evolution.push({
+        id: id(),
+        botId: bot.id,
+        type: "created",
+        title: "Employee created",
+        summary: `${bot.name} was created with the ${bot.role} role.`,
+        source: "manual",
+        evidence: [],
+        createdAt: bot.createdAt,
+      });
       return bot;
+    },
+    async activateEmployeeImport(input) {
+      const employeeName = input.employeeName ?? input.document.payload.employee.name;
+      const fingerprint = JSON.stringify({
+        packageId: input.document.payload.packageId,
+        packageDigest: input.packageDigest,
+        employeeName,
+        signature: input.signature,
+      });
+      const replay = importReceipts.get(input.idempotencyKey);
+      if (replay !== undefined) {
+        if (replay.fingerprint !== fingerprint) {
+          throw new StoreConflictError(
+            "This idempotency key was already used for a different Employee import.",
+          );
+        }
+        return { ...replay.result, replayed: true };
+      }
+      if (activatedPackageIds.has(input.document.payload.packageId)) {
+        throw new StoreConflictError("This Employee package was already activated.");
+      }
+      if (bots.some((bot) => bot.name === employeeName)) {
+        throw new StoreConflictError("The Employee name already exists.");
+      }
+      const now = new Date().toISOString();
+      const bot: Bot = {
+        id: id(),
+        name: employeeName,
+        role: input.document.payload.employee.role,
+        status: "idle",
+        computerProfile: input.document.payload.configuration.recommendedExecutionProfile,
+        ...(input.document.payload.employee.appearance === undefined
+          ? {}
+          : { appearance: input.document.payload.employee.appearance }),
+        createdAt: now,
+      };
+      bots.push(bot);
+      profileDetails.set(bot.id, {
+        description: input.document.payload.employee.description ?? "",
+        revision: 1,
+        updatedAt: now,
+      });
+      const importedSkills = new Map<string, EmployeeSkill>();
+      for (const portableSkill of input.document.payload.skills) {
+        const skill: EmployeeSkill = {
+          id: id(),
+          slug: portableSkill.slug,
+          name: portableSkill.name,
+          description: portableSkill.description,
+          version: portableSkill.version,
+          source: "imported",
+          state: "candidate",
+          confidence: 0,
+          requiredCapabilities: portableSkill.requiredCapabilities,
+          dependencyIds: [],
+          evidence: [{ kind: "import", id: input.document.payload.packageId }],
+          acquiredAt: now,
+          updatedAt: now,
+        };
+        importedSkills.set(skill.slug, skill);
+        skillAssignments.push(skill);
+        skillOwners.set(skill.id, bot.id);
+      }
+      for (const portableSkill of input.document.payload.skills) {
+        const skill = importedSkills.get(portableSkill.slug);
+        if (skill === undefined) throw new Error("Imported skill was not resolved.");
+        skill.dependencyIds = portableSkill.dependencySlugs.map((slug) => {
+          const dependency = importedSkills.get(slug);
+          if (dependency === undefined) throw new Error("Imported dependency was not resolved.");
+          return dependency.id;
+        });
+      }
+      evolution.push({
+        id: id(),
+        botId: bot.id,
+        type: "imported",
+        title: "Employee imported",
+        summary: `${bot.name} was activated from an Owner-reviewed portable package.`,
+        source: "import",
+        sourceId: input.document.payload.packageId,
+        evidence: [{ kind: "import", id: input.document.payload.packageId }],
+        createdAt: now,
+      });
+      const result: EmployeeImportActivationResult = {
+        employee: bot,
+        receipt: {
+          id: id(),
+          packageId: input.document.payload.packageId,
+          packageDigest: input.packageDigest,
+          employeeId: bot.id,
+          signatureStatus: input.signature.status,
+          ...(input.signature.status === "dsse"
+            ? { publisherKeyId: input.signature.trustedPublisherKeyId }
+            : {}),
+          reviewedBy: "owner",
+          reviewedAt: input.reviewedAt,
+          importedSkillCount: input.document.payload.skills.length,
+          createdAt: now,
+        },
+        replayed: false,
+      };
+      activatedPackageIds.add(input.document.payload.packageId);
+      importReceipts.set(input.idempotencyKey, { fingerprint, result });
+      return result;
+    },
+    async createEmployeeSkill(botId: string, input: CreateEmployeeSkillInput) {
+      if (!bots.some((bot) => bot.id === botId)) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      const duplicate = skillAssignments.find(
+        (skill) =>
+          skillOwners.get(skill.id) === botId &&
+          skill.slug === input.slug &&
+          skill.version === input.version,
+      );
+      if (duplicate !== undefined) {
+        throw new StoreConflictError("This skill is already assigned to the employee.");
+      }
+      const dependencies = input.dependencySkillIds.map((dependencyId) =>
+        skillAssignments.find(
+          (skill) => skill.id === dependencyId && skillOwners.get(skill.id) === botId,
+        ),
+      );
+      if (dependencies.some((dependency) => dependency === undefined)) {
+        throw new StoreValidationError(
+          "Every dependency must already be assigned to this employee.",
+        );
+      }
+      if (dependencies.some((dependency) => dependency?.state !== "verified")) {
+        throw new StoreValidationError(
+          "Every dependency must be verified before this candidate can be added.",
+        );
+      }
+      const now = new Date().toISOString();
+      const skill: EmployeeSkill = {
+        id: id(),
+        slug: input.slug,
+        name: input.name,
+        description: input.description,
+        version: input.version,
+        source: input.source,
+        state: "candidate",
+        confidence: 0,
+        requiredCapabilities: input.requiredCapabilities,
+        dependencyIds: input.dependencySkillIds,
+        evidence: input.evidence,
+        acquiredAt: now,
+        updatedAt: now,
+      };
+      const event: EmployeeEvolutionEvent = {
+        id: id(),
+        botId,
+        type: "skill_discovered",
+        title: "Candidate skill added",
+        summary: input.reason,
+        source: input.source === "imported" ? "import" : "manual",
+        sourceId: skill.id,
+        evidence: input.evidence,
+        createdAt: now,
+      };
+      skillAssignments.push(skill);
+      skillOwners.set(skill.id, botId);
+      evolution.push(event);
+      return { skill, evolution: event };
+    },
+    async updateEmployeeProfileDetails(botId, input) {
+      const bot = bots.find((candidate) => candidate.id === botId);
+      const details = profileDetails.get(botId);
+      if (bot === undefined || details === undefined) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      if (details.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The Employee profile changed while it was being edited. Reload and review the current values.",
+        );
+      }
+      const role = input.role.trim();
+      const description = input.description.trim();
+      const changedFields: Array<"role" | "description"> = [];
+      if (role !== bot.role) changedFields.push("role");
+      if (description !== details.description) changedFields.push("description");
+      if (changedFields.length === 0) {
+        throw new StoreValidationError("At least one Employee profile field must change.");
+      }
+      bot.role = role;
+      details.description = description;
+      details.revision += 1;
+      details.updatedAt = new Date().toISOString();
+      const event: EmployeeEvolutionEvent = {
+        id: id(),
+        botId,
+        type: changedFields.includes("role") ? "role_changed" : "configuration_changed",
+        title: changedFields.includes("role") ? "Employee role updated" : "Profile updated",
+        summary: `Owner updated: ${changedFields.join(", ")}.`,
+        source: "manual",
+        evidence: [],
+        createdAt: details.updatedAt,
+      };
+      evolution.push(event);
+      return { employee: bot, details: { ...details }, evolution: event };
+    },
+    async updateEmployeeSkillState(botId, skillId, input) {
+      if (!bots.some((bot) => bot.id === botId)) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      const skill = skillAssignments.find(
+        (candidate) => candidate.id === skillId && skillOwners.get(candidate.id) === botId,
+      );
+      if (skill === undefined) throw new StoreNotFoundError("Employee skill not found.");
+      const transitionAllowed =
+        skill.state !== "revoked" &&
+        skill.state !== input.state &&
+        (skill.state === "candidate" ||
+          (skill.state === "verified" && ["suspended", "revoked"].includes(input.state)) ||
+          (skill.state === "suspended" && ["verified", "revoked"].includes(input.state)));
+      if (!transitionAllowed) {
+        throw new StoreConflictError(`A ${skill.state} skill cannot transition to ${input.state}.`);
+      }
+      if (input.state === "verified") {
+        const dependencies = skill.dependencyIds.map((dependencyId) =>
+          skillAssignments.find(
+            (candidate) => candidate.id === dependencyId && skillOwners.get(candidate.id) === botId,
+          ),
+        );
+        if (dependencies.some((dependency) => dependency?.state !== "verified")) {
+          throw new StoreValidationError(
+            "Every dependency must be verified before this skill can be verified.",
+          );
+        }
+        skill.confidence = input.confidence;
+      }
+      skill.state = input.state;
+      skill.evidence = [...skill.evidence, ...input.evidence].filter(
+        (reference, index, references) =>
+          references.findIndex(
+            (candidate) => candidate.kind === reference.kind && candidate.id === reference.id,
+          ) === index,
+      );
+      skill.updatedAt = new Date().toISOString();
+      const event: EmployeeEvolutionEvent = {
+        id: id(),
+        botId,
+        type: `skill_${input.state}`,
+        title:
+          input.state === "verified"
+            ? "Skill verified"
+            : input.state === "suspended"
+              ? "Skill suspended"
+              : "Skill revoked",
+        summary: input.reason,
+        source: "manual",
+        sourceId: skill.id,
+        evidence: input.evidence,
+        createdAt: skill.updatedAt,
+      };
+      evolution.push(event);
+      return { skill, evolution: event };
+    },
+    async createEmployeeMemory(botId, input) {
+      if (!bots.some((bot) => bot.id === botId)) {
+        throw new StoreNotFoundError("Bot not found.");
+      }
+      const now = new Date().toISOString();
+      const memory: EmployeeMemory = {
+        id: id(),
+        botId,
+        ...input,
+        provenance: { source: "owner", actor: "owner" },
+        revision: 1,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const event: EmployeeMemoryEvent = {
+        id: id(),
+        botId,
+        memoryId: memory.id,
+        action: "created",
+        revision: 1,
+        changedFields: ["kind", "title", "content", "sensitivity", "portability"],
+        actor: "owner",
+        createdAt: now,
+      };
+      memories.push(memory);
+      memoryEvents.push(event);
+      return { memory, event };
+    },
+    async updateEmployeeMemory(botId, memoryId, input) {
+      const memory = memories.find(
+        (candidate) => candidate.botId === botId && candidate.id === memoryId,
+      );
+      if (memory === undefined) throw new StoreNotFoundError("Employee memory not found.");
+      if (memory.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The memory changed while it was being edited. Reload and review the current value.",
+        );
+      }
+      const changedFields: EmployeeMemoryEvent["changedFields"] = [];
+      for (const field of ["kind", "title", "content", "sensitivity", "portability"] as const) {
+        const value = input[field];
+        if (value !== undefined && value !== memory[field]) {
+          changedFields.push(field);
+          (memory as Record<typeof field, unknown>)[field] = value;
+        }
+      }
+      if (changedFields.length === 0) {
+        throw new StoreValidationError("At least one memory field must change.");
+      }
+      memory.revision += 1;
+      memory.updatedAt = new Date().toISOString();
+      const event: EmployeeMemoryEvent = {
+        id: id(),
+        botId,
+        memoryId,
+        action: "updated",
+        revision: memory.revision,
+        changedFields,
+        actor: "owner",
+        createdAt: memory.updatedAt,
+      };
+      memoryEvents.push(event);
+      return { memory, event };
+    },
+    async deleteEmployeeMemory(botId, memoryId, input) {
+      const index = memories.findIndex(
+        (candidate) => candidate.botId === botId && candidate.id === memoryId,
+      );
+      const memory = memories[index];
+      if (memory === undefined) throw new StoreNotFoundError("Employee memory not found.");
+      if (memory.revision !== input.expectedRevision) {
+        throw new StoreConflictError(
+          "The memory changed before deletion. Reload and review the current value.",
+        );
+      }
+      memories.splice(index, 1);
+      const event: EmployeeMemoryEvent = {
+        id: id(),
+        botId,
+        memoryId,
+        action: "deleted",
+        revision: memory.revision + 1,
+        changedFields: [],
+        actor: "owner",
+        createdAt: new Date().toISOString(),
+      };
+      memoryEvents.push(event);
+      return { memoryId, event };
     },
     async createChannel(input: CreateChannelInput) {
       const channel: Channel = {
@@ -877,20 +2500,22 @@ function createTestStore(): ControlPlaneStore {
       run.updatedAt = approval.decidedAt;
       return { approval, run };
     },
-    async appendRunProgress(runId: string, nodeId: string) {
+    async appendRunProgress(runId: string, nodeId: string, stage: string, message: string) {
       const run = runs.find(
         (item) => item.id === runId && item.nodeId === nodeId && item.status === "running",
       );
       if (run === undefined) return undefined;
-      return {
+      const entry: RunProgress = {
         id: id(),
         runId,
         channelId: run.channelId,
         nodeId,
-        stage: "test",
-        message: "Testing",
+        stage,
+        message,
         createdAt: new Date().toISOString(),
       };
+      progress.push(entry);
+      return entry;
     },
     async completeRun(runId: string, nodeId: string, summary: string) {
       const run = runs.find((item) => item.id === runId);

@@ -3,11 +3,34 @@ description: Propose a scoped capability tied to an acceptance journey.
 title: "feature: "
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        OpenBot adopts maintained standards and narrow upstream integrations before local implementations. Large features should start with a concrete user journey and explicit permission boundary.
+  - type: checkboxes
+    id: existing
+    attributes:
+      label: Existing work
+      options:
+        - label: I searched existing issues, pull requests, and the roadmap for this request.
+          required: true
   - type: textarea
     id: outcome
     attributes:
       label: User outcome
       description: What should the user be able to complete?
+    validations:
+      required: true
+  - type: textarea
+    id: journey
+    attributes:
+      label: Acceptance journey
+      description: List the shortest end-to-end path that proves the outcome works.
+      placeholder: |
+        1. Given …
+        2. When …
+        3. OpenBot …
+        4. The user can verify …
     validations:
       required: true
   - type: textarea
@@ -17,10 +40,54 @@ body:
       description: What must require approval, fail closed or remain out of scope?
     validations:
       required: true
+  - type: textarea
+    id: upstreams
+    attributes:
+      label: Search evidence and open-source candidates
+      description: Record the search date and actual GitHub/standards queries, then link maintained candidates. Include exact versions or commits and licenses. If nothing fits, list what was inspected and why.
+      placeholder: |
+        Search date: YYYY-MM-DD
+        Queries: …
+        Candidate: https://github.com/org/repo @ commit — SPDX license
+        Fit/gap: …
+    validations:
+      required: true
+  - type: textarea
+    id: decision
+    attributes:
+      label: Proposed reuse decision
+      description: Select the first viable standard, dependency, adapter, upstream contribution, or narrow fork. Local implementation is last and must name the exact OpenBot-specific gap, failure behavior, and replacement plan.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Primary platform
+      options:
+        - Platform-independent
+        - Web client
+        - Linux Server
+        - Windows Worker Host
+        - macOS Worker Host
+        - Linux Worker Host
+        - Mobile or managed device
+        - Multiple platforms
+    validations:
+      required: true
   - type: dropdown
     id: milestone
     attributes:
       label: Milestone
       options: [Spike, M0, M1, M2, M3, M4, M5]
+    validations:
+      required: true
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Contribution intent
+      options:
+        - I can open a pull request after scope agreement
+        - I can test or review on a target platform
+        - I am proposing the work for another contributor
     validations:
       required: true

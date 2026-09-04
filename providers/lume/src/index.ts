@@ -5,4 +5,9 @@ export const lumeProvider: ComputerProvider = {
   displayName: "Lume macOS virtual machine",
   platforms: ["macos"],
   capabilities: ["lume", "cua", "screenshot"],
+  capabilityManifest: [
+    { id: "vm.manage", version: 1, providerId: "lume", constraints: {} },
+    { id: "desktop.observe", version: 1, providerId: "lume", constraints: {} },
+    { id: "screen.capture", version: 1, providerId: "lume", constraints: {} },
+  ],
 };

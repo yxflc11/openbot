@@ -1,7 +1,7 @@
 import type { Approval, ApprovalDecision, Bot, Channel, Run } from "@openbot/domain";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { ApprovalCard } from "./ApprovalCard";
-import { ApprovalIcon, BotIcon, HashIcon, PlusIcon } from "./Icons";
+import { ApprovalIcon, BotIcon, HashIcon, NodeIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 export type MobilePanel = "channels" | "bots" | "approvals" | undefined;
@@ -16,7 +16,9 @@ export function MobileNavigation({
   onDecideApproval,
   onCreateBot,
   onCreateChannel,
+  onManageNodes,
   onSelectChannel,
+  onSelectBot,
 }: {
   panel: MobilePanel;
   bots: Bot[];
@@ -27,7 +29,9 @@ export function MobileNavigation({
   onDecideApproval(approvalId: string, decision: ApprovalDecision): Promise<void>;
   onCreateBot(): void;
   onCreateChannel(): void;
+  onManageNodes(): void;
   onSelectChannel(channelId: string): void;
+  onSelectBot(botId: string): void;
 }) {
   const activeRunByBot = indexActiveRunsByBot(runs);
   const botById = new Map(bots.map((bot) => [bot.id, bot]));
@@ -71,11 +75,16 @@ export function MobileNavigation({
               {bots.map((bot) => {
                 const run = activeRunByBot.get(bot.id);
                 return (
-                  <div className="mobile-list-row" key={bot.id}>
+                  <button
+                    className="mobile-list-row"
+                    type="button"
+                    onClick={() => onSelectBot(bot.id)}
+                    key={bot.id}
+                  >
                     <RobotAvatar bot={bot} compact status={run?.status ?? bot.status} />
                     <span className="mobile-list-label">{bot.name}</span>
                     <small>{run ? runStatusLabel(run.status) : "待命"}</small>
-                  </div>
+                  </button>
                 );
               })}
             </>
@@ -108,6 +117,10 @@ export function MobileNavigation({
         <button type="button" onClick={() => onPanel("approvals")}>
           <ApprovalIcon />
           <span>审批{pendingApprovals.length > 0 ? ` ${pendingApprovals.length}` : ""}</span>
+        </button>
+        <button type="button" onClick={onManageNodes}>
+          <NodeIcon />
+          <span>主机</span>
         </button>
       </nav>
     </>

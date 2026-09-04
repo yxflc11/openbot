@@ -3,24 +3,83 @@ description: Report a reproducible OpenBot defect.
 title: "bug: "
 labels: [bug]
 body:
-  - type: textarea
-    id: problem
+  - type: markdown
     attributes:
-      label: Problem
-      description: What happened, and what did you expect?
+      value: |
+        Search existing issues first. Remove tokens, credentials, private transcripts, and personal screenshots. Report security vulnerabilities through the private Security Advisory link in the issue chooser.
+  - type: checkboxes
+    id: existing
+    attributes:
+      label: Existing reports
+      options:
+        - label: I searched open and closed issues for the same behavior.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Server / control plane
+        - Web / channel UI
+        - Employee profile or package
+        - Worker Host / Node
+        - Provider
+        - Deployment or documentation
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened? Include the smallest safe error excerpt that identifies the failure.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction
-      description: Use test data only. Remove tokens, credentials and private screenshots.
+      label: Minimal reproduction
+      description: Use test data only and list exact steps from a clean state.
+      placeholder: |
+        1. Start OpenBot at commit …
+        2. Configure the test-only Provider …
+        3. Submit …
+        4. Observe …
     validations:
       required: true
   - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: Commit, OS, architecture, Server and Node versions.
+      description: Commit, Node.js version, browser, Server OS/architecture, Worker Host OS/architecture, Provider, and deployment method.
+      value: |
+        - OpenBot commit:
+        - Node.js:
+        - Browser:
+        - Server OS / architecture:
+        - Worker Host OS / architecture:
+        - Provider:
+        - Deployment:
+      render: markdown
     validations:
       required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or evidence
+      description: Optional. Redact secrets and private data. Do not attach a full environment file or credential-bearing screenshot.
+      render: shell
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: I verified that this report contains no credential, session, private transcript, or real user data.
+          required: true

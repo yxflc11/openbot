@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ApiError } from "../api";
 import { CheckIcon, CloseIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
+import { useModalDialog } from "./useModalDialog";
 
 export function CreateChannelDialog({
   bots,
@@ -18,6 +19,7 @@ export function CreateChannelDialog({
   const [botIds, setBotIds] = useState<string[]>([]);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const { dialogRef, closeDialog } = useModalDialog(onClose);
 
   function toggleBot(botId: string) {
     setBotIds((current) =>
@@ -40,14 +42,18 @@ export function CreateChannelDialog({
 
   return (
     <div className="dialog-backdrop">
-      <dialog className="create-dialog channel-dialog" open aria-labelledby="create-channel-title">
+      <dialog
+        ref={dialogRef}
+        className="create-dialog channel-dialog"
+        aria-labelledby="create-channel-title"
+      >
         <form onSubmit={submit}>
           <header className="dialog-header">
             <div>
               <h2 id="create-channel-title">创建频道</h2>
               <p>定义一个长期工作空间和初始团队。</p>
             </div>
-            <button className="icon-button" type="button" aria-label="关闭" onClick={onClose}>
+            <button className="icon-button" type="button" aria-label="关闭" onClick={closeDialog}>
               <CloseIcon />
             </button>
           </header>
@@ -109,7 +115,7 @@ export function CreateChannelDialog({
             </p>
           ) : null}
           <footer>
-            <button className="secondary-button" type="button" onClick={onClose}>
+            <button className="secondary-button" type="button" onClick={closeDialog}>
               取消
             </button>
             <button className="primary-button" type="submit" disabled={busy}>

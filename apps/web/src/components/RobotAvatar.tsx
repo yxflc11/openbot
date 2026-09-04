@@ -21,10 +21,12 @@ export const defaultBotAppearance: BotAppearance = {
 
 export function RobotAvatar({
   bot,
+  className,
   compact = false,
   status = bot.status,
 }: {
   bot: Bot;
+  className?: string;
   compact?: boolean;
   status?: RobotStatus;
 }) {
@@ -35,6 +37,7 @@ export function RobotAvatar({
     <span
       className={[
         "robot-avatar",
+        className,
         compact ? "compact" : undefined,
         `robot-accent-${appearance.accent}`,
         `robot-state-${visualState}`,

@@ -8,13 +8,26 @@ import type {
   Channel,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeMemoryInput,
+  CreateEmployeeSkillInput,
   CreateMessageInput,
+  DeleteEmployeeMemoryInput,
+  EmployeeProfile,
+  EmployeeImportActivationResult,
+  EmployeeMemoryDeletionResult,
+  EmployeeMemoryMutationResult,
+  EmployeeSkillMutationResult,
+  EmployeeProfileDetailsMutationResult,
   ExecutionNode,
   Message,
   Run,
   RunProgress,
   SubmitTaskResult,
+  UpdateEmployeeMemoryInput,
+  UpdateEmployeeProfileDetailsInput,
+  UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
+import type { EmployeeTemplatePackage } from "@openbot/protocol";
 
 export interface RequestApprovalInput {
   requestId: string;
@@ -43,10 +56,25 @@ export interface PersistedCounts {
   activeRuns: number;
 }
 
+export interface ActivateEmployeeImportCommand {
+  document: EmployeeTemplatePackage;
+  packageDigest: string;
+  idempotencyKey: string;
+  employeeName?: string | undefined;
+  signature: { status: "unsigned" } | { status: "dsse"; trustedPublisherKeyId: string };
+  reviewedBy: "owner";
+  reviewedAt: string;
+}
+
 export interface ControlPlaneStore {
   channelExists(channelId: string): Promise<boolean>;
   listChannels(): Promise<Channel[]>;
   listBots(): Promise<Bot[]>;
+  getEmployeeProfile(botId: string): Promise<EmployeeProfile>;
+  updateEmployeeProfileDetails(
+    botId: string,
+    input: UpdateEmployeeProfileDetailsInput,
+  ): Promise<EmployeeProfileDetailsMutationResult>;
   listMessages(channelId: string): Promise<Message[]>;
   listRuns(channelId?: string): Promise<Run[]>;
   listApprovals(): Promise<Approval[]>;
@@ -57,6 +85,32 @@ export interface ControlPlaneStore {
   getRunningRunForNode(runId: string, nodeId: string): Promise<Run | undefined>;
   getCounts(): Promise<PersistedCounts>;
   createBot(input: CreateBotInput): Promise<Bot>;
+  activateEmployeeImport(
+    input: ActivateEmployeeImportCommand,
+  ): Promise<EmployeeImportActivationResult>;
+  createEmployeeSkill(
+    botId: string,
+    input: CreateEmployeeSkillInput,
+  ): Promise<EmployeeSkillMutationResult>;
+  updateEmployeeSkillState(
+    botId: string,
+    skillId: string,
+    input: UpdateEmployeeSkillStateInput,
+  ): Promise<EmployeeSkillMutationResult>;
+  createEmployeeMemory(
+    botId: string,
+    input: CreateEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryMutationResult>;
+  updateEmployeeMemory(
+    botId: string,
+    memoryId: string,
+    input: UpdateEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryMutationResult>;
+  deleteEmployeeMemory(
+    botId: string,
+    memoryId: string,
+    input: DeleteEmployeeMemoryInput,
+  ): Promise<EmployeeMemoryDeletionResult>;
   createChannel(input: CreateChannelInput): Promise<Channel>;
   submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult>;
   assignRun(runId: string, nodeId: string): Promise<Run | undefined>;

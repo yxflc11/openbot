@@ -6,15 +6,16 @@
 
 [![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
-[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](package.json)
+[![Node.js 22.22.2+](https://img.shields.io/badge/Node.js-22.22.2%2B-339933.svg)](package.json)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#项目状态)
 
-OpenBot 是一个早期阶段的开源系统，用来在你掌控的电脑上运行具名 AI 员工。你在持久化的
-本地频道中与 Bot 对话；OpenBot Server 将每项任务路由到可替换的执行 Node，并把消息、
-审批、产物和审计事件保存在你自己的系统中。
+OpenBot 是一个早期阶段的开源、自托管平台，用来在你掌控的电脑上运行具名 AI 员工。你在
+持久化本地频道中与员工对话；OpenBot Server 将每项任务路由到获得授权且可以替换的工作主机，
+并把身份、技能、记忆、消息、审批、产物和审计事件保存在你自己的系统中。
 
-Mac mini 可以是一台 macOS 执行 Node，但它不是产品本体。Server 可以运行在 Linux、macOS、
-NAS 或云主机上，你可以通过私有网络从任意浏览器访问。
+Mac mini 是第一种实用工作主机，不是产品边界。Windows、macOS 和 Linux 主流电脑都可以通过
+同一套 Server 授权的 Node 协议成为员工的工作电脑。Server 可以运行在 Linux、macOS、NAS
+或云主机上，你可以通过私有网络从任意浏览器访问。
 
 OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员工体验，同时坚持自托管、
 模型与 Provider 中立，以及明确的人类控制边界。
@@ -27,12 +28,19 @@ OpenBot 希望复现 Grok Bot 等产品所代表的常驻、频道式数字员�
 ## 为什么做 OpenBot
 
 - **本地频道，而非一次性聊天窗口。** Bot、对话、Run 和结果都保存在你自己的 PostgreSQL。
-- **电脑可以替换。** Bot 是身份与策略配置；Node 是机器。Linux、macOS、VM 和编码 Node
-  可以独立增加或更换。
+- **电脑可以跨平台替换。** 员工是持久身份和策略；工作主机可以是 Windows、macOS、Linux、
+  VM、容器或受管理设备。
+- **员工可以成长和迁移。** 每个员工都有可追溯的进化档案、技能图谱、决策轨迹、记忆、工作
+  记录、配置和安全迁移控制。
 - **副作用前审批。** 敏感动作必须进入明确且可审计的审批状态，模型不能自行扩大权限。
 - **所有设备共享一个控制平面。** 桌面和手机浏览器通过经过认证的实时更新看到同一频道状态。
 - **可组合的 Bot 身份。** Bot 外观由头型、身体、移动方式、配件和强调色五个独立层保存。
 - **通过适配器避免锁定。** 模型、电脑运行时和上游项目通过有类型、带版本的边界接入。
+
+员工进化与学习方向明确受
+[Hermes Agent learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)
+启发。OpenBot 使用自己的 Server 权威证据、审核、权限和迁移模型，不会把学习图谱概念说成
+OpenBot 原创。
 
 ## 项目状态
 
@@ -41,13 +49,14 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 
 | 领域 | 当前已经可用 | 下一步 |
 | --- | --- | --- |
-| 控制平面 | 本地 Owner 认证、PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物和审计事件 | 持久 routine、记忆、恢复工具和多用户信任模型 |
-| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批和 SSE 重连 | 可安装 PWA、通知投递、无障碍和本地化完善 |
-| Bot 身份 | 随 Bot 持久化的五层组合外观 | 更多部件、导入导出和社区外观包 |
-| Node 协议 | 出站 WebSocket 登记、心跳、容量、确定性路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 独立 Node enrollment、mTLS、吊销、防重放和协议兼容测试 |
+| 控制平面 | 本地 Owner 认证、带漂移检查的 PostgreSQL migration、Bot、频道、成员、消息、Run、审批、产物、员工记忆生命周期、不含正文的多设备档案失效通知和审计事件 | 持久 routine、记忆检索/保留、自动恢复工具和多用户信任模型 |
+| 频道界面 | 响应式频道优先 Web UI、指定 Bot、Bot 身份结果、引用回复、富文本/表格、任务 Inspector、审批、工作主机管理、有界 SSE 与快照恢复、可访问员工 Tab 和原生模态焦点管理 | 可安装 PWA、通知投递、真实屏幕阅读器/缩放证据和本地化完善 |
+| Bot 身份 | 五层组合外观已随 Bot 持久化，并统一用于频道和员工主页 | 更多部件和社区外观包 |
+| 员工档案 | 七视图个人主页、带 revision 冲突检查的职责/简介编辑、受 Hermes 启发且可按类型和时间检查完整证据引用的进化档案、Owner 技能审核、带无内容审计的 Owner 管理分类记忆、保留简介并精确绑定审核后下载的安全模板导出、隔离导入、审核后生成新身份，以及实验性 DSSE 签名 | 显示名/模型/主机/外观策略编辑、记忆检索/保留和自主提案、系统钥匙串/KMS 与公开信任适配器、带完整 diff 审核的可执行 Agent Skills 包、选择性复制、注册表分发和所有权转移 |
+| Node 协议 | 出站 WebSocket 登记、Owner 界面配对/列表/吊销、可单独吊销的凭证、心跳、容量、精确能力主版本路由、两阶段分配、显式启动、进度、画面、完成和断线恢复 | 持有证明身份、mTLS、轮换、防重放、系统密钥库适配和真实设备一致性报告 |
 | 浏览器执行 | 通过固定版本的 CopilotKit/OpenBot `agent-computer` 打开明确的公网 HTTP(S) URL，并返回有界 PNG 截图 | Observe/fill/act 循环、连续画面、安全表单交互和重试语义 |
 | 人类控制 | 绑定 Run、Node、动作、目标指纹、风险和过期时间的持久审批请求/决定 | 单次签名 capability lease 和独占远程接管 |
-| Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 可生产使用的 macOS Cua/Lume 与隔离编码 Provider |
+| Provider | 可工作的只读 Docker/browser 适配器；有类型的 Cua、Lume 和 coder 包边界 | 跨平台浏览器、Windows、macOS、Linux 桌面、受管理 Android 和隔离编码 Provider |
 | 办公室视图 | 与核心应用无依赖的 `@openbot/office-plugin` 隔离包 | 等频道工作流成熟后再建设可选插件生命周期 |
 
 ### 当前版本不作出的承诺
@@ -55,7 +64,16 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - 不执行无人值守的表单提交或任意桌面动作。
 - 审批后还不会签发加密的单次 capability lease。
 - 尚不提供连续远程桌面控制。
-- 尚未具备生产级 Node 身份、mTLS 或凭证轮换。
+- Node 已能独立登记与吊销，但当前凭证仍是保存在 Owner-only 文件里的 bearer secret；它还不是
+  持有证明身份、mTLS 或系统密钥库存储，只能通过 WSS 与可信私网使用。
+- 模型尚不能自主写入或检索长期记忆，也没有保留期限执行、选择性复制员工经验、注册表分发或
+  所有权转移。登录 Owner 已可以手动新增、编辑和删除有界记忆；所有 v1 员工包仍排除记忆。
+- Owner 已可编辑员工职责和说明性简介；它们只是路由上下文，不是模型策略、技能、主机绑定或
+  权限，并发编辑使用 revision 检查拒绝旧版本覆盖。
+- 员工导出默认仍不签名。运维者可以启用实验性的 DSSE 签名：私钥加密保存于文件密钥库，轮换与
+  撤销只能通过离线命令执行，外部发布者公钥必须显式信任；导出下载会绑定到审核过的精确包字节，
+  导入激活仍须绑定预览摘要、由 Owner 明确确认、生成新身份，并让全部技能保持候选禁用，且不带
+  记忆或主机权限。
 - Cua、Lume 和 coder Provider 目前是扩展边界，不是已完成的运行时。
 - 可选办公室可视化不进入当前产品导航和 Web 构建。
 
@@ -63,7 +81,7 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 
 ### 环境要求
 
-- Node.js 22 或更高版本
+- Node.js 22.22.2+、24.15.0+ 或 26+
 - npm 10 或更高版本
 - Docker 与 Docker Compose
 
@@ -75,26 +93,39 @@ cd openbot
 cp .env.example .env
 ```
 
-编辑 `.env`，至少用互不相同的随机密钥替换下面两个开发占位值：
+编辑 `.env`，替换 Owner 密码占位值：
 
 ```dotenv
 OPENBOT_OWNER_PASSWORD=<至少-12-个字符的随机密码>
-OPENBOT_NODE_TOKEN=<随机-Node-登记令牌>
 ```
 
-然后启动 PostgreSQL 和所有应用工作区：
+安装依赖、启动 PostgreSQL，然后分别启动 Server 与 Web：
 
 ```bash
 npm install
 npm run db:up
-npm run dev
+npm run dev:server
+# 另开一个终端：
+npm run dev:web
 ```
 
-打开 <http://localhost:5173>，使用 `OPENBOT_OWNER_PASSWORD` 登录，创建 Bot、频道，并将 Bot
-加入频道。
+登录 Web 后，从侧栏打开**节点**即可创建短时、单次配对令牌。Server 主机上的 CLI 提供同一操作：
+
+```bash
+npm run node:enrollment-token -- local-development-node
+```
+
+把输出的 `OPENBOT_NODE_ENROLLMENT_TOKEN` 放进 `.env`，运行 `npm run dev:node`；首次成功启动
+后立刻从 `.env` 删除该令牌。Node 会用 Owner-only 权限把新凭证保存在
+`./data/node/identity.json`，以后启动直接复用。打开 <http://localhost:5173>，使用
+`OPENBOT_OWNER_PASSWORD` 登录，创建 Bot、频道并将 Bot 加入频道。远程主机配对前请阅读
+[Node 登记](docs/NODE_ENROLLMENT.zh-CN.md)。
 
 本地 Node 默认会诚实地上报“没有执行能力”。在配置兼容 Provider 前，消息仍会保存为排队中的
 Run。运行 `npm run db:stop` 可以停止 PostgreSQL。
+升级、备份或恢复部署前请先阅读[数据库运维](docs/DATABASE.zh-CN.md)。
+如需为可迁移员工模板签名，请按实验性的[员工包签名手册](docs/EMPLOYEE_SIGNING.zh-CN.md)
+初始化；默认不开启签名。
 
 ### 启用只读浏览器切片
 
@@ -120,15 +151,15 @@ Bot 的身份把结果发回频道。
 ## 系统如何协作
 
 ```text
-任意浏览器  ->  OpenBot Server  <- Node 主动出站连接 -  OpenBot Nodes  ->  Providers
-                    唯一真相源                              可替换的电脑
+任意设备  ->  OpenBot Server  <- Node 主动出站连接 -  工作主机  ->  Providers
+                唯一真相源                         Windows/macOS/Linux 等
 ```
 
 | 组件 | 负责 | 不负责 |
 | --- | --- | --- |
 | Client | 交互、观察和提交审批决定 | 策略决定或执行授权 |
 | Server | 身份、频道、Run、路由、策略、审批、审计和持久化 | 特定宿主机的电脑能力 |
-| Node | 能力发现、本地容量、Provider 执行、进度和产物 | Bot 身份、长期记忆或授权策略 |
+| 工作主机 / Node | 能力发现、本地容量、Provider 执行、进度和产物 | 员工身份、技能、长期记忆或授权策略 |
 | Provider | 一个窄执行后端，例如 Docker/browser、Cua、Lume 或 coder | 跨 Node 路由或权限升级 |
 
 Server 是唯一真相源。Node 主动连接 Server，不需要开放公网管理端口。路由是确定性的：Run
@@ -149,6 +180,8 @@ OpenBot 假设模型、提示词、网页、技能和执行环境都可能不可
 
 在 loopback 以外使用时，请启用 HTTPS、设置 `OPENBOT_SECURE_COOKIES=true`、收紧
 `OPENBOT_ALLOWED_ORIGINS`，并将服务放在 Tailscale 等私有网络后。
+Server 现在会在启动前拒绝远程 HTTP Origin，或拒绝未启用 Secure Cookie 的远程 Origin。
+HTTPS 会话使用仅限主机的 `__Host-openbot_session` Cookie 与 HSTS；直接开发默认只监听 loopback。
 
 漏洞报告流程见 [SECURITY.md](SECURITY.md)，当前保证与已知缺口见
 [威胁模型](docs/SECURITY.md)。
@@ -162,9 +195,10 @@ OpenBot 按用户验收结果推进。贡献应当推动一个完整用户结果
 | M0 — 本地控制平面 | 频道、Bot、认证、持久化和审计不依赖专有云服务。目前基础已经可用。 |
 | M1 — Server/Node 闭环 | 可替换 Node 接收浏览器任务并回传进度和截图。只读垂直切片已经可用，安全交互仍在开发。 |
 | M2 — 远程控制与审批 | 手机访问、签名单次审批、通知和独占人工接管。持久化审批决定已经可用，lease 与接管是下一步。 |
-| M3 — macOS Node | Cua 和 Lume 让 Mac mini 成为处理 macOS 原生任务的一种可选 Node。 |
-| M4 — 多 Bot 运营 | 结构化交接、routine、持久队列、重试、熔断和记忆。 |
-| M5 — 发布 | 可复现的 Server/Node 安装器、签名发布、SBOM、升级、备份和恢复。 |
+| M3 — 可迁移员工 | 个人主页、进化档案、技能图谱、类型化记忆、审核绑定的安全员工模板和审核后新身份激活。 |
+| M4 — 原生工作主机 | Windows、macOS 和 Linux Provider 使用统一能力与审批协议。 |
+| M5 — 多 Bot 运营 | 结构化交接、Routine、持久队列、Coder Provider 和认证员工转移。 |
+| M6 — 发布 | 受管理移动设备、可复现安装器、签名发布、SBOM、升级、备份和恢复。 |
 
 完整过线标准见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
@@ -177,7 +211,7 @@ OpenBot 的目标是开放共建。你不需要先理解整个系统才能参与
 | 你的兴趣 | 建议入口 |
 | --- | --- |
 | 产品与移动端体验 | `apps/web`、[界面方案](docs/INTERFACE.md) |
-| API、持久化与实时通信 | `apps/server`、`packages/db`、[API 文档](docs/API.md) |
+| API、持久化与实时通信 | `apps/server`、`packages/db`、[API 文档](docs/API.zh-CN.md) |
 | Node 协议与可靠性 | `apps/node`、`packages/protocol`、[系统架构](docs/ARCHITECTURE.md) |
 | 电脑执行后端 | `providers/*`、`packages/provider-sdk` |
 | 策略与安全 | `packages/policy`、[威胁模型](docs/SECURITY.md) |
@@ -224,11 +258,19 @@ docs/                   产品、架构、安全、路线图、API 和 ADR
 | --- | --- |
 | 理解产品与边界 | [产品定义](docs/PRODUCT.md) |
 | 理解整个系统 | [系统架构](docs/ARCHITECTURE.md) |
+| 跟随当前实施顺序 | [目标模式执行计划](docs/EXECUTION_PLAN.zh-CN.md) |
 | 查看当前与未来交付 | [路线图](docs/ROADMAP.md) |
-| 基于 API 开发或集成 | [本地 API](docs/API.md) |
+| 基于 API 开发或集成 | [本地 API](docs/API.zh-CN.md) |
 | 审查安全保证 | [威胁模型](docs/SECURITY.md) |
 | 参与频道体验开发 | [界面方案](docs/INTERFACE.md) |
+| 审查或改进键盘与辅助技术行为 | [无障碍基线](docs/ACCESSIBILITY.zh-CN.md) |
+| 设计员工身份和迁移 | [可迁移数字员工模型](docs/EMPLOYEE.zh-CN.md) |
+| 运维签名员工包 | [员工包签名手册](docs/EMPLOYEE_SIGNING.zh-CN.md) |
+| 增加操作系统或设备 | [跨平台工作主机](docs/CROSS_PLATFORM.zh-CN.md) |
+| 检查工作主机或 Provider 声明 | [Provider 一致性测试](docs/PROVIDER_CONFORMANCE.zh-CN.md) |
 | 理解上游选择 | [上游策略](docs/UPSTREAMS.md) |
+| 遵循开源优先审查流程 | [开源复用规则与当前审查](docs/OPEN_SOURCE_REUSE.zh-CN.md) |
+| 领取可独立审查的共建任务 | [贡献者任务包](docs/CONTRIBUTOR_TASKS.zh-CN.md) |
 | 查看一项决策的原因 | [架构决策记录](docs/decisions/) |
 
 ## 上游项目
@@ -239,6 +281,10 @@ OpenBot 通过窄接口融合现有开源工作，不会把多个控制平面复
   边界与产品研究来源。
 - [Cua](https://github.com/trycua/cua) 与 Lume — 计划中的 macOS 执行 Provider。
 - [OpenClaw](https://github.com/openclaw/openclaw) — 可选运行时、技能与运维参考，不作为第二真相源。
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — 员工进化档案、学习图谱、技能与
+  记忆分离以及技能写入审核的产品参考。
+- [Agent Skills](https://github.com/agentskills/agentskills) — 未来可执行技能包采用的开放格式与
+  官方校验器。
 - Codex、Claude 与 Multica — 计划中的隔离编码 Provider 集成。
 
 任何引入的上游代码都必须保留其许可证和版权声明。

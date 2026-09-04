@@ -5,17 +5,19 @@ import type {
   AuthSessionSnapshot,
   CreateBotInput,
   CreateChannelInput,
+  EmployeeProfile,
   Run,
   RunFrame,
   RunProgress,
   WorkspaceSnapshot,
 } from "@openbot/domain";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createBot,
   createChannel,
   decideApproval,
   getAuthSession,
+  getEmployeeProfile,
   getWorkspace,
   joinBotToChannel,
   login,
@@ -28,8 +30,13 @@ import { ChannelWorkspace } from "./components/ChannelWorkspace";
 import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
+import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
+import { EmployeeProfileView } from "./components/EmployeeProfileView";
+import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
+import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
-import { type MobilePanel, MobileNavigation } from "./components/MobileNavigation";
+import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
+import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import {
@@ -41,7 +48,7 @@ import {
   projectRunOnNodes,
 } from "./run-state";
 
-type Dialog = "bot" | "channel" | undefined;
+type Dialog = "bot" | "channel" | "node" | undefined;
 
 export function App() {
   const [session, setSession] = useState<AuthSessionSnapshot>();
@@ -125,6 +132,13 @@ function AuthenticatedWorkspace({
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [selectedRunId, setSelectedRunId] = useState<string>();
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>();
+  const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile>();
+  const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
+  const [employeeProfileError, setEmployeeProfileError] = useState<string>();
+  const selectedEmployeeIdRef = useRef<string | undefined>(undefined);
+  const [employeeExportOpen, setEmployeeExportOpen] = useState(false);
+  const [employeeImportOpen, setEmployeeImportOpen] = useState(false);
   const [framesByRun, setFramesByRun] = useState<Map<string, RunFrame>>(() => new Map());
   const [workspaceRealtimeState, setWorkspaceRealtimeState] =
     useState<RealtimeConnectionState>("connecting");
@@ -208,6 +222,33 @@ function AuthenticatedWorkspace({
     return () => controller.abort();
   }, [refresh]);
 
+  const loadEmployeeProfile = useCallback(async (botId: string, signal?: AbortSignal) => {
+    setEmployeeProfileLoading(true);
+    setEmployeeProfileError(undefined);
+    try {
+      setEmployeeProfile(await getEmployeeProfile(botId, signal));
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setEmployeeProfileError(cause instanceof Error ? cause.message : "无法读取员工档案。");
+    } finally {
+      if (!signal?.aborted) setEmployeeProfileLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    selectedEmployeeIdRef.current = selectedEmployeeId;
+    if (selectedEmployeeId === undefined) {
+      setEmployeeProfile(undefined);
+      setEmployeeProfileError(undefined);
+      setEmployeeProfileLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setEmployeeProfile(undefined);
+    void loadEmployeeProfile(selectedEmployeeId, controller.signal);
+    return () => controller.abort();
+  }, [loadEmployeeProfile, selectedEmployeeId]);
+
   const workspaceReady = workspace !== undefined;
   useEffect(() => {
     if (workspace === undefined) return;
@@ -233,6 +274,14 @@ function AuthenticatedWorkspace({
                 counts: { ...current.counts, connectedNodes: nodes.length },
               },
         );
+        // Reconcile any events missed while the browser was disconnected.
+        void refresh();
+        const selectedEmployee = selectedEmployeeIdRef.current;
+        if (selectedEmployee !== undefined) void loadEmployeeProfile(selectedEmployee);
+      },
+      onEmployeeProfileChanged(botId, sections) {
+        if (sections.includes("identity")) void refresh();
+        if (selectedEmployeeIdRef.current === botId) void loadEmployeeProfile(botId);
       },
       onNode(node) {
         setWorkspace((current) => {
@@ -271,7 +320,7 @@ function AuthenticatedWorkspace({
       onRun: projectRun,
       onState: setWorkspaceRealtimeState,
     });
-  }, [projectRun, workspaceReady]);
+  }, [loadEmployeeProfile, projectRun, refresh, workspaceReady]);
 
   async function handleCreateBot(input: CreateBotInput) {
     const bot = await createBot(input);
@@ -316,9 +365,29 @@ function AuthenticatedWorkspace({
   }
 
   function selectChannel(channelId: string) {
+    setEmployeeExportOpen(false);
+    setEmployeeImportOpen(false);
     setSelectedChannelId(channelId);
+    setSelectedEmployeeId(undefined);
     setSelectedRunId(undefined);
     setMobilePanel(undefined);
+  }
+
+  function openEmployee(botId: string) {
+    setEmployeeExportOpen(false);
+    setEmployeeImportOpen(false);
+    setSelectedEmployeeId(botId);
+    setSelectedRunId(undefined);
+    setMobilePanel(undefined);
+  }
+
+  function assignEmployee(botId: string) {
+    const channel = workspace?.channels.find((item) => item.botIds.includes(botId));
+    if (channel === undefined) {
+      showNotice("请先把这名员工加入一个频道。");
+      return;
+    }
+    selectChannel(channel.id);
   }
 
   if (workspace === undefined) {
@@ -347,13 +416,26 @@ function AuthenticatedWorkspace({
         runs={workspace.runs}
         ownerName={ownerName}
         selectedChannelId={selectedChannel?.id}
+        selectedBotId={selectedEmployeeId}
         onSelectChannel={selectChannel}
+        onSelectBot={openEmployee}
         onCreateBot={() => setDialog("bot")}
         onCreateChannel={() => setDialog("channel")}
+        onManageNodes={() => setDialog("node")}
         onLogout={onLogout}
       />
 
-      {selectedChannel ? (
+      {selectedEmployeeId ? (
+        <EmployeeProfileView
+          profile={employeeProfile}
+          loading={employeeProfileLoading}
+          error={employeeProfileError}
+          onRetry={() => void loadEmployeeProfile(selectedEmployeeId)}
+          onAssign={() => assignEmployee(selectedEmployeeId)}
+          onExport={() => setEmployeeExportOpen(true)}
+          onProfileChanged={() => loadEmployeeProfile(selectedEmployeeId)}
+        />
+      ) : selectedChannel ? (
         <ChannelWorkspace
           channel={selectedChannel}
           bots={workspace.bots}
@@ -361,6 +443,7 @@ function AuthenticatedWorkspace({
           progress={workspace.progress}
           onJoin={handleJoinBot}
           onInspectRun={setSelectedRunId}
+          onOpenBot={openEmployee}
           onFrame={projectFrame}
           onProgress={projectProgress}
           onRun={projectRun}
@@ -373,12 +456,16 @@ function AuthenticatedWorkspace({
         />
       )}
 
-      <ContextRail
-        realtimeState={workspaceRealtimeState}
-        workspace={workspace}
-        onDecideApproval={handleDecideApproval}
-        onInspectRun={setSelectedRunId}
-      />
+      {selectedEmployeeId ? (
+        <EmployeeProfileRail profile={employeeProfile} nodes={workspace.nodes} />
+      ) : (
+        <ContextRail
+          realtimeState={workspaceRealtimeState}
+          workspace={workspace}
+          onDecideApproval={handleDecideApproval}
+          onInspectRun={setSelectedRunId}
+        />
+      )}
 
       <MobileNavigation
         panel={mobilePanel}
@@ -396,7 +483,12 @@ function AuthenticatedWorkspace({
           setMobilePanel(undefined);
           setDialog("channel");
         }}
+        onManageNodes={() => {
+          setMobilePanel(undefined);
+          setDialog("node");
+        }}
         onSelectChannel={selectChannel}
+        onSelectBot={openEmployee}
       />
 
       {selectedRun ? (
@@ -412,13 +504,49 @@ function AuthenticatedWorkspace({
       ) : null}
 
       {dialog === "bot" ? (
-        <CreateBotDialog onClose={() => setDialog(undefined)} onCreate={handleCreateBot} />
+        <CreateBotDialog
+          onClose={() => setDialog(undefined)}
+          onCreate={handleCreateBot}
+          onImport={() => {
+            setDialog(undefined);
+            setEmployeeImportOpen(true);
+          }}
+        />
       ) : null}
       {dialog === "channel" ? (
         <CreateChannelDialog
           bots={workspace.bots}
           onClose={() => setDialog(undefined)}
           onCreate={handleCreateChannel}
+        />
+      ) : null}
+      {dialog === "node" ? (
+        <NodeManagerDialog onlineNodes={workspace.nodes} onClose={() => setDialog(undefined)} />
+      ) : null}
+      {employeeExportOpen && employeeProfile ? (
+        <ExportEmployeeDialog
+          employee={employeeProfile.employee}
+          onClose={() => setEmployeeExportOpen(false)}
+          onDownloaded={(fileName) => {
+            setEmployeeExportOpen(false);
+            showNotice(`已下载安全员工模板：${fileName}`);
+          }}
+        />
+      ) : null}
+      {employeeImportOpen ? (
+        <ImportEmployeeDialog
+          onClose={() => setEmployeeImportOpen(false)}
+          onActivated={(result) => {
+            setEmployeeImportOpen(false);
+            setSelectedChannelId(undefined);
+            setSelectedEmployeeId(result.employee.id);
+            void refresh();
+            showNotice(
+              result.replayed
+                ? `${result.employee.name} 的导入结果已恢复。`
+                : `${result.employee.name} 已激活，技能仍需逐项审核。`,
+            );
+          }}
         />
       ) : null}
       {notice ? (

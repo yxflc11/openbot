@@ -1,0 +1,273 @@
+import {
+  type NodeArchitecture,
+  type NodePlatform,
+  type ProviderConformanceCheck,
+  type ProviderConformanceEvidenceLevel,
+  type ProviderConformanceReport,
+  type ProviderConformanceStage,
+  type ProviderExpectedFailure,
+  protocolVersion,
+  providerConformanceReportSchema,
+} from "@openbot/protocol";
+import { inspectProviderDeclaration } from "./declaration.js";
+import type { ComputerProvider } from "./provider.js";
+
+export type ProviderConformanceCheckInput = Omit<
+  ProviderConformanceCheck,
+  "timestamp" | "references" | "evidence"
+> &
+  Partial<Pick<ProviderConformanceCheck, "timestamp" | "references" | "evidence">>;
+
+export interface ProviderConformanceTargetInput {
+  platform: NodePlatform;
+  architecture: NodeArchitecture;
+  osVersion: string;
+  evidenceLevel: ProviderConformanceEvidenceLevel;
+}
+
+export interface BuildProviderConformanceReportInput {
+  provider: ComputerProvider;
+  providerVersion: string;
+  target: ProviderConformanceTargetInput;
+  stage: ProviderConformanceStage;
+  suiteName?: string;
+  suiteVersion: string;
+  generatedAt?: string;
+  checks?: ProviderConformanceCheckInput[];
+  expectedFailures?: ProviderExpectedFailure[];
+}
+
+const generatedCheckIds = new Set([
+  "provider.declaration",
+  "provider.target-platform",
+  "provider.executable",
+  "target.evidence-level",
+  "target.real-device-metadata",
+]);
+
+function check(
+  input: ProviderConformanceCheckInput,
+  generatedAt: string,
+): ProviderConformanceCheck {
+  return {
+    ...input,
+    timestamp: input.timestamp ?? generatedAt,
+    references: input.references ?? [],
+    evidence: input.evidence ?? [],
+  };
+}
+
+function assertUniqueIds(ids: string[], label: string): void {
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(`${label} ids must be unique.`);
+  }
+}
+
+function requiredGeneratedChecks(
+  input: BuildProviderConformanceReportInput,
+  generatedAt: string,
+): ProviderConformanceCheck[] {
+  const declaration = inspectProviderDeclaration(input.provider);
+  const declarationMessage = declaration.issues
+    .map((issue) => `${issue.code}: ${issue.message}`)
+    .join(" ");
+  const checks = [
+    check(
+      {
+        id: "provider.declaration",
+        name: "Provider declaration",
+        description: "Provider identity, platforms, and capability ownership are internally valid.",
+        status: declaration.conformant ? "success" : "failure",
+        severity: "required",
+        ...(declarationMessage.length > 0 ? { message: declarationMessage } : {}),
+        evidence: declaration.issues.map((issue) => issue.code),
+      },
+      generatedAt,
+    ),
+    check(
+      {
+        id: "provider.target-platform",
+        name: "Target platform declaration",
+        description: "The Provider explicitly declares the operating system under test.",
+        status: input.provider.platforms.includes(input.target.platform) ? "success" : "failure",
+        severity: "required",
+        evidence: [
+          `target=${input.target.platform}`,
+          `declared=${[...input.provider.platforms].sort().join(",") || "none"}`,
+        ],
+      },
+      generatedAt,
+    ),
+  ];
+
+  if (input.stage === "integration" || input.stage === "real-device") {
+    checks.push(
+      check(
+        {
+          id: "provider.executable",
+          name: "Executable Provider",
+          description: "Integration evidence requires an executable Provider implementation.",
+          status: input.provider.execute === undefined ? "failure" : "success",
+          severity: "required",
+        },
+        generatedAt,
+      ),
+    );
+  }
+
+  if (input.stage === "integration") {
+    checks.push(
+      check(
+        {
+          id: "target.evidence-level",
+          name: "Integration evidence level",
+          description: "Integration evidence is produced by a hermetic or real-device run.",
+          status: input.target.evidenceLevel === "simulated" ? "failure" : "success",
+          severity: "required",
+          evidence: [`evidenceLevel=${input.target.evidenceLevel}`],
+        },
+        generatedAt,
+      ),
+    );
+  }
+
+  if (input.stage === "real-device") {
+    const metadataComplete =
+      input.target.evidenceLevel === "real-device" &&
+      input.target.architecture !== "unknown" &&
+      input.target.osVersion.trim().toLowerCase() !== "unknown";
+    checks.push(
+      check(
+        {
+          id: "target.real-device-metadata",
+          name: "Real-device target metadata",
+          description: "Real-device evidence names the operating system version and architecture.",
+          status: metadataComplete ? "success" : "failure",
+          severity: "required",
+          evidence: [
+            `evidenceLevel=${input.target.evidenceLevel}`,
+            `architecture=${input.target.architecture}`,
+            `osVersion=${input.target.osVersion}`,
+          ],
+        },
+        generatedAt,
+      ),
+    );
+  }
+
+  return checks;
+}
+
+/**
+ * Build a self-consistent report. Expected failures keep CI baselines reviewable, but never change
+ * the underlying result or grant a support/certification claim.
+ */
+export function buildProviderConformanceReport(
+  input: BuildProviderConformanceReportInput,
+): ProviderConformanceReport {
+  const generatedAt = input.generatedAt ?? new Date().toISOString();
+  const suppliedChecks = (input.checks ?? []).map((item) => check(item, generatedAt));
+  const suppliedIds = suppliedChecks.map((item) => item.id);
+  assertUniqueIds(suppliedIds, "Conformance check");
+  const reservedId = suppliedIds.find((id) => generatedCheckIds.has(id));
+  if (reservedId !== undefined) {
+    throw new Error(
+      `Conformance check id ${reservedId} is reserved by the OpenBot report builder.`,
+    );
+  }
+
+  const checks = [...requiredGeneratedChecks(input, generatedAt), ...suppliedChecks].sort(
+    (left, right) => left.id.localeCompare(right.id),
+  );
+  const expectedFailures = [...(input.expectedFailures ?? [])].sort((left, right) =>
+    left.checkId.localeCompare(right.checkId),
+  );
+  assertUniqueIds(
+    expectedFailures.map((entry) => entry.checkId),
+    "Expected-failure check",
+  );
+
+  const checksById = new Map(checks.map((item) => [item.id, item]));
+  const activeExpected = new Set<string>();
+  const staleEntries: string[] = [];
+  const generatedAtMs = Date.parse(generatedAt);
+  for (const entry of expectedFailures) {
+    const matchingCheck = checksById.get(entry.checkId);
+    const matchesFailure =
+      matchingCheck?.status === "failure" || matchingCheck?.status === "warning";
+    if (!matchesFailure || Date.parse(entry.expiresAt) <= generatedAtMs) {
+      staleEntries.push(entry.checkId);
+    } else {
+      activeExpected.add(entry.checkId);
+    }
+  }
+
+  const unexpectedFailures = checks
+    .filter(
+      (item) =>
+        item.status === "failure" ||
+        item.status === "warning" ||
+        (item.severity === "required" && item.status !== "success"),
+    )
+    .map((item) => item.id)
+    .filter((id) => !activeExpected.has(id))
+    .sort();
+
+  const count = (status: ProviderConformanceCheck["status"]): number =>
+    checks.filter((item) => item.status === status).length;
+  const conformant = checks
+    .filter((item) => item.severity === "required")
+    .every((item) => item.status === "success");
+
+  return providerConformanceReportSchema.parse({
+    format: "openbot.provider-conformance/v1",
+    generatedAt,
+    protocolVersion,
+    suite: {
+      name: input.suiteName ?? "openbot-provider",
+      version: input.suiteVersion,
+      stage: input.stage,
+    },
+    provider: {
+      id: input.provider.id.trim() || "(missing)",
+      displayName: input.provider.displayName.trim() || "(missing)",
+      version: input.providerVersion,
+      executionStatus: input.provider.execute === undefined ? "declaration-only" : "executable",
+    },
+    target: input.target,
+    checks,
+    baseline: {
+      expectedFailures,
+      unexpectedFailures,
+      staleEntries: staleEntries.sort(),
+    },
+    summary: {
+      success: count("success"),
+      failure: count("failure"),
+      warning: count("warning"),
+      skipped: count("skipped"),
+      info: count("info"),
+      total: checks.length,
+      expectedFailureEntries: expectedFailures.length,
+      conformant,
+      baselineCurrent: unexpectedFailures.length === 0 && staleEntries.length === 0,
+    },
+  });
+}
+
+/** Serialize a validated report with stable ordering and a final newline for reviewable CI diffs. */
+export function serializeProviderConformanceReport(report: ProviderConformanceReport): string {
+  const validated = providerConformanceReportSchema.parse(report);
+  const normalized: ProviderConformanceReport = {
+    ...validated,
+    checks: [...validated.checks].sort((left, right) => left.id.localeCompare(right.id)),
+    baseline: {
+      expectedFailures: [...validated.baseline.expectedFailures].sort((left, right) =>
+        left.checkId.localeCompare(right.checkId),
+      ),
+      unexpectedFailures: [...validated.baseline.unexpectedFailures].sort(),
+      staleEntries: [...validated.baseline.staleEntries].sort(),
+    },
+  };
+  return `${JSON.stringify(normalized, null, 2)}\n`;
+}

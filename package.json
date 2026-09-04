@@ -7,7 +7,7 @@
   "type": "module",
   "packageManager": "npm@10.9.8",
   "engines": {
-    "node": ">=22.0.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "workspaces": [
     "apps/*",
@@ -16,17 +16,22 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "npm run docs:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "check": "npm run docs:check && npm run research:check && npm run migrations:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "db:up": "docker compose --env-file .env -f deploy/server/compose.yaml up -d postgres",
     "db:stop": "docker compose --env-file .env -f deploy/server/compose.yaml stop postgres",
+    "db:verify": "turbo run build --filter=@openbot/server && node scripts/verify-database.mjs",
     "dev": "turbo run dev --parallel",
     "dev:server": "npm run dev --workspace @openbot/server",
     "dev:web": "npm run dev --workspace @openbot/web",
     "dev:node": "npm run dev --workspace @openbot/node",
     "docs:check": "node scripts/check-docs.mjs",
+    "employee:publisher-key": "npm run employee:publisher-key --workspace @openbot/server --",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
+    "migrations:check": "node --test scripts/check-migrations.test.mjs && node scripts/check-migrations.mjs",
+    "node:enrollment-token": "node --env-file-if-exists=.env scripts/issue-node-enrollment.mjs",
+    "research:check": "node --test scripts/check-pr-research.test.mjs && node scripts/check-pr-research.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },

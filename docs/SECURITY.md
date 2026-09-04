@@ -54,7 +54,7 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 4. **审计先于执行。** Server Action Gateway 必须先写入 `requested/decision`，再向 Node 发放动作租约。
 5. **接管互斥。** 人在操作电脑时，Agent 输入必须被拒绝，不能排队偷偷补做。
 6. **密钥不可回读。** UI 只显示 configured/not configured；日志不显示原值。
-7. **宿主权限最小化。** Bot 使用标准 macOS 用户；控制面和执行面使用不同身份/目录。
+7. **宿主权限最小化。** Bot 使用工作主机上的专用标准用户；控制面和执行面使用不同身份/目录。
 8. **生产不拉 main。** 只部署固定版本和校验过的构建。
 9. **频道成员由 Server 校验。** Client 或模型指定的 assignee 只有在目标 Bot 已加入频道时才有效；未指定时只从该频道 roster 中确定性选择。
 
@@ -80,26 +80,82 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 - PostgreSQL、频道、线程、策略、凭证和审计只存在于 Server 控制域。
 - 默认只经 Tailscale/私网 HTTPS 访问；禁止公开数据库和内部 API。
 - M0 使用单 Owner 本地认证：Owner 密码来自 Server 环境变量，不写入数据库；随机 Session Token 只进入 `HttpOnly`、`SameSite=Strict` Cookie，数据库只保存 SHA-256 摘要。
-- 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录连续失败会被临时限速。
-- Session 默认 12 小时过期，支持主动撤销；生产 HTTPS 部署必须启用 Secure Cookie。审批等高风险操作仍需要后续增加重新验证或设备绑定。
+- 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录连续失败会在单 Server、浏览器 Origin 桶内临时限速；这不是可信的每 IP/每设备边界，不能代替私网部署。
+- Session 默认 12 小时过期，支持主动撤销。非 loopback Origin 必须使用 HTTPS 并启用 Secure Cookie，否则 Server 启动失败；HTTPS 会话使用 `__Host-` 前缀 Cookie 和 HSTS。审批等高风险操作仍需要后续增加重新验证或设备绑定。
+- 控制面复用 Hono 的维护中安全响应头中间件。每个 SSE 订阅的待发送事件固定为最多 128 项；溢出会终止连接，客户端必须从数据库权威快照恢复，不能静默跳过控制事件。
 - Server 签发的 view/control/upload token 都绑定用户、run、node、用途和 TTL。
+- 收到停机信号后，Server 先停止新调度并排空已接受的 Node 消息和 HTTP 请求，再关闭 PostgreSQL；
+  空闲 HTTP 连接立即关闭，其余连接最多等待 10 秒。WebSocket 等升级连接由各自 registry 显式关闭。
 - 备份加密并定期在另一台机器验证恢复。
 
 ### Node
 
-- Node 主动建立 WSS/mTLS 连接，不接受公网入站控制。
-- 每个 Node 使用独立可吊销身份；enrollment token 只能使用一次。
+- 生产目标是 Node 主动建立 WSS/mTLS 连接，不接受公网入站控制；当前配置只允许 loopback 使用
+  `ws:`，非 loopback Server 地址必须使用 `wss:`，但尚未提供 mTLS。
+- 每个 Node 通过短时、单次 enrollment token 换取独立可吊销凭证；Server 只保存令牌和凭证的
+  域分隔 SHA-256 摘要。Owner 吊销后会断开对应在线 Node。
 - `run.accept` 只表示能力与容量校验通过，不授予执行权；只有 Server 持久化条件认领并返回 `run.assigned` 后才能占用任务槽位。
-- 当前 M1 开发切片仍使用部署级共享启动令牌，不具备独立身份和单节点吊销能力，只允许可信私网测试；完成 enrollment、轮换和吊销前不得暴露到不受信任网络。
+- 当前 Node credential 仍是 bearer secret，默认保存在专用账户可读的本地文件。它能区分和吊销
+  Node，但不能证明不可导出私钥的持有，也不能阻止凭证被复制后重放。完成系统密钥库、持有证明、
+  轮换、mTLS 和消息序号前，只允许通过 WSS 与可信私网使用。
+- POSIX 文件适配器使用 `0600` 原子写入，并在同一个已打开句柄上检查普通文件、大小和权限后才
+  读取；一旦出现 group/other 权限位就拒绝认证。Windows ACL 与系统密钥库仍未实现，不能由这条
+  POSIX 保证外推。
+- enrollment token 默认十分钟过期、只能兑换一次、只在创建时返回；Node credential 也只在兑换
+  时返回。任何一种明文都不能进入日志、Git、员工包或频道消息。
+- 当前 Node 消息体限制为 32 MiB、未登记 socket 最多保留 10 秒，且每条连接只能登记一次。Server
+  每 30 秒发送 ping；未回应的连接会被清退并进入断线恢复。Node 心跳只报告存活，不能增加、释放或
+  结算 Server 权威任务槽位。协议 `0.9.0` 会拒绝未知消息字段、无效或超长 Node 身份信息、重复
+  能力以及无界审批现场；审批 `beforeState` 最多包含 256 个有界 JSON 值。身份
+  限制详见 [ADR-0023](decisions/0023-one-time-node-enrollment.md)。通道权威与输入边界详见
+  [ADR-0017](decisions/0017-node-channel-authority-and-liveness.md)与
+  [ADR-0019](decisions/0019-strict-node-protocol-inputs.md)。
 - Node 不能读取其他 Node、Server 数据库或全局凭证。
 - Docker supervisor、Cua 和 Lume 只监听 loopback/Unix socket。
 - 人接管必须持有 Server 签发的独占 control lease。
 
 当前 `agent-computer` 适配器只开放 observe 切片：任务必须显式包含 HTTP(S) URL，只调用 navigate 和 screenshot；没有配置 URL/token 时 Node 上报零项相关能力。默认拒绝解析到 loopback、链路本地、私网、CGNAT、组播和云元数据地址，即使显式允许私网仍永久拒绝已知元数据端点。
 
-Node 上报的临时画面必须绑定已在该连接上运行的 Run，协议限制为 PNG，Server 再验证签名与 2 MiB 大小。Server 只在内存中保留最多 16 个 Run 的最新一帧并在 2 分钟后过期；频道 SSE 只携带元数据，画面正文必须通过 Owner Session 读取且禁止缓存。它仍可能包含密码、验证码或私人内容，因此未来连续采集与公开部署前必须增加窗口范围控制和可配置的遮罩/停播策略。
+Node 上报的临时画面必须绑定已在该连接上运行的 Run，协议限制为 PNG，Server 再验证签名与 2 MiB 大小。Server 只在内存中保留最多 16 个 Run 的最新一帧并在 2 分钟后过期；频道 SSE 只携带元数据，画面正文必须通过 Owner Session 读取且禁止缓存。持久 Artifact 返回前还必须与数据库中的权威大小和 SHA-256 匹配，损坏或被替换的文件不会下发。它仍可能包含密码、验证码或私人内容，因此未来连续采集与公开部署前必须增加窗口范围控制和可配置的遮罩/停播策略。
 
 应用层 DNS 检查不能单独阻止 DNS rebinding、重定向到私网或浏览器级旁路。生产执行环境必须再用独立网络命名空间、出站代理或防火墙阻断内网与元数据网段；在这层 egress 隔离完成前，当前 provider 只适合可信私网里的测试账号和公开测试页面。
+
+### 员工包签名
+
+- HTTP 导出默认仍是无签名模板；SHA-256 校验和只能发现变化，不能证明发布者身份。运维者显式
+  配置发布者密钥库后，导出改为 DSSE 信封。
+- 签名采用 DSSE 1.0.2 和 Ed25519，同时绑定员工包精确字节与 OpenBot 专用媒体类型。
+- 信封里的 `keyid` 是未经认证的查找提示，不能决定信任；只有 Server 信任库中的公钥真实验签
+  成功，并与包内已认证的签名元数据一致时才算可信。
+- 验签通过不等于可以激活：严格 schema、校验和、敏感信息、许可证、能力、Provider 兼容性和
+  Owner 本地策略仍需分别通过。
+- 文件适配器把私钥保存为口令加密 PKCS#8；口令在另一个 Owner-only 文件中。密钥库、口令、
+  trust manifest 或私钥都不能进入员工包、数据库、日志、浏览器或 Node。权限过宽、符号链接、
+  格式错误或公私钥不匹配时 Server 拒绝启动；受保护文件会在同一个已打开句柄上完成类型、权限、
+  大小校验和读取，避免先检查路径再另行读取。
+- 初始化、信任、轮换和撤销只能通过离线 CLI 执行并在重启后生效。接收方必须通过带外渠道核对
+  公钥指纹；员工包附带的密钥永远不能自授信任。活动密钥必须先轮换才能撤销。
+- 员工包无论是否签名，都不能携带凭证、Session、Node 身份、主机绑定、租约或能力授权。
+- 激活必须重新执行预览校验，并绑定 Owner 已看到的包 ID 与规范 SHA-256 摘要。未签名包必须
+  单独接受风险；阻止项、内容变化、未信任或已撤销签名都会在写数据库前失败。
+- 激活只在一个事务中创建新身份、候选技能、`imported` 进化事件和不可变收据。技能来源记录在
+  员工赋值上，初始状态固定为 `candidate`、置信度 `0`；不会自动绑定 Node 或授予能力。
+- 包 ID 与幂等键在每个 Server 内唯一。完全相同的重试返回原收据；换包复用幂等键或重复激活
+  同一包会冲突失败。
+- 当前本地信任库不能建立全球身份、自动传播撤销或提供门限恢复；详见
+  [员工包签名手册](EMPLOYEE_SIGNING.zh-CN.md)、ADR-0024 与 ADR-0025。
+
+### 员工记忆
+
+- 只有通过 Owner Session 和精确 Origin 检查的控制面请求可以新增、编辑或删除记忆；模型、
+  Worker Host 与 Provider 没有这组命令。
+- 标题最多 160 字符、正文最多 8,000 字符；未知字段和 `included` 迁移策略会被拒绝。
+- 更新和删除必须携带当前 revision；并发变化以 `409` 失败，不会后写覆盖先写。
+- 标题和正文复用员工导出的凭据/私钥扫描。`secret-reference` 只允许保存密码库引用，固定为
+  `restricted` 和 `never`，不能保存真实秘密。
+- 删除会物理移除记忆正文；独立审计事件只保存 ID、动作、revision、变化字段、操作者和时间，
+  不保存标题、正文或内容哈希。
+- v1 员工包始终导出零条记忆。检索、自主写入提案、保留期限与选择性导出仍未启用。
 
 ### macOS Node
 

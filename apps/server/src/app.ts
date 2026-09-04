@@ -1,48 +1,86 @@
+import { createHash } from "node:crypto";
 import type {
   ApprovalResolution,
   BootstrapSummary,
   ChannelRealtimeEvent,
+  EmployeeProfileSection,
   ExecutionNode,
+  NodeIdentitySummary,
   Run,
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import {
+  activateEmployeeImportInputSchema,
   approvalDecisionInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
+  createEmployeeMemoryInputSchema,
+  createEmployeeSkillInputSchema,
   createMessageInputSchema,
+  createNodeEnrollmentTokenInputSchema,
+  deleteEmployeeMemoryInputSchema,
+  dsseEnvelopeSchema,
+  exchangeNodeEnrollmentInputSchema,
+  employeeExportDownloadQuerySchema,
   joinChannelBotInputSchema,
   loginInputSchema,
+  unsignedEmployeeTemplatePackageSchema,
+  updateEmployeeMemoryInputSchema,
+  updateEmployeeProfileDetailsInputSchema,
+  updateEmployeeSkillStateInputSchema,
+  type DsseEnvelope,
+  type EmployeeTemplatePackage,
 } from "@openbot/protocol";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
+  type ControlPlaneStore,
+  StoreConflictError,
+  StoreNotFoundError,
+  StoreValidationError,
+} from "./control-plane-store.js";
+import {
+  employeeTemplatePackageDigest,
+  type EmployeeTemplateEnvelopeVerification,
+  inspectEmployeeTemplate,
+  prepareEmployeeTemplateExport,
+} from "./employee-package.js";
+import {
+  InvalidNodeEnrollmentError,
+  NodeIdentityNotFoundError,
+  type NodeIdentityService,
+} from "./node-identity.js";
+import {
   InvalidCredentialsError,
   LoginRateLimitedError,
   type OwnerAuthService,
 } from "./owner-auth.js";
-import {
-  StoreConflictError,
-  StoreNotFoundError,
-  StoreValidationError,
-  type ControlPlaneStore,
-} from "./control-plane-store.js";
-import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
+import { RealtimeEventBuffer } from "./realtime-event-buffer.js";
 import type { RunFrameStore } from "./run-frame-store.js";
+import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
   allowedOrigins: string[];
   artifactStorage?: Pick<ArtifactStorage, "read">;
   auth: OwnerAuthService;
   dispatchRun?: (run: Run) => void;
+  employeePublisher?: {
+    activeKeyId: string;
+    sign(document: EmployeeTemplatePackage): DsseEnvelope;
+    verify(input: unknown): EmployeeTemplateEnvelopeVerification;
+  };
   listNodes: () => ExecutionNode[];
+  nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "list" | "revoke">;
+  disconnectNode?: (nodeId: string) => boolean;
   realtime?: ChannelRealtimeHub;
   resolveApproval?: (resolution: ApprovalResolution) => void | Promise<void>;
   runFrames?: Pick<RunFrameStore, "get">;
@@ -52,31 +90,58 @@ export interface AppDependencies {
 }
 
 export const ownerSessionCookie = "openbot_session";
+export const secureOwnerSessionCookie = "__Host-openbot_session";
+
+const maximumPendingRealtimeEvents = 128;
 
 export function createApp(dependencies: AppDependencies) {
   const app = new Hono();
   const realtime = dependencies.realtime ?? new ChannelRealtimeHub();
   const workspaceRealtime = dependencies.workspaceRealtime ?? new WorkspaceRealtimeHub();
+  const sessionCookie = dependencies.secureCookies ? secureOwnerSessionCookie : ownerSessionCookie;
 
   app.use(logger());
+  app.use(
+    secureHeaders({
+      crossOriginResourcePolicy: "same-site",
+      permissionsPolicy: {
+        camera: [],
+        geolocation: [],
+        microphone: [],
+        payment: [],
+        usb: [],
+      },
+      strictTransportSecurity: dependencies.secureCookies,
+      xFrameOptions: "DENY",
+    }),
+  );
   app.use(
     "/api/*",
     cors({
       origin: dependencies.allowedOrigins,
-      allowHeaders: ["Content-Type"],
-      allowMethods: ["GET", "POST", "OPTIONS"],
+      allowHeaders: ["Content-Type", "If-Match"],
+      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      exposeHeaders: ["ETag"],
       credentials: true,
+    }),
+  );
+  app.use(
+    "/api/v1/nodes/enroll",
+    bodyLimit({
+      maxSize: maximumNodeIdentityRequestBytes,
+      onError: (context) => context.json({ error: "Node enrollment request is too large." }, 413),
     }),
   );
 
   app.use("/api/v1/*", async (context, next) => {
     context.header("Cache-Control", "no-store");
+    if (isPublicNodeEnrollmentRoute(context.req.path)) return next();
     if (isMutation(context.req.method) && !isTrustedOrigin(context.req.header("origin"))) {
       return context.json({ error: "Request origin is not allowed." }, 403);
     }
     if (isPublicAuthRoute(context.req.path)) return next();
 
-    const session = await dependencies.auth.authenticate(getCookie(context, ownerSessionCookie));
+    const session = await dependencies.auth.authenticate(getCookie(context, sessionCookie));
     if (!session.authenticated) return context.json({ error: "Authentication required." }, 401);
     return next();
   });
@@ -91,7 +156,7 @@ export function createApp(dependencies: AppDependencies) {
   );
 
   app.get("/api/v1/auth/session", async (context) => {
-    const session = await dependencies.auth.authenticate(getCookie(context, ownerSessionCookie));
+    const session = await dependencies.auth.authenticate(getCookie(context, sessionCookie));
     return context.json(session);
   });
 
@@ -105,7 +170,7 @@ export function createApp(dependencies: AppDependencies) {
       1,
       Math.floor((new Date(result.session.expiresAt).getTime() - Date.now()) / 1000),
     );
-    setCookie(context, ownerSessionCookie, result.token, {
+    setCookie(context, sessionCookie, result.token, {
       httpOnly: true,
       maxAge,
       path: "/",
@@ -116,13 +181,27 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.post("/api/v1/auth/logout", async (context) => {
-    await dependencies.auth.logout(getCookie(context, ownerSessionCookie));
-    deleteCookie(context, ownerSessionCookie, {
+    await dependencies.auth.logout(getCookie(context, sessionCookie));
+    deleteCookie(context, sessionCookie, {
       path: "/",
       sameSite: "Strict",
       secure: dependencies.secureCookies,
     });
     return context.body(null, 204);
+  });
+
+  app.post("/api/v1/nodes/enroll", async (context) => {
+    const identity = requireNodeIdentity(dependencies.nodeIdentity);
+    const input = await parseRequest(
+      context.req.raw,
+      exchangeNodeEnrollmentInputSchema,
+      maximumNodeIdentityRequestBytes,
+    );
+    const result = await identity.enroll(input);
+    // Re-enrollment rotates the durable credential. Terminate any session that authenticated with
+    // the previous value so it cannot remain live until its next reconnect.
+    dependencies.disconnectNode?.(result.nodeId);
+    return context.json(result, 201);
   });
 
   app.get("/api/v1/bootstrap", async (context) => {
@@ -169,11 +248,14 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/workspace/events", (context) =>
     streamSSE(context, async (stream) => {
-      const queued: WorkspaceRealtimeEvent[] = [];
+      const queued = new RealtimeEventBuffer<WorkspaceRealtimeEvent>(maximumPendingRealtimeEvents);
       let wake: (() => void) | undefined;
       let closed = false;
       const unsubscribe = workspaceRealtime.subscribe((event) => {
-        queued.push(event);
+        if (!queued.enqueue(event)) {
+          closed = true;
+          stream.abort();
+        }
         wake?.();
         wake = undefined;
       });
@@ -196,7 +278,7 @@ export function createApp(dependencies: AppDependencies) {
 
       try {
         while (!closed && !stream.aborted) {
-          if (queued.length === 0) {
+          if (queued.empty) {
             const timedOut = await waitForEventOrTimeout((resume) => {
               wake = resume;
             });
@@ -206,7 +288,7 @@ export function createApp(dependencies: AppDependencies) {
             }
           }
 
-          let event = queued.shift();
+          let event = queued.dequeue();
           while (event !== undefined && !closed && !stream.aborted) {
             await stream.writeSSE({
               event: event.type,
@@ -220,11 +302,13 @@ export function createApp(dependencies: AppDependencies) {
                           ? event.nodeId
                           : event.type === "approval.updated"
                             ? event.approval.id
-                            : event.run.id,
+                            : event.type === "run.updated"
+                              ? event.run.id
+                              : event.botId,
                   }),
               data: JSON.stringify(event),
             });
-            event = queued.shift();
+            event = queued.dequeue();
           }
         }
       } finally {
@@ -289,6 +373,13 @@ export function createApp(dependencies: AppDependencies) {
       throw new Error("Artifact storage is not configured.");
     }
     const bytes = await dependencies.artifactStorage.read(record.storageKey);
+    if (bytes.byteLength !== record.sizeBytes) {
+      throw new Error("Artifact content does not match its authoritative metadata.");
+    }
+    const actualDigest = createHash("sha256").update(bytes).digest("hex");
+    if (actualDigest !== record.sha256) {
+      throw new Error("Artifact content does not match its authoritative metadata.");
+    }
     return new Response(bytes, {
       headers: {
         "Cache-Control": "private, no-store",
@@ -321,11 +412,14 @@ export function createApp(dependencies: AppDependencies) {
     }
 
     return streamSSE(context, async (stream) => {
-      const queued: ChannelRealtimeEvent[] = [];
+      const queued = new RealtimeEventBuffer<ChannelRealtimeEvent>(maximumPendingRealtimeEvents);
       let wake: (() => void) | undefined;
       let closed = false;
       const unsubscribe = realtime.subscribe(channelId, (event) => {
-        queued.push(event);
+        if (!queued.enqueue(event)) {
+          closed = true;
+          stream.abort();
+        }
         wake?.();
         wake = undefined;
       });
@@ -348,7 +442,7 @@ export function createApp(dependencies: AppDependencies) {
 
       try {
         while (!closed && !stream.aborted) {
-          if (queued.length === 0) {
+          if (queued.empty) {
             const timedOut = await waitForEventOrTimeout((resume) => {
               wake = resume;
             });
@@ -358,7 +452,7 @@ export function createApp(dependencies: AppDependencies) {
             }
           }
 
-          let event = queued.shift();
+          let event = queued.dequeue();
           while (event !== undefined && !closed && !stream.aborted) {
             await stream.writeSSE({
               event: event.type,
@@ -373,7 +467,7 @@ export function createApp(dependencies: AppDependencies) {
                       : {}),
               data: JSON.stringify(event),
             });
-            event = queued.shift();
+            event = queued.dequeue();
           }
         }
       } finally {
@@ -403,13 +497,255 @@ export function createApp(dependencies: AppDependencies) {
     context.json({ bots: await dependencies.store.listBots() }),
   );
 
+  app.get("/api/v1/bots/:botId/profile", async (context) =>
+    context.json({
+      profile: await dependencies.store.getEmployeeProfile(context.req.param("botId")),
+    }),
+  );
+
+  app.patch("/api/v1/bots/:botId/profile", async (context) => {
+    const input = await parseRequest(context.req.raw, updateEmployeeProfileDetailsInputSchema);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.updateEmployeeProfileDetails(botId, input);
+    publishEmployeeProfileChanged(workspaceRealtime, botId, [
+      "identity",
+      "configuration",
+      "evolution",
+    ]);
+    return context.json(result);
+  });
+
+  app.post("/api/v1/bots/:botId/skills", async (context) => {
+    const input = await parseRequest(context.req.raw, createEmployeeSkillInputSchema);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.createEmployeeSkill(botId, input);
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);
+    return context.json(result, 201);
+  });
+
+  app.post("/api/v1/bots/:botId/skills/:skillId/state", async (context) => {
+    const input = await parseRequest(context.req.raw, updateEmployeeSkillStateInputSchema);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.updateEmployeeSkillState(
+      botId,
+      context.req.param("skillId"),
+      input,
+    );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);
+    return context.json(result);
+  });
+
+  app.post("/api/v1/bots/:botId/memories", async (context) => {
+    const input = await parseRequest(context.req.raw, createEmployeeMemoryInputSchema);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.createEmployeeMemory(botId, input);
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
+    return context.json(result, 201);
+  });
+
+  app.patch("/api/v1/bots/:botId/memories/:memoryId", async (context) => {
+    const input = await parseRequest(context.req.raw, updateEmployeeMemoryInputSchema);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.updateEmployeeMemory(
+      botId,
+      context.req.param("memoryId"),
+      input,
+    );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
+    return context.json(result);
+  });
+
+  app.delete("/api/v1/bots/:botId/memories/:memoryId", async (context) => {
+    const input = await parseRequest(context.req.raw, deleteEmployeeMemoryInputSchema);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.deleteEmployeeMemory(
+      botId,
+      context.req.param("memoryId"),
+      input,
+    );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
+    return context.json(result);
+  });
+
+  app.get("/api/v1/bots/:botId/export/preview", async (context) => {
+    const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
+    const prepared = prepareEmployeeTemplateExport(
+      profile,
+      employeeTemplateExportOptions(dependencies.employeePublisher),
+    );
+    return context.json({ preview: prepared.preview });
+  });
+
+  app.get("/api/v1/bots/:botId/export", async (context) => {
+    const reviewedInstance = parseEmployeeExportDownloadRequest(context.req.raw);
+    const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
+    const employeeTemplate = prepareEmployeeTemplateExport(profile, {
+      ...employeeTemplateExportOptions(dependencies.employeePublisher),
+      generatedAt: reviewedInstance.generatedAt,
+      packageId: reviewedInstance.packageId,
+    });
+    if (employeeTemplate.preview.blocked) {
+      throw new StoreValidationError(
+        "Employee template export is blocked until the reported findings are resolved.",
+      );
+    }
+    if (employeeTemplate.preview.downloadReviewToken !== reviewedInstance.reviewToken) {
+      return context.json(
+        {
+          error:
+            "The Employee export changed after review. Request a new preview and review it before downloading.",
+        },
+        412,
+      );
+    }
+    context.header("ETag", strongEmployeeExportTag(employeeTemplate.preview.downloadReviewToken));
+    context.header(
+      "Content-Disposition",
+      `attachment; filename="${employeeTemplate.preview.fileName}"`,
+    );
+    context.header(
+      "Content-Type",
+      dependencies.employeePublisher === undefined
+        ? "application/vnd.openbot.employee+json; charset=utf-8"
+        : "application/vnd.openbot.employee.dsse+json; charset=utf-8",
+    );
+    context.header("X-Content-Type-Options", "nosniff");
+    return context.body(employeeTemplate.body);
+  });
+
+  app.post("/api/v1/employees/import/preview", async (context) => {
+    const employeePackage = await parseEmployeePackageRequest(
+      context.req.raw,
+      dependencies.employeePublisher,
+    );
+    return context.json({
+      preview: inspectEmployeeTemplate(
+        employeePackage.document,
+        dependencies.listNodes(),
+        employeePackage.trustedKeyId === undefined
+          ? {}
+          : { trustedKeyId: employeePackage.trustedKeyId },
+      ),
+    });
+  });
+
+  app.post("/api/v1/employees/import/activate", async (context) => {
+    const input = await parseRequest(
+      context.req.raw,
+      activateEmployeeImportInputSchema,
+      maxEmployeeActivationRequestBytes,
+    );
+    const employeePackage = parseEmployeePackageValue(
+      input.package,
+      dependencies.employeePublisher,
+    );
+    const preview = inspectEmployeeTemplate(
+      employeePackage.document,
+      dependencies.listNodes(),
+      employeePackage.trustedKeyId === undefined
+        ? {}
+        : { trustedKeyId: employeePackage.trustedKeyId },
+    );
+    if (
+      preview.packageId !== input.expectedPackageId ||
+      preview.integrity.digest !== input.expectedDigest
+    ) {
+      throw new StoreConflictError(
+        "The Employee package changed after preview. Review the current package before activating it.",
+      );
+    }
+    if (preview.blocked || !preview.quarantine.canActivate) {
+      throw new StoreValidationError(
+        "Employee activation is blocked until every preview issue is resolved.",
+      );
+    }
+    if (preview.signature.status === "unsigned" && !input.allowUnsigned) {
+      throw new StoreValidationError(
+        "Unsigned Employee activation requires explicit Owner risk acceptance.",
+      );
+    }
+
+    const result = await dependencies.store.activateEmployeeImport({
+      document: employeePackage.document,
+      packageDigest: employeeTemplatePackageDigest(employeePackage.document),
+      idempotencyKey: input.idempotencyKey,
+      ...(input.employeeName === undefined ? {} : { employeeName: input.employeeName }),
+      signature:
+        employeePackage.trustedKeyId === undefined
+          ? { status: "unsigned" }
+          : {
+              status: "dsse",
+              trustedPublisherKeyId: employeePackage.trustedKeyId,
+            },
+      reviewedBy: "owner",
+      reviewedAt: new Date().toISOString(),
+    });
+    if (!result.replayed) {
+      publishEmployeeProfileChanged(workspaceRealtime, result.employee.id, [
+        "identity",
+        "evolution",
+        "skills",
+        "configuration",
+        "portability",
+      ]);
+    }
+    return context.json(result, result.replayed ? 200 : 201);
+  });
+
   app.post("/api/v1/bots", async (context) => {
     const input = await parseRequest(context.req.raw, createBotInputSchema);
     const bot = await dependencies.store.createBot(input);
+    publishEmployeeProfileChanged(workspaceRealtime, bot.id, [
+      "identity",
+      "evolution",
+      "configuration",
+    ]);
     return context.json({ bot }, 201);
   });
 
   app.get("/api/v1/nodes", (context) => context.json({ nodes: dependencies.listNodes() }));
+
+  app.get("/api/v1/node-identities", async (context) => {
+    const connectedById = new Map(dependencies.listNodes().map((node) => [node.id, node]));
+    const identities: NodeIdentitySummary[] = (
+      await requireNodeIdentity(dependencies.nodeIdentity).list()
+    ).map((identity) => {
+      const node = connectedById.get(identity.nodeId);
+      return {
+        nodeId: identity.nodeId,
+        status: identity.revokedAt === null ? "active" : "revoked",
+        connected: node !== undefined,
+        enrolledAt: identity.enrolledAt.toISOString(),
+        ...(identity.lastAuthenticatedAt === null
+          ? {}
+          : { lastAuthenticatedAt: identity.lastAuthenticatedAt.toISOString() }),
+        ...(identity.revokedAt === null ? {} : { revokedAt: identity.revokedAt.toISOString() }),
+        ...(node === undefined ? {} : { node }),
+      };
+    });
+    return context.json({ identities });
+  });
+
+  app.post("/api/v1/nodes/enrollment-tokens", async (context) => {
+    const identity = requireNodeIdentity(dependencies.nodeIdentity);
+    const input = await parseRequest(
+      context.req.raw,
+      createNodeEnrollmentTokenInputSchema,
+      maximumNodeIdentityRequestBytes,
+    );
+    return context.json(await identity.issueEnrollmentToken(input), 201);
+  });
+
+  app.post("/api/v1/nodes/:nodeId/revoke", async (context) => {
+    const nodeId = context.req.param("nodeId");
+    const parsedNodeId = createNodeEnrollmentTokenInputSchema.shape.nodeId.safeParse(nodeId);
+    if (!parsedNodeId.success) {
+      throw new RequestValidationError("Node id is invalid.", { nodeId: ["Invalid Node id."] });
+    }
+    await requireNodeIdentity(dependencies.nodeIdentity).revoke(parsedNodeId.data);
+    dependencies.disconnectNode?.(parsedNodeId.data);
+    return context.body(null, 204);
+  });
 
   app.onError((error, context) => {
     if (error instanceof StoreConflictError) {
@@ -424,12 +760,21 @@ export function createApp(dependencies: AppDependencies) {
     if (error instanceof RequestValidationError) {
       return context.json({ error: error.message, fields: error.fields }, 422);
     }
+    if (error instanceof EmployeeExportReviewRequiredError) {
+      return context.json({ error: error.message }, 428);
+    }
     if (error instanceof InvalidCredentialsError) {
       return context.json({ error: "Password is incorrect." }, 401);
     }
     if (error instanceof LoginRateLimitedError) {
       context.header("Retry-After", String(error.retryAfterSeconds));
       return context.json({ error: error.message }, 429);
+    }
+    if (error instanceof InvalidNodeEnrollmentError) {
+      return context.json({ error: "Node enrollment token is invalid or expired." }, 401);
+    }
+    if (error instanceof NodeIdentityNotFoundError) {
+      return context.json({ error: error.message }, 404);
     }
     console.error(error);
     return context.json({ error: "OpenBot Server could not complete the request." }, 500);
@@ -444,12 +789,29 @@ export function createApp(dependencies: AppDependencies) {
 
 const channelHeartbeatMs = 15_000;
 
+function publishEmployeeProfileChanged(
+  realtime: Pick<WorkspaceRealtimeHub, "publish">,
+  botId: string,
+  sections: readonly [EmployeeProfileSection, ...EmployeeProfileSection[]],
+): void {
+  realtime.publish({
+    type: "employee.profile.changed",
+    botId,
+    sections: [...sections],
+    occurredAt: new Date().toISOString(),
+  });
+}
+
 function isMutation(method: string): boolean {
   return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
 }
 
 function isPublicAuthRoute(path: string): boolean {
   return path === "/api/v1/auth/session" || path === "/api/v1/auth/login";
+}
+
+function isPublicNodeEnrollmentRoute(path: string): boolean {
+  return path === "/api/v1/nodes/enroll";
 }
 
 function waitForEventOrTimeout(setWake: (wake: () => void) => void): Promise<boolean> {
@@ -477,11 +839,102 @@ class RequestValidationError extends Error {
   }
 }
 
-async function parseRequest<T>(request: Request, schema: ZodType<T>): Promise<T> {
+class EmployeeExportReviewRequiredError extends Error {}
+
+const maximumApiRequestBytes = 64 * 1024;
+const maximumNodeIdentityRequestBytes = 8 * 1024;
+
+function parseEmployeeExportDownloadRequest(request: Request): {
+  packageId: string;
+  generatedAt: string;
+  reviewToken: string;
+} {
+  const parameters = new URL(request.url).searchParams;
+  const ifMatch = request.headers.get("if-match");
+  if (ifMatch === null) {
+    throw new EmployeeExportReviewRequiredError(
+      "Employee export requires a reviewed preview. Request a new preview, then retry with its strong If-Match tag.",
+    );
+  }
+  const tag = /^"([a-f0-9]{64})"$/.exec(ifMatch);
+  if (tag?.[1] === undefined) {
+    throw new RequestValidationError(
+      "Employee export If-Match must contain exactly one strong review tag.",
+      { ifMatch: ["Use the quoted strong tag value returned by the export preview."] },
+    );
+  }
+
+  const unsupportedParameters = Array.from(parameters.keys()).filter(
+    (name) => name !== "packageId" && name !== "generatedAt",
+  );
+  if (unsupportedParameters.length > 0) {
+    throw new RequestValidationError("The reviewed Employee export instance is invalid.", {
+      query: [`Unsupported query parameter: ${unsupportedParameters[0]}`],
+    });
+  }
+  const parsed = employeeExportDownloadQuerySchema.safeParse({
+    packageId: singleEmployeeExportParameter(parameters, "packageId"),
+    generatedAt: singleEmployeeExportParameter(parameters, "generatedAt"),
+  });
+  if (!parsed.success) {
+    throw new RequestValidationError(
+      "The reviewed Employee export instance is invalid.",
+      parsed.error.flatten().fieldErrors as Record<string, string[]>,
+    );
+  }
+
+  return { ...parsed.data, reviewToken: tag[1] };
+}
+
+function singleEmployeeExportParameter(
+  parameters: URLSearchParams,
+  name: string,
+): string | undefined {
+  const values = parameters.getAll(name);
+  return values.length === 1 ? values[0] : undefined;
+}
+
+function strongEmployeeExportTag(reviewToken: string): string {
+  return `"${reviewToken}"`;
+}
+
+function employeeTemplateExportOptions(publisher: AppDependencies["employeePublisher"]): {
+  publisher?: {
+    keyId: string;
+    sign(document: EmployeeTemplatePackage): DsseEnvelope;
+    verify(input: unknown): EmployeeTemplateEnvelopeVerification;
+  };
+} {
+  if (publisher === undefined) return {};
+  return {
+    publisher: {
+      keyId: publisher.activeKeyId,
+      // Keep the class receiver: production keyrings sign with private `this` state.
+      sign: (document) => publisher.sign(document),
+      verify: (input) => publisher.verify(input),
+    },
+  };
+}
+
+async function parseRequest<T>(
+  request: Request,
+  schema: ZodType<T>,
+  maximumBytes = maximumApiRequestBytes,
+): Promise<T> {
+  const declaredSize = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredSize) && declaredSize > maximumBytes) {
+    throw new RequestValidationError(`Request body must not exceed ${maximumBytes} bytes.`, {});
+  }
+
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    const source = await request.text();
+    if (new TextEncoder().encode(source).byteLength > maximumBytes) {
+      throw new RequestValidationError(`Request body must not exceed ${maximumBytes} bytes.`, {});
+    }
+    body = JSON.parse(source);
+  } catch (error) {
+    if (error instanceof RequestValidationError) throw error;
     throw new RequestValidationError("Request body must be valid JSON.", {});
   }
 
@@ -493,4 +946,68 @@ async function parseRequest<T>(request: Request, schema: ZodType<T>): Promise<T>
     );
   }
   return parsed.data;
+}
+
+function requireNodeIdentity(
+  identity: AppDependencies["nodeIdentity"],
+): NonNullable<AppDependencies["nodeIdentity"]> {
+  if (identity === undefined) throw new Error("Node identity is not configured.");
+  return identity;
+}
+
+const maxEmployeePackageBytes = 2 * 1024 * 1024;
+const maxEmployeeActivationRequestBytes = maxEmployeePackageBytes + maximumApiRequestBytes;
+
+async function parseEmployeePackageRequest(
+  request: Request,
+  publisher: AppDependencies["employeePublisher"],
+): Promise<{ document: EmployeeTemplatePackage; trustedKeyId?: string }> {
+  const declaredSize = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declaredSize) && declaredSize > maxEmployeePackageBytes) {
+    throw new RequestValidationError("Employee package must not exceed 2 MiB.", {});
+  }
+
+  const body = await request.text();
+  if (new TextEncoder().encode(body).byteLength > maxEmployeePackageBytes) {
+    throw new RequestValidationError("Employee package must not exceed 2 MiB.", {});
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(body);
+  } catch {
+    throw new RequestValidationError("Employee package must be valid JSON.", {});
+  }
+  return parseEmployeePackageValue(value, publisher);
+}
+
+function parseEmployeePackageValue(
+  value: unknown,
+  publisher: AppDependencies["employeePublisher"],
+): { document: EmployeeTemplatePackage; trustedKeyId?: string } {
+  const parsed = unsignedEmployeeTemplatePackageSchema.safeParse(value);
+  if (parsed.success) return { document: parsed.data };
+
+  const envelope = dsseEnvelopeSchema.safeParse(value);
+  if (publisher !== undefined && envelope.success) {
+    const verification = publisher.verify(value);
+    if (verification.status === "verified") {
+      return { document: verification.document, trustedKeyId: verification.trustedKeyId };
+    }
+    throw new RequestValidationError("Signed Employee package verification failed.", {
+      package: [`${verification.code}: ${verification.message}`],
+    });
+  }
+
+  if (envelope.success) {
+    throw new RequestValidationError(
+      "Signed Employee packages require a configured publisher trust store.",
+      {},
+    );
+  }
+
+  const fields = Object.fromEntries(
+    parsed.error.issues.map((issue) => [issue.path.join(".") || "package", [issue.message]]),
+  );
+  throw new RequestValidationError("Employee package does not match a supported format.", fields);
 }

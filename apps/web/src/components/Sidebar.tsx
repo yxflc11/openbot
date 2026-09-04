@@ -1,7 +1,7 @@
 import type { Bot, Channel, Run } from "@openbot/domain";
 import { useState } from "react";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
-import { BotIcon, HashIcon, PlusIcon } from "./Icons";
+import { BotIcon, HashIcon, NodeIcon, PlusIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
@@ -10,9 +10,12 @@ interface SidebarProps {
   runs: Run[];
   ownerName: string;
   selectedChannelId?: string | undefined;
+  selectedBotId?: string | undefined;
   onSelectChannel(channelId: string): void;
+  onSelectBot(botId: string): void;
   onCreateBot(): void;
   onCreateChannel(): void;
+  onManageNodes(): void;
   onLogout(): Promise<void>;
 }
 
@@ -22,9 +25,12 @@ export function Sidebar({
   runs,
   ownerName,
   selectedChannelId,
+  selectedBotId,
   onSelectChannel,
+  onSelectBot,
   onCreateBot,
   onCreateChannel,
+  onManageNodes,
   onLogout,
 }: SidebarProps) {
   const activeRunByBot = indexActiveRunsByBot(runs);
@@ -76,7 +82,12 @@ export function Sidebar({
             bots.map((bot) => {
               const run = activeRunByBot.get(bot.id);
               return (
-                <div className="sidebar-row bot-row" key={bot.id}>
+                <button
+                  className={`sidebar-row bot-row ${selectedBotId === bot.id ? "selected" : ""}`}
+                  type="button"
+                  onClick={() => onSelectBot(bot.id)}
+                  key={bot.id}
+                >
                   <RobotAvatar bot={bot} compact status={run?.status ?? bot.status} />
                   <span>{bot.name}</span>
                   <small className="bot-state">
@@ -86,7 +97,7 @@ export function Sidebar({
                     />
                     {run ? runStatusLabel(run.status) : "待命"}
                   </small>
-                </div>
+                </button>
               );
             })
           )}
@@ -99,8 +110,11 @@ export function Sidebar({
           <button type="button">
             <span className="system-nav-icon">⌁</span>技能
           </button>
-          <button type="button">
-            <span className="system-nav-icon">▣</span>节点
+          <button type="button" onClick={onManageNodes}>
+            <span className="system-nav-icon">
+              <NodeIcon />
+            </span>
+            节点
           </button>
           <button type="button">
             <span className="system-nav-icon">◇</span>审计

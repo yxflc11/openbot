@@ -1,117 +1,388 @@
-# 本地 API（M0 + M1）
+# Local API
 
-所有接口由 OpenBot Server 提供，开发环境默认地址为 `http://localhost:3001`。除健康检查、会话状态和登录外，所有 `/api/v1` 接口都要求有效的本地 Owner Session。Server 不应直接暴露到公网；远程使用优先通过 Tailscale 与 HTTPS。
+[English](API.md) · [简体中文](API.zh-CN.md)
 
-| 方法 | 路径 | 作用 |
+OpenBot Server exposes the control-plane API. Development defaults to
+`http://localhost:3001`. Except for health, session status, login, and Node enrollment exchange,
+every `/api/v1` route requires an authenticated local Owner Session. Do not expose the Server,
+PostgreSQL, or a Worker Host management port directly to the public internet; use private-network
+HTTPS for remote access.
+
+## Endpoint map
+
+| Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | Server 存活状态 |
-| `GET` | `/api/v1/auth/session` | 读取当前 Owner 会话状态 |
-| `POST` | `/api/v1/auth/login` | 使用部署密码创建 Owner Session |
-| `POST` | `/api/v1/auth/logout` | 撤销当前 Session 并清除 Cookie |
-| `GET` | `/api/v1/bootstrap` | 轻量计数与阶段信息 |
-| `GET` | `/api/v1/workspace` | 频道、Bot、Node、Run、Approval、Progress、Artifact 和计数的一次性投影 |
-| `GET` | `/api/v1/workspace/events` | 订阅全局 Node、Run 与 Approval 变化（SSE） |
-| `GET` | `/api/v1/channels` | 频道与 Bot roster |
-| `POST` | `/api/v1/channels` | 创建频道并原子加入初始 Bot |
-| `POST` | `/api/v1/channels/:channelId/bots` | 把已有 Bot 加入频道 |
-| `GET` | `/api/v1/channels/:channelId/messages` | 读取最近 100 条本地频道消息与 Bot 回复关系 |
-| `POST` | `/api/v1/channels/:channelId/messages` | 原子保存用户消息并创建排队任务 |
-| `GET` | `/api/v1/channels/:channelId/runs` | 读取频道最近 50 个任务 |
-| `GET` | `/api/v1/channels/:channelId/events` | 订阅频道实时事件（SSE） |
-| `POST` | `/api/v1/approvals/:approvalId/decision` | Owner 批准一次或拒绝一个待批动作 |
-| `GET` | `/api/v1/artifacts/:artifactId/content` | 鉴权读取任务产物；当前仅 PNG 截图 |
-| `GET` | `/api/v1/runs/:runId/frame` | 鉴权读取任务最新临时画面；不持久化 |
-| `GET` | `/api/v1/bots` | Bot 名册 |
-| `POST` | `/api/v1/bots` | 创建 Bot |
-| `GET` | `/api/v1/nodes` | 当前在线执行节点 |
+| `GET` | `/health` | Server liveness |
+| `GET` | `/api/v1/auth/session` | Read the current Owner Session state |
+| `POST` | `/api/v1/auth/login` | Create an Owner Session with the deployment password |
+| `POST` | `/api/v1/auth/logout` | Revoke the Session and clear its cookie |
+| `GET` | `/api/v1/bootstrap` | Lightweight counts and phase information |
+| `GET` | `/api/v1/workspace` | Project channels, Bots, Nodes, Runs, approvals, progress, artifacts, and counts |
+| `GET` | `/api/v1/workspace/events` | Subscribe to global Node, Run, and approval changes over SSE |
+| `GET` | `/api/v1/channels` | List channels and Bot rosters |
+| `POST` | `/api/v1/channels` | Create a channel and atomically add its initial Bots |
+| `POST` | `/api/v1/channels/:channelId/bots` | Add an existing Bot to a channel |
+| `GET` | `/api/v1/channels/:channelId/messages` | Read the latest 100 messages and reply relationships |
+| `POST` | `/api/v1/channels/:channelId/messages` | Persist an Owner message and create a queued Run atomically |
+| `GET` | `/api/v1/channels/:channelId/runs` | Read the latest 50 channel Runs |
+| `GET` | `/api/v1/channels/:channelId/events` | Subscribe to channel events over SSE |
+| `POST` | `/api/v1/approvals/:approvalId/decision` | Approve once or reject one pending action |
+| `GET` | `/api/v1/artifacts/:artifactId/content` | Read an authenticated artifact; currently PNG only |
+| `GET` | `/api/v1/runs/:runId/frame` | Read a Run's latest short-lived frame |
+| `GET` | `/api/v1/bots` | List Bots |
+| `POST` | `/api/v1/bots` | Create a Bot and its initial evolution event |
+| `GET` | `/api/v1/bots/:botId/profile` | Read the complete Employee profile projection |
+| `PATCH` | `/api/v1/bots/:botId/profile` | Update role and biography at an expected revision |
+| `POST` | `/api/v1/bots/:botId/memories` | Create one bounded Owner memory |
+| `PATCH` | `/api/v1/bots/:botId/memories/:memoryId` | Update one memory at an expected revision |
+| `DELETE` | `/api/v1/bots/:botId/memories/:memoryId` | Delete one reviewed memory at an expected revision |
+| `POST` | `/api/v1/bots/:botId/skills` | Register candidate skill metadata for Owner review |
+| `POST` | `/api/v1/bots/:botId/skills/:skillId/state` | Verify, suspend, or permanently revoke a skill |
+| `GET` | `/api/v1/bots/:botId/export/preview` | Preview a sanitized Employee template and all exclusions |
+| `GET` | `/api/v1/bots/:botId/export` | Download the exact reviewed template instance using `If-Match` |
+| `POST` | `/api/v1/employees/import/preview` | Strictly inspect a template in quarantine without writes |
+| `POST` | `/api/v1/employees/import/activate` | Revalidate reviewed input and create a zero-authority Employee |
+| `GET` | `/api/v1/nodes` | List currently connected Worker Hosts |
+| `GET` | `/api/v1/node-identities` | Read enrolled Node metadata without secrets or digests |
+| `POST` | `/api/v1/nodes/enrollment-tokens` | Issue a short-lived, single-use token for one exact Node id |
+| `POST` | `/api/v1/nodes/enroll` | Exchange a one-time token for a per-Node credential |
+| `POST` | `/api/v1/nodes/:nodeId/revoke` | Revoke one Node and disconnect its active session |
 
-## 本地 Owner 会话
+## Owner Session and request security
 
-登录请求：
+Login body:
 
 ```json
 {
-  "password": "部署时设置的 OPENBOT_OWNER_PASSWORD"
+  "password": "the OPENBOT_OWNER_PASSWORD value"
 }
 ```
 
-成功后 Server 设置 `openbot_session` Cookie：`HttpOnly`、`SameSite=Strict`、`Path=/`，有效期由 `OPENBOT_SESSION_TTL_HOURS` 控制。生产环境必须设置 `OPENBOT_SECURE_COOKIES=true`。数据库只保存随机 Token 的 SHA-256 摘要，不保存 Token 或 Owner 密码；退出与过期会话均无法继续访问 API。
+Loopback HTTP development uses an `openbot_session` cookie. HTTPS uses the host-only
+`__Host-openbot_session` cookie. Both are `HttpOnly`, `SameSite=Strict`, and `Path=/`; the HTTPS
+variant is also `Secure`. PostgreSQL stores only the random session token's SHA-256 digest, never
+the token or deployment password.
 
-所有非只读请求都必须携带与 `OPENBOT_ALLOWED_ORIGINS` 精确匹配的 `Origin`。登录连续失败五次后，该来源会被临时限制五分钟。当前为单 Owner 模型，不提供注册、找回密码或多用户权限；修改部署密码后应重启 Server，并主动退出现有设备。
+Every mutating request must send an `Origin` that exactly matches `OPENBOT_ALLOWED_ORIGINS`.
+Non-loopback origins require HTTPS and `OPENBOT_SECURE_COOKIES=true`; an unsafe configuration
+stops the Server before it listens. Five consecutive login failures temporarily limit that
+single-process browser-Origin bucket for five minutes. This is not distributed per-device
+identity, so the Server still belongs on a trusted private network.
 
-## 创建 Bot
+Channel and workspace SSE subscribers each have a 128-event pending bound. The Server terminates
+an overloaded subscriber; the Client reconnects and reloads the authoritative database snapshot
+instead of pretending a dropped stream is continuous.
+
+## Bots and Employee profiles
+
+Create a Bot:
 
 ```json
 {
   "name": "Ops",
-  "role": "浏览器操作与日常运营",
+  "role": "Browser operations and daily workflows",
   "computerProfile": "docker-linux"
 }
 ```
 
-`computerProfile` 只能是 `none`、`docker-linux`、`macos-cua`、`lume-vm` 或 `coder`。Bot 名称在当前本地工作区唯一。
+`computerProfile` is one of `none`, `docker-linux`, `macos-cua`, `lume-vm`, or `coder`. Names are
+unique in the local workspace. Creation writes the Bot and an immutable `created` evolution event
+in one transaction; a Bot is the Employee identity, not a second wrapper around one.
 
-## 创建频道
+`GET /api/v1/bots/:botId/profile` returns:
+
+- `employee`: identity, role, state, appearance, and fixed execution configuration;
+- `details`: descriptive biography, Server revision, and last update time;
+- `evolution`: append-only, source- and evidence-backed changes;
+- `skills`: versions, dependencies, capability requirements, state, and confidence;
+- `memories`: typed Owner records with sensitivity, portability, provenance, and revision;
+- `memoryEvents`: content-free memory lifecycle audit rows;
+- `records`: recent Runs, approvals, artifacts, and structured decision summaries;
+- `statistics`: result counts across the latest 50 Runs and verified skill count;
+- `configuration`: execution profile and portable package format.
+
+Decision records come only from persisted `RUN_PROGRESS` events. They expose stages,
+observations, concise action explanations, and next actions—not hidden chain-of-thought, provider
+tokens, prompts, or secrets. Skill confidence and memory portability never grant Worker Host
+authority.
+
+### Update descriptive profile details
+
+`PATCH /api/v1/bots/:botId/profile` accepts only the complete role and biography plus the revision
+the Owner inspected:
 
 ```json
 {
-  "name": "运营中心",
-  "description": "处理日常运营任务并保留完整上下文",
+  "role": "Evidence reviewer",
+  "description": "Review evidence and document limitations before reporting conclusions.",
+  "expectedRevision": 1
+}
+```
+
+The Server trims both strings, requires a non-blank role of at most 160 characters, and limits the
+biography to 2,000 characters. A stale revision returns `409`; an unchanged update or an
+authority-bearing extra field returns `422`. The successful transaction increments the revision
+and appends an evolution event that stores changed field names, not biography text. Workspace SSE
+then publishes only the Employee id and affected sections. Name, model policy, Worker Host,
+appearance, skill state, and permission grants are deliberately outside this command.
+
+## Owner-managed memory
+
+The first memory lifecycle is manual and Owner-only. Models, Providers, and Worker Hosts do not
+have these commands. Titles are limited to 160 characters and content to 8,000 characters.
+Unknown fields fail strict parsing. Credential-like values and private-key material are rejected;
+store only an opaque vault reference such as `vault://operations/email`.
+
+Create a memory:
+
+```json
+{
+  "kind": "semantic",
+  "title": "Preferred report format",
+  "content": "Use a short summary followed by a source table.",
+  "sensitivity": "internal",
+  "portability": "owner-selectable"
+}
+```
+
+`kind` is `working`, `episodic`, `semantic`, `procedural`, or `secret-reference`.
+`sensitivity` is `public`, `internal`, `confidential`, or `restricted`. Owner commands may set portability only to
+`never` or `owner-selectable`; `included` is rejected because every `openbot.employee/v1` package
+contains zero memories. A `secret-reference` must be `restricted` and `never` portable, and its
+content must be a reference rather than a credential value.
+
+Update a memory:
+
+```json
+{
+  "expectedRevision": 1,
+  "content": "Use a five-line summary followed by a source table."
+}
+```
+
+At least one field must change. The update succeeds only if `expectedRevision` is current, then
+increments it. A stale edit returns `409` without changing the record.
+
+Delete a memory:
+
+```json
+{
+  "expectedRevision": 2,
+  "ownerReviewed": true
+}
+```
+
+Deletion requires a distinct reviewed command and the current revision. It physically removes the
+memory row. The same transaction appends a lifecycle event containing only Employee id, memory id,
+action, revision, changed field names, actor, and time; it never retains title, content,
+provenance, or a content hash. Retrieval, retention schedules, autonomous write proposals,
+version restoration, and selective export remain unimplemented.
+
+## Skill metadata review
+
+`POST /api/v1/bots/:botId/skills` creates only `candidate` metadata. Slugs use the Agent
+Skills-compatible lowercase letters, numbers, and hyphens subset, up to 64 characters; description
+is required and limited to 1,024 characters. Dependencies must already be verified skills owned by
+the same Employee.
+
+```json
+{
+  "slug": "source-triangulation",
+  "name": "Source triangulation",
+  "description": "Compare independent primary sources before reporting a conclusion.",
+  "version": "1.0.0",
+  "source": "learned",
+  "requiredCapabilities": ["browser.observe"],
+  "dependencySkillIds": [],
+  "evidence": [{ "kind": "run", "id": "run-reference" }],
+  "reason": "Repeated successful Runs produced a reusable procedure."
+}
+```
+
+The state command accepts `verified`, `suspended`, or `revoked`. Every transition requires a
+non-empty reason and literal `ownerReviewed: true`; verification also requires confidence from 1
+through 100. Revocation is terminal. Concurrent transitions return `409` instead of overwriting
+the earlier review. The Employee profile now exposes the stored description, source, version,
+required host-capability names, dependencies, and evidence references before showing only the
+transitions valid from the current state. Permanent revocation uses a separate confirmation form.
+
+```json
+{
+  "state": "verified",
+  "confidence": 88,
+  "reason": "The Owner reviewed the procedure and evidence.",
+  "ownerReviewed": true,
+  "evidence": [{ "kind": "manual", "id": "owner-review-1" }]
+}
+```
+
+These endpoints manage profile metadata only. They do not install or execute `SKILL.md`, change a
+Node, route work, alter approval policy, or grant tools.
+
+## Employee export, import, and activation
+
+Export preview is generated from the same canonical package preparation path that download uses.
+It creates one fresh `packageId` and `generatedAt` and returns a `downloadReviewToken`. That token
+is the opaque value of the target download representation's strong entity tag: the SHA-256 digest
+of the exact pretty-printed JSON bytes, including the DSSE envelope when signing is configured. It
+is not a credential or authority grant. Its
+`employee` projection contains the exact name, role, optional descriptive biography, and appearance
+selected for the template; its ordered `skills` projection contains every selected verified skill's
+slug, name, Agent Skills description, version, capability requests, and dependency slugs.
+`employeeName` remains a deprecated v1 compatibility alias for `employee.name`. The preview also
+lists the checksum, exclusions, and blockers. The v1 template structurally excludes source identity,
+ownership, all memories, Runs, evolution,
+decisions, artifacts, approvals, Node identity, host binding, credentials, sessions, and authority.
+Free text is scanned for credential-like values, bearer tokens, private keys, and local paths.
+Every exported verified skill must also have all of its skill dependencies inside the same verified
+set. An excluded or unknown dependency produces an `excluded-skill-dependency` finding rather than
+being silently omitted. A blocked export returns `422`.
+
+Download must return the reviewed `packageId` and `generatedAt` as query parameters and the
+preview's `downloadReviewToken`, quoted as one strong entity tag, in `If-Match`:
+
+```http
+GET /api/v1/bots/{botId}/export?packageId={uuid}&generatedAt={encoded-ISO-8601}
+If-Match: "{downloadReviewToken}"
+```
+
+The Server rebuilds the candidate from its current authoritative profile and publisher state with
+that exact package identity. It returns the file only when the complete serialized bytes still
+match. Missing review state returns `428 Precondition Required`; malformed or weak tags return
+`422`; changed content or publisher state returns `412 Precondition Failed` and requires a fresh
+preview. The Client refreshes the preview but never retries the download automatically. All
+preview, error, and download responses are `Cache-Control: no-store`. Before creating a browser
+download, the Web Client also requires the matching response `ETag` and recomputes SHA-256 over the
+received `Blob`; a mismatch produces no file.
+
+The advisory download filename is a bounded lowercase ASCII slug with a fixed JSON suffix. Path,
+control, quoting, and extension input from the Employee name is removed; Windows device names such
+as `CON`, `NUL`, `COM1`, and `LPT1` are disambiguated. This keeps one deterministic fallback valid
+across Windows, macOS, and Linux while the package retains the Employee's full display name.
+
+Unsigned export uses `application/vnd.openbot.employee+json`. When the optional Owner publisher
+keyring is configured, export uses `application/vnd.openbot.employee.dsse+json` and a DSSE/Ed25519
+signature over the exact package bytes. A package key id is only a lookup hint; trust comes from an
+explicit Server trust store and successful verification. See [Employee signing](EMPLOYEE_SIGNING.md).
+
+Import preview accepts one v1 template or DSSE envelope, up to 2 MiB. It validates strict schema,
+signature when present, checksum, skill dependencies and capabilities, sensitive text, and current
+Worker Host compatibility. A successful preview is still read-only quarantine: it creates no Bot,
+skill, memory, host binding, or authority. Its `employee` projection includes the name, role,
+optional biography, and appearance that were checked in the package. Clients should show the
+biography and `requestedCapabilities` before confirmation and must describe both as untrusted input,
+not as granted authority. Each `skills` item retains its required Agent Skills description,
+version, requested capabilities, and dependency slugs so the Owner can review what will become a
+disabled candidate; no executable skill files are present in v1.
+
+Activation body:
+
+```json
+{
+  "package": {},
+  "expectedPackageId": "uuid-from-preview",
+  "expectedDigest": "sha256-from-preview",
+  "ownerReviewed": true,
+  "allowUnsigned": false,
+  "idempotencyKey": "new-request-uuid",
+  "employeeName": "Optional local name"
+}
+```
+
+Activation repeats every preview check and binds the reviewed package id and canonical digest. For
+a signed package, that digest includes the authenticated publisher key id, so substitution by a
+different trusted publisher also requires a new review. Cosmetic JSON whitespace is not identity.
+Unsigned input requires `allowUnsigned: true`. One PostgreSQL transaction creates a fresh Employee id, imports
+skills as `candidate` with confidence `0`, appends an `imported` evolution event, and stores an
+immutable receipt. It imports no memory, history, credential, session, Node binding, capability, or
+authority. An exact idempotent retry returns the original receipt; changed reuse or a duplicate
+package id returns `409`.
+
+## Channels, Runs, and approvals
+
+Create a channel:
+
+```json
+{
+  "name": "Operations",
+  "description": "Daily operations with durable context",
   "botIds": ["00000000-0000-4000-8000-000000000001"]
 }
 ```
 
-频道与初始 roster 在同一数据库事务中写入；任一 Bot 不存在时整次创建失败。创建 Bot、创建频道和加入频道都会写入结构化事件，供后续 realtime、audit 和办公室状态投影使用。
+The channel and initial roster are one transaction. Any unknown Bot rejects the entire request.
 
-## 发送频道任务
+Create a task:
 
 ```json
 {
-  "content": "打开测试页，填写表单但不要提交",
-  "botId": "可选；必须是该频道成员的 Bot ID"
+  "content": "Open the test page and take a screenshot.",
+  "botId": "optional-channel-member-id"
 }
 ```
 
-消息正文会先去除首尾空白，长度限制为 1–8000 个字符。一次请求会在同一数据库事务中创建 `human` 消息、状态为 `queued` 的 Run、`MESSAGE_CREATED` 和 `RUN_CREATED` 事件。Run 通过唯一的 `sourceMessageId` 关联来源消息，避免同一输入被投影为多个任务。
+Content is trimmed and limited to 1–8,000 characters. The Server atomically stores the human
+message, one `queued` Run, and matching events. An explicit `botId` must belong to the channel.
+Without one, routing deterministically prefers a Chief/coordinator role and otherwise uses stable
+roster order. A Run freezes the selected Bot's execution profile; Client, model, and Node cannot
+change it mid-run.
 
-若传入 `botId`，Server 只接受频道 roster 内的 Bot；未传入时确定性地优先选择名称或职责为 Chief/总管/协调/调度的成员，否则选择 roster 中稳定排序的首位成员。空频道和越权指定均返回 `422`。模型与 Client 不能绕过这条成员边界。
+A compatible Node receives an offer only when exact capability-major and capacity requirements
+match. Offer/accept is not enough: the Server must persist conditional assignment and confirm it,
+then persist explicit start before execution. An assigned Run can return to `queued` after a
+disconnect; a running Run fails because its external side effects are unknown and are not retried
+automatically.
 
-成功响应包含 `{ message, run }`。Server 随后向频道 SSE 订阅者依次发布 `message.created` 与 `run.created`；Web 分别按消息 ID 和 Run ID 合并快照与实时事件，因此刷新、重连和并发写入不会产生重复投影。
+Approval decisions use `{ "decision": "approve" }` or `{ "decision": "reject" }`. Only a pending,
+unexpired approval may be decided, and only once. Approval resumes a Run; rejection or expiry
+blocks it. The current handshake does not yet issue a separately verifiable single-use capability
+lease, so only trusted-private-network test Providers are appropriate.
 
-Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，不会在运行中由 Client、模型或 Node 改写。若存在兼容且未满载的在线 Node，Server 会通过版本化 WebSocket 协议发出 offer；Node 接受、Server 在短事务中条件认领成功并发送 confirm 后，Run 进入 `assigned`。Node 再请求启动，Server 条件更新为 `running` 后才发 `run.start`；进度写入结构化事件并实时投影到频道，最新画面只进入受限内存缓存，成功结果和 Artifact 元数据在同一数据库事务中落库，随后 Server 发 `run.settled` 释放节点容量。
+## Realtime and private media
 
-尚未执行的 `assigned` Run 在节点断线或 Server 恢复时回到 `queued`；已经 `running` 的 Run 则明确失败，不会在外部副作用未知时自动重跑。当前 Docker provider 只接受任务正文中的一个明确 HTTP(S) URL，只执行 `/navigate` 与 `/screenshot`，不点击、不填写、不提交。截图正文保存在 Server 文件存储，数据库只保存引用、SHA-256、大小和元数据。
+Channel SSE emits `channel.ready`, `message.created`, `run.created`, `run.updated`, `run.progress`,
+`run.frame`, and a 15-second `heartbeat`. The Web Client closes a stream after 35 seconds without
+frames, reconnects after two seconds, reloads recent history, and merges entities by id and
+`updatedAt`.
 
-## 订阅频道事件
+Workspace SSE emits `workspace.ready`, `node.upserted`, `node.removed`, `run.updated`,
+`approval.updated`, and `employee.profile.changed`. The Employee event contains only `botId`, a
+non-empty allowlisted `sections` array, and `occurredAt`; it is a content-free invalidation hint.
+A Client viewing that Employee reloads the authenticated profile aggregate instead of treating SSE
+as profile state. The Client also reloads the selected profile after `workspace.ready`, so reconnect
+recovers missed mutations. Workspace SSE owns cross-channel status; channel SSE owns one channel's
+conversation and Run details. This is a single-Server in-process broadcast. Multi-Server deployment
+first requires a reviewed shared event and queue system.
 
-`GET /api/v1/channels/:channelId/events` 返回 `text/event-stream`，当前事件如下：
+Artifact and frame endpoints use the Owner Session, return `private, no-store`, and set
+`X-Content-Type-Options: nosniff`. The Web Client never receives the internal storage key. Frames
+are PNG only, at most 2 MiB, held for at most 16 Runs, and expire after two minutes by default.
 
-| SSE event | data | 作用 |
-| --- | --- | --- |
-| `channel.ready` | `{ type, channelId, occurredAt }` | 确认订阅已建立 |
-| `message.created` | `{ type, channelId, message }` | 投影一条已持久化的频道消息 |
-| `run.created` | `{ type, channelId, run }` | 投影一条已持久化的排队任务 |
-| `run.updated` | `{ type, channelId, run, artifacts? }` | 投影分配、运行、完成、失败和新产物 |
-| `run.progress` | `{ type, channelId, progress }` | 投影已持久化的执行阶段和说明 |
-| `run.frame` | `{ type, channelId, frame }` | 投影最新临时画面的版本、尺寸和时间；不含图片正文 |
-| `heartbeat` | ISO 时间字符串 | 检测代理或 Server 形成的半开连接 |
+## Worker Host identity
 
-Server 每 15 秒发送一次心跳。Web 超过 35 秒未收到任何帧会主动关闭连接，并以 2 秒间隔重连。每次收到 `channel.ready` 后，Web 都会重新读取最近历史，并按实体 ID 与 `updatedAt` 合并消息和 Run，以补齐断线期间写入的数据且不让旧 REST 快照覆盖较新的 SSE 状态。SSE 只承担 Server 到浏览器的下行投影；创建消息等命令继续使用 REST。
+Online Node projections include platform, OS version, architecture, device class, isolation,
+trust tier, and a versioned capability manifest. Protocol `0.9.0` requires exact capability-major
+matching on Server and Node. Unknown message fields, duplicate capabilities, invalid or oversized
+identity metadata, and unbounded approval context fail closed.
 
-`GET /api/v1/workspace/events` 使用独立的全局 SSE。首帧 `workspace.ready` 包含当前在线 Node 权威快照，之后发送 `node.upserted`、`node.removed`、`run.updated` 与 `approval.updated`；Web 因此不需要刷新就能看到远程机器、办公室任务和待审批动作变化。频道事件仍负责单频道消息、进度与画面，Workspace 事件负责跨频道总览。
+One-time enrollment tokens expire after ten minutes by default and bind one exact Node id. A
+successful exchange stores only a digest on the Server and returns an individually revocable
+per-Node credential once. The current credential is still a copyable bearer secret—not mTLS or
+proof-of-possession identity—so non-loopback Node connections require `wss:` and a trusted private
+network. See [Node enrollment](NODE_ENROLLMENT.md).
 
-审批决定正文为 `{ "decision": "approve" }` 或 `{ "decision": "reject" }`。Server 只接受 `pending` 状态且未过期的审批；每个审批只能决定一次，重复请求返回 `409`。批准会把 Run 恢复为 `running` 并把决定送回发起请求的 Node，拒绝或过期会把 Run 标记为 `blocked` 并取消 Node 执行。当前握手尚未签发独立、可验证的一次性 capability lease，因此只允许可信私网测试 provider 使用。
+## Error contract
 
-当前 realtime hub 是单 Server 进程内广播。需要运行多个 Server 副本时，必须先换成 PostgreSQL `LISTEN/NOTIFY`、Redis Streams 或 NATS 等共享事件总线，不能依赖进程内 fan-out。
+| Status | Meaning |
+| --- | --- |
+| `401` | Missing, expired, or invalid Owner Session |
+| `403` | A mutating request has no trusted exact-match Origin |
+| `404` | The requested channel, Bot, Employee record, or Node identity does not exist |
+| `409` | Name conflict, stale revision, already-decided approval, or changed/reused reviewed input |
+| `413` | A request exceeds its transport-level size bound |
+| `422` | Strict input, policy, package, compatibility, or sensitive-content validation failed |
+| `429` | Login attempts are temporarily limited; follow `Retry-After` |
 
-Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `private, no-store` 并带 `X-Content-Type-Options: nosniff`。Web 不接收或暴露实际 `storage_key`；没有登录的浏览器不能读取截图。临时画面限制为 PNG 和 2 MiB，Server 最多保留 16 个 Run 的最新帧，每帧默认 2 分钟后过期；SSE 只发送元数据，图片由浏览器按 revision 单独读取。
-
-## 错误约定
-
-- `401`：未登录、会话已过期或登录密码错误；
-- `403`：非只读请求缺少可信 `Origin`，或来源不在允许列表；
-- `429`：登录失败次数过多，调用方应遵循 `Retry-After`；
-- `409`：频道或 Bot 名称冲突，审批已决定或已过期；
-- `422`：输入字段或 roster 无效；
-- `404`：频道或 Bot 不存在；
-- `500`：未预期的 Server 错误，响应不会泄漏数据库细节。
+Error bodies include an `error` string. Schema failures may also include a bounded `fields` map.
+Clients must not retry `409` or `422` blindly: reload the authoritative state, show the change to
+the Owner, and ask for a new decision.

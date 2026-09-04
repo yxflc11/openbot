@@ -1,9 +1,10 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
-import type { IncomingMessage, Server as HttpServer } from "node:http";
+import { randomUUID } from "node:crypto";
+import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { ExecutionNode } from "@openbot/domain";
 import {
   type NodeCapability,
+  type NodeCapabilityRequirement,
   type NodeMessage,
   nodeMessageSchema,
   protocolVersion,
@@ -24,6 +25,23 @@ interface PendingOffer {
   timeout: NodeJS.Timeout;
 }
 
+export interface NodeRegistryOptions {
+  offerTimeoutMs?: number;
+  enrollmentTimeoutMs?: number;
+  livenessIntervalMs?: number;
+  maxPayloadBytes?: number;
+}
+
+export interface NodeCredentialVerifier {
+  authenticate(nodeId: string, credential: string): Promise<boolean>;
+}
+
+const DEFAULT_NODE_ENROLLMENT_TIMEOUT_MS = 10_000;
+const DEFAULT_NODE_LIVENESS_INTERVAL_MS = 30_000;
+// A completion can currently contain four base64 artifacts of up to 7,000,000 characters each.
+// Keep enough headroom for that documented protocol envelope while replacing ws's 100 MiB default.
+export const DEFAULT_NODE_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024;
+
 export interface RunOfferInput {
   runId: string;
   channelId: string;
@@ -32,6 +50,7 @@ export interface RunOfferInput {
   instruction: string;
   executionProfile: RunOffer["executionProfile"];
   requiredCapabilities: NodeCapability[];
+  requiredCapabilityManifest: NodeCapabilityRequirement[];
 }
 
 export type RunOfferResult =
@@ -57,18 +76,26 @@ type NodeRunHandler = (node: ExecutionNode, message: NodeRunMessage) => void;
 
 export class NodeRegistry {
   readonly #nodes = new Map<string, ConnectedNode>();
-  readonly #enrollmentToken: string;
+  readonly #identity: NodeCredentialVerifier;
   readonly #offerTimeoutMs: number;
+  readonly #enrollmentTimeoutMs: number;
+  readonly #livenessIntervalMs: number;
+  readonly #maxPayloadBytes: number;
   readonly #availableHandlers = new Set<NodeHandler>();
   readonly #updatedHandlers = new Set<NodeHandler>();
   readonly #unavailableHandlers = new Set<NodeHandler>();
   readonly #runHandlers = new Set<NodeRunHandler>();
   readonly #pendingOffers = new Map<string, PendingOffer>();
-  #gateway?: WebSocketServer;
+  readonly #socketLiveness = new WeakMap<WebSocket, boolean>();
+  #gateway: WebSocketServer | undefined;
+  #livenessTimer: NodeJS.Timeout | undefined;
 
-  constructor(enrollmentToken: string, options: { offerTimeoutMs?: number } = {}) {
-    this.#enrollmentToken = enrollmentToken;
+  constructor(identity: NodeCredentialVerifier, options: NodeRegistryOptions = {}) {
+    this.#identity = identity;
     this.#offerTimeoutMs = options.offerTimeoutMs ?? 10_000;
+    this.#enrollmentTimeoutMs = options.enrollmentTimeoutMs ?? DEFAULT_NODE_ENROLLMENT_TIMEOUT_MS;
+    this.#livenessIntervalMs = options.livenessIntervalMs ?? DEFAULT_NODE_LIVENESS_INTERVAL_MS;
+    this.#maxPayloadBytes = options.maxPayloadBytes ?? DEFAULT_NODE_MAX_PAYLOAD_BYTES;
   }
 
   list(): ExecutionNode[] {
@@ -239,7 +266,7 @@ export class NodeRegistry {
     try {
       node.socket.send(JSON.stringify(message));
     } catch {
-      // Heartbeat or disconnect reconciliation repairs the in-memory capacity projection.
+      // Server-owned assignment state remains authoritative until disconnect reconciliation.
     }
   }
 
@@ -267,8 +294,29 @@ export class NodeRegistry {
   }
 
   attach(server: HttpServer): void {
-    const gateway = new WebSocketServer({ noServer: true });
+    if (this.#gateway !== undefined) throw new Error("Node gateway is already attached.");
+    const gateway = new WebSocketServer({
+      noServer: true,
+      maxPayload: this.#maxPayloadBytes,
+      perMessageDeflate: false,
+    });
     this.#gateway = gateway;
+
+    this.#livenessTimer = setInterval(() => {
+      for (const socket of gateway.clients) {
+        if (this.#socketLiveness.get(socket) === false) {
+          socket.terminate();
+          continue;
+        }
+        this.#socketLiveness.set(socket, false);
+        try {
+          socket.ping();
+        } catch {
+          socket.terminate();
+        }
+      }
+    }, this.#livenessIntervalMs);
+    this.#livenessTimer.unref();
 
     server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
       const url = new URL(request.url ?? "/", "http://openbot.local");
@@ -284,8 +332,17 @@ export class NodeRegistry {
 
     gateway.on("connection", (socket) => {
       let enrolledNodeId: string | undefined;
+      let authenticationPending = false;
+      this.#socketLiveness.set(socket, true);
+      const enrollmentTimer = setTimeout(() => {
+        if (enrolledNodeId === undefined) socket.terminate();
+      }, this.#enrollmentTimeoutMs);
+      enrollmentTimer.unref();
 
-      socket.on("message", (raw: RawData) => {
+      socket.on("pong", () => this.#socketLiveness.set(socket, true));
+      socket.on("error", () => socket.terminate());
+
+      socket.on("message", async (raw: RawData) => {
         const parsed = nodeMessageSchema.safeParse(parseJson(raw.toString()));
 
         if (!parsed.success) {
@@ -298,18 +355,33 @@ export class NodeRegistry {
         const now = new Date().toISOString();
 
         if (message.type === "node.hello") {
-          if (!isEnrollmentTokenValid(message.token, this.#enrollmentToken)) {
-            sendAck(socket, false, "Invalid enrollment token.");
-            socket.close(1008, "invalid-token");
+          if (enrolledNodeId !== undefined || authenticationPending) {
+            sendAck(socket, false, "A connection may authenticate only once.");
+            socket.close(1008, "already-enrolled");
             return;
           }
-          if (enrolledNodeId !== undefined && enrolledNodeId !== message.nodeId) {
-            sendAck(socket, false, "A connection cannot change its Node identity.");
-            socket.close(1008, "identity-changed");
+          authenticationPending = true;
+          let authenticated = false;
+          try {
+            authenticated = await this.#identity.authenticate(message.nodeId, message.credential);
+          } catch {
+            authenticationPending = false;
+            sendAck(socket, false, "Node authentication is temporarily unavailable.");
+            socket.close(1011, "authentication-unavailable");
+            return;
+          }
+          authenticationPending = false;
+          if (!authenticated) {
+            sendAck(socket, false, "Invalid Node credential.");
+            socket.close(1008, "invalid-credential");
+            return;
+          }
+          if (socket.readyState !== WebSocket.OPEN) {
             return;
           }
 
           enrolledNodeId = message.nodeId;
+          clearTimeout(enrollmentTimer);
           const previous = this.#nodes.get(message.nodeId);
           if (previous !== undefined && previous.socket !== socket) {
             this.#disconnectNode(previous, "Node reconnected with a new socket.", false);
@@ -320,7 +392,13 @@ export class NodeRegistry {
             id: message.nodeId,
             name: message.name,
             platform: message.platform,
+            osVersion: message.osVersion,
+            architecture: message.architecture,
+            deviceClass: message.deviceClass,
+            isolation: message.isolation,
+            trustTier: message.trustTier,
             capabilities: message.capabilities,
+            capabilityManifest: message.capabilityManifest,
             activeRunIds: [],
             maxConcurrentRuns: message.maxConcurrentRuns,
             connectedAt: now,
@@ -342,7 +420,7 @@ export class NodeRegistry {
 
         node.lastSeenAt = now;
         if (message.type === "node.heartbeat") {
-          node.activeRunIds = message.activeRunIds.slice(0, node.maxConcurrentRuns);
+          // Heartbeats report liveness. Only Server assignment methods may change capacity state.
           this.#emit(this.#updatedHandlers, node);
           sendAck(socket, true);
           return;
@@ -385,6 +463,7 @@ export class NodeRegistry {
       });
 
       socket.on("close", () => {
+        clearTimeout(enrollmentTimer);
         if (enrolledNodeId === undefined) return;
         const node = this.#nodes.get(enrolledNodeId);
         if (node !== undefined && node.socket === socket) {
@@ -395,12 +474,23 @@ export class NodeRegistry {
   }
 
   close(): void {
+    clearInterval(this.#livenessTimer);
+    this.#livenessTimer = undefined;
     for (const pending of this.#pendingOffers.values()) {
       pending.resolve({ status: "unavailable", reason: "Node gateway is shutting down." });
     }
     for (const socket of this.#gateway?.clients ?? []) socket.terminate();
     this.#gateway?.close();
+    this.#gateway = undefined;
     this.#nodes.clear();
+  }
+
+  disconnect(nodeId: string, reason = "Node identity was revoked."): boolean {
+    const node = this.#nodes.get(nodeId);
+    if (node === undefined) return false;
+    this.#disconnectNode(node, reason);
+    node.socket.close(1008, "credential-revoked");
+    return true;
   }
 
   #disconnectNode(node: ConnectedNode, reason: string, emitUnavailable = true): void {
@@ -430,15 +520,6 @@ export class NodeRegistry {
   }
 }
 
-export function isEnrollmentTokenValid(candidate: string, expected: string): boolean {
-  const candidateBuffer = Buffer.from(candidate);
-  const expectedBuffer = Buffer.from(expected);
-  return (
-    candidateBuffer.length === expectedBuffer.length &&
-    timingSafeEqual(candidateBuffer, expectedBuffer)
-  );
-}
-
 function parseJson(value: string): unknown {
   try {
     return JSON.parse(value);
@@ -455,5 +536,10 @@ function sendAck(socket: WebSocket, accepted: boolean, reason?: string): void {
     receivedAt: new Date().toISOString(),
     ...(reason === undefined ? {} : { reason }),
   };
-  socket.send(JSON.stringify(message));
+  if (socket.readyState !== WebSocket.OPEN) return;
+  try {
+    socket.send(JSON.stringify(message));
+  } catch {
+    socket.terminate();
+  }
 }

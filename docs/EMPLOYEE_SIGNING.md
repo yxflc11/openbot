@@ -1,0 +1,91 @@
+# Employee package signing
+
+[English](EMPLOYEE_SIGNING.md) · [简体中文](EMPLOYEE_SIGNING.zh-CN.md)
+
+OpenBot can sign the existing identity-free `openbot.employee/v1` template with an Owner-controlled
+Ed25519 key. The result is a DSSE envelope. A receiving Server accepts that envelope only when its
+local trust store already contains the publisher public key.
+
+This feature is experimental. Verification first produces a read-only quarantine preview. An
+authenticated Owner may then activate the exact reviewed digest as a fresh local Employee; every
+skill remains a disabled candidate. Activation cannot copy memory, bind a Worker Host, or grant
+authority.
+
+## Initialize the local publisher
+
+Choose two different protected locations: one for the keyring and one for its passphrase.
+
+```bash
+npm run employee:publisher-key -- init \
+  --keyring ./data/employee-publisher \
+  --passphrase-file ./data/employee-publisher-secret/passphrase
+```
+
+If the passphrase file does not exist, the command creates a random one with Owner-only
+permissions. It prints the active `ed25519:<sha256-spki>` key id but never prints private key
+material. Configure both paths and restart the Server:
+
+```dotenv
+OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH=./data/employee-publisher
+OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE=./data/employee-publisher-secret/passphrase
+```
+
+An explicitly configured but unreadable, loosely permissioned, symlinked, malformed, or mismatched
+keyring stops Server startup. OpenBot does not silently fall back to unsigned export.
+
+## Share and trust a publisher
+
+The publisher exports only a public key:
+
+```bash
+npm run employee:publisher-key -- export-public \
+  --output ./openbot-publisher.pub.pem \
+  --keyring ./data/employee-publisher \
+  --passphrase-file ./data/employee-publisher-secret/passphrase
+```
+
+Send the PEM file and its printed key id through different authenticated channels. The receiver
+must compare that fingerprint out of band, then explicitly trust it:
+
+```bash
+npm run employee:publisher-key -- trust \
+  --public-key ./openbot-publisher.pub.pem \
+  --expected-key-id ed25519:<verified-sha256-spki-fingerprint> \
+  --keyring ./data/employee-publisher \
+  --passphrase-file ./data/employee-publisher-secret/passphrase
+```
+
+Restart the receiving Server. An Employee file never makes an included key trusted, and the Web API
+cannot modify this trust store.
+
+## Rotate and revoke
+
+```bash
+npm run employee:publisher-key -- rotate \
+  --keyring ./data/employee-publisher \
+  --passphrase-file ./data/employee-publisher-secret/passphrase
+
+npm run employee:publisher-key -- revoke \
+  --key-id ed25519:<retired-key-fingerprint> \
+  --keyring ./data/employee-publisher \
+  --passphrase-file ./data/employee-publisher-secret/passphrase
+```
+
+Rotation creates a new active signer and retains the previous public key for verification. The
+active key cannot be revoked directly; rotate first. Revocation excludes a retired or externally
+trusted key from verification. Every mutation requires a Server restart.
+
+## Back up and recover
+
+- Back up the keyring and passphrase separately, encrypted, and off the Server.
+- Never put either location inside an Employee package, Git repository, browser-readable folder,
+  shared Worker Host volume, or log collector.
+- Losing the private key prevents new signed exports. Losing the trust manifest prevents the Server
+  from recognizing previously trusted publishers.
+- Restoring files does not grant Employee authority; import remains quarantined.
+
+This local trust store does not establish a globally verified human identity, publish revocation to
+other users, provide threshold recovery, or protect against a compromised Owner account. Public
+distribution will require the planned TUF/Sigstore registry adapter. See
+[ADR-0024](decisions/0024-owner-employee-publisher-keys.md) and the
+[upstream research](research/employee-publisher-key-lifecycle.md).

@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ApiError } from "../api";
 import { CloseIcon } from "./Icons";
 import { defaultBotAppearance, RobotAvatar } from "./RobotAvatar";
+import { useModalDialog } from "./useModalDialog";
 
 const computerOptions: Array<{ value: Bot["computerProfile"]; label: string }> = [
   { value: "none", label: "暂不绑定电脑" },
@@ -52,9 +53,11 @@ const appearanceOptions = {
 export function CreateBotDialog({
   onClose,
   onCreate,
+  onImport,
 }: {
   onClose(): void;
   onCreate(input: CreateBotInput): Promise<void>;
+  onImport(): void;
 }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
@@ -62,6 +65,7 @@ export function CreateBotDialog({
   const [appearance, setAppearance] = useState<BotAppearance>(defaultBotAppearance);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const { dialogRef, closeDialog } = useModalDialog(onClose);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -78,14 +82,14 @@ export function CreateBotDialog({
 
   return (
     <div className="dialog-backdrop">
-      <dialog className="create-dialog" open aria-labelledby="create-bot-title">
+      <dialog ref={dialogRef} className="create-dialog" aria-labelledby="create-bot-title">
         <form onSubmit={submit}>
           <header className="dialog-header">
             <div>
               <h2 id="create-bot-title">创建 Bot</h2>
               <p>创建一个持久的数字员工。</p>
             </div>
-            <button className="icon-button" type="button" aria-label="关闭" onClick={onClose}>
+            <button className="icon-button" type="button" aria-label="关闭" onClick={closeDialog}>
               <CloseIcon />
             </button>
           </header>
@@ -185,7 +189,17 @@ export function CreateBotDialog({
             </p>
           ) : null}
           <footer>
-            <button className="secondary-button" type="button" onClick={onClose}>
+            <button
+              className="secondary-button dialog-import-action"
+              type="button"
+              onClick={() => {
+                dialogRef.current?.close();
+                onImport();
+              }}
+            >
+              检查员工模板
+            </button>
+            <button className="secondary-button" type="button" onClick={closeDialog}>
               取消
             </button>
             <button className="primary-button" type="submit" disabled={busy}>

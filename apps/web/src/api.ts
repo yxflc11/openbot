@@ -9,13 +9,29 @@ import type {
   ChannelRealtimeEvent,
   CreateBotInput,
   CreateChannelInput,
+  CreateEmployeeMemoryInput,
   CreateMessageInput,
+  DeleteEmployeeMemoryInput,
+  EmployeeExportPreview,
+  EmployeeImportActivationResult,
+  EmployeeImportPreview,
+  EmployeeMemoryDeletionResult,
+  EmployeeMemoryMutationResult,
+  EmployeeProfile,
+  EmployeeProfileDetailsMutationResult,
+  EmployeeProfileSection,
+  EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
+  NodeEnrollmentToken,
+  NodeIdentitySummary,
   Run,
   RunFrame,
   RunProgress,
   SubmitTaskResult,
+  UpdateEmployeeMemoryInput,
+  UpdateEmployeeProfileDetailsInput,
+  UpdateEmployeeSkillStateInput,
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
@@ -65,6 +81,225 @@ export function subscribeToUnauthorized(handler: () => void): () => void {
 
 export async function getWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
   return request<WorkspaceSnapshot>("/api/v1/workspace", signal ? { signal } : undefined);
+}
+
+export async function listNodeIdentities(signal?: AbortSignal): Promise<NodeIdentitySummary[]> {
+  const result = await request<{ identities: NodeIdentitySummary[] }>(
+    "/api/v1/node-identities",
+    signal ? { signal } : undefined,
+  );
+  return result.identities;
+}
+
+export async function createNodeEnrollmentToken(
+  nodeId: string,
+  expiresInSeconds = 600,
+): Promise<NodeEnrollmentToken> {
+  return request<NodeEnrollmentToken>("/api/v1/nodes/enrollment-tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nodeId, expiresInSeconds }),
+  });
+}
+
+export async function revokeNodeIdentity(nodeId: string): Promise<void> {
+  await request<void>(`/api/v1/nodes/${encodeURIComponent(nodeId)}/revoke`, {
+    method: "POST",
+  });
+}
+
+export async function getEmployeeProfile(
+  botId: string,
+  signal?: AbortSignal,
+): Promise<EmployeeProfile> {
+  const result = await request<{ profile: EmployeeProfile }>(
+    `/api/v1/bots/${botId}/profile`,
+    signal ? { signal } : undefined,
+  );
+  return result.profile;
+}
+
+export async function updateEmployeeProfileDetails(
+  botId: string,
+  input: UpdateEmployeeProfileDetailsInput,
+): Promise<EmployeeProfileDetailsMutationResult> {
+  return request<EmployeeProfileDetailsMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/profile`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function createEmployeeMemory(
+  botId: string,
+  input: CreateEmployeeMemoryInput,
+): Promise<EmployeeMemoryMutationResult> {
+  return request<EmployeeMemoryMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/memories`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function updateEmployeeMemory(
+  botId: string,
+  memoryId: string,
+  input: UpdateEmployeeMemoryInput,
+): Promise<EmployeeMemoryMutationResult> {
+  return request<EmployeeMemoryMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/memories/${encodeURIComponent(memoryId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteEmployeeMemory(
+  botId: string,
+  memoryId: string,
+  input: DeleteEmployeeMemoryInput,
+): Promise<EmployeeMemoryDeletionResult> {
+  return request<EmployeeMemoryDeletionResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/memories/${encodeURIComponent(memoryId)}`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function updateEmployeeSkillState(
+  botId: string,
+  skillId: string,
+  input: UpdateEmployeeSkillStateInput,
+): Promise<EmployeeSkillMutationResult> {
+  return request<EmployeeSkillMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/skills/${encodeURIComponent(skillId)}/state`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function getEmployeeExportPreview(
+  botId: string,
+  signal?: AbortSignal,
+): Promise<EmployeeExportPreview> {
+  const result = await request<{ preview: EmployeeExportPreview }>(
+    `/api/v1/bots/${botId}/export/preview`,
+    signal ? { signal } : undefined,
+  );
+  return result.preview;
+}
+
+export async function downloadEmployeeTemplate(
+  botId: string,
+  preview: EmployeeExportPreview,
+): Promise<void> {
+  const parameters = new URLSearchParams({
+    packageId: preview.packageId,
+    generatedAt: preview.generatedAt,
+  });
+  const url = `/api/v1/bots/${encodeURIComponent(botId)}/export?${parameters.toString()}`;
+  const response = await fetch(url, {
+    credentials: "include",
+    headers: { "If-Match": `"${preview.downloadReviewToken}"` },
+  });
+  if (!response.ok) throw await readApiError(response, url);
+
+  const expectedTag = `"${preview.downloadReviewToken}"`;
+  if (response.headers.get("etag") !== expectedTag) {
+    throw new ApiError("下载响应未匹配已审核的员工模板，请刷新预览后重试。", 0);
+  }
+  const blob = await response.blob();
+  if ((await browserSha256Hex(await blob.arrayBuffer())) !== preview.downloadReviewToken) {
+    throw new ApiError("下载的员工模板未通过完整性检查，请刷新预览后重试。", 0);
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = preview.fileName;
+    anchor.hidden = true;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function browserSha256Hex(bytes: ArrayBuffer): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle === undefined) {
+    throw new ApiError("当前浏览器无法安全校验员工模板，请通过 HTTPS 或本机地址使用 OpenBot。", 0);
+  }
+  const digest = await subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function previewEmployeeImport(
+  file: File,
+  signal?: AbortSignal,
+): Promise<EmployeeImportPreview> {
+  if (file.size > 2 * 1024 * 1024) {
+    throw new ApiError("员工模板不能超过 2 MiB。", 422);
+  }
+  const result = await request<{ preview: EmployeeImportPreview }>(
+    "/api/v1/employees/import/preview",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/vnd.openbot.employee+json" },
+      body: file,
+      ...(signal ? { signal } : {}),
+    },
+  );
+  return result.preview;
+}
+
+export async function activateEmployeeImport(
+  file: File,
+  preview: EmployeeImportPreview,
+  input: {
+    employeeName: string;
+    allowUnsigned: boolean;
+    idempotencyKey: string;
+  },
+): Promise<EmployeeImportActivationResult> {
+  if (file.size > 2 * 1024 * 1024) {
+    throw new ApiError("员工模板不能超过 2 MiB。", 422);
+  }
+  let employeePackage: unknown;
+  try {
+    employeePackage = JSON.parse(await file.text());
+  } catch {
+    throw new ApiError("员工模板必须是有效的 JSON 文件。", 422);
+  }
+  return request<EmployeeImportActivationResult>("/api/v1/employees/import/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      package: employeePackage,
+      expectedPackageId: preview.packageId,
+      expectedDigest: preview.integrity.digest,
+      ownerReviewed: true,
+      allowUnsigned: input.allowUnsigned,
+      idempotencyKey: input.idempotencyKey,
+      employeeName: input.employeeName,
+    }),
+  });
 }
 
 export async function decideApproval(
@@ -228,6 +463,7 @@ export function subscribeToChannelEvents(
 
 export function subscribeToWorkspaceEvents(handlers: {
   onApproval(approval: Approval, run: Run): void;
+  onEmployeeProfileChanged(botId: string, sections: EmployeeProfileSection[]): void;
   onNode(node: ExecutionNode): void;
   onNodeRemoved(nodeId: string): void;
   onReady(nodes: ExecutionNode[]): void;
@@ -269,6 +505,12 @@ export function subscribeToWorkspaceEvents(handlers: {
     markLive();
     handlers.onApproval(payload.approval, payload.run);
   };
+  const onEmployeeProfileChanged = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isEmployeeProfileChangedEvent(payload)) return;
+    markLive();
+    handlers.onEmployeeProfileChanged(payload.botId, payload.sections);
+  };
   const onRun = (event: Event) => {
     const payload = parseEventPayload(event);
     if (!isWorkspaceRunUpdatedEvent(payload)) return;
@@ -299,6 +541,7 @@ export function subscribeToWorkspaceEvents(handlers: {
     nextSource.addEventListener("node.upserted", onNode);
     nextSource.addEventListener("node.removed", onNodeRemoved);
     nextSource.addEventListener("approval.updated", onApproval);
+    nextSource.addEventListener("employee.profile.changed", onEmployeeProfileChanged);
     nextSource.addEventListener("run.updated", onRun);
   };
 
@@ -318,19 +561,21 @@ export function subscribeToWorkspaceEvents(handlers: {
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { credentials: "include", ...init });
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as ErrorPayload;
-    if (response.status === 401 && url !== "/api/v1/auth/login") {
-      window.dispatchEvent(new Event("openbot:unauthorized"));
-    }
-    throw new ApiError(
-      payload.error ?? `OpenBot Server returned ${response.status}.`,
-      response.status,
-      payload.fields,
-    );
-  }
+  if (!response.ok) throw await readApiError(response, url);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+async function readApiError(response: Response, url: string): Promise<ApiError> {
+  const payload = (await response.json().catch(() => ({}))) as ErrorPayload;
+  if (response.status === 401 && url !== "/api/v1/auth/login") {
+    window.dispatchEvent(new Event("openbot:unauthorized"));
+  }
+  return new ApiError(
+    payload.error ?? `OpenBot Server returned ${response.status}.`,
+    response.status,
+    payload.fields,
+  );
 }
 
 function isRunProjectionEvent(
@@ -547,6 +792,51 @@ function isWorkspaceRunUpdatedEvent(
   );
 }
 
+const employeeProfileSections = new Set<EmployeeProfileSection>([
+  "identity",
+  "evolution",
+  "skills",
+  "memory",
+  "records",
+  "configuration",
+  "portability",
+]);
+
+export function isEmployeeProfileChangedEvent(
+  value: unknown,
+): value is Extract<WorkspaceRealtimeEvent, { type: "employee.profile.changed" }> {
+  if (typeof value !== "object" || value === null) return false;
+  const keys = Object.keys(value);
+  if (
+    keys.length !== 4 ||
+    !keys.every((key) => ["type", "botId", "sections", "occurredAt"].includes(key))
+  ) {
+    return false;
+  }
+  if (
+    !("type" in value) ||
+    value.type !== "employee.profile.changed" ||
+    !("botId" in value) ||
+    typeof value.botId !== "string" ||
+    !("sections" in value) ||
+    !Array.isArray(value.sections) ||
+    value.sections.length === 0 ||
+    value.sections.length > employeeProfileSections.size ||
+    !value.sections.every(
+      (section): section is EmployeeProfileSection =>
+        typeof section === "string" &&
+        employeeProfileSections.has(section as EmployeeProfileSection),
+    ) ||
+    new Set(value.sections).size !== value.sections.length ||
+    !("occurredAt" in value) ||
+    typeof value.occurredAt !== "string" ||
+    !Number.isFinite(Date.parse(value.occurredAt))
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function isApprovalProjection(value: unknown): value is Approval {
   return (
     typeof value === "object" &&
@@ -592,10 +882,29 @@ function isExecutionNodeProjection(value: unknown): value is ExecutionNode {
     "name" in value &&
     typeof value.name === "string" &&
     "platform" in value &&
-    (value.platform === "linux" || value.platform === "macos" || value.platform === "unknown") &&
+    ["linux", "windows", "macos", "android", "ios", "freebsd", "unknown"].includes(
+      String(value.platform),
+    ) &&
+    "osVersion" in value &&
+    typeof value.osVersion === "string" &&
+    "architecture" in value &&
+    ["x64", "arm64", "armv7", "riscv64", "unknown"].includes(String(value.architecture)) &&
+    "deviceClass" in value &&
+    ["server", "desktop", "mobile", "vm", "container", "edge", "unknown"].includes(
+      String(value.deviceClass),
+    ) &&
+    "isolation" in value &&
+    ["dedicated-host", "user-session", "vm", "container", "managed-device", "unknown"].includes(
+      String(value.isolation),
+    ) &&
+    "trustTier" in value &&
+    ["development", "dedicated", "managed"].includes(String(value.trustTier)) &&
     "capabilities" in value &&
     Array.isArray(value.capabilities) &&
     value.capabilities.every((item) => typeof item === "string") &&
+    "capabilityManifest" in value &&
+    Array.isArray(value.capabilityManifest) &&
+    value.capabilityManifest.every(isCapabilityDescriptorProjection) &&
     "activeRunIds" in value &&
     Array.isArray(value.activeRunIds) &&
     value.activeRunIds.every((item) => typeof item === "string") &&
@@ -605,6 +914,25 @@ function isExecutionNodeProjection(value: unknown): value is ExecutionNode {
     typeof value.connectedAt === "string" &&
     "lastSeenAt" in value &&
     typeof value.lastSeenAt === "string"
+  );
+}
+
+function isCapabilityDescriptorProjection(value: unknown): boolean {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "version" in value &&
+    typeof value.version === "number" &&
+    Number.isInteger(value.version) &&
+    value.version >= 1 &&
+    "providerId" in value &&
+    typeof value.providerId === "string" &&
+    "constraints" in value &&
+    typeof value.constraints === "object" &&
+    value.constraints !== null &&
+    !Array.isArray(value.constraints)
   );
 }
 

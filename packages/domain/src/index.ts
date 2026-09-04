@@ -1,3 +1,12 @@
+import type {
+  NodeArchitecture,
+  NodeCapabilityDescriptor,
+  NodeDeviceClass,
+  NodeIsolation,
+  NodePlatform,
+  NodeTrustTier,
+} from "@openbot/protocol";
+
 export type EntityId = string;
 
 export type BotStatus =
@@ -56,15 +65,398 @@ export interface Bot {
   createdAt: string;
 }
 
+export type EmployeeEvolutionEventType =
+  | "created"
+  | "role_changed"
+  | "skill_discovered"
+  | "skill_verified"
+  | "skill_suspended"
+  | "skill_revoked"
+  | "configuration_changed"
+  | "imported";
+
+export type EmployeeEvidenceKind = "run" | "artifact" | "approval" | "manual" | "import";
+
+/** A stable reference to evidence. Sensitive payloads stay in their source record. */
+export interface EmployeeEvidenceReference {
+  kind: EmployeeEvidenceKind;
+  id: EntityId;
+  label?: string | undefined;
+}
+
+/** Append-only, evidence-backed history used by the employee evolution view. */
+export interface EmployeeEvolutionEvent {
+  id: EntityId;
+  botId: EntityId;
+  type: EmployeeEvolutionEventType;
+  title: string;
+  summary: string;
+  source: EmployeeEvidenceKind;
+  sourceId?: EntityId;
+  evidence: EmployeeEvidenceReference[];
+  createdAt: string;
+}
+
+export type EmployeeSkillState = "candidate" | "verified" | "suspended" | "revoked";
+export type EmployeeSkillSource = "built-in" | "installed" | "learned" | "imported" | "manual";
+
+/** A versioned skill assignment. Confidence is evidence quality, never an authority grant. */
+export interface EmployeeSkill {
+  id: EntityId;
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  source: EmployeeSkillSource;
+  state: EmployeeSkillState;
+  confidence: number;
+  requiredCapabilities: string[];
+  dependencyIds: EntityId[];
+  evidence: EmployeeEvidenceReference[];
+  acquiredAt: string;
+  updatedAt: string;
+}
+
+export interface CreateEmployeeSkillInput {
+  slug: string;
+  name: string;
+  description: string;
+  version: string;
+  source: EmployeeSkillSource;
+  requiredCapabilities: string[];
+  dependencySkillIds: EntityId[];
+  evidence: EmployeeEvidenceReference[];
+  reason: string;
+}
+
+export type UpdateEmployeeSkillStateInput =
+  | {
+      state: "verified";
+      confidence: number;
+      reason: string;
+      evidence: EmployeeEvidenceReference[];
+      ownerReviewed: true;
+    }
+  | {
+      state: "suspended" | "revoked";
+      reason: string;
+      evidence: EmployeeEvidenceReference[];
+      ownerReviewed: true;
+    };
+
+export interface EmployeeSkillMutationResult {
+  skill: EmployeeSkill;
+  evolution: EmployeeEvolutionEvent;
+}
+
+export type EmployeeMemoryKind =
+  | "working"
+  | "episodic"
+  | "semantic"
+  | "procedural"
+  | "secret-reference";
+export type EmployeeMemorySensitivity = "public" | "internal" | "confidential" | "restricted";
+export type EmployeeMemoryPortability = "never" | "owner-selectable" | "included";
+
+/** Owner-visible memory metadata and content. Export policy is evaluated separately. */
+export interface EmployeeMemory {
+  id: EntityId;
+  botId: EntityId;
+  kind: EmployeeMemoryKind;
+  title: string;
+  content: string;
+  sensitivity: EmployeeMemorySensitivity;
+  portability: EmployeeMemoryPortability;
+  provenance: Record<string, unknown>;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type EmployeeMemoryChangedField =
+  | "kind"
+  | "title"
+  | "content"
+  | "sensitivity"
+  | "portability";
+
+/** Content-free, append-only audit metadata for one Owner memory mutation. */
+export interface EmployeeMemoryEvent {
+  id: EntityId;
+  botId: EntityId;
+  memoryId: EntityId;
+  action: "created" | "updated" | "deleted";
+  revision: number;
+  changedFields: EmployeeMemoryChangedField[];
+  actor: "owner";
+  createdAt: string;
+}
+
+export interface CreateEmployeeMemoryInput {
+  kind: EmployeeMemoryKind;
+  title: string;
+  content: string;
+  sensitivity: EmployeeMemorySensitivity;
+  portability: Exclude<EmployeeMemoryPortability, "included">;
+}
+
+export interface UpdateEmployeeMemoryInput {
+  expectedRevision: number;
+  kind?: EmployeeMemoryKind | undefined;
+  title?: string | undefined;
+  content?: string | undefined;
+  sensitivity?: EmployeeMemorySensitivity | undefined;
+  portability?: Exclude<EmployeeMemoryPortability, "included"> | undefined;
+}
+
+export interface DeleteEmployeeMemoryInput {
+  expectedRevision: number;
+  ownerReviewed: true;
+}
+
+export interface EmployeeMemoryMutationResult {
+  memory: EmployeeMemory;
+  event: EmployeeMemoryEvent;
+}
+
+export interface EmployeeMemoryDeletionResult {
+  memoryId: EntityId;
+  event: EmployeeMemoryEvent;
+}
+
+/** A safe runtime explanation derived from structured progress, not private chain-of-thought. */
+export interface EmployeeDecisionTrace extends RunProgress {
+  summary: string;
+}
+
+export interface EmployeeProfile {
+  employee: Bot;
+  details: {
+    /** Owner-authored routing biography. It is descriptive and grants no authority. */
+    description: string;
+    /** Server-owned compare-and-swap revision for role and description edits. */
+    revision: number;
+    updatedAt: string;
+  };
+  evolution: EmployeeEvolutionEvent[];
+  skills: EmployeeSkill[];
+  memories: EmployeeMemory[];
+  memoryEvents: EmployeeMemoryEvent[];
+  records: {
+    runs: Run[];
+    approvals: Approval[];
+    artifacts: Artifact[];
+    decisions: EmployeeDecisionTrace[];
+  };
+  statistics: {
+    totalRuns: number;
+    completedRuns: number;
+    failedRuns: number;
+    verifiedSkills: number;
+  };
+  configuration: {
+    executionProfile: Bot["computerProfile"];
+    portabilityFormat: "openbot.employee/v1";
+  };
+}
+
+export type EmployeeProfileChangedField = "role" | "description";
+
+export interface UpdateEmployeeProfileDetailsInput {
+  role: string;
+  description: string;
+  expectedRevision: number;
+}
+
+export interface EmployeeProfileDetailsMutationResult {
+  employee: Bot;
+  details: EmployeeProfile["details"];
+  evolution: EmployeeEvolutionEvent;
+}
+
+export type EmployeeProfileSection =
+  | "identity"
+  | "evolution"
+  | "skills"
+  | "memory"
+  | "records"
+  | "configuration"
+  | "portability";
+
+export type EmployeeExportFindingCode =
+  | "credential-like-content"
+  | "private-key-content"
+  | "local-path-content"
+  | "excluded-skill-dependency";
+
+/** A blocking finding discovered before portable employee data leaves the Server. */
+export interface EmployeeExportFinding {
+  code: EmployeeExportFindingCode;
+  location: string;
+  message: string;
+}
+
+export interface EmployeeExportExclusion {
+  category: "identity" | "authority" | "memory" | "work-history";
+  count: number;
+  reason: string;
+}
+
+/** Descriptive, untrusted Employee data selected for a portable template. */
+export type PortableEmployeeProfileSummary = Pick<Bot, "name" | "role" | "appearance"> & {
+  description?: string;
+};
+
+/** Metadata-only skill selected for a portable template; it contains no executable bundle. */
+export interface PortableEmployeeSkillSummary {
+  slug: string;
+  name: string;
+  /** Required Agent Skills discovery metadata; still untrusted package content. */
+  description: string;
+  version: string;
+  requiredCapabilities: string[];
+  dependencySlugs: string[];
+}
+
+/** Owner-facing summary of exactly what a default employee template will contain. */
+export interface EmployeeExportPreview {
+  format: "openbot.employee/v1";
+  kind: "template";
+  /** Fresh package identity that must be returned when downloading this reviewed instance. */
+  packageId: string;
+  fileName: string;
+  generatedAt: string;
+  employee: PortableEmployeeProfileSummary;
+  skills: PortableEmployeeSkillSummary[];
+  /** @deprecated Use `employee.name`; retained through the v1 preview compatibility window. */
+  employeeName: string;
+  verifiedSkillCount: number;
+  requestedCapabilities: string[];
+  includedMemoryCount: 0;
+  exclusions: EmployeeExportExclusion[];
+  findings: EmployeeExportFinding[];
+  blocked: boolean;
+  checksum: string;
+  /** Opaque SHA-256 strong validator for the exact serialized download bytes. */
+  downloadReviewToken: string;
+  signatureStatus: "unsigned" | "dsse";
+  publisherKeyId?: string;
+  identityOnImport: "new";
+  hostAuthority: "none";
+}
+
+export type EmployeeImportIssueCode =
+  | "checksum-mismatch"
+  | "capability-set-mismatch"
+  | "duplicate-skill"
+  | "missing-skill-dependency"
+  | "sensitive-content"
+  | "missing-capability"
+  | "no-compatible-host";
+
+export interface EmployeeImportIssue {
+  code: EmployeeImportIssueCode;
+  message: string;
+  locations: string[];
+}
+
+/** A read-only, quarantined projection. Activation is a separate Owner-reviewed command. */
+export interface EmployeeImportPreview {
+  format: "openbot.employee/v1";
+  packageId: string;
+  generatedAt: string;
+  employee: PortableEmployeeProfileSummary;
+  recommendedExecutionProfile: Bot["computerProfile"];
+  skills: PortableEmployeeSkillSummary[];
+  requestedCapabilities: string[];
+  integrity: {
+    algorithm: "sha256";
+    valid: boolean;
+    /** Digest of the canonical, schema-valid package reviewed by the Owner. */
+    digest: string;
+  };
+  signature:
+    | {
+        status: "unsigned";
+        trusted: false;
+      }
+    | {
+        status: "dsse";
+        trusted: true;
+        keyid: string;
+      };
+  compatibility: {
+    hostRequired: boolean;
+    compatibleHosts: Array<
+      Pick<ExecutionNode, "id" | "name" | "platform" | "architecture" | "deviceClass">
+    >;
+    missingCapabilities: string[];
+  };
+  quarantine: {
+    active: true;
+    createsNewIdentity: true;
+    importedSkillState: "disabled-pending-review";
+    hostAuthority: "none";
+    memoryCount: 0;
+    canActivate: boolean;
+  };
+  issues: EmployeeImportIssue[];
+  blocked: boolean;
+}
+
+/** Immutable evidence that one reviewed portable package created one local Employee. */
+export interface EmployeeImportReceipt {
+  id: EntityId;
+  packageId: string;
+  packageDigest: string;
+  employeeId: EntityId;
+  signatureStatus: "unsigned" | "dsse";
+  publisherKeyId?: string | undefined;
+  reviewedBy: "owner";
+  reviewedAt: string;
+  importedSkillCount: number;
+  createdAt: string;
+}
+
+export interface EmployeeImportActivationResult {
+  employee: Bot;
+  receipt: EmployeeImportReceipt;
+  replayed: boolean;
+}
+
 export interface ExecutionNode {
   id: EntityId;
   name: string;
-  platform: "linux" | "macos" | "unknown";
+  platform: NodePlatform;
+  osVersion: string;
+  architecture: NodeArchitecture;
+  deviceClass: NodeDeviceClass;
+  isolation: NodeIsolation;
+  trustTier: NodeTrustTier;
   capabilities: string[];
+  capabilityManifest: NodeCapabilityDescriptor[];
   activeRunIds: EntityId[];
   maxConcurrentRuns: number;
   connectedAt: string;
   lastSeenAt: string;
+}
+
+/** Safe Owner-facing identity metadata. Credential digests never cross the Server boundary. */
+export interface NodeIdentitySummary {
+  nodeId: EntityId;
+  status: "active" | "revoked";
+  connected: boolean;
+  enrolledAt: string;
+  lastAuthenticatedAt?: string | undefined;
+  revokedAt?: string | undefined;
+  node?: ExecutionNode | undefined;
+}
+
+/** A short-lived bootstrap value returned only by the issuance command. */
+export interface NodeEnrollmentToken {
+  nodeId: EntityId;
+  token: string;
+  expiresAt: string;
 }
 
 export interface Run {
@@ -222,6 +614,13 @@ export type WorkspaceRealtimeEvent =
       type: "run.updated";
       run: Run;
       artifacts?: Artifact[];
+    }
+  | {
+      /** Content-free invalidation. The authenticated profile endpoint remains authoritative. */
+      type: "employee.profile.changed";
+      botId: EntityId;
+      sections: EmployeeProfileSection[];
+      occurredAt: string;
     };
 
 export interface BootstrapSummary {

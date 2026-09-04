@@ -6,16 +6,18 @@
 
 [![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
-[![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933.svg)](package.json)
+[![Node.js 22.22.2+](https://img.shields.io/badge/Node.js-22.22.2%2B-339933.svg)](package.json)
 [![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#project-status)
 
-OpenBot is an early-stage, open-source system for running named AI workers on computers you
-control. You talk to Bots in persistent local channels; the OpenBot Server routes each task to a
-replaceable execution Node and keeps messages, approvals, artifacts, and audit events under your
-ownership.
+OpenBot is an early-stage, open-source, self-hosted platform for running named AI employees on
+computers you control. You talk to employees in persistent local channels; the OpenBot Server
+routes each task to an authorized, replaceable Worker Host and keeps identity, skills, memory,
+messages, approvals, artifacts, and audit events under your ownership.
 
-A Mac mini can be a macOS execution Node, but it is not the product. The Server can run on Linux,
-macOS, a NAS, or a cloud VM, and you can reach it from any browser over a private network.
+A Mac mini is the first practical Worker Host, not the product boundary. Windows, macOS, and Linux
+computers can become employee work machines through the same Server-authorized Node protocol. The
+Server can run on Linux, macOS, a NAS, or a cloud VM, and you can reach it from any browser over a
+private network.
 
 OpenBot is inspired by the always-on, channel-based experience of products such as Grok Bot while
 remaining self-hosted, provider-neutral, and designed for explicit human control.
@@ -29,8 +31,10 @@ remaining self-hosted, provider-neutral, and designed for explicit human control
 
 - **Local channels, not disposable chat windows.** Bots, conversations, runs, and results persist
   in your own PostgreSQL database.
-- **Replaceable computers.** A Bot is an identity and policy profile; a Node is a machine. Linux,
-  macOS, VM, and coding Nodes can be added or replaced independently.
+- **Replaceable, cross-platform computers.** An employee is a persistent identity and policy; a
+  Worker Host is a Windows, macOS, Linux, VM, container, or managed device that can be replaced.
+- **Employees that grow and travel.** Each employee has an evidence-backed evolution history,
+  skill graph, decision trace, memory, work record, configuration, and safe portability controls.
 - **Approval before side effects.** Sensitive actions enter an explicit, auditable approval state.
   Models cannot grant themselves additional privileges.
 - **One control plane on every device.** Desktop and mobile browsers share the same channel state
@@ -40,6 +44,11 @@ remaining self-hosted, provider-neutral, and designed for explicit human control
 - **Adapters over lock-in.** Models, computer runtimes, and upstream projects connect through typed,
   versioned boundaries.
 
+The Employee evolution and learning direction is explicitly inspired by
+[Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py).
+OpenBot keeps its own Server-owned evidence, review, permission, and portability model; it does not
+present the learning-graph concept as an OpenBot invention.
+
 ## Project status
 
 OpenBot currently provides a tested vertical slice from a local channel to a remote execution Node
@@ -47,13 +56,14 @@ and back. The table deliberately separates working code from planned capabilitie
 
 | Area | Available now | Next step |
 | --- | --- | --- |
-| Control plane | Local Owner authentication, PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, and audit events | Durable routines, memory, recovery tooling, and multi-user trust |
-| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, and SSE reconnect | Installable PWA, notification delivery, accessibility and localization polish |
-| Bot identity | Five-layer composable appearance persisted with each Bot | More parts, import/export, and community-created appearance packs |
-| Node protocol | Outbound WebSocket registration, heartbeat, capacity, deterministic routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Per-Node enrollment, mTLS, revocation, replay protection, and protocol compatibility tests |
+| Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, Employee memory lifecycle, content-free multi-device profile invalidation, and audit events | Durable routines, memory retrieval/retention, automated recovery tooling, and multi-user trust |
+| Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
+| Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
+| Employee profile | Seven-view profile, revision-checked Owner editing for role and biography, Hermes-inspired dated evolution archive with filters and full evidence references, inspectable Owner skill review, Owner-managed typed memory with content-free audit, biography-preserving safe template export with exact reviewed-download binding, quarantined import, reviewed fresh-identity activation, and experimental DSSE signing | Display-name/model/host/appearance policy editors, memory retrieval/retention and autonomous proposals, native keyring/KMS and public trust adapters, executable Agent Skills bundles with full-diff review, selective cloning, registry distribution, and ownership transfer |
+| Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Proof-of-possession identity, mTLS, rotation, replay protection, native keyring adapters, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
-| Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Production macOS Cua/Lume and isolated coding providers |
+| Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
 | Office view | Isolated `@openbot/office-plugin` package with no core-app dependency | Optional plugin lifecycle after the channel workflow is mature |
 
 ### What the current release does not claim
@@ -61,7 +71,20 @@ and back. The table deliberately separates working code from planned capabilitie
 - It does not perform unattended form submissions or arbitrary desktop actions.
 - It does not yet issue cryptographic, single-use capability leases after approval.
 - It does not provide continuous remote desktop control.
-- It does not yet have production-grade Node identity, mTLS, or credential rotation.
+- Node enrollment is individually revocable, but the current credential is still a bearer secret
+  stored in an Owner-only file. It is not yet proof-of-possession identity, mTLS, or native-keyring
+  storage and must stay behind WSS and a trusted private network.
+- It does not let models write or retrieve long-term memory autonomously, enforce retention
+  schedules, selectively clone employee experience, distribute packages through a registry, or
+  transfer ownership. The authenticated Owner can manually add, edit, and delete bounded memory;
+  memory remains excluded from every v1 Employee package.
+- The Owner can edit an Employee role and descriptive biography. Those fields are routing context,
+  not model policy, skills, host binding, or authority; concurrent edits fail on a stale revision.
+- Employee export remains unsigned by default. An operator can enable experimental DSSE signing
+  with an encrypted filesystem keyring, offline rotation/revocation, and explicit public-key trust;
+  export download is bound to the exact reviewed package bytes, and import activation still
+  requires an exact preview digest, explicit Owner review, a fresh local identity, and
+  candidate-only skills with no memory or host authority.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
 - The optional office visualization is not part of the current product navigation or Web build.
 
@@ -69,7 +92,7 @@ and back. The table deliberately separates working code from planned capabilitie
 
 ### Requirements
 
-- Node.js 22 or newer
+- Node.js 22.22.2+, 24.15.0+, or 26+
 - npm 10 or newer
 - Docker with Docker Compose
 
@@ -81,26 +104,40 @@ cd openbot
 cp .env.example .env
 ```
 
-Edit `.env` and replace at least these development placeholders with independent random secrets:
+Edit `.env` and replace the Owner password placeholder:
 
 ```dotenv
 OPENBOT_OWNER_PASSWORD=<a-random-password-with-at-least-12-characters>
-OPENBOT_NODE_TOKEN=<a-random-node-enrollment-token>
 ```
 
-Then start PostgreSQL and all application workspaces:
+Install dependencies, start PostgreSQL, then run the Server and Web app:
 
 ```bash
 npm install
 npm run db:up
-npm run dev
+npm run dev:server
+# In another terminal:
+npm run dev:web
 ```
 
-Open <http://localhost:5173>, sign in with `OPENBOT_OWNER_PASSWORD`, create a Bot, create a channel,
-and add the Bot to that channel.
+Sign in to the Web app and open **Nodes** in the sidebar to create a short-lived, one-time pairing
+token. The Server-host CLI provides the same operation:
+
+```bash
+npm run node:enrollment-token -- local-development-node
+```
+
+Copy the printed `OPENBOT_NODE_ENROLLMENT_TOKEN` into `.env`, run `npm run dev:node`, and remove the
+token from `.env` after the first successful start. The Node stores its new credential in
+`./data/node/identity.json` with Owner-only permissions and reuses it on later starts. Open
+<http://localhost:5173>, sign in with `OPENBOT_OWNER_PASSWORD`, create a Bot and channel, then add
+the Bot to that channel. See [Node enrollment](docs/NODE_ENROLLMENT.md) before pairing a remote host.
 
 By default, the local Node honestly advertises no execution capability. Messages are still stored
 as queued Runs until a compatible provider is configured. Stop PostgreSQL with `npm run db:stop`.
+Read [Database operations](docs/DATABASE.md) before upgrading, backing up, or restoring a deployment.
+To sign portable Employee templates, follow the experimental
+[Employee signing runbook](docs/EMPLOYEE_SIGNING.md); signing is disabled by default.
 
 ### Enable the read-only browser slice
 
@@ -127,15 +164,15 @@ stores the final screenshot, and posts the result under the selected Bot's ident
 ## How it fits together
 
 ```text
-Any browser  ->  OpenBot Server  <- outbound connections -  OpenBot Nodes  ->  Providers
-                   source of truth                             replaceable computers
+Any device  ->  OpenBot Server  <- outbound connections -  Worker Hosts  ->  Providers
+                 source of truth                         Windows/macOS/Linux/etc.
 ```
 
 | Component | Owns | Does not own |
 | --- | --- | --- |
 | Client | Interaction, observation, approval input | Policy decisions or execution authority |
 | Server | Identity, channels, Runs, routing, policy, approvals, audit, and persistence | Host-specific computer capabilities |
-| Node | Capability discovery, local capacity, provider execution, progress, and artifacts | Bot identity, long-term memory, or authorization policy |
+| Worker Host / Node | Capability discovery, local capacity, provider execution, progress, and artifacts | Employee identity, skills, long-term memory, or authorization policy |
 | Provider | One narrow execution backend such as Docker/browser, Cua, Lume, or coder | Cross-Node routing or privilege escalation |
 
 The Server is the only source of truth. Nodes connect outward and never require a public management
@@ -159,6 +196,9 @@ untrusted. The intended security boundary is:
 
 For anything beyond loopback development, use HTTPS, set `OPENBOT_SECURE_COOKIES=true`, restrict
 `OPENBOT_ALLOWED_ORIGINS`, and place the deployment behind a private network such as Tailscale.
+The Server now rejects remote HTTP origins or remote origins without Secure cookies before it
+starts. HTTPS sessions use a host-only `__Host-openbot_session` cookie and HSTS; direct development
+binds to loopback by default.
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting and [the threat model](docs/SECURITY.md)
 for current guarantees and known gaps.
@@ -173,9 +213,10 @@ outcomes rather than add an isolated demo.
 | M0 — Local control plane | Channels, Bots, authentication, persistence, and audit run without a proprietary cloud service. The foundation is available today. |
 | M1 — Server/Node loop | A replaceable Node receives a browser task and returns progress and a screenshot. The read-only vertical slice is available; safe interaction remains active work. |
 | M2 — Remote control and approval | Mobile access, signed single-use approvals, notifications, and exclusive human takeover. Persisted approval decisions are available; leases and takeover are next. |
-| M3 — macOS Node | Cua and Lume make a Mac mini one optional Node for native macOS work. |
-| M4 — Multi-Bot operations | Structured handoffs, routines, durable queues, retries, circuit breakers, and memory. |
-| M5 — Distribution | Reproducible Server/Node installers, signed releases, SBOMs, upgrades, backup, and recovery. |
+| M3 — Portable employees | Profile, evolution ledger, skill graph, typed memory, review-bound safe templates, and reviewed new-identity activation. |
+| M4 — Native Worker Hosts | Windows, macOS, and Linux Providers use one capability and approval contract. |
+| M5 — Multi-Bot operations | Structured handoffs, routines, durable queues, coder Providers, and authenticated employee transfer. |
+| M6 — Distribution | Managed mobile devices, reproducible installers, signed releases, SBOMs, upgrades, backup, and recovery. |
 
 The complete acceptance gates live in [docs/ROADMAP.md](docs/ROADMAP.md).
 
@@ -237,11 +278,19 @@ docs/                   product, architecture, security, roadmap, API, and ADRs
 | --- | --- |
 | Understand the product and boundaries | [Product definition](docs/PRODUCT.md) |
 | Understand the system | [Architecture](docs/ARCHITECTURE.md) |
+| Follow the active implementation sequence | [Goal-mode execution plan](docs/EXECUTION_PLAN.md) |
 | Review current and future delivery | [Roadmap](docs/ROADMAP.md) |
 | Build or integrate against the API | [Local API](docs/API.md) |
 | Review security guarantees | [Threat model](docs/SECURITY.md) |
 | Work on the channel experience | [Interface guide](docs/INTERFACE.md) |
+| Review or improve keyboard and assistive-technology behavior | [Accessibility baseline](docs/ACCESSIBILITY.md) |
+| Design employee identity and portability | [Portable employee model](docs/EMPLOYEE.md) |
+| Operate signed Employee packages | [Employee signing runbook](docs/EMPLOYEE_SIGNING.md) |
+| Add an operating system or device | [Cross-platform Worker Hosts](docs/CROSS_PLATFORM.md) |
+| Test a Worker Host or Provider claim | [Provider conformance](docs/PROVIDER_CONFORMANCE.md) |
 | Understand upstream choices | [Upstream strategy](docs/UPSTREAMS.md) |
+| Follow the open-source-first review process | [Open-source reuse policy and current audit](docs/OPEN_SOURCE_REUSE.md) |
+| Pick an independently reviewable contribution | [Contributor work packages](docs/CONTRIBUTOR_TASKS.md) |
 | Review why a decision was made | [Architecture decision records](docs/decisions/) |
 
 ## Upstream projects
@@ -254,6 +303,10 @@ multiple control planes into one repository:
 - [Cua](https://github.com/trycua/cua) and Lume — planned macOS execution providers.
 - [OpenClaw](https://github.com/openclaw/openclaw) — optional runtime, skills, and operational
   reference; not a second source of truth.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — product reference for the
+  employee evolution archive, learning graph, skill/memory separation, and reviewed skill writes.
+- [Agent Skills](https://github.com/agentskills/agentskills) — planned standard format and official
+  validator for executable skill bundles.
 - Codex, Claude, and Multica — planned isolated coding-provider integrations.
 
 Upstream licenses and notices must be preserved whenever code is incorporated.

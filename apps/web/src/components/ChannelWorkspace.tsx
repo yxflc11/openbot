@@ -19,6 +19,7 @@ export function ChannelWorkspace({
   progress,
   onJoin,
   onInspectRun,
+  onOpenBot,
   onFrame,
   onProgress,
   onRun,
@@ -29,6 +30,7 @@ export function ChannelWorkspace({
   progress: RunProgress[];
   onJoin(botId: string): Promise<void>;
   onInspectRun(runId: string): void;
+  onOpenBot(botId: string): void;
   onFrame(frame: RunFrame): void;
   onProgress(progress: RunProgress): void;
   onRun(run: Run, artifacts?: Artifact[]): void;
@@ -185,12 +187,18 @@ export function ChannelWorkspace({
         <div className="channel-team-summary">
           <div className="member-stack" title={`${members.length} 名 Bot`}>
             {members.slice(0, 4).map((bot) => (
-              <RobotAvatar
-                bot={bot}
-                compact
-                status={activeRunByBot.get(bot.id)?.status ?? bot.status}
+              <button
+                type="button"
+                aria-label={`打开 ${bot.name} 的员工档案`}
+                onClick={() => onOpenBot(bot.id)}
                 key={bot.id}
-              />
+              >
+                <RobotAvatar
+                  bot={bot}
+                  compact
+                  status={activeRunByBot.get(bot.id)?.status ?? bot.status}
+                />
+              </button>
             ))}
             {members.length > 4 ? <span>+{members.length - 4}</span> : null}
           </div>
@@ -288,6 +296,7 @@ export function ChannelWorkspace({
                   run={run}
                   onReply={() => setReplyingTo(message)}
                   onInspectRun={onInspectRun}
+                  onOpenBot={onOpenBot}
                   key={message.id}
                 />
               );
@@ -360,6 +369,7 @@ function MessageRow({
   run,
   onReply,
   onInspectRun,
+  onOpenBot,
 }: {
   message: Message;
   author: Bot | undefined;
@@ -369,13 +379,20 @@ function MessageRow({
   run: Run | undefined;
   onReply(): void;
   onInspectRun(runId: string): void;
+  onOpenBot(botId: string): void;
 }) {
   const name = message.authorType === "human" ? "你" : (author?.name ?? "OpenBot");
   return (
     <article className={`message-row ${message.authorType}`}>
       <div className="message-avatar">
         {author ? (
-          <RobotAvatar bot={author} compact status={run?.status ?? author.status} />
+          <button
+            type="button"
+            aria-label={`打开 ${author.name} 的员工档案`}
+            onClick={() => onOpenBot(author.id)}
+          >
+            <RobotAvatar bot={author} compact status={run?.status ?? author.status} />
+          </button>
         ) : (
           <span>{message.authorType === "human" ? "你" : "O"}</span>
         )}
