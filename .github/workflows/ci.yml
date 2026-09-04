@@ -9,6 +9,40 @@ permissions:
   contents: read
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - name: Audit production dependency advisories
+        run: npm audit --omit=dev --audit-level=high
+      - name: Scan Git history for credential patterns without verification or uploads
+        shell: bash
+        run: |
+          set +e
+          docker run --rm --volume "${{ github.workspace }}:/repo:ro" \
+            ghcr.io/trufflesecurity/trufflehog@sha256:deb2af10659a488a14d262a323addcde099d99827a1cf1dc4e93c17915c39f08 \
+            --no-verification --results=unverified --filter-unverified --no-update \
+            --fail --fail-on-scan-errors git file:///repo \
+            >"${RUNNER_TEMP}/trufflehog-results.jsonl" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 183 ]; then
+            echo "::error::Credential-like content was detected. Inspect it locally; raw candidates are suppressed from CI logs."
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error::The credential scanner failed closed with exit status $status."
+            exit "$status"
+          fi
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15

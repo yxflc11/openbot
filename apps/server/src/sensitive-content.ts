@@ -21,7 +21,14 @@ const sensitiveTextPatterns: ReadonlyArray<SensitiveTextPattern> = [
   },
   {
     code: "credential-like-content",
-    expression: /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|\bgh[pousr]_[A-Za-z0-9_]{20,}\b/i,
+    expression:
+      /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|\bgh[pousr]_[A-Za-z0-9_]{20,}\b|\bglpat-[A-Za-z0-9_-]{20,}\b|\bnpm_[A-Za-z0-9]{36}\b/i,
+    message: "A credential-like token was found. Remove it before continuing.",
+  },
+  {
+    code: "credential-like-content",
+    expression:
+      /\b(?:sk|rk)_live_[A-Za-z0-9]{16,}\b|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b|\bAIza[A-Za-z0-9_-]{35}\b|\bxox[baprs]-[A-Za-z0-9-]{20,}\b/i,
     message: "A credential-like token was found. Remove it before continuing.",
   },
   {

@@ -74,8 +74,8 @@
 - Source copied or substantially adapted: no.
 - Files and upstream locations: Pino is consumed as an npm dependency through a local allowlisted
   logging wrapper. TruffleHog runs as an external CI container. Standards informed local behavior.
-- Required copyright or license notice location: package lock and `THIRD_PARTY_NOTICES.md` for Pino;
-  CI source/image comments and this ledger for TruffleHog. No AGPL binary is shipped with OpenBot.
+- Required copyright or license notice location: package lock and this ledger for Pino; CI
+  source/image comments and this ledger for TruffleHog. No AGPL binary is shipped with OpenBot.
 
 ## Verification plan
 
