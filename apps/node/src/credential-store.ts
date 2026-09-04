@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { lstat, mkdir, open } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -123,11 +123,7 @@ export class LinuxSecretServiceNodeCredentialStore implements NodeCredentialStor
     const parsed = parseIdentity(JSON.stringify(identity), identity.nodeId, "Secret Service");
     const serialized = JSON.stringify(parsed);
     const stored = await this.#run(
-      [
-        "store",
-        `--label=OpenBot Node ${parsed.nodeId}`,
-        ...secretServiceAttributes(parsed.nodeId),
-      ],
+      ["store", `--label=OpenBot Node ${parsed.nodeId}`, ...secretServiceAttributes(parsed.nodeId)],
       serialized,
     );
     try {
@@ -156,9 +152,37 @@ export class LinuxSecretServiceNodeCredentialStore implements NodeCredentialStor
   }
 }
 
+/** One-shot identity supplied by the signed macOS Host over its private child pipe. */
+export class MacOSHostNodeCredentialStore implements NodeCredentialStore {
+  #identity: NodeEnrollmentResult | undefined;
+
+  constructor(identity: NodeEnrollmentResult, options: { platform?: NodeJS.Platform } = {}) {
+    if ((options.platform ?? process.platform) !== "darwin") {
+      throw new Error("The macOS Host credential channel requires macOS.");
+    }
+    this.#identity = parseIdentity(JSON.stringify(identity), identity.nodeId, "macOS Host");
+  }
+
+  async load(nodeId: string): Promise<NodeEnrollmentResult | undefined> {
+    const identity = this.#identity;
+    this.#identity = undefined;
+    if (identity === undefined) {
+      throw new Error("The macOS Host identity was already consumed.");
+    }
+    return parseIdentity(JSON.stringify(identity), nodeId, "macOS Host");
+  }
+
+  async save(): Promise<void> {
+    throw new Error("The macOS service cannot enroll or replace its Host-supplied identity.");
+  }
+}
+
 export function createNodeCredentialStore(env: NodeEnv): NodeCredentialStore {
   if (env.OPENBOT_NODE_CREDENTIAL_STORE === "secret-service") {
     return new LinuxSecretServiceNodeCredentialStore();
+  }
+  if (env.OPENBOT_NODE_CREDENTIAL_STORE === "macos-host") {
+    throw new Error("The macOS Node identity requires its private Host channel.");
   }
   return new FileNodeCredentialStore(
     env.OPENBOT_NODE_CREDENTIAL_PATH ?? join(env.OPENBOT_NODE_WORK_DIRECTORY, "identity.json"),
@@ -258,11 +282,7 @@ function assertSuccessfulSecretServiceResult(
 }
 
 function assertNodeId(nodeId: string): void {
-  if (
-    nodeId.length < 1 ||
-    nodeId.length > 128 ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(nodeId)
-  ) {
+  if (nodeId.length < 1 || nodeId.length > 128 || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(nodeId)) {
     throw new Error("Node id is invalid.");
   }
 }
@@ -283,7 +303,7 @@ function secretServiceAttributes(nodeId: string): string[] {
 function parseIdentity(
   source: string,
   nodeId: string,
-  location: "file" | "Secret Service",
+  location: "file" | "Secret Service" | "macOS Host",
 ): NodeEnrollmentResult {
   assertNodeId(nodeId);
   let value: unknown;

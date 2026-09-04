@@ -40,6 +40,18 @@ const nodeServerUrlSchema = z
     }
   });
 
+export const macOSNodeServiceConfigFormat = "openbot.macos-node-config/v1" as const;
+
+export const macOSNodeServiceConfigSchema = z
+  .object({
+    format: z.literal(macOSNodeServiceConfigFormat),
+    nodeId: nodeIdSchema,
+    serverUrl: nodeServerUrlSchema,
+    maxConcurrentRuns: z.number().int().min(1).max(16).default(1),
+    logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  })
+  .strict();
+
 export const serverEnvSchema = z
   .object({
     OPENBOT_HOST: z.string().default("127.0.0.1"),
@@ -126,9 +138,9 @@ export const nodeEnvSchema = z
     OPENBOT_NODE_SERVER_URL: nodeServerUrlSchema.default("ws://localhost:3001/ws/nodes"),
     OPENBOT_NODE_ENROLLMENT_TOKEN: nodeEnrollmentTokenSchema.optional(),
     OPENBOT_NODE_CREDENTIAL: nodeCredentialSchema.optional(),
-    OPENBOT_NODE_CREDENTIAL_STORE: z.enum(["file", "secret-service"]).default("file"),
+    OPENBOT_NODE_CREDENTIAL_STORE: z.enum(["file", "secret-service", "macos-host"]).default("file"),
     OPENBOT_NODE_CREDENTIAL_PATH: z.string().trim().min(1).optional(),
-    OPENBOT_NODE_SERVICE_CONTROL: z.literal("stdio-v2").optional(),
+    OPENBOT_NODE_SERVICE_CONTROL: z.enum(["stdio-v2", "stdio-v3"]).optional(),
     OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
     OPENBOT_NODE_WORK_DIRECTORY: z.string().default("./data/node"),
     OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -147,6 +159,34 @@ export const nodeEnvSchema = z
         path: ["OPENBOT_NODE_CREDENTIAL_PATH"],
       });
     }
+    if (value.OPENBOT_NODE_CREDENTIAL_STORE === "macos-host") {
+      for (const field of [
+        "OPENBOT_NODE_ENROLLMENT_TOKEN",
+        "OPENBOT_NODE_CREDENTIAL",
+        "OPENBOT_NODE_CREDENTIAL_PATH",
+      ] as const) {
+        if (value[field] !== undefined) {
+          context.addIssue({
+            code: "custom",
+            message: "The macOS native Host must be the only Node identity source.",
+            path: [field],
+          });
+        }
+      }
+      if (value.OPENBOT_NODE_SERVICE_CONTROL !== "stdio-v3") {
+        context.addIssue({
+          code: "custom",
+          message: "The macOS native Host requires stdio-v3 control.",
+          path: ["OPENBOT_NODE_SERVICE_CONTROL"],
+        });
+      }
+    } else if (value.OPENBOT_NODE_SERVICE_CONTROL === "stdio-v3") {
+      context.addIssue({
+        code: "custom",
+        message: "stdio-v3 control is reserved for the macOS native Host.",
+        path: ["OPENBOT_NODE_SERVICE_CONTROL"],
+      });
+    }
     if (
       (value.OPENBOT_DOCKER_COMPUTER_URL === undefined) !==
       (value.OPENBOT_DOCKER_COMPUTER_TOKEN === undefined)
@@ -162,6 +202,7 @@ export const nodeEnvSchema = z
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 export type NodeEnv = z.infer<typeof nodeEnvSchema>;
+export type MacOSNodeServiceConfig = z.infer<typeof macOSNodeServiceConfigSchema>;
 
 function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase();

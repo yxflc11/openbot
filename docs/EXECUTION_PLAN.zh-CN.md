@@ -67,7 +67,7 @@ Server 始终是员工身份、授权、路由、审批和审计的唯一权威�
 | --- | --- | --- | --- | --- | --- |
 | G3 | 本地进行中；已实现压缩包、休眠来源证明工作流、原生运行自检与安装事务设计 | Linux 工作主机、安装器、systemd、Secret Service | Linux 的 daemon 和打包路径最直接，适合用最小的平台特有面积确定公共生命周期。 | 先签名压缩包，再提供 deb/rpm；专用服务账号；安装、启动、停止、升级、回滚可预测；凭证受保护。它会成为其他平台的参考实现。 | systemd 生命周期和恢复测试；x64/arm64 证据；权限或密钥库失败时安全关闭；不开放公网入站控制端口。 |
 | G4 | Windows 主机与构建门槛已在本地实现；等待托管和原生证据 | Windows 工作主机、安装器、Service、Credential Manager | Windows 的服务身份、ACL、安装器和 Session 隔离差异较大，应该在公共生命周期确定后解决。 | 提供签名安装器、可恢复的 Windows Service，并让凭证离开明文文件；企业部署与卸载可审计。 | 先取得真实 Windows x64 证据；ARM64 未测试前不声明支持；服务账号 ACL 测试；安装/升级/卸载/回滚；Credential Manager 拒绝时安全关闭。 |
-| G5 | 本地进行中；已实现静态 LaunchAgent 与原生 Keychain 监管设计 | macOS 工作主机、安装器、launchd、Keychain | macOS 可以复用主机协议，但要额外解决签名、公证、Keychain access group、launchd 和隐私权限。 | 提供签名、公证的安装包和 launchd 服务，以 Keychain 保存凭证，并给出真实的权限诊断。 | 取得所声明 Mac 架构的真实设备证据；安装/升级/卸载/回滚；Keychain 锁定和 entitlement 缺失的负向测试；此时仍不声明桌面控制。 |
+| G5 | 本地进行中；已实现静态 LaunchAgent、严格配置与私有 Keychain 交接门槛 | macOS 工作主机、安装器、launchd、Keychain | macOS 可以复用主机协议，但要额外解决签名、公证、Keychain access group、launchd 和隐私权限。 | 提供签名、公证的安装包和 launchd 服务，以 Keychain 保存凭证，并给出真实的权限诊断。 | 取得所声明 Mac 架构的真实设备证据；安装/升级/卸载/回滚；Keychain 锁定和 entitlement 缺失的负向测试；此时仍不声明桌面控制。 |
 | G6 | 已计划 | Node 持有证明、mTLS、轮换、撤销与防重放 | 原生服务让被盗 bearer token 的价值更高；可复制凭证仍能冒充工作主机时，不能开放真实输入。 | Node 用设备私钥证明身份；连接双向认证；凭证可轮换；失陷 Node 可吊销；截获消息不能重放。 | 保留单次登记；系统允许时使用不可导出密钥；有界挑战应答；短期凭证；明确轮换重叠规则；防重放测试；Server 权威审计；时钟/存储/网络失败时安全关闭。 |
 
 ### 波次 C——扩展员工能力，但不导入权限
@@ -175,7 +175,8 @@ Server 始终是员工身份、授权、路由、审批和审计的唯一权威�
   `exec` 条款：签名原生 Host 必须让凭证留在数据保护 Keychain 中，通过私有子进程 stdin 向休眠
   的固定 Node 只交付一次有界身份，并监管整个进程组。通用 Keychain/配置包装器、
   `/usr/bin/security`、导出的环境变量/参数和文件回退均被拒绝。当前是已接受设计；源码、
-  entitlement、注册与真实 Keychain 证据仍待完成。
+  严格固定文件读取器和一次性 `stdio-v3` 身份门槛现已实现，并通过 37 项聚焦测试；原生 Host
+  源码、entitlement、注册与真实 Keychain 证据仍待完成。
 - G0 受外部授权约束：推送必须得到 Owner 明确授权。创建 PR、合并、发布和修改仓库设置是另外的
   操作，目前均未获授权。
 - 等待 G0 决定期间，可以继续仓库内的计划、调研与验证；但对应远程证据未观察前，不能宣称托管

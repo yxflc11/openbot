@@ -6,6 +6,7 @@ import {
   type CredentialHelper,
   FileNodeCredentialStore,
   LinuxSecretServiceNodeCredentialStore,
+  MacOSHostNodeCredentialStore,
   runCredentialHelper,
 } from "./credential-store.js";
 
@@ -153,7 +154,9 @@ describe("Linux Secret Service Node credential store", () => {
     const wrongNode = new LinuxSecretServiceNodeCredentialStore({
       platform: "linux",
       helper: async () =>
-        helperResult({ stdout: Buffer.from(JSON.stringify({ ...identity, nodeId: "other-node" })) }),
+        helperResult({
+          stdout: Buffer.from(JSON.stringify({ ...identity, nodeId: "other-node" })),
+        }),
     });
     await expect(wrongNode.load(identity.nodeId)).rejects.toThrow("different Node id");
 
@@ -166,9 +169,27 @@ describe("Linux Secret Service Node credential store", () => {
   });
 
   it("refuses unsupported platforms before invoking a helper", () => {
-    expect(
-      () => new LinuxSecretServiceNodeCredentialStore({ platform: "darwin" }),
-    ).toThrow("require Linux");
+    expect(() => new LinuxSecretServiceNodeCredentialStore({ platform: "darwin" })).toThrow(
+      "require Linux",
+    );
+  });
+});
+
+describe("macOS Host Node credential store", () => {
+  it("provides one validated identity exactly once", async () => {
+    const store = new MacOSHostNodeCredentialStore(identity, { platform: "darwin" });
+
+    await expect(store.load(identity.nodeId)).resolves.toEqual(identity);
+    await expect(store.load(identity.nodeId)).rejects.toThrow("already consumed");
+    await expect(store.save(identity)).rejects.toThrow("cannot enroll or replace");
+  });
+
+  it("rejects another platform or Node id", async () => {
+    expect(() => new MacOSHostNodeCredentialStore(identity, { platform: "linux" })).toThrow(
+      "requires macOS",
+    );
+    const wrongNode = new MacOSHostNodeCredentialStore(identity, { platform: "darwin" });
+    await expect(wrongNode.load("other-node")).rejects.toThrow("different Node id");
   });
 });
 

@@ -1,6 +1,7 @@
 # Research: macOS Worker Host configuration and Keychain handoff
 
-- Status: Accepted for implementation
+- Status: Node fixed-config and private-handoff boundary implemented locally; native Host,
+  registration, signed Keychain, and real-device evidence pending
 - Date: 2026-09-04
 - Owner: OpenBot maintainers
 - Related issue: G5 in `docs/EXECUTION_PLAN.md`
@@ -99,6 +100,24 @@
 - Support level that the evidence permits: accepted design only. Source compilation and pure tests
   are development evidence; they do not prove a signed Host, valid profile, accessible Keychain,
   registered LaunchAgent, notarized package, or macOS support.
+
+## Implementation verification
+
+- The macOS service entry reads only
+  `~/Library/Application Support/OpenBot/Node/config.json`. Its opened handle must remain one
+  user-owned `0600` regular file with one link, unchanged metadata, strict UTF-8/JSON, and at most
+  16 KiB. The strict schema contains only format, Node id, Server URL, concurrency, and log level;
+  work state is derived and credentials, enrollment, providers, executable paths, and unknown keys
+  are rejected.
+- The resulting Node environment fixes `macos-host`, `stdio-v3`, and the derived work directory. It
+  contains no identity, enrollment token, credential path, or Provider secret.
+- The versioned private parser accepts one 4 KiB-bounded exact Node identity followed by `START`,
+  keeps the client inert before both validate, consumes the Host identity once, and then accepts
+  only one `SHUTDOWN`. Four focused control tests cover fragmentation, ordering, replay, wrong Node,
+  invalid UTF-8/schema, truncation, excess bytes, EOF, handler failure, and detach. Config and
+  credential-store suites cover the corresponding fixed-file and one-shot invariants.
+- The new Node/config focused suite passes 37 tests and both workspaces type-check. This proves the
+  portable child boundary only; no native Host has yet queried a Keychain item or started this entry.
 
 ## Unresolved questions
 
