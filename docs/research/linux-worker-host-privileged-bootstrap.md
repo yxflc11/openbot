@@ -20,12 +20,15 @@
   - `node-fs-ext 2.1.1 flock release native addon tests`
   - `nodejs node v22.22.2 fs copyFile COPYFILE_EXCL open O_EXCL`
   - `openat2 RESOLVE_BENEATH RESOLVE_NO_SYMLINKS Node.js binding`
+  - `commander 15 CLI strict unknown duplicate option tests`
+  - `yargs 18 strict CLI parser dependency tree security`
 - Standards and primary documentation queries:
   - `POSIX.1-2024 mkdir atomic directory operation EEXIST`
   - `Linux openat2 RESOLVE_BENEATH RESOLVE_NO_SYMLINKS path resolution`
   - `Node.js v22.22.2 fs open exclusive copyFile symbolic links`
   - `FHS 3.0 /opt /var/lib private package state`
   - `systemd v255 tmpfiles.d create directory wrong type mode ownership behavior`
+  - `Node.js v22.22.2 util.parseArgs strict positionals tokens duplicate options`
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked: ADR-0032, ADR-0033, ADR-0034,
   `docs/research/linux-worker-host-install-transaction.md`, both open-source reuse ledgers, the
   current provenance/extraction/transaction/systemd adapters, and G3 in the execution plan.
@@ -37,6 +40,9 @@
 | Node core exclusive file import plus POSIX directory lease | Node.js `v22.22.2` / `2645dc73720b1b4f27c49f395d3c66025ce126cc`; POSIX.1-2024 | Node.js license; published standard | Pinned project runtime with upstream filesystem tests; stable standard | `open(..., "wx")` refuses an existing final path and file handles let OpenBot compare the opened source with `lstat`; atomic `mkdir` supplies one local lease. Copying first into a fixed private root removes the user-writable archive pathname from later verification and extraction. Node warns that `copyFile` follows source symlinks and is not atomic, so the bootstrap must use opened handles, explicit bounds, an exclusive destination, and cleanup | Select the primitive set; implement only bounded import, ownership validation, and shared lease composition |
 | Fixed Node core directory creation | Node.js `v22.22.2` / `2645dc73720b1b4f27c49f395d3c66025ce126cc`; FHS 3.0 | Node.js license; standard | Same pinned runtime and upstream filesystem tests; stable hierarchy standard | Non-recursive `mkdir` rejects an existing final path, so the bootstrap can validate each real root-owned parent, create only one fixed child, normalize a newly created child's mode, and validate it before descending. Existing directories are inspected but never automatically changed | Select for the dormant bootstrap; keep all paths, owners, and modes constant and fail on any pre-existing drift |
 | `systemd-tmpfiles` directory creation | systemd `v255` / `db11bab38ccf1ed257f310d29070843d4c58ea01` | LGPL-2.1-or-later | Actively maintained with upstream tmpfiles tests; Ubuntu 24.04 system component | Declarative `d` entries fit package-time and boot-time creation, but v255 documentation says a wrong existing type or state may be reported without making the invocation fail. That is unsuitable as the only privileged trust gate | Defer to a future signed package; even then the bootstrap must perform the same fail-closed post-validation |
+| Node core strict operator argument parser | Node.js `v22.22.2` / `2645dc73720b1b4f27c49f395d3c66025ce126cc` `util.parseArgs` | Node.js license | Pinned runtime with upstream argument-parser tests | Strict unknown-option rejection, disabled negative booleans, and token output let OpenBot enforce one operation, one occurrence of each required option, and no excess input without a new privileged dependency. The command can derive architecture and transaction ids rather than trust operator strings | Select; expose only `install` and `recover`, construct allowlisted results, and emit a generic failure record |
+| `commander` CLI framework | `15.0.0` / `ba6d13ddb4243e5913367734f8c159089ffe7834` | MIT | Maintained, tested, current Node support, no runtime dependencies | Strong subcommand/help UX and unknown/excess argument rejection, but the first privileged surface needs only two operations and three install options. Adding a framework does not strengthen path, root, or provenance validation | Reject for the first bootstrap; reconsider only if signed-package lifecycle commands materially expand |
+| `yargs` CLI framework | `18.1.0` / `8878a894111e3fe7c98d84af546c0f34fa017492` | MIT | Maintained and tested; six direct runtime dependencies | Rich command validation and localization exceed this operator surface. Its parser and presentation dependency graph adds privileged shipped code without closing a trust-boundary gap | Reject for the first bootstrap |
 | Linux `openat2` confined resolution | Linux ABI since 5.6; Linux man-pages `6.19` | Linux ABI; man-pages collection licenses | Kernel-maintained interface with explicit escape and symlink tests | `RESOLVE_BENEATH` and `RESOLVE_NO_SYMLINKS` are the strongest way to confine untrusted relative paths, but Node 22 core exposes no `openat2` API. A new native helper would add a separately shipped privileged binary and ABI/build surface | Defer; use no caller-controlled destination paths and require every mutable ancestor to be root-owned and non-writable by group/other |
 | `proper-lockfile` | `4.1.2` / `9f8c303c91998e8404a911dc11c54029812bca69` | MIT | Extensive tests, but no release after 2020 and an open 2025 stale-lock race question | Uses atomic `mkdir` and heartbeat-based stale detection. Its own documentation says manual removal/reacquisition is not detected. Time-based automatic stale takeover is unsafe for a paused root installer because two privileged writers may then overlap | Reject the dependency and automatic stale takeover; retain an unexplained lock until explicit inspection/recovery |
 | `fs-ext` flock adapter | `2.1.1` / `aded976099c2b06c944f0897a9b004dbf266e234` | MIT | Maintained native addon with tests and a 2.1.1 release | Kernel `flock` releases on process exit, but the native addon adds compilation and platform ABI work, while the installer must retain an explicit crash journal independently. It does not validate ownership or protect the archive path by itself | Reject for the first bootstrap; reconsider if native package installation already requires an addon toolchain |
@@ -62,6 +68,13 @@
   only for a directory created by this invocation. Any existing child must already have exact
   root ownership and mode; a symlink, special file, unexpected owner, or permission drift fails
   without mutation. A partial failure may leave only already-validated private directories.
+- Operator-command decision: accept exactly `install --archive <absolute-path> --version <semver>
+  --source-commit <40-hex>` or `recover`. Derive architecture from the running Linux process and
+  generate import/transaction/recovery ids internally. Unknown, duplicate, missing, oversized, or
+  NUL-containing arguments fail before privileged adapters run. Read at most the optional `GH_TOKEN`
+  environment value, never accept a token in argv, and output only an allowlisted success shape or a
+  generic failure code. Do not add an npm script or package the entry point before its distribution
+  channel is separately trusted.
 - Upgrade, replacement, or exit plan: a future `.deb` bootstrap may replace directory creation and
   ownership setup, but it must call the same byte import and transaction policy or prove equivalent
   behavior. A future small `openat2` helper requires its own signed-build and native-architecture
