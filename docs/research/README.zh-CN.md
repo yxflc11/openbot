@@ -73,4 +73,6 @@ Windows Installer 5.0 标准事务，并禁止凭证、下载、自定义动作�
 标准用户批准的 `SMAppService` LaunchAgent。后续
 [macOS Worker Host 配置与 Keychain](macos-worker-host-config-and-keychain.md)审查选择直接使用
 Apple Security 与现有 Node core/Zod，并用私有凭证管道和有界固定子进程监管取代立即 `exec`。
-签名、打包、注册、TCC 与真实设备证据仍是独立门槛。
+随后接受的 [macOS 注册与安装包](macos-worker-host-package-and-registration.md)审查让登记保持在
+专用用户权限内，将身份绑定到精确 Server，并选择带失败关闭 Developer ID/公证门槛的纯应用 Apple
+安装包。TCC 与真实设备证据仍是独立门槛。

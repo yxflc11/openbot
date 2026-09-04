@@ -93,5 +93,8 @@ user-approved macOS 13+ `SMAppService` LaunchAgent for the dedicated standard ac
 app-relative native Host remains responsible for Keychain and child containment. The follow-on
 [macOS Worker Host configuration and Keychain](macos-worker-host-config-and-keychain.md) review
 selects direct Apple Security plus existing Node core/Zod, and replaces immediate `exec` with a
-private credential handoff and bounded fixed-child supervisor. Signing, packaging, registration,
-TCC, and real-device evidence remain separate gates.
+private credential handoff and bounded fixed-child supervisor. The accepted
+[macOS registration and package](macos-worker-host-package-and-registration.md) review then keeps
+enrollment/registration user-scoped, binds each identity to its exact Server, and selects an
+app-only Apple package with fail-closed Developer ID and notarization gates. TCC and real-device
+evidence remain separate gates.

@@ -54,8 +54,10 @@ and stapling.
 - The Host runs as the dedicated non-root user, validates one fixed public configuration, derives
   one expected shared Keychain access group from its signed entitlement, and queries one exact
   generic-password item from the data-protection Keychain.
-- The Keychain item must be non-synchronizing, `WhenUnlockedThisDeviceOnly`, at most 4 KiB, and an
-  exact OpenBot Node identity for the configured Node id. Any mismatch fails before child `START`.
+- The Keychain item must be non-synchronizing, `WhenUnlockedThisDeviceOnly`, at most 4 KiB, and a
+  strict versioned envelope containing the exact OpenBot Node identity, configured Node id, and
+  configured Server URL. Any mismatch fails before child `START`; ADR-0040 records the registration
+  and Server-binding transaction.
 - The Host starts only the bundled Node and entry point with a cleared, allowlisted environment. It
   contains the inert child in one process group, sends the identity only through inherited stdin,
   then sends `START`; shutdown is cooperative first and kills the entire group on timeout.
