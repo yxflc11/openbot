@@ -1,0 +1,152 @@
+import OpenBotWorkerHostCore
+import ServiceManagement
+import SwiftUI
+
+@main
+struct OpenBotWorkerHostControlApp: App {
+    @StateObject private var model = WorkerHostControlModel()
+
+    var body: some Scene {
+        WindowGroup("OpenBot Worker Host") {
+            WorkerHostControlView(model: model)
+                .frame(minWidth: 520, minHeight: 430)
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+@MainActor
+final class WorkerHostControlModel: ObservableObject {
+    @Published var nodeId = ""
+    @Published var serverUrl = "wss://"
+    @Published var enrollmentToken = ""
+    @Published private(set) var registrationStatus = WorkerHostRegistrationStatus.notRegistered
+    @Published private(set) var message = "Enter the dedicated Node settings, then enroll and enable."
+    @Published private(set) var isBusy = false
+
+    init() { refresh() }
+
+    func refresh() {
+        registrationStatus = SystemWorkerHostRegistration().status()
+        message = switch registrationStatus {
+        case .enabled: "The background Worker Host is enabled."
+        case .requiresApproval: "Approval is required in System Settings > Login Items."
+        case .notRegistered: "The background Worker Host is not registered."
+        case .notFound: "The bundled LaunchAgent is unavailable. Reinstall the app."
+        }
+    }
+
+    func enrollAndEnable() {
+        guard !isBusy else { return }
+        isBusy = true
+        let inputNodeId = nodeId
+        let inputServerUrl = serverUrl
+        let token = enrollmentToken
+        enrollmentToken = ""
+        message = "Enrolling and validating the local identity…"
+
+        Task {
+            do {
+                let configuration = try MacOSNodeConfiguration(
+                    nodeId: inputNodeId,
+                    serverUrl: inputServerUrl
+                )
+                let identity = try await URLSessionNodeEnrollmentClient().exchange(
+                    nodeId: inputNodeId,
+                    serverUrl: inputServerUrl,
+                    token: token
+                )
+                let envelope = try MacOSKeychainEnvelope(
+                    serverUrl: inputServerUrl,
+                    identity: identity
+                )
+                let keychain = try SystemNodeIdentityStore(accessGroup: MacOSAccessGroup.current())
+                try keychain.save(envelope, configuration: configuration)
+                let configStore = try MacOSConfigurationStore(homeDirectory: currentUserHomeDirectory())
+                try configStore.save(configuration)
+                try SystemWorkerHostRegistration().register()
+                registrationStatus = SystemWorkerHostRegistration().status()
+                message = registrationStatus == .requiresApproval
+                    ? "Enrollment is complete. Approve OpenBot in System Settings > Login Items."
+                    : "Enrollment is complete and the Worker Host is enabled."
+            } catch {
+                message = "Enrollment or registration failed without changing service authority."
+            }
+            isBusy = false
+        }
+    }
+
+    func disable() {
+        guard !isBusy else { return }
+        isBusy = true
+        do {
+            try SystemWorkerHostRegistration().unregister()
+            refresh()
+        } catch {
+            message = "The Worker Host could not be disabled."
+        }
+        isBusy = false
+    }
+
+    func removeLocalIdentity() {
+        guard !isBusy, registrationStatus == .notRegistered else {
+            message = "Disable the Worker Host before removing its local identity."
+            return
+        }
+        isBusy = true
+        do {
+            let configStore = try MacOSConfigurationStore(homeDirectory: currentUserHomeDirectory())
+            let configuration = try configStore.load()
+            let keychain = try SystemNodeIdentityStore(accessGroup: MacOSAccessGroup.current())
+            try keychain.remove(configuration: configuration)
+            try configStore.remove()
+            nodeId = ""
+            serverUrl = "wss://"
+            message = "The exact local Node identity and public configuration were removed."
+        } catch {
+            message = "Local identity cleanup failed; no broader data was removed."
+        }
+        isBusy = false
+    }
+}
+
+struct WorkerHostControlView: View {
+    @ObservedObject var model: WorkerHostControlModel
+
+    var body: some View {
+        Form {
+            Section("Status") {
+                LabeledContent("Background item", value: model.registrationStatus.rawValue)
+                Text(model.message)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Section("One-time enrollment") {
+                TextField("Node ID", text: $model.nodeId)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Server WebSocket URL", text: $model.serverUrl)
+                    .textFieldStyle(.roundedBorder)
+                SecureField("Enrollment token", text: $model.enrollmentToken)
+                    .textFieldStyle(.roundedBorder)
+                Text("The token is exchanged once and is never written to disk or logs.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Button("Enroll & Enable") { model.enrollAndEnable() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.isBusy)
+                Button("Refresh") { model.refresh() }
+                    .disabled(model.isBusy)
+                Button("Disable") { model.disable() }
+                    .disabled(model.isBusy || model.registrationStatus == .notRegistered)
+                Spacer()
+                Button("Remove Local Identity", role: .destructive) {
+                    model.removeLocalIdentity()
+                }
+                .disabled(model.isBusy || model.registrationStatus != .notRegistered)
+            }
+        }
+        .padding(20)
+    }
+}
