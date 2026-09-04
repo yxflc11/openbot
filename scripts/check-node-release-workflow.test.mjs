@@ -73,4 +73,11 @@ test("rejects omitted ancestry, repeat-build, or direct-upload gates", () => {
     () => validateNodeReleaseWorkflow(workflow.replace("          archive: false\n", "")),
     /directly upload all three/,
   );
+  assert.throws(
+    () =>
+      validateNodeReleaseWorkflow(
+        workflow.replace("npm run release:node-linux:smoke --", "npm run omitted-smoke --"),
+      ),
+    /missing required fragment|smoke-test/,
+  );
 });

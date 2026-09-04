@@ -24,6 +24,7 @@ import {
   validateNccStats,
   validateLinuxArchiveToolchain,
   validateLinuxArchiveToolPaths,
+  validatePackagedNodeHello,
   validateSpdxSbom,
   verifyCandidateDirectory,
   verifyChecksums,
@@ -348,4 +349,43 @@ test("revalidates an unsigned candidate before archive creation", async () => {
   ]);
   await writeFile(path.join(candidate, "app/index.js"), "tampered\n");
   await assert.rejects(verifyCandidateDirectory(candidate), /manifest does not match staged bytes/);
+});
+
+test("accepts only a least-authority packaged Node smoke hello", () => {
+  const expected = {
+    architecture: "arm64",
+    credential: `obn_${"s".repeat(43)}`,
+    nodeId: "release-smoke-arm64",
+    protocolVersion: "0.9.0",
+  };
+  const hello = {
+    type: "node.hello",
+    protocolVersion: "0.9.0",
+    nodeId: "release-smoke-arm64",
+    name: "runner",
+    platform: "linux",
+    osVersion: "6.0",
+    architecture: "arm64",
+    deviceClass: "server",
+    isolation: "unknown",
+    trustTier: "development",
+    capabilities: [],
+    capabilityManifest: [],
+    maxConcurrentRuns: 1,
+    credential: expected.credential,
+    sentAt: "2026-09-04T00:00:00.000Z",
+  };
+  assert.equal(validatePackagedNodeHello(hello, expected), hello);
+  assert.throws(
+    () => validatePackagedNodeHello({ ...hello, architecture: "x64" }, expected),
+    /host declaration/,
+  );
+  assert.throws(
+    () => validatePackagedNodeHello({ ...hello, capabilities: ["computer.read"] }, expected),
+    /unexpected authority/,
+  );
+  assert.throws(
+    () => validatePackagedNodeHello({ ...hello, credential: `obn_${"x".repeat(43)}` }, expected),
+    /identity/,
+  );
 });

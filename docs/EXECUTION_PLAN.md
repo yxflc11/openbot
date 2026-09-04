@@ -142,8 +142,11 @@ Every non-trivial slice follows the same sequence:
   host support claim. A tag-only workflow is now locally implemented with exact action pins, least
   privilege, main-ancestry/SemVer gates, two-build comparison, build and SBOM attestations, and
   direct temporary review uploads. It has not run remotely and cannot create a GitHub Release.
-  Authorized provenance observation, installer transactions, and real x64/arm64 systemd plus
-  locked/unlocked keyring evidence remain in progress under ADR-0033.
+  The matrix now assigns x64 and arm64 to matching hosted CPU runners and requires the packaged Node
+  plus application to complete a schema-valid least-authority loopback handshake before attestation.
+  The x64 path passed under local Ubuntu container emulation; both native hosted jobs remain
+  unobserved. Authorized provenance observation, installer transactions, and real x64/arm64 systemd
+  plus locked/unlocked keyring evidence remain in progress under ADR-0033.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

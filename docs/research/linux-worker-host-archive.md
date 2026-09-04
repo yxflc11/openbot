@@ -122,6 +122,11 @@
 - The two 29,155,296-byte archives, build metadata files, and checksum files were byte-identical.
   The archive SHA-256 was `2b83c61eb9a8b8141f130ce3e3dc1568ffd71a51071dc4d218811f997bc497f5`;
   `xz --test` and the sidecar checksum verification passed.
+- The same x64 candidate's bundled Node `22.22.2` and bundled application entry point ran inside the
+  pinned Ubuntu 24.04 `linux/amd64` container. It sent a schema-valid, least-authority Linux x64
+  `node.hello` to an isolated loopback gateway and exited cleanly after the gateway acknowledgement
+  and SIGTERM. The first run also caught and corrected a harness-only `null` success-callback
+  assumption before this evidence passed.
 - This proves the named packaging path under emulation only. It does not prove a native x64 host,
   arm64 output, systemd lifecycle, Secret Service behavior, installer transaction, provenance, or
   Linux support.

@@ -141,8 +141,10 @@ install/upgrade/rollback transactions, and real x64/arm64 host evidence remain r
 The public repository has a dormant [Node Linux provenance workflow](../.github/workflows/node-linux-release.yml).
 It does nothing until an Owner explicitly pushes a `node-v<SemVer>` tag. The workflow then requires
 the tagged commit to be reachable from `main`, builds x64 and arm64 candidates independently on
-Ubuntu 24.04, creates each archive twice, and stops unless the archive and both sidecars are
-byte-identical. Only then does it create GitHub build-provenance and SBOM attestations and upload the
+matching `ubuntu-24.04` and `ubuntu-24.04-arm` hosted CPUs, creates each archive twice, and stops
+unless the archive and both sidecars are byte-identical. It then starts the bundled application with
+the bundled Node binary, requires a schema-valid least-authority loopback handshake and clean
+shutdown, and only after that creates GitHub build-provenance and SBOM attestations and uploads the
 three exact files for 14-day review.
 
 This order matters: compare before attest, and attest before upload. Its benefit is that a consumer
@@ -162,7 +164,8 @@ gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
 The workflow does not create or edit a GitHub Release, move a tag, publish a package, or change a
 support label. Pushing the branch, creating the tag, and durable release publication remain separate
 Owner-authorized actions. The first remote run must also prove artifact retrieval and both
-attestation verification modes; local policy tests cannot provide that evidence.
+attestation verification modes. The x64 smoke path has passed under Ubuntu container emulation;
+native hosted x64/arm64 results remain unobserved, and local policy tests cannot provide them.
 
 ## Revoke or replace a Node
 

@@ -17,12 +17,16 @@ concurrency:
 jobs:
   build-attest:
     name: Build and attest Linux ${{ matrix.arch }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64, arm64]
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     env:
       RELEASE_ROOT: ${{ runner.temp }}/openbot-node-release-${{ matrix.arch }}
     steps:
@@ -123,6 +127,16 @@ jobs:
           cd "$RELEASE_ROOT/archives-1"
           sha256sum --check "$artifact.SHA256SUMS"
           /usr/bin/xz --test "$artifact"
+      - name: Smoke packaged runtime on matching architecture
+        shell: bash
+        env:
+          RELEASE_ARCH: ${{ matrix.arch }}
+          RELEASE_VERSION: ${{ steps.inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          npm run release:node-linux:smoke -- \
+            --arch "$RELEASE_ARCH" \
+            --candidate "$RELEASE_ROOT/candidates/openbot-node-${RELEASE_VERSION}-linux-${RELEASE_ARCH}-unsigned"
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:

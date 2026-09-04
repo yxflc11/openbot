@@ -11,10 +11,11 @@ export function validateNodeReleaseWorkflow(workflow) {
     "permissions:\n  contents: read\n  id-token: write\n  attestations: write",
     "group: node-linux-provenance-$" + "{{ github.ref }}",
     "cancel-in-progress: false",
-    "runs-on: ubuntu-24.04",
+    "runs-on: $" + "{{ matrix.runner }}",
     "timeout-minutes: 30",
     "fail-fast: false",
-    "arch: [x64, arm64]",
+    "- arch: x64\n            runner: ubuntu-24.04",
+    "- arch: arm64\n            runner: ubuntu-24.04-arm",
     "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
     "fetch-depth: 0",
     "persist-credentials: false",
@@ -32,6 +33,8 @@ export function validateNodeReleaseWorkflow(workflow) {
     'cmp "$RELEASE_ROOT/archives-1/$artifact" "$RELEASE_ROOT/archives-2/$artifact"',
     'sha256sum --check "$artifact.SHA256SUMS"',
     '/usr/bin/xz --test "$artifact"',
+    "name: Smoke packaged runtime on matching architecture",
+    "npm run release:node-linux:smoke --",
     "name: Attest build provenance",
     "name: Attest archive SBOM",
     "sbom-path:",
@@ -58,12 +61,18 @@ export function validateNodeReleaseWorkflow(workflow) {
   if ((workflow.match(/archive: false/g) ?? []).length !== 3) {
     throw new Error("Node release workflow must directly upload all three review files.");
   }
+  if ((workflow.match(/npm run release:node-linux:smoke --/g) ?? []).length !== 1) {
+    throw new Error("Node release workflow must smoke-test each native matrix package.");
+  }
 
   const compare = workflow.indexOf("Build twice and require byte-identical archives");
+  const smoke = workflow.indexOf("name: Smoke packaged runtime on matching architecture");
   const attest = workflow.indexOf("name: Attest build provenance");
   const upload = workflow.indexOf("name: Upload archive for review");
-  if (compare === -1 || attest <= compare || upload <= attest) {
-    throw new Error("Node release workflow must compare, attest, then upload in that order.");
+  if (compare === -1 || smoke <= compare || attest <= smoke || upload <= attest) {
+    throw new Error(
+      "Node release workflow must compare, smoke, attest, then upload in that order.",
+    );
   }
 
   if (

@@ -123,8 +123,10 @@ GitHub 来源证明、安装/升级/回滚事务，以及真实 x64/arm64 主机
 
 公开仓库已有一个休眠的 [Node Linux 来源证明工作流](../.github/workflows/node-linux-release.yml)。
 只有 Owner 明确推送 `node-v<SemVer>` tag 后，它才会执行。工作流要求被标记提交位于 `main` 历史，
-在 Ubuntu 24.04 上分别构建 x64 和 arm64 候选，每个压缩包制作两次；只有压缩包及两个伴随文件
-逐字节一致时，才生成 GitHub 构建来源和 SBOM attestation，并上传三个原始文件供 14 天审查。
+在对应 `ubuntu-24.04` 与 `ubuntu-24.04-arm` 托管 CPU 上分别构建 x64 和 arm64 候选，每个压缩包
+制作两次；只有压缩包及两个伴随文件逐字节一致时，才用包内 Node 启动包内应用，要求它完成符合
+协议且不带额外权限的本地握手并干净退出。之后才生成 GitHub 构建来源和 SBOM attestation，并
+上传三个原始文件供 14 天审查。
 
 这个顺序的原因是：先比较，再证明，最后上传。好处是使用者可以把下载字节绑定到仓库、工作流、
 触发事件和源码提交，而不必只相信文件名。但它仍不能证明源码安全，也不能证明两个架构能在真实
@@ -141,7 +143,8 @@ gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
 
 该工作流不会创建或修改 GitHub Release、移动 tag、发布软件包或改变支持标签。推送分支、创建 tag
 和长期发布仍是各自独立的 Owner 授权动作。第一次远程执行还必须验证制品确实可下载，并分别验证
-两类 attestation；本地策略测试不能代替这些证据。
+两类 attestation。x64 烟雾路径已在 Ubuntu 容器模拟下通过；原生托管 x64/arm64 结果仍未观察，
+本地策略测试不能代替这些证据。
 
 ## 吊销或重新登记
 

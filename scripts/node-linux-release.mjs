@@ -446,6 +446,38 @@ export function validateLinuxArchiveToolPaths(paths) {
   return expected;
 }
 
+export function validatePackagedNodeHello(message, expected) {
+  if (!isRecord(message) || message.type !== "node.hello") {
+    throw new Error("Packaged Node did not send a hello message.");
+  }
+  if (
+    message.protocolVersion !== expected.protocolVersion ||
+    message.nodeId !== expected.nodeId ||
+    message.credential !== expected.credential
+  ) {
+    throw new Error("Packaged Node hello identity does not match the smoke fixture.");
+  }
+  if (
+    message.platform !== "linux" ||
+    message.architecture !== expected.architecture ||
+    message.deviceClass !== "server" ||
+    message.isolation !== "unknown" ||
+    message.trustTier !== "development"
+  ) {
+    throw new Error("Packaged Node hello host declaration is unexpected.");
+  }
+  if (
+    message.maxConcurrentRuns !== 1 ||
+    !Array.isArray(message.capabilities) ||
+    message.capabilities.length !== 0 ||
+    !Array.isArray(message.capabilityManifest) ||
+    message.capabilityManifest.length !== 0
+  ) {
+    throw new Error("Packaged Node smoke fixture advertised unexpected authority.");
+  }
+  return message;
+}
+
 export function deterministicTarArguments({
   candidateName,
   sourceDateEpoch,
