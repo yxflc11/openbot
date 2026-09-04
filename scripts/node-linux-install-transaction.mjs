@@ -29,6 +29,10 @@ export const LINUX_INSTALL_PROVENANCE_POLICY = Object.freeze({
   verifier: "gh/2.93.0",
 });
 
+export function linuxProvenanceCertificateIdentity(version) {
+  return `https://github.com/${LINUX_INSTALL_PROVENANCE_POLICY.signerWorkflow}@refs/tags/node-v${version}`;
+}
+
 const maximumServiceDeadlineMs = 60_000;
 
 export function validateLinuxInstallProvenance(provenance, manifest) {
@@ -45,6 +49,9 @@ export function validateLinuxInstallProvenance(provenance, manifest) {
   }
   if (provenance.sourceRef !== `refs/tags/node-v${manifest.version}`) {
     throw new Error("Linux install provenance source ref does not match the release version.");
+  }
+  if (provenance.certificateIdentity !== linuxProvenanceCertificateIdentity(manifest.version)) {
+    throw new Error("Linux install provenance certificate identity does not match the release.");
   }
   if (!/^[0-9a-f]{64}$/.test(provenance.archiveSha256 ?? "")) {
     throw new Error("Linux install provenance archive digest is missing or malformed.");

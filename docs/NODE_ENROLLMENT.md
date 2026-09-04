@@ -181,11 +181,11 @@ native hosted x64/arm64 results remain unobserved, and local policy tests cannot
 ## Recoverable install transaction core (implemented, not a public installer)
 
 The rootless transaction core models the high-risk part before a privileged entry point is exposed.
-It accepts only a candidate already placed directly under the private staging root and a
-machine-readable provenance result bound to the exact repository, release workflow, tag, source
-commit, SLSA predicate, GitHub Actions issuer, hosted runner, archive SHA-256, and reviewed `gh`
-version. It then moves immutable bytes into a version directory and atomically replaces the relative
-`current` symlink.
+Its provenance adapter first verifies a reviewed-size regular archive with the exact `gh 2.93.0`
+command policy above, bounded process output and time, one unambiguous JSON statement, and matching
+pre/post SHA-256. The transaction then accepts only a candidate placed directly under the private
+staging root and the resulting machine-readable provenance record. It moves immutable bytes into a
+version directory and atomically replaces the relative `current` symlink.
 
 If the Worker Host was active, the transaction restarts and rechecks it. A failure restores the
 previous pointer and rechecks the old service. If that recovery also fails, both versions and a
@@ -194,9 +194,10 @@ enables, or starts a service; configuration and credentials are outside the bina
 are never read or modified.
 
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
-unrelated rollback implementations. It is not yet runnable as root: the trusted `gh` verifier,
-safe archive extraction, root ownership checks, systemd command adapter, explicit recovery command,
-and native x64/arm64 evidence are still required before an installation command can be published.
+unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted
+bootstrap, safe archive extraction with final digest binding, root ownership checks, systemd command
+adapter, explicit recovery command, and native x64/arm64 evidence are still required before an
+installation command can be published. No live remote attestation has been accepted yet.
 
 ## Revoke or replace a Node
 

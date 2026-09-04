@@ -148,9 +148,12 @@ Every non-trivial slice follows the same sequence:
   unobserved. A rootless install transaction core now binds the accepted provenance result, stages
   immutable versions, atomically switches `current`, restores the prior active version on failure,
   and retains a recovery journal if rollback also fails. Its eight tests pass on real temporary
-  filesystem state; it is not a privileged installer. Authorized provenance observation, trusted
-  bootstrap/extraction/ownership/systemd adapters, explicit recovery, and real x64/arm64 systemd plus
-  locked/unlocked keyring evidence remain in progress under ADR-0033 and ADR-0034.
+  filesystem state. A bounded verifier adapter now requires the exact `gh 2.93.0` binary contract,
+  certificate identity, tag, source commit, GitHub issuer, hosted runner, one matching statement,
+  and stable archive digest; seven fail-closed tests pass. It is not a privileged installer.
+  Authorized provenance observation, separately trusted bootstrap/extraction/ownership/systemd
+  adapters, explicit recovery, and real x64/arm64 systemd plus locked/unlocked keyring evidence remain
+  in progress under ADR-0033 and ADR-0034.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

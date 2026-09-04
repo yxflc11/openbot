@@ -123,9 +123,17 @@
   byte-identical no-op reinstall, source-policy rejection, escaping-current rejection, unfinished
   journal/stale-lock rejection, architecture mismatch, successful old-version restoration, and
   failed recovery with both versions and a bounded journal retained.
+- A separate provenance adapter now invokes only an absolute executable without a shell, requires
+  the reviewed `gh 2.93.0` version line, supplies the exact repository/certificate/ref/commit/
+  predicate/issuer/runner/host policy, bounds execution to 30 seconds and 2 MiB per output stream,
+  and emits the transaction record only after one matching JSON statement succeeds.
+- Seven provenance tests cover the exact argument vector, hostile predicate data, wrong verifier
+  release, non-zero execution, malformed/empty/duplicate output, predicate and digest mismatch,
+  pre/post archive replacement, symlink/size rejection, process timeout, and output overflow.
 - These tests use real temporary directories, manifests, checksums, renames, symlinks, durable state
-  writes, and injected bounded service outcomes. They do not exercise root ownership, `gh`, archive
-  extraction, systemd, reboot recovery, or a native Linux host.
+  writes, real bounded child processes, and injected verifier/service outcomes. They do not accept a
+  live remote attestation or exercise root ownership, archive extraction, systemd, reboot recovery,
+  or a native Linux host.
 
 ## Unresolved questions
 

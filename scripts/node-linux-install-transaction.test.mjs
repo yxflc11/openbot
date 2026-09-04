@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, readFile, readlink, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readlink, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { mkdtemp } from "node:fs/promises";
 import {
-  LINUX_INSTALL_PROVENANCE_POLICY,
   installStagedLinuxRelease,
+  LINUX_INSTALL_PROVENANCE_POLICY,
+  linuxProvenanceCertificateIdentity,
   readCurrentTarget,
   validateLinuxInstallProvenance,
 } from "./node-linux-install-transaction.mjs";
@@ -47,6 +47,14 @@ test("binds installation identity and provenance to the exact release", () => {
         manifest,
       ),
     /runnerEnvironment/,
+  );
+  assert.throws(
+    () =>
+      validateLinuxInstallProvenance(
+        { ...provenanceFor(manifest), certificateIdentity: "https://github.com/example/other" },
+        manifest,
+      ),
+    /certificate identity/,
   );
 });
 
@@ -313,6 +321,7 @@ function provenanceFor(manifest) {
     schemaVersion: 1,
     ...LINUX_INSTALL_PROVENANCE_POLICY,
     archiveSha256: "9".repeat(64),
+    certificateIdentity: linuxProvenanceCertificateIdentity(manifest.version),
     sourceCommit: manifest.sourceCommit,
     sourceRef: `refs/tags/node-v${manifest.version}`,
     verifiedAt: fixedTime.toISOString(),
