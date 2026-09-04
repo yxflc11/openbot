@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FileDesktopConnectionStore } from "./connection-config.js";
 import { DesktopConnectionController } from "./connection-controller.js";
+import { desktopWindowIconPath } from "./desktop-icon.js";
 import {
   isDesktopSessionAuthenticated,
   issueDesktopNodeEnrollmentToken,
@@ -146,6 +147,11 @@ async function createMainWindow(activeSession: Session): Promise<void> {
     autoHideMenuBar: true,
     backgroundColor: "#f7f7f5",
     height: 840,
+    icon: desktopWindowIconPath({
+      appPath: app.getAppPath(),
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
     minHeight: 640,
     minWidth: 960,
     show: false,

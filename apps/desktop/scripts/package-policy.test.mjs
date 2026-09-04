@@ -4,11 +4,13 @@ import { join, resolve } from "node:path";
 import {
   createDesktopFuseConfig,
   desktopMacOSWorkerCompanionSource,
+  DESKTOP_ICON_RESOURCE_NAME,
   DESKTOP_MACOS_WORKER_COMPANION_NAME,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
   packagedAsarPath,
   packagedDesktopMacOSWorkerCompanion,
+  packagedDesktopResource,
   packagedElectronTarget,
   shouldIgnoreDesktopSource,
   validateDesktopAsarEntries,
@@ -69,6 +71,26 @@ describe("Desktop package source policy", () => {
       join("/tmp/OpenBot-linux-x64", "resources", "app.asar"),
     );
     expect(() => packagedAsarPath("/tmp/OpenBot", "freebsd")).toThrow(/Unsupported/u);
+    expect(
+      packagedDesktopResource("/tmp/OpenBot-darwin-arm64", "darwin", DESKTOP_ICON_RESOURCE_NAME),
+    ).toBe(
+      join(
+        "/tmp/OpenBot-darwin-arm64",
+        "OpenBot.app",
+        "Contents",
+        "Resources",
+        DESKTOP_ICON_RESOURCE_NAME,
+      ),
+    );
+    expect(
+      packagedDesktopResource("/tmp/OpenBot-win32-x64", "win32", DESKTOP_ICON_RESOURCE_NAME),
+    ).toBe(join("/tmp/OpenBot-win32-x64", "resources", DESKTOP_ICON_RESOURCE_NAME));
+    expect(
+      packagedDesktopResource("/tmp/OpenBot-linux-x64", "linux", DESKTOP_ICON_RESOURCE_NAME),
+    ).toBe(join("/tmp/OpenBot-linux-x64", "resources", DESKTOP_ICON_RESOURCE_NAME));
+    expect(() =>
+      packagedDesktopResource("/tmp/OpenBot", "freebsd", DESKTOP_ICON_RESOURCE_NAME),
+    ).toThrow(/Unsupported/u);
   });
 
   it("allows only one explicit macOS companion source and fixed packaged destination", () => {

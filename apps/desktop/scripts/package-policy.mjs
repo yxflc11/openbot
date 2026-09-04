@@ -28,7 +28,18 @@ export const DESKTOP_WINDOWS_METADATA = Object.freeze({
   CompanyName: "OpenBot contributors",
 });
 
+export const DESKTOP_ICON_RESOURCE_NAME = "openbot-icon.png";
 export const DESKTOP_MACOS_WORKER_COMPANION_NAME = "OpenBot Worker Host.app";
+
+export function packagedDesktopResource(bundlePath, platform, resourceName) {
+  if (platform === "darwin") {
+    return join(bundlePath, "OpenBot.app", "Contents", "Resources", resourceName);
+  }
+  if (platform === "win32" || platform === "linux") {
+    return join(bundlePath, "resources", resourceName);
+  }
+  throw new Error(`Unsupported Desktop package platform: ${platform}`);
+}
 
 export function desktopMacOSWorkerCompanionSource(input, platform) {
   if (input === undefined || input === "") return undefined;
@@ -47,13 +58,7 @@ export function desktopMacOSWorkerCompanionSource(input, platform) {
 
 export function packagedDesktopMacOSWorkerCompanion(bundlePath, platform) {
   if (platform !== "darwin") return undefined;
-  return join(
-    bundlePath,
-    "OpenBot.app",
-    "Contents",
-    "Resources",
-    DESKTOP_MACOS_WORKER_COMPANION_NAME,
-  );
+  return packagedDesktopResource(bundlePath, platform, DESKTOP_MACOS_WORKER_COMPANION_NAME);
 }
 
 export function shouldIgnoreDesktopSource(appRoot, candidatePath) {

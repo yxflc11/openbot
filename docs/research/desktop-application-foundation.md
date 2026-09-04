@@ -24,7 +24,9 @@
   Electron process model, release support, security checklist, context isolation, sandbox, fuses,
   code signing, updating, Packager, ASAR integrity, strict fuses, and Forge packaging; Tauri process
   model, capabilities, permissions, signing, and distribution; Wails platform and WebView
-  requirements; Playwright Electron support.
+  requirements; Playwright Electron support. The icon follow-up checked Packager 20.3.0's installed
+  `icon` implementation and official Options documentation: macOS consumes `.icns`, Windows
+  consumes `.ico`, and Linux requires a PNG supplied to `BrowserWindow`.
 - Existing OpenBot issue, ADR, and reuse-ledger entries checked: `AGENTS.md`, ADR-0004,
   ADR-0016, ADR-0035 through ADR-0040, `docs/ARCHITECTURE.md`, `docs/CROSS_PLATFORM.md`,
   `docs/PRODUCT.md`, `docs/ROADMAP.md`, both reuse ledgers, every workspace package manifest, the
@@ -87,6 +89,10 @@ safe release.
 - Files and upstream locations: this change records architecture and public upstream contracts only.
   The later implementation will use published Electron, Packager, and Fuses packages through their
   APIs.
+- Brand asset provenance: `apps/desktop/resources/openbot-icon.png` was generated for OpenBot from
+  the maintainer-approved composable Bot design, then reviewed with a stronger low-contrast module
+  pattern. The `.icns` and `.ico` files are deterministic format exports of that same master; no
+  third-party logo or source artwork was copied.
 - Required copyright or license notice location: when dependencies are incorporated, preserve their
   licenses and generated production notices in `THIRD_PARTY_NOTICES.md` and each release artifact.
 

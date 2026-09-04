@@ -7,10 +7,12 @@ import { fileURLToPath } from "node:url";
 import {
   createDesktopFuseConfig,
   desktopMacOSWorkerCompanionSource,
+  DESKTOP_ICON_RESOURCE_NAME,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
   packagedAsarPath,
   packagedDesktopMacOSWorkerCompanion,
+  packagedDesktopResource,
   packagedElectronTarget,
   shouldIgnoreDesktopSource,
   validateDesktopAsarEntries,
@@ -20,13 +22,20 @@ import { validateMacOSWorkerHostApplication } from "../../../scripts/macos-worke
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = join(appRoot, "..", "..");
 const rendererEntry = join(appRoot, "dist", "renderer", "index.html");
+const desktopIconBase = join(appRoot, "resources", "openbot-icon");
+const desktopIconPng = `${desktopIconBase}.png`;
 const packageManifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
 const workerCompanionSource = desktopMacOSWorkerCompanionSource(
   process.env.OPENBOT_DESKTOP_MACOS_WORKER_COMPANION,
   process.platform,
 );
 
-await access(rendererEntry);
+await Promise.all([
+  access(rendererEntry),
+  access(desktopIconPng),
+  access(`${desktopIconBase}.icns`),
+  access(`${desktopIconBase}.ico`),
+]);
 if (workerCompanionSource !== undefined) {
   await validateMacOSWorkerHostApplication(workerCompanionSource, {
     expectedOwner: process.getuid?.(),
@@ -40,10 +49,14 @@ const packagePaths = await packager({
   asar: true,
   dir: appRoot,
   electronVersion: "44.2.0",
-  ...(workerCompanionSource === undefined ? {} : { extraResource: [workerCompanionSource] }),
+  extraResource: [
+    desktopIconPng,
+    ...(workerCompanionSource === undefined ? [] : [workerCompanionSource]),
+  ],
   afterCopy: [async ({ buildPath }) => stageDesktopRuntimeDependencies(buildPath)],
   executableName: "openbot",
   ignore: (candidatePath) => shouldIgnoreDesktopSource(appRoot, candidatePath),
+  icon: desktopIconBase,
   name: "OpenBot",
   out: join(appRoot, "out"),
   overwrite: true,
@@ -61,6 +74,10 @@ const asarPath = packagedAsarPath(packagePaths[0], process.platform);
 validateDesktopAsarEntries(listPackage(asarPath, { isPack: false }));
 const expectedFuses = createDesktopFuseConfig(process.platform, process.arch);
 await flipFuses(target, expectedFuses);
+
+await access(
+  packagedDesktopResource(packagePaths[0], process.platform, DESKTOP_ICON_RESOURCE_NAME),
+);
 
 const actualFuses = await getCurrentFuseWire(target);
 for (const fuseIndex of Object.values(FuseV1Options).filter((value) => typeof value === "number")) {
