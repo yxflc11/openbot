@@ -20,12 +20,31 @@ describe("Desktop application connection gate", () => {
         status: "configured",
         serverUrl: "https://openbot.example",
       })),
+      getSetupPlanState: vi.fn(async () => ({ status: "unconfigured" })),
+      saveSetupPlan: vi.fn(async (plan) => ({ status: "configured", plan })),
     };
     window.openbotDesktop = bridge;
     const rendered = await renderComponent(<App />);
 
     try {
       await settleEffects();
+      expect(rendered.container.textContent).toContain("选择安装方式");
+      expect(fetcher).not.toHaveBeenCalled();
+      const mode = rendered.container.querySelector("#desktop-mode-client");
+      const setupForm = rendered.container.querySelector("form");
+      if (!(mode instanceof HTMLInputElement) || setupForm === null) {
+        throw new Error("Desktop setup form not found.");
+      }
+      await interact(() => mode.click());
+      await interact(() =>
+        setupForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+      );
+      await settleEffects();
+      expect(bridge.saveSetupPlan).toHaveBeenCalledWith({
+        mode: "client",
+        plannedWorkerCount: 0,
+        localWorker: false,
+      });
       expect(rendered.container.textContent).toContain("连接你的 Server");
       expect(fetcher).not.toHaveBeenCalled();
 
@@ -62,6 +81,11 @@ describe("Desktop application connection gate", () => {
         serverUrl: "https://openbot.example",
       })),
       configureServer: vi.fn(),
+      getSetupPlanState: vi.fn(async () => ({
+        status: "configured",
+        plan: { mode: "client", plannedWorkerCount: 0, localWorker: false },
+      })),
+      saveSetupPlan: vi.fn(),
     };
     const rendered = await renderComponent(<App />);
 

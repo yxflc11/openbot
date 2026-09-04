@@ -17,9 +17,28 @@ export type ConfigureDesktopServerResult =
         | "storage_unavailable";
     }>;
 
+export type DesktopSetupMode = "client" | "client-worker" | "host" | "advanced";
+
+export interface DesktopSetupPlanInput {
+  localWorker: boolean;
+  mode: DesktopSetupMode;
+  plannedWorkerCount: number;
+}
+
+export type DesktopSetupPlanState =
+  | Readonly<{ status: "unconfigured" }>
+  | Readonly<{ status: "invalid" }>
+  | Readonly<{ status: "configured"; plan: Readonly<DesktopSetupPlanInput> }>;
+
+export type SaveDesktopSetupPlanResult =
+  | Extract<DesktopSetupPlanState, { status: "configured" }>
+  | Readonly<{ status: "failed"; code: "invalid_plan" | "storage_unavailable" }>;
+
 export interface OpenBotDesktopBridge {
   getConnectionState(): Promise<DesktopConnectionState>;
   configureServer(serverUrl: string): Promise<ConfigureDesktopServerResult>;
+  getSetupPlanState(): Promise<DesktopSetupPlanState>;
+  saveSetupPlan(plan: DesktopSetupPlanInput): Promise<SaveDesktopSetupPlanResult>;
 }
 
 declare global {
@@ -34,7 +53,9 @@ export function getOpenBotDesktopBridge(): OpenBotDesktopBridge | undefined {
   if (
     bridge === undefined ||
     typeof bridge.getConnectionState !== "function" ||
-    typeof bridge.configureServer !== "function"
+    typeof bridge.configureServer !== "function" ||
+    typeof bridge.getSetupPlanState !== "function" ||
+    typeof bridge.saveSetupPlan !== "function"
   ) {
     return undefined;
   }

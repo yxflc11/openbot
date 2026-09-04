@@ -23,8 +23,12 @@ import {
 import {
   DESKTOP_CONFIGURE_SERVER_CHANNEL,
   DESKTOP_CONNECTION_STATE_CHANNEL,
+  DESKTOP_SAVE_SETUP_PLAN_CHANNEL,
+  DESKTOP_SETUP_PLAN_STATE_CHANNEL,
 } from "./runtime-contract.js";
 import { proxyDesktopServerRequest } from "./server-proxy.js";
+import { FileDesktopSetupPlanStore } from "./setup-plan.js";
+import { DesktopSetupPlanController } from "./setup-plan-controller.js";
 import {
   createDesktopWebPreferences,
   DESKTOP_PERMISSION_DECISION,
@@ -63,20 +67,37 @@ function lockDownWebContents(contents: WebContents): void {
   contents.on("will-redirect", (event) => event.preventDefault());
 }
 
-function registerConnectionIpc(controller: DesktopConnectionController): void {
+function registerDesktopIpc(
+  connectionController: DesktopConnectionController,
+  setupPlanController: DesktopSetupPlanController,
+): void {
   ipcMain.removeHandler(DESKTOP_CONNECTION_STATE_CHANNEL);
   ipcMain.removeHandler(DESKTOP_CONFIGURE_SERVER_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_SETUP_PLAN_STATE_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_SAVE_SETUP_PLAN_CHANNEL);
   ipcMain.handle(DESKTOP_CONNECTION_STATE_CHANNEL, (event) => {
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
       throw new Error("Desktop IPC sender is not allowed.");
     }
-    return controller.getState();
+    return connectionController.getState();
   });
   ipcMain.handle(DESKTOP_CONFIGURE_SERVER_CHANNEL, (event, serverUrl: unknown) => {
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
       throw new Error("Desktop IPC sender is not allowed.");
     }
-    return controller.configure(serverUrl);
+    return connectionController.configure(serverUrl);
+  });
+  ipcMain.handle(DESKTOP_SETUP_PLAN_STATE_CHANNEL, (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return setupPlanController.getState();
+  });
+  ipcMain.handle(DESKTOP_SAVE_SETUP_PLAN_CHANNEL, (event, plan: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return setupPlanController.save(plan);
   });
 }
 
@@ -108,7 +129,7 @@ async function createMainWindow(activeSession: Session): Promise<void> {
 async function startDesktop(): Promise<void> {
   const activeSession = session.fromPartition("persist:openbot-desktop", { cache: true });
   const rendererRoot = join(app.getAppPath(), "dist", "renderer");
-  const controller = new DesktopConnectionController({
+  const connectionController = new DesktopConnectionController({
     clearSessionData: () =>
       activeSession.clearData({
         dataTypes: [
@@ -140,12 +161,15 @@ async function startDesktop(): Promise<void> {
     fetch: (input, init) => activeSession.fetch(input, init),
     store: new FileDesktopConnectionStore(join(app.getPath("userData"), "openbot", "server.json")),
   });
-  await controller.initialize();
+  const setupPlanController = new DesktopSetupPlanController(
+    new FileDesktopSetupPlanStore(join(app.getPath("userData"), "openbot", "setup-plan.json")),
+  );
+  await Promise.all([connectionController.initialize(), setupPlanController.initialize()]);
   lockDownSession(activeSession);
   await activeSession.protocol.handle(DESKTOP_SCHEME, async (request) => {
     const serverResponse = await proxyDesktopServerRequest(
       request,
-      controller.getState(),
+      connectionController.getState(),
       (input, init) => activeSession.fetch(input, init),
     );
     if (serverResponse !== undefined) return serverResponse;
@@ -159,7 +183,7 @@ async function startDesktop(): Promise<void> {
     return net.fetch(pathToFileURL(assetPath).toString());
   });
   desktopSession = activeSession;
-  registerConnectionIpc(controller);
+  registerDesktopIpc(connectionController, setupPlanController);
   await createMainWindow(activeSession);
 }
 

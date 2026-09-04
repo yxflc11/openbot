@@ -5,6 +5,10 @@ const DESKTOP_CONNECTION_STATE_CHANNEL: typeof import("./runtime-contract.js").D
   "openbot:desktop-connection-state";
 const DESKTOP_CONFIGURE_SERVER_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_CONFIGURE_SERVER_CHANNEL =
   "openbot:desktop-configure-server";
+const DESKTOP_SETUP_PLAN_STATE_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SETUP_PLAN_STATE_CHANNEL =
+  "openbot:desktop-setup-plan-state";
+const DESKTOP_SAVE_SETUP_PLAN_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SAVE_SETUP_PLAN_CHANNEL =
+  "openbot:desktop-save-setup-plan";
 
 const shellVersion = process.versions.electron;
 if (shellVersion === undefined || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(shellVersion)) {
@@ -25,6 +29,32 @@ const bridge: OpenBotDesktopBridge = Object.freeze({
     }
     return ipcRenderer.invoke(DESKTOP_CONFIGURE_SERVER_CHANNEL, serverUrl);
   },
+  getSetupPlanState: () => ipcRenderer.invoke(DESKTOP_SETUP_PLAN_STATE_CHANNEL),
+  saveSetupPlan: (plan: Parameters<OpenBotDesktopBridge["saveSetupPlan"]>[0]) => {
+    if (!isBoundedSetupPlanInput(plan)) {
+      return Promise.resolve({ status: "failed", code: "invalid_plan" });
+    }
+    return ipcRenderer.invoke(DESKTOP_SAVE_SETUP_PLAN_CHANNEL, plan);
+  },
 });
 
 contextBridge.exposeInMainWorld("openbotDesktop", bridge);
+
+function isBoundedSetupPlanInput(
+  input: unknown,
+): input is Parameters<OpenBotDesktopBridge["saveSetupPlan"]>[0] {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+  const value = input as Record<string, unknown>;
+  const keys = Object.keys(value).sort();
+  return (
+    keys.length === 3 &&
+    keys[0] === "localWorker" &&
+    keys[1] === "mode" &&
+    keys[2] === "plannedWorkerCount" &&
+    typeof value.localWorker === "boolean" &&
+    ["client", "client-worker", "host", "advanced"].includes(String(value.mode)) &&
+    Number.isInteger(value.plannedWorkerCount) &&
+    Number(value.plannedWorkerCount) >= 0 &&
+    Number(value.plannedWorkerCount) <= 100
+  );
+}

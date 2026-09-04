@@ -32,10 +32,12 @@ Desktop 首次引导提供同一产品的四种组合：
 “我会再添加五台电脑”只会生成五台设备的配置清单。它不是授权数量限制，也不会安装不同的
 应用。每台 Worker 电脑仍然可以作为用户正常使用 OpenBot 的 Client。
 
-目前实现的 Desktop Client 切片已经覆盖第一种组合：首次启动时输入一个已有 Server origin，
-Desktop 会验证 `/health`、显示原生确认、只保存这个公开 origin，然后打开共享的登录和频道界面。
-远程 Server 必须使用 HTTPS；本机开发可以使用 HTTP。更换 Server 会清除 Desktop 的独立浏览器
-Session。安装和管理 Server、Worker Host 服务属于下一段引导切片。
+目前实现的 Desktop 引导已经能把四种组合保存为严格的本地安装计划，生成可见清单，支持规划最多
+100 台 Worker 电脑，并在重启后恢复。这个数字只是界面的安全上限，不是授权限制。下一屏会接收一个
+已有 Server origin，验证 `/health`、显示原生确认、只保存这个公开 origin，然后打开共享的登录和
+频道界面。远程 Server 必须使用 HTTPS；本机开发可以使用 HTTP。更换 Server 会清除 Desktop 的
+独立浏览器 Session。保存计划绝不会安装、登记、连接、授权 Server 或 Worker Host，也不证明平台
+支持；这些真实操作仍属于下一段引导切片。
 
 ## 选择的语言与运行时
 
@@ -46,6 +48,7 @@ Session。安装和管理 Server、Worker Host 服务属于下一段引导切片
 | Desktop 外壳 | Electron `44.2.0` | 可以复用现有 Web 技术栈，并在不同桌面系统上交付同一套经过测试的 Chromium/Node 基线。 |
 | Desktop 打包与加固 | `@electron/packager` `20.3.0` 与 `@electron/fuses` `2.1.3` | 这两个当前稳定 Electron 软件包提供 OpenBot 所需的窄打包/ASAR 和严格 fuse API，同时避开 Forge 7 不兼容且含已知漏洞的开发依赖图。安装器、签名和发布仍使用后续单独审查的发布适配器。 |
 | Desktop Server 传输与配置 | Electron `44.2.0` 自定义协议、专用 `Session.fetch`、类型化 IPC、`write-file-atomic` `8.0.0`，以及只在构建时验证清单的 `@electron/asar` `4.3.0` | 安装包 renderer 保持同源；main process 只连接一个已经验证并确认的 Server。归档只携带经过审查的精确运行时依赖闭包。 |
+| Desktop 安装计划 | React `19.2.8` 原生表单控件、类型化 Electron IPC 与现有受限 `write-file-atomic` 存储 | 四种角色组合与 Worker 清单只需要一个可辨识计划，不需要新增表单或状态机依赖。main process 验证并保存公开意图；renderer 不能把它变成服务权限。 |
 | 共享 UI | React `19.2.8` 与 Vite `8.2.2` | 这些精确版本已经在当前仓库中锁定、构建并通过测试。 |
 | Server HTTP 运行时 | Node.js 上的 Hono | 当前 Server、安全中间件、SSE 和停机流程已经使用并测试这个边界。 |
 | 权威数据 | PostgreSQL 17 | 已有 migration、条件状态变更、调度、审批和审计需要唯一事务真相源。 |
@@ -103,4 +106,6 @@ Agent 重写成 TypeScript。
 长期决定与候选证据见 [ADR-0041](decisions/0041-desktop-application-foundation.md)和
 [Desktop 基础调研](research/desktop-application-foundation.md)。已经实现的 Server 连接边界见
 [ADR-0042](decisions/0042-desktop-server-connection.md)及其
-[调研证据](research/desktop-server-connection.md)。
+[调研证据](research/desktop-server-connection.md)。四模式安装意图及其无副作用边界见
+[ADR-0043](decisions/0043-desktop-setup-intent.md)和
+[安装计划调研](research/desktop-setup-plan.md)。

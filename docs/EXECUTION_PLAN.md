@@ -124,6 +124,11 @@ Every non-trivial slice follows the same sequence:
   dispatch audit, and Web interaction tests passed locally and in the focused remote suite.
 - The work remains in focused stacked review branches ahead of `origin/main`; a green PR is an Owner
   checkpoint, not permission to merge or release.
+- The current Desktop onboarding slice implements the four documented compositions, a bounded
+  Worker-computer checklist, strict public-intent persistence, and restart recovery. Local Desktop
+  and Web suites pass with 102 and 53 tests, and the packaged macOS arm64 application was exercised
+  through a five-computer plan and restart. The plan has no installer, enrollment, connection,
+  authorization, or platform-support authority; those service effects remain the next slice.
 - G1's explicit Linux x64, Windows x64, and macOS arm64 jobs have all been observed successfully,
   including the unsigned Desktop development-package matrix. This proves only compatibility with
   those hosted runner images, not installation or operation on user devices.

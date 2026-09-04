@@ -1,6 +1,6 @@
 # Research: Desktop setup intent and multi-computer plan
 
-- Status: Accepted for implementation
+- Status: Implemented and locally verified; hosted CI pending
 - Date: 2026-09-05
 - Owner: @yxflc11
 - Related issue: N/A; stacked after pull request #9
@@ -85,6 +85,19 @@
   reuse/research indexes in English and Simplified Chinese where a paired document exists.
 - Support level that the evidence permits: experimental setup planning only; no Server or Worker
   Host installation, pairing, platform support, signing, or release claim.
+
+## Evidence observed
+
+- On 2026-09-05, the focused Desktop suite passed 102 tests and the focused Web suite passed 53
+  tests. Desktop and Web typechecks and repository lint also passed.
+- The unsigned macOS arm64 development package built successfully and opened without the earlier
+  V8 snapshot crash. Through the packaged UI, a user selected **Use and work**, entered five Worker
+  computers, reviewed the derived local-plus-four-remote checklist, continued to the existing
+  Server screen, quit, reopened, and recovered the same plan.
+- The retained setup file was the canonical 108-byte v1 document with POSIX mode `0600`. The
+  temporary real-user test plan was removed after verification.
+- This is local development evidence. Hosted Windows/macOS/Linux package jobs and every real
+  service, privilege, enrollment, signing, update, rollback, and user-device claim remain pending.
 
 ## Unresolved questions
 

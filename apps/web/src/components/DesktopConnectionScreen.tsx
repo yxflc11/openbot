@@ -1,16 +1,25 @@
 import { type FormEvent, useState } from "react";
-import type { ConfigureDesktopServerResult, DesktopConnectionState } from "../desktop-runtime";
+import { desktopSetupModeTitle } from "../desktop-setup";
+import type {
+  ConfigureDesktopServerResult,
+  DesktopConnectionState,
+  DesktopSetupPlanInput,
+} from "../desktop-runtime";
 
 export function DesktopConnectionScreen({
   canCancel = false,
   connection,
   onCancel,
+  onChangePlan,
   onConfigure,
+  setupPlan,
 }: {
   canCancel?: boolean;
   connection: DesktopConnectionState;
   onCancel?(): void;
+  onChangePlan?(): void;
   onConfigure(serverUrl: string): Promise<ConfigureDesktopServerResult>;
+  setupPlan?: DesktopSetupPlanInput | undefined;
 }) {
   const [serverUrl, setServerUrl] = useState(
     connection.status === "configured" ? connection.serverUrl : "",
@@ -41,9 +50,24 @@ export function DesktopConnectionScreen({
         </div>
         <p className="login-eyebrow">OPENBOT DESKTOP</p>
         <h1 id="connection-title">连接你的 Server</h1>
-        <p className="login-copy">
-          输入自部署 OpenBot Server 的公开地址；Desktop 会先验证服务，再由系统窗口请你确认。
-        </p>
+        <p className="login-copy">{desktopConnectionCopy(setupPlan)}</p>
+        {setupPlan ? (
+          <section className="connection-plan-summary" aria-label="当前安装计划">
+            <span>
+              <strong>{desktopSetupModeTitle(setupPlan.mode)}</strong>
+              <small>
+                {setupPlan.plannedWorkerCount === 0
+                  ? "暂不配置工作电脑"
+                  : `计划 ${setupPlan.plannedWorkerCount} 台工作电脑`}
+              </small>
+            </span>
+            {onChangePlan ? (
+              <button className="secondary-button" type="button" onClick={onChangePlan}>
+                修改计划
+              </button>
+            ) : null}
+          </section>
+        ) : null}
         {connection.status === "invalid" ? (
           <p className="connection-warning" role="alert">
             已保存的连接配置无效，请重新选择 Server。
@@ -91,6 +115,19 @@ export function DesktopConnectionScreen({
       </section>
     </main>
   );
+}
+
+function desktopConnectionCopy(plan?: DesktopSetupPlanInput): string {
+  if (plan?.mode === "host") {
+    return "自动安装 Server 与 PostgreSQL 的功能尚未交付；如果你已经手动部署，可以先验证并连接它。";
+  }
+  if (plan?.mode === "advanced") {
+    return "完成独立 Server 部署后在这里连接；你也可以完全不安装 Desktop，直接使用 Web。";
+  }
+  if (plan?.mode === "client-worker") {
+    return "先连接唯一的 OpenBot Server；之后再逐台安装 Worker Service 并完成绑定。";
+  }
+  return "输入自部署 OpenBot Server 的公开地址；Desktop 会先验证服务，再由系统窗口请你确认。";
 }
 
 export function desktopConnectionErrorMessage(

@@ -34,11 +34,14 @@ An onboarding answer such as “I will add five computers” creates a five-devi
 is not a license limit and it does not produce a different application. Every Worker computer can
 still be used as a normal OpenBot Client.
 
-The implemented Desktop Client slice currently covers the first composition: on first launch it
-accepts one existing Server origin, verifies `/health`, presents a native confirmation, stores only
-that public origin, and then opens the shared sign-in and channel UI. Remote Servers require HTTPS;
-loopback development may use HTTP. Changing the Server clears the dedicated Desktop browser
-session. Installing or managing Server and Worker Host services remains the next onboarding slice.
+The implemented Desktop onboarding now records all four compositions as a strict local setup plan.
+It derives a visible checklist, supports a bounded total of up to 100 planned Worker computers, and
+restores the plan after restart. The number is a user-interface safety bound, not a license limit.
+The next screen accepts one existing Server origin, verifies `/health`, presents a native
+confirmation, stores only that public origin, and then opens the shared sign-in and channel UI.
+Remote Servers require HTTPS; loopback development may use HTTP. Changing the Server clears the
+dedicated Desktop browser session. Saving a plan never installs, enrolls, connects, authorizes, or
+proves support for a Server or Worker Host; those effects remain the next onboarding slice.
 
 ## Selected languages and runtimes
 
@@ -49,6 +52,7 @@ session. Installing or managing Server and Worker Host services remains the next
 | Desktop shell | Electron `44.2.0` | It reuses the existing web stack and ships one tested Chromium/Node baseline across desktop systems. |
 | Desktop packaging and hardening | `@electron/packager` `20.3.0` and `@electron/fuses` `2.1.3` | Current stable Electron packages provide the narrow package/ASAR and strict fuse APIs OpenBot needs without Forge 7's incompatible and vulnerable development graph. Installers, signing, and publishing remain separately reviewed release adapters. |
 | Desktop Server transport and configuration | Electron `44.2.0` custom protocol, dedicated `Session.fetch`, typed IPC, `write-file-atomic` `8.0.0`, and `@electron/asar` `4.3.0` for build-time inventory validation | The packaged renderer stays same-origin while the main process connects only to one verified and confirmed Server. The archive contains exactly the reviewed runtime dependency closure. |
+| Desktop setup planning | React `19.2.8` native form controls, typed Electron IPC, and the existing restricted `write-file-atomic` store | Four role compositions and the Worker checklist need one discriminated plan, not another form or state-machine dependency. The main process validates and persists public intent; the renderer cannot turn it into service authority. |
 | Shared UI | React `19.2.8` and Vite `8.2.2` | These exact versions are already locked, built, and tested in this repository. |
 | Server HTTP runtime | Hono on Node.js | The current Server, security middleware, SSE, and shutdown behavior already use and test this boundary. |
 | Authoritative persistence | PostgreSQL 17 | Existing migrations, conditional transitions, scheduling, approvals, and audit require one transactional source of truth. |
@@ -111,4 +115,6 @@ The durable decision and candidate evidence are recorded in
 [ADR-0041](decisions/0041-desktop-application-foundation.md) and the
 [Desktop foundation research](research/desktop-application-foundation.md). The implemented Server
 connection boundary is recorded in [ADR-0042](decisions/0042-desktop-server-connection.md) and its
-[research evidence](research/desktop-server-connection.md).
+[research evidence](research/desktop-server-connection.md). The four-mode setup intent and its
+no-side-effect boundary are recorded in [ADR-0043](decisions/0043-desktop-setup-intent.md) and the
+[setup-plan research](research/desktop-setup-plan.md).
