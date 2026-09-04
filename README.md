@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/design/openbot-readme-banner.png" alt="OpenBot" width="100%">
+</p>
+
 # OpenBot
 
 **A self-hosted workspace for multi-channel, multi-agent digital workers.**

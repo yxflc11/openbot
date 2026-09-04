@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/design/openbot-readme-banner.png" alt="OpenBot" width="100%">
+</p>
+
 # OpenBot
 
 **一套面向多频道、多 Agent 数字员工的自托管工作空间。**
