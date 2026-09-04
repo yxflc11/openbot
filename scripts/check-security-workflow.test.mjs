@@ -87,6 +87,17 @@ test("rejects action, Node, or checkout-security drift in the portable job", () 
     /missing required fragment/,
   );
 
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        `${beforePortable}${portableJob.replace(
+          "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+          "actions/checkout@v7",
+        )}${afterPortable}`,
+      ),
+    /missing required fragment/,
+  );
+
   const portableWithoutCheckoutProtection = portableJob.replace(
     "          persist-credentials: false\n",
     "",

@@ -17,7 +17,7 @@ export function validateNodeReleaseWorkflow(workflow) {
     "fail-fast: false",
     "- arch: x64\n            runner: ubuntu-24.04",
     "- arch: arm64\n            runner: ubuntu-24.04-arm",
-    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "fetch-depth: 0",
     "persist-credentials: false",
     "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
