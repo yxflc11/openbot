@@ -1,9 +1,3 @@
-export interface DesktopRuntimeInfo {
-  kind: "desktop";
-  platform: string;
-  shellVersion: string;
-}
-
 export type DesktopConnectionState =
   | Readonly<{ status: "unconfigured" }>
   | Readonly<{ status: "invalid" }>
@@ -23,24 +17,26 @@ export type ConfigureDesktopServerResult =
         | "storage_unavailable";
     }>;
 
-export const DESKTOP_CONNECTION_STATE_CHANNEL = "openbot:desktop-connection-state";
-export const DESKTOP_CONFIGURE_SERVER_CHANNEL = "openbot:desktop-configure-server";
-
 export interface OpenBotDesktopBridge {
-  getRuntimeInfo(): DesktopRuntimeInfo;
   getConnectionState(): Promise<DesktopConnectionState>;
   configureServer(serverUrl: string): Promise<ConfigureDesktopServerResult>;
 }
 
-export function createDesktopRuntimeInfo(
-  platform: string,
-  shellVersion: string,
-): DesktopRuntimeInfo {
-  if (!/^[a-z0-9_-]{1,32}$/u.test(platform)) {
-    throw new Error("Desktop platform identifier is invalid.");
+declare global {
+  interface Window {
+    openbotDesktop?: OpenBotDesktopBridge;
   }
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(shellVersion)) {
-    throw new Error("Electron version is invalid.");
+}
+
+export function getOpenBotDesktopBridge(): OpenBotDesktopBridge | undefined {
+  if (typeof window === "undefined") return undefined;
+  const bridge = window.openbotDesktop;
+  if (
+    bridge === undefined ||
+    typeof bridge.getConnectionState !== "function" ||
+    typeof bridge.configureServer !== "function"
+  ) {
+    return undefined;
   }
-  return Object.freeze({ kind: "desktop", platform, shellVersion });
+  return bridge;
 }

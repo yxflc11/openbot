@@ -1,6 +1,8 @@
 import {
   app,
   BrowserWindow,
+  dialog,
+  ipcMain,
   net,
   protocol,
   session,
@@ -9,12 +11,20 @@ import {
 } from "electron";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { FileDesktopConnectionStore } from "./connection-config.js";
+import { DesktopConnectionController } from "./connection-controller.js";
+import { isTrustedDesktopIpcSender } from "./ipc-security.js";
 import {
   DESKTOP_ENTRY_URL,
   DESKTOP_SCHEME,
   isDesktopAssetRequestMethod,
   resolveDesktopAssetPath,
 } from "./local-content.js";
+import {
+  DESKTOP_CONFIGURE_SERVER_CHANNEL,
+  DESKTOP_CONNECTION_STATE_CHANNEL,
+} from "./runtime-contract.js";
+import { proxyDesktopServerRequest } from "./server-proxy.js";
 import {
   createDesktopWebPreferences,
   DESKTOP_PERMISSION_DECISION,
@@ -53,6 +63,23 @@ function lockDownWebContents(contents: WebContents): void {
   contents.on("will-redirect", (event) => event.preventDefault());
 }
 
+function registerConnectionIpc(controller: DesktopConnectionController): void {
+  ipcMain.removeHandler(DESKTOP_CONNECTION_STATE_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_CONFIGURE_SERVER_CHANNEL);
+  ipcMain.handle(DESKTOP_CONNECTION_STATE_CHANNEL, (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return controller.getState();
+  });
+  ipcMain.handle(DESKTOP_CONFIGURE_SERVER_CHANNEL, (event, serverUrl: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return controller.configure(serverUrl);
+  });
+}
+
 async function createMainWindow(activeSession: Session): Promise<void> {
   const preloadPath = join(app.getAppPath(), "dist", "preload.cjs");
   const window = new BrowserWindow({
@@ -81,8 +108,48 @@ async function createMainWindow(activeSession: Session): Promise<void> {
 async function startDesktop(): Promise<void> {
   const activeSession = session.fromPartition("persist:openbot-desktop", { cache: true });
   const rendererRoot = join(app.getAppPath(), "dist", "renderer");
+  const controller = new DesktopConnectionController({
+    clearSessionData: () =>
+      activeSession.clearData({
+        dataTypes: [
+          "cache",
+          "cookies",
+          "fileSystems",
+          "indexedDB",
+          "localStorage",
+          "serviceWorkers",
+        ],
+      }),
+    confirmServer: async (serverUrl) => {
+      const window = mainWindow;
+      if (window === undefined || window.isDestroyed()) {
+        throw new Error("Desktop confirmation window is unavailable.");
+      }
+      const result = await dialog.showMessageBox(window, {
+        buttons: ["连接", "取消"],
+        cancelId: 1,
+        defaultId: 1,
+        detail: `OpenBot Desktop 将只连接这个 Server：\n${serverUrl}\n\n切换 Server 会清除当前 Desktop 会话。`,
+        message: "确认 OpenBot Server",
+        noLink: true,
+        title: "OpenBot",
+        type: "question",
+      });
+      return result.response === 0;
+    },
+    fetch: (input, init) => activeSession.fetch(input, init),
+    store: new FileDesktopConnectionStore(join(app.getPath("userData"), "openbot", "server.json")),
+  });
+  await controller.initialize();
   lockDownSession(activeSession);
-  await activeSession.protocol.handle(DESKTOP_SCHEME, (request) => {
+  await activeSession.protocol.handle(DESKTOP_SCHEME, async (request) => {
+    const serverResponse = await proxyDesktopServerRequest(
+      request,
+      controller.getState(),
+      (input, init) => activeSession.fetch(input, init),
+    );
+    if (serverResponse !== undefined) return serverResponse;
+
     if (!isDesktopAssetRequestMethod(request.method)) {
       return new Response("Method not allowed", { status: 405 });
     }
@@ -92,6 +159,7 @@ async function startDesktop(): Promise<void> {
     return net.fetch(pathToFileURL(assetPath).toString());
   });
   desktopSession = activeSession;
+  registerConnectionIpc(controller);
   await createMainWindow(activeSession);
 }
 

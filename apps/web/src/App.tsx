@@ -30,6 +30,7 @@ import { ChannelWorkspace } from "./components/ChannelWorkspace";
 import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
+import { DesktopConnectionScreen } from "./components/DesktopConnectionScreen";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
@@ -39,6 +40,7 @@ import { MobileNavigation, type MobilePanel } from "./components/MobileNavigatio
 import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
+import { type DesktopConnectionState, getOpenBotDesktopBridge } from "./desktop-runtime";
 import {
   isActiveRun,
   mergeArtifacts,
@@ -51,6 +53,11 @@ import {
 type Dialog = "bot" | "channel" | "node" | undefined;
 
 export function App() {
+  const desktopBridge = getOpenBotDesktopBridge();
+  const [desktopConnection, setDesktopConnection] = useState<
+    DesktopConnectionState | null | undefined
+  >(() => (desktopBridge === undefined ? null : undefined));
+  const [showConnectionSetup, setShowConnectionSetup] = useState(false);
   const [session, setSession] = useState<AuthSessionSnapshot>();
   const [sessionError, setSessionError] = useState<string>();
 
@@ -67,10 +74,29 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (desktopBridge === undefined) return;
+    let active = true;
+    void desktopBridge
+      .getConnectionState()
+      .then((connection) => {
+        if (active) setDesktopConnection(connection);
+      })
+      .catch(() => {
+        if (active) setDesktopConnection({ status: "invalid" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [desktopBridge]);
+
+  const connectionReady = desktopConnection === null || desktopConnection?.status === "configured";
+
+  useEffect(() => {
+    if (!connectionReady) return;
     const controller = new AbortController();
     void refreshSession(controller.signal);
     return () => controller.abort();
-  }, [refreshSession]);
+  }, [connectionReady, refreshSession]);
 
   useEffect(() => subscribeToUnauthorized(() => setSession({ authenticated: false })), []);
 
@@ -88,6 +114,41 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [session]);
 
+  if (desktopBridge !== undefined && desktopConnection === undefined) {
+    return (
+      <main className="loading-screen">
+        <span className="loading-mark">O</span>
+        <h1>正在读取 Desktop 配置</h1>
+        <p>正在打开你的本地连接设置…</p>
+      </main>
+    );
+  }
+
+  if (
+    desktopBridge !== undefined &&
+    desktopConnection !== undefined &&
+    desktopConnection !== null &&
+    (showConnectionSetup || desktopConnection.status !== "configured")
+  ) {
+    return (
+      <DesktopConnectionScreen
+        canCancel={showConnectionSetup && desktopConnection.status === "configured"}
+        connection={desktopConnection}
+        onCancel={() => setShowConnectionSetup(false)}
+        onConfigure={async (serverUrl) => {
+          const result = await desktopBridge.configureServer(serverUrl);
+          if (result.status === "configured") {
+            setSession(undefined);
+            setSessionError(undefined);
+            setDesktopConnection(result);
+            setShowConnectionSetup(false);
+          }
+          return result;
+        }}
+      />
+    );
+  }
+
   if (session === undefined) {
     return (
       <main className="loading-screen">
@@ -95,9 +156,20 @@ export function App() {
         <h1>{sessionError ? "无法打开 OpenBot" : "正在验证本地会话"}</h1>
         <p>{sessionError ?? "正在安全连接你的 OpenBot Server…"}</p>
         {sessionError ? (
-          <button className="primary-button" type="button" onClick={() => refreshSession()}>
-            重新连接
-          </button>
+          <div className="loading-actions">
+            <button className="primary-button" type="button" onClick={() => refreshSession()}>
+              重新连接
+            </button>
+            {desktopBridge !== undefined ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setShowConnectionSetup(true)}
+              >
+                更换 Server
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </main>
     );

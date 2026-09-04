@@ -159,7 +159,14 @@ export function createApp(dependencies: AppDependencies) {
   app.use("/api/v1/*", async (context, next) => {
     context.header("Cache-Control", "no-store");
     if (isPublicNodeEnrollmentRoute(context.req.path)) return next();
-    if (isMutation(context.req.method) && !isTrustedOrigin(context.req.header("origin"))) {
+    if (
+      isMutation(context.req.method) &&
+      !isTrustedMutationOrigin(
+        context.req.header("origin"),
+        context.req.url,
+        dependencies.allowedOrigins,
+      )
+    ) {
       return context.json({ error: "Request origin is not allowed." }, 403);
     }
     if (isPublicAuthRoute(context.req.path)) return next();
@@ -829,10 +836,6 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   return app;
-
-  function isTrustedOrigin(origin: string | undefined): boolean {
-    return origin !== undefined && dependencies.allowedOrigins.includes(origin);
-  }
 }
 
 function resolveRequestClientIdentity(
@@ -863,6 +866,21 @@ function publishEmployeeProfileChanged(
 
 function isMutation(method: string): boolean {
   return method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+}
+
+export function isTrustedMutationOrigin(
+  origin: string | undefined,
+  requestUrl: string,
+  allowedOrigins: readonly string[],
+): boolean {
+  if (origin === undefined || origin === "null") return false;
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const requestOrigin = new URL(requestUrl).origin;
+    return requestOrigin !== "null" && origin === requestOrigin;
+  } catch {
+    return false;
+  }
 }
 
 function isPublicAuthRoute(path: string): boolean {
