@@ -55,6 +55,10 @@ export function validateSecurityWorkflow(workflow) {
     "- run: npm run typecheck",
     "- run: npm run test",
     "- run: npm run build",
+    "name: Validate macOS LaunchAgent contract with native plist parser",
+    "if: runner.os == 'macOS'",
+    "npm run worker-host:macos:check",
+    "/usr/bin/plutil -lint apps/worker-host-macos/Resources/com.openbot.worker-host.node.plist",
   ];
 
   for (const fragment of requiredPortableFragments) {

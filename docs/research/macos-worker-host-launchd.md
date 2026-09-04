@@ -1,6 +1,7 @@
 # Research: macOS Worker Host launchd boundary
 
-- Status: Accepted for staged implementation; signing, packaging, Keychain, and real-device evidence pending
+- Status: Static LaunchAgent contract implemented locally; launcher, registration, signing, packaging,
+  Keychain, and real-device evidence pending
 - Date: 2026-09-04
 - Owner: OpenBot maintainers
 - Related issue: G5 in `docs/EXECUTION_PLAN.md`
@@ -104,6 +105,20 @@
 - Required copyright or license notice location: no third-party runtime is selected for this slice.
   The packaged official Node runtime retains its Node.js notices under the later macOS archive and
   package review.
+
+## Implementation verification
+
+- The first checked-in plist contains only the exact label, app-relative `BundleProgram`,
+  conditional unsuccessful-exit restart, 30-second throttle, background process class, 25-second
+  stop bound, and `077` umask. It has no command arguments, environment, credential, stdin, user,
+  group, root-directory, pressured-exit, or abandoned-process-group key.
+- Four portable contract tests accept only the canonical regular file and reject lifecycle,
+  executable, environment, symlink, size, and diagnostic drift. The local macOS 27 `plutil` parser
+  also accepts the plist.
+- The required portable macOS hosted lane now runs both the contract suite and native `plutil`. It
+  uploads nothing and remains unobserved until this branch is pushed with separate authorization.
+- This evidence validates a static service definition only. The referenced launcher does not yet
+  exist, and no service was registered or started on the development Mac.
 
 ## Verification plan
 

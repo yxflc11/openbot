@@ -70,7 +70,7 @@ interface must also be able to hold a future proof-of-possession private key.
 | --- | --- | --- | --- | --- | --- |
 | G3 | Active locally; archive, dormant provenance workflow, native smoke, and install-transaction design implemented | Linux Worker Host, installer, systemd, Secret Service | Linux has the simplest daemon and packaging path, so it establishes the shared lifecycle with the least platform-specific surface. | Signed archive first, then deb/rpm; dedicated service account; predictable install/start/stop/upgrade/rollback; protected credentials. This becomes the reference host implementation. | Tested systemd lifecycle and recovery; x64/arm64 evidence; permissions and keyring failure close safely; no inbound public control port. |
 | G4 | Windows host and build gate implemented locally; hosted and native evidence pending | Windows Worker Host, installer, Service, Credential Manager | Windows service identity, ACLs, installers, and session isolation differ substantially; the shared lifecycle should exist before solving those differences. | A signed installer and recoverable Windows Service with credentials outside plain files. Enterprise deployment and uninstall become auditable. | Real Windows x64 evidence first; ARM64 remains unclaimed until tested; service-account ACL tests; install/upgrade/uninstall/rollback; Credential Manager denial fails closed. |
-| G5 | Planned | macOS Worker Host, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials and truthful permission diagnostics. | Real declared Mac architecture evidence; install/upgrade/uninstall/rollback; locked-Keychain and missing-entitlement negatives; no desktop-control claim yet. |
+| G5 | Active locally; static LaunchAgent contract implemented | macOS Worker Host, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials and truthful permission diagnostics. | Real declared Mac architecture evidence; install/upgrade/uninstall/rollback; locked-Keychain and missing-entitlement negatives; no desktop-control claim yet. |
 | G6 | Planned | Node proof of possession, mTLS, rotation, revocation, and replay defense | Native services increase the value of a stolen bearer token. Real input must not be enabled while a copied credential can impersonate a Worker Host. | A Node proves possession of its device key, connections authenticate both directions, credentials rotate, compromised Nodes can be revoked, and captured messages cannot be replayed. | Preserve one-time enrollment; non-exportable-key adapter where the OS permits; bounded challenge/response; short-lived credentials; rotation and overlap rules; replay tests; Server-owned audit; fail-closed clock/storage/network behavior. |
 
 ### Wave C — expand Employee capability without importing authority
@@ -196,6 +196,14 @@ Every non-trivial slice follows the same sequence:
   downloads, credential properties, mutable install paths, and auto-start before enrollment. WiX
   `v7.0.0` is the first viable technical authoring candidate, but its OSMF EULA/fee decision requires
   separate Owner authorization; no tool or MSI has been added.
+- G5 service research selects a macOS 13+ user-approved `SMAppService` LaunchAgent for the dedicated
+  standard account and rejects a root daemon plus third-party supervisors. The first static plist
+  now fixes one app-relative launcher, unsuccessful-exit restart, a 30-second retry throttle,
+  background resource class, 25-second stop bound, and private umask without credentials or mutable
+  arguments. Four fail-closed contract tests and local native `plutil` validation pass; the hosted
+  macOS lane will rerun both after an authorized push. The launcher, registration app, package,
+  Keychain, native lifecycle, signing, and notarization remain pending, so no service or platform
+  support is claimed.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

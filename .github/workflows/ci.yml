@@ -83,6 +83,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      - name: Validate macOS LaunchAgent contract with native plist parser
+        if: runner.os == 'macOS'
+        run: |
+          npm run worker-host:macos:check
+          /usr/bin/plutil -lint apps/worker-host-macos/Resources/com.openbot.worker-host.node.plist
 
   windows-worker-host:
     name: Windows Worker Host (build only)

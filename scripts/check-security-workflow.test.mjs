@@ -50,3 +50,23 @@ test("rejects action, Node, or checkout-security drift in the portable job", () 
   const changed = `${beforePortable}${portableWithoutCheckoutProtection}${afterPortable}`;
   assert.throws(() => validateSecurityWorkflow(changed), /missing required fragment/);
 });
+
+test("rejects removal or broadening of the native macOS plist gate", () => {
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace("        if: runner.os == 'macOS'", "        if: runner.os != 'Windows'"),
+      ),
+    /missing required fragment/,
+  );
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace(
+          "/usr/bin/plutil -lint apps/worker-host-macos/Resources/com.openbot.worker-host.node.plist",
+          "echo skipped",
+        ),
+      ),
+    /missing required fragment/,
+  );
+});

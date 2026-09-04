@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.openbot.worker-host.node</string>
+  <key>BundleProgram</key>
+  <string>Contents/Resources/OpenBotWorkerHostLauncher</string>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>ExitTimeOut</key>
+  <integer>25</integer>
+  <key>Umask</key>
+  <string>077</string>
+</dict>
+</plist>
