@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import { join } from "node:path";
 import type { NodeEnv } from "@openbot/config";
 import { createLogger, diagnosticFields, type OpenBotLogger } from "@openbot/logging";
 import {
@@ -24,7 +23,7 @@ import {
   type PreparedAction,
 } from "@openbot/provider-sdk";
 import WebSocket from "ws";
-import { FileNodeCredentialStore, type NodeCredentialStore } from "./credential-store.js";
+import { createNodeCredentialStore, type NodeCredentialStore } from "./credential-store.js";
 import { detectWorkerHost } from "./host.js";
 import {
   availableCapabilities,
@@ -63,9 +62,7 @@ export class OpenBotNodeClient {
   constructor(
     env: NodeEnv,
     providers = configuredProviders(env),
-    credentialStore: NodeCredentialStore = new FileNodeCredentialStore(
-      env.OPENBOT_NODE_CREDENTIAL_PATH ?? join(env.OPENBOT_NODE_WORK_DIRECTORY, "identity.json"),
-    ),
+    credentialStore: NodeCredentialStore = createNodeCredentialStore(env),
     logger: OpenBotLogger = createLogger({ level: env.OPENBOT_LOG_LEVEL }),
   ) {
     this.#env = env;

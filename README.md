@@ -60,7 +60,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
 | Employee profile | Seven-view profile, revision-checked Owner editing for role and biography, Hermes-inspired dated evolution archive with filters and full evidence references, inspectable Owner skill review, Owner-managed typed memory with content-free audit, biography-preserving safe template export with exact reviewed-download binding, quarantined import, reviewed fresh-identity activation, and experimental DSSE signing | Display-name/model/host/appearance policy editors, memory retrieval/retention and autonomous proposals, native keyring/KMS and public trust adapters, executable Agent Skills bundles with full-diff review, selective cloning, registry distribution, and ownership transfer |
-| Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Proof-of-possession identity, mTLS, rotation, replay protection, native keyring adapters, and real-device conformance reports |
+| Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, disconnect recovery, and experimental Linux system/user service profiles with contract-tested Secret Service | Proof-of-possession identity, mTLS, rotation, replay protection, Windows/macOS keyrings, signed installers, and real-device conformance reports |
 | Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
 | Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
 | Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
@@ -71,9 +71,10 @@ and back. The table deliberately separates working code from planned capabilitie
 - It does not perform unattended form submissions or arbitrary desktop actions.
 - It does not yet issue cryptographic, single-use capability leases after approval.
 - It does not provide continuous remote desktop control.
-- Node enrollment is individually revocable, but the current credential is still a bearer secret
-  stored in an Owner-only file. It is not yet proof-of-possession identity, mTLS, or native-keyring
-  storage and must stay behind WSS and a trusted private network.
+- Node enrollment is individually revocable, but the current identity remains a copyable bearer
+  secret. A dedicated Linux login may explicitly store it in Secret Service without file fallback;
+  real keyring/systemd device evidence is still pending. It is not proof-of-possession identity or
+  mTLS and must stay behind WSS and a trusted private network.
 - It does not let models write or retrieve long-term memory autonomously, enforce retention
   schedules, selectively clone employee experience, distribute packages through a registry, or
   transfer ownership. The authenticated Owner can manually add, edit, and delete bounded memory;

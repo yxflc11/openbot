@@ -1,20 +1,19 @@
 [Unit]
-Description=OpenBot execution node
+Description=OpenBot execution node for a dedicated Linux desktop user
 Documentation=https://github.com/yxflc11/openbot/blob/main/docs/NODE_ENROLLMENT.md
-After=network-online.target
+After=network-online.target graphical-session.target
 Wants=network-online.target
+PartOf=graphical-session.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
 Type=exec
-User=openbot
-Group=openbot
 StateDirectory=openbot-node
 StateDirectoryMode=0700
-WorkingDirectory=/var/lib/openbot-node
-EnvironmentFile=/etc/openbot/node.env
-ExecStart=/usr/bin/env OPENBOT_NODE_CREDENTIAL_STORE=file OPENBOT_NODE_WORK_DIRECTORY=/var/lib/openbot-node /usr/bin/node /opt/openbot/apps/node/dist/index.js
+WorkingDirectory=%S/openbot-node
+EnvironmentFile=%h/.config/openbot/node.env
+ExecStart=/usr/bin/env OPENBOT_NODE_CREDENTIAL_STORE=secret-service OPENBOT_NODE_WORK_DIRECTORY=%S/openbot-node /usr/bin/node /opt/openbot/apps/node/dist/index.js
 Restart=on-failure
 RestartSec=5
 UMask=0077
@@ -22,7 +21,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ProtectHostname=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
@@ -36,4 +35,4 @@ AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

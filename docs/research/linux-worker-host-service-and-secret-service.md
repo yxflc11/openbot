@@ -35,7 +35,7 @@
 | Candidate | Exact release or commit | License | Maintenance and tests | Platform/API/security fit | Decision |
 | --- | --- | --- | --- | --- | --- |
 | Freedesktop Secret Service | API 0.2 draft, published 2026-04-08 | Specification, no linked runtime | Cross-desktop D-Bus contract implemented by GNOME Keyring and KWallet | Defines sessions on the user's D-Bus session bus, locked collections, prompts, and non-secret lookup attributes. It does not describe a machine-wide headless daemon keyring | Adopt the protocol and its user-session boundary |
-| GNOME `libsecret` / `secret-tool` | `0.21.7` / `0936f740c02b60f02657729cd99f581db4517a41`; release archive SHA-256 `6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e` | LGPL-2.1-or-later | Current 0.21 release with library/tool tests and official source archives | `secret-tool` sends stored bytes through stdin/stdout, updates an item with the same attributes, and surfaces D-Bus failures. Lookup returns 1 both for no match and errors, but the reviewed source writes an error only for the latter | Select as a thin external-process adapter; require exact bounded outcome handling |
+| GNOME `libsecret` / `secret-tool` | Ubuntu 24.04 baseline `0.21.4` / `6b5a6c28afc6dd93c232a4907a87c881079ff91b`, archive SHA-256 `163d08d783be6d4ab9a979ceb5a4fecbc1d9660d3c34168c581301cd53912b20`; latest reviewed `0.21.7` / `0936f740c02b60f02657729cd99f581db4517a41`, archive SHA-256 `6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e` | LGPL-2.1-or-later | Both releases have library/tool tests and official source archives; Ubuntu 24.04 publishes `libsecret-tools 0.21.4-1build3` for amd64 and arm64 | Both reviewed versions send stored bytes through stdin/stdout and share the required exit behavior. Lookup returns 1 both for no match and errors, but writes an error only for the latter | Select as a thin external-process adapter; require exact bounded outcome handling |
 | `@napi-rs/keyring` | `2.0.0` / `f3449416a1b4bf11b0570f0a49395aacc84c8608` | MIT | Active release, Rust tests, and published Linux x64/arm64 glibc/musl binaries | Its reviewed `LinuxCredentialBuilder` silently falls back from Secret Service to Linux kernel keyutils. That violates explicit backend selection and makes lifetime/session semantics different from the configured policy | Reject until upstream exposes fail-closed backend selection |
 | `node-keytar` | `7.9.0` / `5adb540f8557801c52254e969a6c7ed9ef4d16f0` | MIT | Repository archived on 2022-12-15; native build and platform dependency surface is no longer maintained | Historically supports Secret Service but is not a viable new security dependency | Reject |
 | systemd unit sandbox | `v255` / `db11bab38ccf1ed257f310d29070843d4c58ea01` | LGPL-2.1-or-later | Upstream test suite and maintained service manager; Ubuntu 24.04 ships the v255 line | `StateDirectory`, `UMask`, empty capability sets, `NoNewPrivileges`, read-only system paths, private devices/tmp, and kernel/control-group protections fit a Node process. `MemoryDenyWriteExecute` conflicts with V8 JIT and broad syscall filters need real-device evidence | Adopt compatible declarative hardening, then validate on real Linux hosts |
@@ -43,17 +43,18 @@
 ## Reuse decision
 
 - Selected option: open standard plus thin, pinned adapter and declarative service configuration.
-- Selected upstream or standard: Secret Service API 0.2, GNOME libsecret/`secret-tool` 0.21.7,
-  and systemd v255 semantics.
+- Selected upstream or standard: Secret Service API 0.2, GNOME libsecret/`secret-tool` 0.21.4
+  through 0.21.7 reviewed behavior, and systemd v255 semantics.
 - Why this is the first viable option: OpenBot can use the platform's maintained command-line
   client without introducing a native Node addon or copying D-Bus protocol code. Explicit process
   outcomes let OpenBot reject every unconfigured fallback.
 - Exact OpenBot-specific gap: select the credential backend, bind attributes to one Node id, bound
   process lifetime and output, distinguish the reviewed no-match outcome from D-Bus errors, parse
   the existing strict identity schema, and provide separate system/user service profiles.
-- Upgrade, replacement, or exit plan: package a reviewed `libsecret-tools` release and rerun the
-  adapter contract tests when its source behavior changes. Prefer an upstream explicit-backend
-  option in a maintained Node keyring package if one later meets the same failure contract.
+- Upgrade, replacement, or exit plan: the Ubuntu 24.04 real-device baseline uses its
+  `libsecret-tools 0.21.4-1build3`; packaging records the installed version, and upgrades rerun the
+  adapter contract when source behavior changes. Prefer an upstream explicit-backend option in a
+  maintained Node keyring package if one later meets the same failure contract.
 - Failure behavior when the upstream is missing, incompatible, or compromised: startup fails with
   a generic diagnostic; no enrollment exchange, connection, store fallback, raw stderr, or secret
   value is emitted. Timeout or oversized output terminates the helper and fails closed.

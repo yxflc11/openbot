@@ -126,6 +126,7 @@ export const nodeEnvSchema = z
     OPENBOT_NODE_SERVER_URL: nodeServerUrlSchema.default("ws://localhost:3001/ws/nodes"),
     OPENBOT_NODE_ENROLLMENT_TOKEN: nodeEnrollmentTokenSchema.optional(),
     OPENBOT_NODE_CREDENTIAL: nodeCredentialSchema.optional(),
+    OPENBOT_NODE_CREDENTIAL_STORE: z.enum(["file", "secret-service"]).default("file"),
     OPENBOT_NODE_CREDENTIAL_PATH: z.string().trim().min(1).optional(),
     OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
     OPENBOT_NODE_WORK_DIRECTORY: z.string().default("./data/node"),
@@ -135,6 +136,16 @@ export const nodeEnvSchema = z
     OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS: booleanSchema,
   })
   .superRefine((value, context) => {
+    if (
+      value.OPENBOT_NODE_CREDENTIAL_STORE === "secret-service" &&
+      value.OPENBOT_NODE_CREDENTIAL_PATH !== undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A credential path cannot be used with the Secret Service store.",
+        path: ["OPENBOT_NODE_CREDENTIAL_PATH"],
+      });
+    }
     if (
       (value.OPENBOT_DOCKER_COMPUTER_URL === undefined) !==
       (value.OPENBOT_DOCKER_COMPUTER_TOKEN === undefined)

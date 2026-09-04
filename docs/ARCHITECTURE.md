@@ -195,7 +195,8 @@ latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 
 绑定 Run、Bot、Node、动作、目标指纹和过期时间，但尚未签发独立的 capability lease。当前
 enrollment token 短时且只能兑换一次，Server 只保存摘要；Node 换取独立 bearer credential 后
 可被单独吊销。凭证仍可复制，不等于持有证明设备身份；证书轮换、系统密钥库、mTLS 和 sequence
-防重放仍是进入不受信任网络前的硬门槛。
+防重放仍是进入不受信任网络前的硬门槛。Linux 现在有明确选择、不会退回文件的登录会话
+Secret Service 适配器，但真实设备证据、Windows Credential Manager 与 macOS Keychain 仍待完成。
 
 ## 5. Provider contract
 

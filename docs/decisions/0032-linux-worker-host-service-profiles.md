@@ -21,8 +21,8 @@ The upstream comparison and exact pins are recorded in
 
 - Secret Service API 0.2 binds secrets to a D-Bus login session and defines locked collections and
   prompts; it is not a machine-wide headless credential service.
-- GNOME libsecret/`secret-tool` `0.21.7` (`0936f740`) is maintained and exposes the selected narrow
-  process contract without adding a Node native addon.
+- GNOME libsecret/`secret-tool` `0.21.4` (`6b5a6c28`) in Ubuntu 24.04 and current `0.21.7`
+  (`0936f740`) share the selected narrow process contract without adding a Node native addon.
 - systemd `v255` (`db11bab3`) provides the state-directory and service sandbox directives used by
   the Ubuntu 24.04 baseline.
 - `@napi-rs/keyring` `2.0.0` is maintained but silently falls back from Secret Service to kernel

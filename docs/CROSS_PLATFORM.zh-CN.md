@@ -57,8 +57,10 @@ Server 能在某个系统上运行，不等于 OpenBot 已经能控制该系统�
 
 当前通道已经限制登记时间和消息体、用 ping/pong 判断存活，并由 Server 独占 Run 分配权。短时、
 单次令牌会换取一台 Node 独有且可单独吊销的凭证，Server 只保存摘要。当前凭证仍是可复制的
-bearer 值；持有证明、系统密钥库、mTLS、轮换和防重放仍待完成，详见
-[ADR-0023](decisions/0023-one-time-node-enrollment.md)。
+bearer 值；持有证明、mTLS、轮换和防重放仍待完成。面向 Linux 登录会话、经过契约测试的
+Secret Service 适配器已经存在，但真实密钥库/systemd 设备证据以及 Windows/macOS 密钥库存储
+仍待完成，详见 [ADR-0023](decisions/0023-one-time-node-enrollment.md)和
+[ADR-0032](decisions/0032-linux-worker-host-service-profiles.md)。
 
 Bot 配置应选择能力策略，而不是操作系统枚举。用户可以将员工固定到某台工作主机，但模型不能
 自行解除绑定或换机。

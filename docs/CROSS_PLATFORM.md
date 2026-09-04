@@ -66,8 +66,11 @@ update channels remain planned. The handshake is an execution claim, not an auth
 The current channel bounds enrollment and messages, verifies ping/pong liveness, and keeps Run
 assignments Server-owned. A short-lived one-time token creates one individually revocable Node
 credential; the Server stores only digests. The credential is still a copyable bearer value, so
-proof of possession, native keyring storage, mTLS, rotation, and replay protection remain planned;
-see [ADR-0023](decisions/0023-one-time-node-enrollment.md).
+proof of possession, mTLS, rotation, and replay protection remain planned. A contract-tested Linux
+login-session Secret Service adapter now exists, but real keyring/systemd device evidence and the
+Windows/macOS stores remain pending; see
+[ADR-0023](decisions/0023-one-time-node-enrollment.md) and
+[ADR-0032](decisions/0032-linux-worker-host-service-profiles.md).
 
 Bot configuration should select a capability policy, not an OS enum. It may optionally pin an
 employee to a specific host, but the model cannot change that pin or select another host.

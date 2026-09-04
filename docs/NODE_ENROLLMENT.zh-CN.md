@@ -40,6 +40,31 @@ Owner 弹窗只列出安全的有效/已吊销身份元数据，不返回凭证�
 无状态环境可以直接用 `OPENBOT_NODE_CREDENTIAL` 注入已登记凭证。它是密钥注入接口，不能提交到
 Git，也不能放入员工包。`OPENBOT_NODE_CREDENTIAL_PATH` 可以把文件放到运维方控制的 secret volume。
 
+## Linux 服务配置（实验性）
+
+Linux 明确提供两种配置，因为 Secret Service 属于用户的 D-Bus 登录会话；系统级 daemon 通常
+没有这种会话，也不能借用另一个用户的密钥库。
+
+| 配置 | 凭证边界 | 为什么使用 | 好处 |
+| --- | --- | --- | --- |
+| 无人值守系统服务 | `/var/lib/openbot-node/identity.json`，由专用 `openbot` 账号拥有且权限为 `0600` | 服务器、VM 和无人值守开机 | 不依赖桌面登录，启动行为稳定可预测 |
+| 专用桌面用户服务 | 用 `OPENBOT_NODE_CREDENTIAL_STORE=secret-service` 选择 Secret Service | 拥有活跃图形登录和已解锁密钥库的 Linux 专用用户 | bearer 身份不再放在普通配置文件中 |
+
+已审查的部署文件包括[系统服务](../deploy/node/systemd/openbot-node.service)和
+[用户服务](../deploy/node/systemd/openbot-node-user.service)。它们是经过契约测试的部署资产，
+目前还不是签名安装器，也不代表已经支持 Linux。
+
+系统服务只需在 `/etc/openbot/node.env` 写入 `OPENBOT_NODE_ID`、`OPENBOT_NODE_SERVER_URL` 和
+首次使用的 `OPENBOT_NODE_ENROLLMENT_TOKEN`；服务单元会强制使用文件存储及专用状态目录。用户
+服务需要安装发行版提供的 `libsecret-tools`；已审查的 Ubuntu 24.04 基线是
+`0.21.4-1build3`，不要为此降级后续安全更新。在 `~/.config/openbot/node.env` 写入同样的首次
+登记值，并通过该专用用户的 `systemctl --user` 启用。服务单元会强制使用 Secret Service，
+绝不退回文件。
+
+首次成功启动后，两种配置都要删除 enrollment token 并重启。`secret-tool` 缺失、D-Bus 会话
+不存在、密钥库锁定或拒绝、超时、身份格式错误、工具报错或输出超限，都会中止身份初始化。
+OpenBot 不会创建或自动解锁密钥库。不要让桌面配置使用 Owner 的主登录账号或主密码集合。
+
 ## 吊销或重新登记
 
 已登录的 Owner 可以调用 `POST /api/v1/nodes/:nodeId/revoke`。Server 会持久化吊销状态、追加身份
@@ -62,8 +87,11 @@ Git，也不能放入员工包。`OPENBOT_NODE_CREDENTIAL_PATH` 可以把文件�
 
 ## 当前安全边界
 
-协议 `0.9.0` 能在连接时验证每台 Node 对独立 bearer 值的持有，并支持单节点吊销。它还不能证明
-Node 持有不可导出的私钥，不能轮换短时证书、给每条消息绑定序号，也没有接入 Windows DPAPI、
-macOS Keychain 或 Linux Secret Service。Node 通道进入不受信任网络前必须补齐这些控制。详见
+协议 `0.9.0` 能在连接时验证每台 Node 对独立 bearer 值的持有，并支持单节点吊销。Linux 现在有
+面向专用登录会话、经过契约测试且明确选择的 Secret Service 适配器，但真实密钥库锁定/解锁以及
+systemd x64/arm64 证据仍待完成。协议还不能证明 Node 持有不可导出的私钥，不能轮换短时证书、
+给每条消息绑定序号，也没有接入 Windows Credential Manager 或 macOS Keychain。Node 通道进入
+不受信任网络前必须补齐这些控制。详见
 [ADR-0023](decisions/0023-one-time-node-enrollment.md)、
-[权限审查](research/posix-node-credential-permissions.md)与[安全模型](SECURITY.md)。
+[权限审查](research/posix-node-credential-permissions.md)、
+[Linux 服务决策](decisions/0032-linux-worker-host-service-profiles.md)与[安全模型](SECURITY.md)。

@@ -125,12 +125,38 @@ describe("node environment", () => {
       OPENBOT_NODE_MAX_CONCURRENT_RUNS: "2",
     });
     expect(environment.OPENBOT_NODE_MAX_CONCURRENT_RUNS).toBe(2);
+    expect(environment.OPENBOT_NODE_CREDENTIAL_STORE).toBe("file");
     expect(environment.OPENBOT_LOG_LEVEL).toBe("info");
     expect(
       nodeEnvSchema.safeParse({
         OPENBOT_NODE_ID: "linux-node",
         OPENBOT_NODE_CREDENTIAL: nodeCredential,
         OPENBOT_NODE_MAX_CONCURRENT_RUNS: "17",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires an explicit non-file Secret Service configuration", () => {
+    expect(
+      nodeEnvSchema.parse({
+        OPENBOT_NODE_ID: "linux-desktop-node",
+        OPENBOT_NODE_ENROLLMENT_TOKEN: enrollmentToken,
+        OPENBOT_NODE_CREDENTIAL_STORE: "secret-service",
+      }).OPENBOT_NODE_CREDENTIAL_STORE,
+    ).toBe("secret-service");
+    expect(
+      nodeEnvSchema.safeParse({
+        OPENBOT_NODE_ID: "linux-desktop-node",
+        OPENBOT_NODE_ENROLLMENT_TOKEN: enrollmentToken,
+        OPENBOT_NODE_CREDENTIAL_STORE: "secret-service",
+        OPENBOT_NODE_CREDENTIAL_PATH: "./identity.json",
+      }).success,
+    ).toBe(false);
+    expect(
+      nodeEnvSchema.safeParse({
+        OPENBOT_NODE_ID: "linux-desktop-node",
+        OPENBOT_NODE_ENROLLMENT_TOKEN: enrollmentToken,
+        OPENBOT_NODE_CREDENTIAL_STORE: "automatic",
       }).success,
     ).toBe(false);
   });

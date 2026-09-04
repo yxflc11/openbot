@@ -50,6 +50,33 @@ directly. Treat this as a secret-injection integration point, not a value to com
 Employee package. `OPENBOT_NODE_CREDENTIAL_PATH` can move the file to an operator-controlled
 secret volume.
 
+## Linux service profiles (experimental)
+
+Linux has two explicit profiles because Secret Service belongs to a user's D-Bus login session; a
+machine-wide daemon normally has no such session and must not borrow another user's keyring.
+
+| Profile | Credential boundary | Why use it | Benefit |
+| --- | --- | --- | --- |
+| Headless system service | `/var/lib/openbot-node/identity.json`, owned by the dedicated `openbot` account with `0600` mode | Servers, VMs, and unattended boot | Predictable boot lifecycle without depending on a desktop login |
+| Dedicated desktop user service | Secret Service selected with `OPENBOT_NODE_CREDENTIAL_STORE=secret-service` | A dedicated Linux user that has an active graphical login and unlocked keyring | The bearer identity is kept outside an ordinary configuration file |
+
+The reviewed units are [the system profile](../deploy/node/systemd/openbot-node.service) and
+[the user profile](../deploy/node/systemd/openbot-node-user.service). They are contract-tested
+deployment assets, not yet a signed installer or a Linux support claim.
+
+For the system profile, put only `OPENBOT_NODE_ID`, `OPENBOT_NODE_SERVER_URL`, and the first-run
+`OPENBOT_NODE_ENROLLMENT_TOKEN` in `/etc/openbot/node.env`; the unit enforces file storage and its
+state directory. For the user profile, install the distribution's `libsecret-tools` package. The
+reviewed Ubuntu 24.04 baseline is `0.21.4-1build3`; do not downgrade a later security update. Put
+the same first-run values in
+`~/.config/openbot/node.env`, and enable the unit through that dedicated user's `systemctl --user`
+manager. The unit enforces Secret Service and never falls back to a file.
+
+After either first start succeeds, remove the enrollment token and restart. A missing
+`secret-tool`, absent D-Bus session, locked or denied keyring, timeout, malformed identity, helper
+error, or oversized output stops identity setup. OpenBot does not create or automatically unlock a
+keyring. Do not run the desktop profile against the Owner's primary login or password collection.
+
 ## Revoke or replace a Node
 
 An authenticated Owner can call `POST /api/v1/nodes/:nodeId/revoke`. Revocation updates the
@@ -77,9 +104,13 @@ the previous credential, and leaves all old values invalid.
 ## Current security limit
 
 Protocol `0.9.0` proves possession of a Node-specific bearer value at connection time and supports
-single-Node revocation. It does not yet prove possession of a non-exportable private key, rotate a
-short-lived certificate, bind every message to a sequence, or store credentials through Windows
-DPAPI, macOS Keychain, or Linux Secret Service. Those controls remain required before exposing the
-Node channel to an untrusted network. See
+single-Node revocation. Linux now has a contract-tested, explicit Secret Service adapter for a
+dedicated login session, but real unlocked/locked keyring and systemd x64/arm64 evidence is still
+pending. The protocol does not yet prove possession of a non-exportable private key, rotate a
+short-lived certificate, bind every message to a sequence, or use Windows Credential Manager or
+macOS Keychain. Those controls remain required before exposing the Node channel to an untrusted
+network. See
 [ADR-0023](decisions/0023-one-time-node-enrollment.md), the
-[permission review](research/posix-node-credential-permissions.md), and [Security](SECURITY.md).
+[permission review](research/posix-node-credential-permissions.md),
+[Linux service decision](decisions/0032-linux-worker-host-service-profiles.md), and
+[Security](SECURITY.md).
