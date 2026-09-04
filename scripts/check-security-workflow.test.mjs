@@ -69,4 +69,11 @@ test("rejects removal or broadening of the native macOS plist gate", () => {
       ),
     /missing required fragment/,
   );
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace("          npm run worker-host:macos:native-check\n", ""),
+      ),
+    /missing required fragment/,
+  );
 });

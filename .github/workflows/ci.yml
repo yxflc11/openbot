@@ -87,7 +87,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           npm run worker-host:macos:check
+          npm run worker-host:macos:native-check
           /usr/bin/plutil -lint apps/worker-host-macos/Resources/com.openbot.worker-host.node.plist
+          /usr/bin/plutil -lint apps/worker-host-macos/Resources/Info.plist.template
+          /usr/bin/plutil -lint apps/worker-host-macos/Resources/OpenBotWorkerHost.entitlements.template.plist
 
   windows-worker-host:
     name: Windows Worker Host (build only)

@@ -28,6 +28,7 @@ public struct InstalledWorkerHostApplication: Sendable {
         try validateRegularFile(nodeEntry, executable: false)
         try validateCode(at: root)
         try validateCurrentCode()
+        _ = try WorkerHostRuntimeManifest.loadAndValidate(applicationRoot: root)
     }
 
     private func validateRegularFile(_ url: URL, executable: Bool) throws {
