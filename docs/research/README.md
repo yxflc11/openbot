@@ -76,3 +76,7 @@ credential separation, and crash-recovery evidence before a privileged installer
 The accepted [Linux Worker Host privileged bootstrap boundary](linux-worker-host-privileged-bootstrap.md)
 then selects a private archive import and one fail-closed shared lease so user-writable path swaps
 cannot separate the bytes proved from the bytes extracted or activated.
+The accepted [Windows Worker Host service boundary](windows-worker-host-service.md) next selects the
+first-party .NET Service lifetime over generic WinSW and `node-windows` wrappers, while keeping
+LocalService identity, fixed-child supervision, and native x64 evidence as explicit fail-closed
+gates.

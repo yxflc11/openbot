@@ -57,3 +57,9 @@ Sonobuoy 与现有 Vitest/Provider SDK 边界，确认只在权威 Server 进程
 已接受的 [Linux Worker Host 可恢复安装事务](linux-worker-host-install-transaction.md)审查现在会在
 开放高权限安装器前，固定版本化目录、来源证明门禁、原子启用、健康检查回滚、凭证隔离与崩溃恢复
 证据。
+已接受的 [Linux Worker Host 高权限引导边界](linux-worker-host-privileged-bootstrap.md)随后采用私有
+压缩包导入与一把失败关闭的共享 lease，防止用户可写路径替换把已证明字节与最终解压、启用的字节
+分离。
+已接受的 [Windows Worker Host 服务边界](windows-worker-host-service.md)接着选择第一方 .NET Service
+生命周期，而不是通用 WinSW 或 `node-windows` 包装器；LocalService 身份、固定子进程监管和原生
+x64 证据仍是必须通过的失败关闭门槛。
