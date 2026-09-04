@@ -185,6 +185,10 @@ Every non-trivial slice follows the same sequence:
   Node/config suites pass with 30/10 tests plus typecheck and lint. The current macOS host still
   lacks a Windows/.NET toolchain, so no Windows service build, native lifecycle evidence, or support
   claim exists.
+- G4 build-lane research now pins `actions/setup-dotnet` `v5.3.0` by full commit, .NET SDK
+  `10.0.400`, locked NuGet restore, explicit `windows-2025` x64, and a non-uploading single-file
+  artifact check. This makes compiler and dependency drift fail before service code is trusted; the
+  hosted job and Windows-native evidence are still pending.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

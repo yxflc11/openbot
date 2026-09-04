@@ -63,3 +63,6 @@ Sonobuoy 与现有 Vitest/Provider SDK 边界，确认只在权威 Server 进程
 已接受的 [Windows Worker Host 服务边界](windows-worker-host-service.md)接着选择第一方 .NET Service
 生命周期，而不是通用 WinSW 或 `node-windows` 包装器；LocalService 身份、固定子进程监管和原生
 x64 证据仍是必须通过的失败关闭门槛。
+已接受的 [Windows Worker Host 构建门槛](windows-worker-host-build-lane.md)随后会在引入高权限服务
+源码前，固定第一方 setup action、精确 .NET 10 SDK、锁定的 NuGet 恢复、明确的 Windows x64
+runner，以及不上传产物的输出形态检查。
