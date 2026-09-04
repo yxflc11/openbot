@@ -84,3 +84,6 @@ Fuses 不兼容和未解决的开发依赖漏洞，因此不采用；签名、�
 [Desktop 本地内容协议](desktop-local-content-protocol.md)后续审查采用 Electron 的自定义协议
 建议，通过专用 Session 和精确安装包资源白名单加载界面；`file://` 额外权限保持关闭，并在读取
 文件前拒绝路径穿越。
+[Desktop Server 连接](desktop-server-connection.md)审查随后让本地 Client 保持同源，并通过有界
+主进程适配器使用 Electron 专用 Session 连接唯一已验证 Server。它只保存经确认的公开 origin，
+让 HttpOnly Cookie 留在 preload 之外，并拒绝不透明 origin、重定向、过大请求体和远程可执行 UI。
