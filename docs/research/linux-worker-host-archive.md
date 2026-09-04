@@ -20,6 +20,7 @@
   - `vercel pkg archived latest release`
   - `CycloneDX npm SBOM release security tests`
   - `actions attest v4 release provenance SBOM`
+  - `actions upload-artifact v7 direct upload Node 24 release tests issues`
 - Standards and primary documentation queries:
   - `Node.js single executable application stability Linux arm64 caveat`
   - `Node.js v22.22.2 signed SHASUMS linux x64 arm64`
@@ -41,6 +42,7 @@
 | npm native SBOM | npm CLI `10.9.8` / `dd3c80e9965d240957684e9951603cf22eaae74c`; npm integrity `sha512-fYwb6ODSmHkqrJQQaCxY3M2lPf/mpgC7ik0HSzzIwG5CGtabRp4bNqikatvCoT42b5INQSqudVH0R7yVmC9hVg==` | Artistic-2.0 | Released CLI with native SPDX 2.3 and CycloneDX support | Avoids another generator dependency. The monorepo workspace view currently includes Node test-only workspace links, so release code must create and validate a production-only lock projection before calling it | Select the existing pinned package-manager capability behind a tested projection adapter |
 | CycloneDX npm CLI | `6.0.0` / `e16960691fc8e09f8df3bd2e0b3e3828f859ab94`; npm integrity `sha512-kpWjjV0j5y0mMHUB5dSx1hxweH8K2blSqkgdQ6eHgU7aClB4CcXGhbHtGY6WVHSo3A01Rt7WOLas/wQ1E+tBDg==` | Apache-2.0 | Active OWASP project; the release fixes workspace shell injection and adds regression tests | Strong npm-specific generator, but it adds another executable dependency and does not remove OpenBot's need to project the exact bundled production graph | Keep as fallback if native npm output proves insufficient |
 | GitHub artifact attestation | `actions/attest` `v4.2.2` / `1e69f48acb82d1966a394da916b4c1698aa569d6` | MIT | Maintained GitHub action with signed immutable release | Binds archive/checksum subjects and SBOMs to workflow, repository, commit, and event through Sigstore. It requires OIDC and write permissions and is unavailable for private repositories outside Enterprise Cloud | Select for a tag-only trusted release workflow after repository eligibility and Owner publication authorization are confirmed |
+| GitHub workflow artifact upload | `actions/upload-artifact` `v7.0.1` / `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | MIT | Signed release published 2026-04-10; Node 24 action with direct-file upload support and repository tests. Current issue `#811` reports download-action failures for some artifacts, so the first remote run must exercise retrieval | `archive: false` preserves the already-deterministic `.tar.xz` and sidecar bytes instead of wrapping them in a service ZIP. Workflow artifacts expire and are not a durable GitHub Release | Select only as temporary review transport; exact checksums and attestations remain authoritative, and durable release publication stays separately authorized |
 
 ## Reuse decision
 
@@ -48,7 +50,7 @@
   adapters.
 - Selected upstream or standard: Node.js `v22.22.2` archives, `@vercel/ncc` `0.45.0`, npm SBOM
   `10.9.8`, SPDX 2.3 output, GNU tar 1.35, Ubuntu's security-patched xz 5.4.5 line, and
-  `actions/attest` `v4.2.2` for authorized releases.
+  `actions/attest` `v4.2.2` plus `actions/upload-artifact` `v7.0.1` for authorized tag builds.
 - Why this is the first viable option: it keeps an ordinary upstream Node executable, isolates the
   application into one auditable bundle, reuses an already-selected package-manager SBOM command,
   and defers networked signing to the release boundary. No experimental executable injection or
@@ -56,20 +58,24 @@
 - Exact OpenBot-specific gap: validate runtime filenames and hashes, reject unsafe archive entries,
   project only the Node production dependency closure, check bundle stats/externals, stage fixed
   paths and modes, emit a canonical file manifest and checksums, and make archive creation
-  reproducible from explicit local inputs.
+  reproducible from explicit local inputs. A tag workflow must also validate bounded SemVer, require
+  the tagged commit to be reachable from `main`, grant only read/OIDC/attestation permissions, attest
+  both provenance and the embedded SBOM, and stop before any GitHub Release mutation.
 - Upgrade, replacement, or exit plan: each Node, ncc, npm, or attestation update repeats source,
   release, test, issue, platform, integrity, and license review. ncc can be replaced by another
   bundler because the archive contract is bundle/runtime/manifest based rather than ncc-specific.
 - Failure behavior when the upstream is missing, incompatible, or compromised: missing tools,
   wrong versions or hashes, unexpected archive entries, bundle externals/assets, dependency-graph
-  drift, non-canonical manifests, or non-reproducible output stop the build. They never download a
-  fallback, reuse a stale artifact, or produce a release-looking unsigned archive.
+  drift, non-canonical manifests, non-reproducible output, ineligible tags/commits, missing OIDC,
+  failed attestation, or failed upload stop the build. They never download a fallback, reuse a stale
+  artifact, skip provenance, create a GitHub Release, or produce a release-looking unsigned archive.
 
 ## Source incorporation
 
 - Source copied or substantially adapted: no.
 - Files and upstream locations: OpenBot invokes published command contracts and extracts the
-  reviewed official Node artifact. No ncc, npm, Node, pkg, CycloneDX, or attest source is copied.
+  reviewed official Node artifact. No ncc, npm, Node, pkg, CycloneDX, attest, or upload-artifact
+  source is copied.
 - Required copyright or license notice location: the archive carries the OpenBot license, ncc's
   generated dependency license report, the Node distribution's license/notices, and a generated
   dependency inventory. Repository pins and licenses are recorded here and in
@@ -83,7 +89,8 @@
   integrity, and byte-identical repeat builds inside one release job.
 - Negative and fail-closed tests: wrong hash or architecture, path traversal, absolute paths,
   symlink escapes, duplicate entries, oversized files/counts, unexpected ncc assets/externals,
-  test-only dependency leakage, tool-version drift, changed staged bytes, and unavailable signer.
+  test-only dependency leakage, tool-version drift, changed staged bytes, malformed/movable tag
+  inputs, a commit outside `main`, broadened permissions, changed action pins, and unavailable signer.
 - Platforms and devices: build both archives on the pinned Ubuntu 24.04 release image; execute and
   install the x64 archive on real Ubuntu 24.04 x64 and the arm64 archive on real Ubuntu 24.04 arm64.
   Cross-arch construction alone is not runtime evidence.
@@ -111,10 +118,25 @@
   arm64 output, systemd lifecycle, Secret Service behavior, installer transaction, provenance, or
   Linux support.
 
+## Remote eligibility and publication boundary
+
+- A read-only `gh repo view` query on 2026-09-04 reported `yxflc11/openbot` as `PUBLIC` with default
+  branch `main`. GitHub's current primary documentation permits attestations for public repositories
+  on current plans and requires `contents: read`, `id-token: write`, and `attestations: write`.
+- The first workflow slice is deliberately dormant until an Owner explicitly pushes a matching
+  `node-v<SemVer>` tag. It builds and attests review artifacts but does not create a GitHub Release,
+  modify a tag, push a package, or mark Linux supported.
+- Each architecture must build twice in one Ubuntu 24.04 job and compare archive plus sidecars before
+  attestation. The tagged commit must be an ancestor of `origin/main`; this rejects provenance for an
+  arbitrary side-branch tag even if a writer can create it.
+- `actions/upload-artifact` is temporary transport only. Exact file SHA-256 and verified provenance
+  are the identity; retrieval and `gh attestation verify --repo yxflc11/openbot` remain mandatory
+  observation steps after an authorized first tag.
+
 ## Unresolved questions
 
-- Repository visibility and GitHub plan must be checked before the attestation job is enabled; no
-  workflow should silently skip provenance and still publish release assets.
+- The public-repository eligibility check is satisfied, but the workflow remains unobserved until an
+  Owner authorizes a tag push. No workflow should silently skip provenance and still upload assets.
 - deb/rpm ownership, post-install transactions, and rollback remain a later G3 review after the
   archive contract is implemented and exercised.
 - Signing checksums proves origin and integrity, not safety. Vulnerability scanning and real-device

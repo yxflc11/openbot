@@ -51,7 +51,10 @@ injection, archived packager, or second SBOM dependency is needed.
    job must be byte-identical before publication can be enabled.
 6. Local and pull-request artifacts are visibly unsigned candidates. Only an authorized, tag-only
    trusted workflow may create a release and use `actions/attest` `v4.2.2` for archive/checksum and
-   SBOM provenance. Missing eligibility, OIDC, permissions, or attestation is a release failure.
+   SBOM provenance. Its first slice accepts only bounded `node-v<SemVer>` tags whose commit is
+   reachable from `main`, uses exact action commits and least privilege, uploads temporary review
+   artifacts, and does not create a GitHub Release. Missing eligibility, OIDC, permissions,
+   attestation, reproducibility, or upload is a release failure.
 7. Checksums, SBOMs, and attestations do not grant platform support. Real Ubuntu 24.04 x64/arm64
    install, service lifecycle, keyring, upgrade, rollback, and recovery evidence remains required.
 
@@ -63,6 +66,8 @@ injection, archived packager, or second SBOM dependency is needed.
   packaged Node executable.
 - Require authorized tag provenance plus real x64 and arm64 install/service/rollback evidence before
   changing the Linux support claim.
+- Repository policy tests must reject widened triggers/permissions, moving action references, a
+  missing main-ancestry gate, omitted two-build comparison, or a release-publishing side effect.
 
 ## Consequences
 
