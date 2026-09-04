@@ -33,6 +33,7 @@
     "node:enrollment-token": "node --env-file-if-exists=.env scripts/issue-node-enrollment.mjs",
     "research:check": "node --test scripts/check-pr-research.test.mjs && node scripts/check-pr-research.mjs",
     "release:check": "node --test scripts/node-linux-release.test.mjs",
+    "release:node-linux:archive": "node scripts/pack-node-linux-candidate.mjs",
     "release:node-linux:candidate": "npm run build && node scripts/build-node-linux-candidate.mjs",
     "security:config-check": "node --test scripts/check-security-workflow.test.mjs && node scripts/check-security-workflow.mjs",
     "test": "turbo run test",

@@ -94,6 +94,23 @@
   authorized tag workflow publishes attested outputs and both architectures pass real-host
   lifecycle evidence.
 
+## Implementation verification
+
+- On 2026-09-04, the focused archive checks passed 11 tests covering the pinned inputs, production
+  dependency projection, SPDX canonicalization, ncc output boundary, manifests, checksums, exact
+  Ubuntu/tar/xz gates, deterministic arguments, candidate revalidation, and fail-closed drift.
+- The x64 candidate from source commit `9644451b6014620a6b7e6b2568d056046ae2c1c2` was packed twice
+  inside official Ubuntu 24.04 image manifest
+  `sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517`, selected as
+  `linux/amd64` on an Apple-hosted Docker engine. Both runs used Ubuntu package revisions
+  `tar=1.35+dfsg-3ubuntu0.4` and `xz-utils=5.6.1+really5.4.5-1ubuntu0.3`.
+- The two 29,155,296-byte archives, build metadata files, and checksum files were byte-identical.
+  The archive SHA-256 was `2b83c61eb9a8b8141f130ce3e3dc1568ffd71a51071dc4d218811f997bc497f5`;
+  `xz --test` and the sidecar checksum verification passed.
+- This proves the named packaging path under emulation only. It does not prove a native x64 host,
+  arm64 output, systemd lifecycle, Secret Service behavior, installer transaction, provenance, or
+  Linux support.
+
 ## Unresolved questions
 
 - Repository visibility and GitHub plan must be checked before the attestation job is enabled; no

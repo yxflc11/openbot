@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { chmod, copyFile, lstat, mkdir, readdir, stat, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  lstat,
+  mkdir,
+  readFile,
+  readdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { builtinModules } from "node:module";
 import path from "node:path";
 
@@ -289,18 +298,26 @@ export function validateNccStats(stats, outputNames) {
   }
 }
 
-export async function createFileManifest(root, metadata) {
+export async function createFileManifest(root, metadata, excludedPaths = []) {
   if (NODE_RUNTIME_TARGETS[metadata.architecture] === undefined) {
     throw new Error("Linux manifest architecture must be x64 or arm64.");
   }
   const sourceDateEpoch = assertSourceDateEpoch(metadata.sourceDateEpoch);
+  const exclusions = new Set(excludedPaths);
+  for (const excludedPath of exclusions) assertRelativeArchivePath(excludedPath);
   const files = [];
   let totalSize = 0;
-  await walk(root, "", files, (size) => {
-    totalSize += size;
-    if (totalSize > 256 * 1024 * 1024)
-      throw new Error("Release payload exceeds the total size bound.");
-  });
+  await walk(
+    root,
+    "",
+    files,
+    (size) => {
+      totalSize += size;
+      if (totalSize > 256 * 1024 * 1024)
+        throw new Error("Release payload exceeds the total size bound.");
+    },
+    exclusions,
+  );
   if (files.length > 256) throw new Error("Release payload exceeds the file-count bound.");
   return {
     schemaVersion: 1,
@@ -341,8 +358,207 @@ export async function copyReleaseFile(source, destination, mode = 0o644) {
 
 export async function listRegularFiles(root) {
   const files = [];
-  await walk(root, "", files, () => undefined);
+  await walk(root, "", files, () => undefined, new Set());
   return files.map((entry) => entry.path);
+}
+
+export function parseOsRelease(source) {
+  if (typeof source !== "string" || source.length < 1 || source.length > 64 * 1024) {
+    throw new Error("OS release metadata is missing or too large.");
+  }
+  const values = {};
+  for (const line of source.split("\n")) {
+    if (line === "" || line.startsWith("#")) continue;
+    const match = /^([A-Z0-9_]+)=(.*)$/.exec(line);
+    if (match === null || Object.hasOwn(values, match[1])) {
+      throw new Error("OS release metadata is malformed or contains duplicate keys.");
+    }
+    let value = match[2];
+    if (value.startsWith('"')) {
+      if (!value.endsWith('"') || value.length < 2) {
+        throw new Error("OS release metadata contains an unterminated quoted value.");
+      }
+      value = value.slice(1, -1).replaceAll('\\"', '"').replaceAll("\\\\", "\\");
+    }
+    values[match[1]] = value;
+  }
+  return values;
+}
+
+export function parseDpkgPackageVersions(source) {
+  if (typeof source !== "string" || source.length < 1 || source.length > 4 * 1024) {
+    throw new Error("Release package metadata is missing or too large.");
+  }
+  const versions = {};
+  for (const line of source.trimEnd().split("\n")) {
+    const match = /^(tar|xz-utils)=([^\s=]{1,128})$/.exec(line);
+    if (match === null || Object.hasOwn(versions, match?.[1])) {
+      throw new Error("Release package metadata is malformed or duplicated.");
+    }
+    versions[match[1]] = match[2];
+  }
+  if (
+    Object.keys(versions).length !== 2 ||
+    versions.tar === undefined ||
+    versions["xz-utils"] === undefined
+  ) {
+    throw new Error("Release package metadata must contain tar and xz-utils exactly once.");
+  }
+  return versions;
+}
+
+export function validateLinuxArchiveToolchain({
+  osRelease,
+  tarVersion,
+  xzVersion,
+  packageVersions,
+}) {
+  if (osRelease?.ID !== "ubuntu" || osRelease?.VERSION_ID !== "24.04") {
+    throw new Error("Linux archives must be created on Ubuntu 24.04.");
+  }
+  if (String(tarVersion).split("\n")[0] !== "tar (GNU tar) 1.35") {
+    throw new Error("Linux archives require GNU tar 1.35.");
+  }
+  if (String(xzVersion).split("\n")[0] !== "xz (XZ Utils) 5.4.5") {
+    throw new Error("Linux archives require XZ Utils 5.4.5.");
+  }
+  if (
+    !packageVersions ||
+    !/^[^\s=]{1,128}$/.test(packageVersions.tar ?? "") ||
+    !/^[^\s=]{1,128}$/.test(packageVersions["xz-utils"] ?? "")
+  ) {
+    throw new Error("Linux archive package revisions are missing or invalid.");
+  }
+  return { tar: packageVersions.tar, xzUtils: packageVersions["xz-utils"] };
+}
+
+export function validateLinuxArchiveToolPaths(paths) {
+  const expected = {
+    dpkgQuery: "/usr/bin/dpkg-query",
+    gnuTar: "/usr/bin/tar",
+    xz: "/usr/bin/xz",
+  };
+  for (const [name, expectedPath] of Object.entries(expected)) {
+    if (paths?.[name] !== expectedPath) {
+      throw new Error(`Linux archive tool must use the reviewed path: ${expectedPath}.`);
+    }
+  }
+  return expected;
+}
+
+export function deterministicTarArguments({
+  candidateName,
+  sourceDateEpoch,
+  tarPath,
+  parentDirectory,
+}) {
+  assertRelativeArchivePath(candidateName);
+  if (candidateName.includes("/")) throw new Error("Candidate name must be one path component.");
+  const epoch = assertSourceDateEpoch(sourceDateEpoch);
+  return [
+    "--sort=name",
+    "--format=posix",
+    "--pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime",
+    "--clamp-mtime",
+    `--mtime=@${epoch}`,
+    "--numeric-owner",
+    "--owner=0",
+    "--group=0",
+    "--mode=go+u,go-w",
+    "--create",
+    `--file=${tarPath}`,
+    `--directory=${parentDirectory}`,
+    candidateName,
+  ];
+}
+
+export function deterministicXzArguments(tarPath) {
+  return ["--threads=1", "--check=sha256", "--no-adjust", "-6", "--compress", "--stdout", tarPath];
+}
+
+export async function verifyCandidateDirectory(candidate) {
+  const rootMetadata = await lstat(candidate);
+  if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
+    throw new Error("Release candidate must be a real directory.");
+  }
+  for (const metadataName of ["manifest.json", "SHA256SUMS"]) {
+    const metadata = await lstat(path.join(candidate, metadataName));
+    if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 128 * 1024) {
+      throw new Error(`Release candidate ${metadataName} must be a bounded regular file.`);
+    }
+  }
+  const manifestText = await readFile(path.join(candidate, "manifest.json"), "utf8");
+  const manifest = JSON.parse(manifestText);
+  if (!isRecord(manifest) || manifest.schemaVersion !== 1 || manifest.signed !== false) {
+    throw new Error("Release candidate manifest must be schema 1 and explicitly unsigned.");
+  }
+  const sourceDateMilliseconds = Date.parse(manifest.sourceDate);
+  if (
+    !Number.isFinite(sourceDateMilliseconds) ||
+    sourceDateMilliseconds % 1000 !== 0 ||
+    new Date(sourceDateMilliseconds).toISOString() !== manifest.sourceDate
+  ) {
+    throw new Error("Release candidate source date is not canonical.");
+  }
+  const expectedName = `openbot-node-${manifest.version}-linux-${manifest.architecture}-unsigned`;
+  if (path.basename(path.resolve(candidate)) !== expectedName) {
+    throw new Error("Release candidate directory name does not match its manifest.");
+  }
+  const rebuilt = await createFileManifest(
+    candidate,
+    {
+      architecture: manifest.architecture,
+      version: manifest.version,
+      sourceCommit: manifest.sourceCommit,
+      sourceDateEpoch: sourceDateMilliseconds / 1000,
+    },
+    ["manifest.json", "SHA256SUMS"],
+  );
+  if (`${JSON.stringify(rebuilt, null, 2)}\n` !== manifestText) {
+    throw new Error("Release candidate manifest does not match staged bytes.");
+  }
+  const checksumText = await readFile(path.join(candidate, "SHA256SUMS"), "utf8");
+  await verifyChecksums(candidate, checksumText);
+  const expectedChecksumPaths = [
+    ...rebuilt.files.map((entry) => entry.path),
+    "manifest.json",
+  ].sort();
+  const actualChecksumPaths = checksumText
+    .trimEnd()
+    .split("\n")
+    .map((line) => line.slice(66));
+  if (JSON.stringify(actualChecksumPaths) !== JSON.stringify(expectedChecksumPaths)) {
+    throw new Error("Release checksums do not cover the candidate exactly once.");
+  }
+  return manifest;
+}
+
+export async function verifyChecksums(root, source) {
+  if (typeof source !== "string" || !source.endsWith("\n") || source.length > 128 * 1024) {
+    throw new Error("Release checksum file is missing, too large, or non-canonical.");
+  }
+  const paths = [];
+  const canonicalLines = [];
+  for (const line of source.slice(0, -1).split("\n")) {
+    const match = /^([0-9a-f]{64}) {2}(.+)$/.exec(line);
+    if (match === null) throw new Error("Release checksum entry is malformed.");
+    assertRelativeArchivePath(match[2]);
+    if (match[2] === "SHA256SUMS" || paths.includes(match[2])) {
+      throw new Error("Release checksum entry is recursive or duplicated.");
+    }
+    paths.push(match[2]);
+    canonicalLines.push(`${match[1]}  ${match[2]}`);
+    if ((await sha256File(path.join(root, match[2]))) !== match[1]) {
+      throw new Error(`Release checksum mismatch: ${match[2]}.`);
+    }
+  }
+  if (JSON.stringify(paths) !== JSON.stringify([...paths].sort())) {
+    throw new Error("Release checksum entries are not sorted.");
+  }
+  if (`${canonicalLines.join("\n")}\n` !== source) {
+    throw new Error("Release checksum file is not canonical.");
+  }
+  return paths;
 }
 
 function resolvePackageKey(packages, fromKey, dependencyName) {
@@ -372,17 +588,18 @@ function packageNameFromLockKey(packageKey) {
   return packageKey.slice(marker + "node_modules/".length);
 }
 
-async function walk(root, relative, files, addSize) {
+async function walk(root, relative, files, addSize, exclusions) {
   const current = relative === "" ? root : path.join(root, relative);
   for (const name of (await readdir(current)).sort()) {
     const childRelative = relative === "" ? name : `${relative}/${name}`;
     assertRelativeArchivePath(childRelative);
+    if (exclusions.has(childRelative)) continue;
     const child = path.join(root, childRelative);
     const metadata = await lstat(child);
     if (metadata.isSymbolicLink())
       throw new Error(`Release payload contains a symbolic link: ${childRelative}.`);
     if (metadata.isDirectory()) {
-      await walk(root, childRelative, files, addSize);
+      await walk(root, childRelative, files, addSize, exclusions);
       continue;
     }
     if (!metadata.isFile() || metadata.size > 160 * 1024 * 1024) {
@@ -405,6 +622,10 @@ function assertRelativeArchivePath(value) {
     value.length > 240 ||
     value.startsWith("/") ||
     value.includes("\\") ||
+    [...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint <= 31 || codePoint === 127);
+    }) ||
     value.split("/").some((part) => part === "" || part === "." || part === "..")
   ) {
     throw new Error("Release payload path is unsafe.");

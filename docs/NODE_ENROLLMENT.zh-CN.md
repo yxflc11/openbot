@@ -77,6 +77,9 @@ OpenBot 不会创建或自动解锁密钥库。不要让桌面配置使用 Owner
 | 只含生产依赖的 SPDX SBOM | 整个 monorepo 的清单会混入测试 Provider，掩盖真实运行闭包 | 运维者看到的只是能从 Node 入口到达的包，不含测试工作区 |
 | 干净源码提交和确定性源码时间 | 脏工作树、当前时钟和随机 SBOM 字段不能复现 | 相同的已审查输入会得到稳定清单、SBOM 和校验和集合 |
 | 限制符号链接、路径、数量、权限和大小 | 打包输入仍是不可信文件系统数据 | 路径穿越或无界载荷会失败，不会产生看似可安装的结果 |
+| 压缩前重新校验 manifest 和每个校验和 | 候选目录可能在暂存后、打包前被改变 | 文件被修改、缺失、重复、链接或未列出时都会在生成压缩包前停止 |
+| 固定 Ubuntu、GNU tar、XZ 和系统包修订 | 压缩字节可能因工具、版本、构建方式和线程模式而变化 | 构建元数据会记录精确工具链，版本漂移会安全失败 |
+| 同一任务内单线程构建两次 | 一次成功不能证明可复现 | 发布门能比较压缩包和伴随文件的每个字节，而不是相信口头声明 |
 
 使用精确、已审查的输入构建全部工作区并暂存候选目录：
 
@@ -95,9 +98,26 @@ npm run release:node-linux:candidate -- \
 报告 `10.9.8`。结果包含打包后的应用及白名单 worker 配套文件、官方 Node 可执行文件和声明、两种
 systemd 配置、中英文登记说明、SPDX SBOM、`manifest.json` 与 `SHA256SUMS`。
 
-目录名和 manifest 都明确标为 `unsigned`。它不是发布、安装器、Linux 支持声明，也不能代替签名
-验证。[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md)仍要求可复现 `.tar.xz`、仅限
-tag 的 GitHub 来源证明、安装/升级/回滚事务，以及真实 x64/arm64 主机证据。
+在 Ubuntu 24.04 上，把这个已验证目录转换成确定性传输压缩包：
+
+```bash
+npm run release:node-linux:archive -- \
+  --candidate /safe-output/openbot-node-0.1.0-linux-x64-unsigned \
+  --dpkg-query /usr/bin/dpkg-query \
+  --gnu-tar /usr/bin/tar \
+  --out-dir /safe-archives \
+  --xz /usr/bin/xz
+```
+
+输出目录必须已经存在且不能是符号链接。打包器要求 Ubuntu `24.04`、GNU tar `1.35`、XZ Utils
+`5.4.5` 和已审查的 `/usr/bin` 路径，并记录已安装的 `tar` 与 `xz-utils` 系统包修订。它会固定
+所有权、权限、时间、排序、PAX header、压缩级别、SHA-256 流校验与单线程编码，随后测试压缩流和
+压缩包根目录。已有输出绝不覆盖。可信发布任务必须分别写入两个空目录，并逐字节比较 `.tar.xz`、
+`.build.json` 与 `.SHA256SUMS` 后才能发布。
+
+目录和压缩包伴随元数据都明确标为 `unsigned`。它们不是发布、安装器或 Linux 支持声明，也不能
+代替签名验证。[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md)仍要求仅限 tag 的
+GitHub 来源证明、安装/升级/回滚事务，以及真实 x64/arm64 主机证据。
 
 ## 吊销或重新登记
 

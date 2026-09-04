@@ -68,7 +68,7 @@ interface must also be able to hold a future proof-of-possession private key.
 
 | ID | Status | Slice | Why this order | Deliverable and benefit | Exit gate |
 | --- | --- | --- | --- | --- | --- |
-| G3 | Active locally; adapter and service units implemented | Linux Worker Host, installer, systemd, Secret Service | Linux has the simplest daemon and packaging path, so it establishes the shared lifecycle with the least platform-specific surface. | Signed archive first, then deb/rpm; dedicated service account; predictable install/start/stop/upgrade/rollback; protected credentials. This becomes the reference host implementation. | Tested systemd lifecycle and recovery; x64/arm64 evidence; permissions and keyring failure close safely; no inbound public control port. |
+| G3 | Active locally; deterministic unsigned archive implemented | Linux Worker Host, installer, systemd, Secret Service | Linux has the simplest daemon and packaging path, so it establishes the shared lifecycle with the least platform-specific surface. | Signed archive first, then deb/rpm; dedicated service account; predictable install/start/stop/upgrade/rollback; protected credentials. This becomes the reference host implementation. | Tested systemd lifecycle and recovery; x64/arm64 evidence; permissions and keyring failure close safely; no inbound public control port. |
 | G4 | Planned | Windows Worker Host, installer, Service, Credential Manager | Windows service identity, ACLs, installers, and session isolation differ substantially; the shared lifecycle should exist before solving those differences. | A signed installer and recoverable Windows Service with credentials outside plain files. Enterprise deployment and uninstall become auditable. | Real Windows x64 evidence first; ARM64 remains unclaimed until tested; service-account ACL tests; install/upgrade/uninstall/rollback; Credential Manager denial fails closed. |
 | G5 | Planned | macOS Worker Host, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials and truthful permission diagnostics. | Real declared Mac architecture evidence; install/upgrade/uninstall/rollback; locked-Keychain and missing-entitlement negatives; no desktop-control claim yet. |
 | G6 | Planned | Node proof of possession, mTLS, rotation, revocation, and replay defense | Native services increase the value of a stolen bearer token. Real input must not be enabled while a copied credential can impersonate a Worker Host. | A Node proves possession of its device key, connections authenticate both directions, credentials rotate, compromised Nodes can be revoked, and captured messages cannot be replayed. | Preserve one-time enrollment; non-exportable-key adapter where the OS permits; bounded challenge/response; short-lived credentials; rotation and overlap rules; replay tests; Server-owned audit; fail-closed clock/storage/network behavior. |
@@ -135,9 +135,12 @@ Every non-trivial slice follows the same sequence:
   Tests cover exact non-fallback selection, helper stdin, timeout/output limits, missing/error
   outcomes, wrong identities, write verification, and unit hardening. The first archive slice now
   stages a clean-source, unsigned x64/arm64 candidate with a hash-pinned Node runtime, allowlisted
-  ncc output, production-only SPDX SBOM, canonical manifest, and checksums. Reproducible compression,
-  tag-only provenance, installer transactions, and real x64/arm64 systemd plus locked/unlocked
-  keyring evidence remain in progress under ADR-0033.
+  ncc output, production-only SPDX SBOM, canonical manifest, and checksums. Its Ubuntu 24.04 packer
+  revalidates the candidate, pins GNU tar/XZ behavior, records package revisions, refuses overwrite,
+  and emits an unsigned deterministic archive plus sidecars. Two emulated Ubuntu 24.04 amd64 builds
+  were byte-identical and passed SHA-256/XZ integrity checks; this is packaging evidence, not a real
+  host support claim. Tag-only provenance, installer transactions, and real x64/arm64 systemd plus
+  locked/unlocked keyring evidence remain in progress under ADR-0033.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

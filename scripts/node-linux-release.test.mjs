@@ -16,8 +16,17 @@ import {
   canonicalizeSpdxSbom,
   collectProductionPackageGraph,
   createFileManifest,
+  deterministicTarArguments,
+  deterministicXzArguments,
+  listRegularFiles,
+  parseDpkgPackageVersions,
+  parseOsRelease,
   validateNccStats,
+  validateLinuxArchiveToolchain,
+  validateLinuxArchiveToolPaths,
   validateSpdxSbom,
+  verifyCandidateDirectory,
+  verifyChecksums,
   verifyNodeRuntimeArchive,
   writeChecksums,
   writeProductionSbomProjection,
@@ -211,4 +220,132 @@ test("rejects symlinks and unreviewed runtime archives", async (context) => {
   await writeFile(tinyArchive, "not node");
   await assert.rejects(verifyNodeRuntimeArchive(tinyArchive, "x64"), /size is outside/);
   await assert.rejects(verifyNodeRuntimeArchive(tinyArchive, "ppc64"), /x64 or arm64/);
+});
+
+test("pins the Ubuntu archive toolchain and deterministic command arguments", () => {
+  const osRelease = parseOsRelease('NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="24.04"\n');
+  const packageVersions = parseDpkgPackageVersions(
+    "tar=1.35+dfsg-3ubuntu0.4\nxz-utils=5.6.1+really5.4.5-1ubuntu0.3\n",
+  );
+  assert.deepEqual(
+    validateLinuxArchiveToolchain({
+      osRelease,
+      tarVersion: "tar (GNU tar) 1.35\nCopyright test\n",
+      xzVersion: "xz (XZ Utils) 5.4.5\nliblzma 5.4.5\n",
+      packageVersions,
+    }),
+    { tar: "1.35+dfsg-3ubuntu0.4", xzUtils: "5.6.1+really5.4.5-1ubuntu0.3" },
+  );
+  assert.deepEqual(
+    deterministicTarArguments({
+      candidateName: "openbot-node-1.2.3-linux-x64-unsigned",
+      sourceDateEpoch: 1_700_000_000,
+      tarPath: "/tmp/candidate.tar",
+      parentDirectory: "/tmp/input",
+    }),
+    [
+      "--sort=name",
+      "--format=posix",
+      "--pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime",
+      "--clamp-mtime",
+      "--mtime=@1700000000",
+      "--numeric-owner",
+      "--owner=0",
+      "--group=0",
+      "--mode=go+u,go-w",
+      "--create",
+      "--file=/tmp/candidate.tar",
+      "--directory=/tmp/input",
+      "openbot-node-1.2.3-linux-x64-unsigned",
+    ],
+  );
+  assert.deepEqual(deterministicXzArguments("/tmp/candidate.tar"), [
+    "--threads=1",
+    "--check=sha256",
+    "--no-adjust",
+    "-6",
+    "--compress",
+    "--stdout",
+    "/tmp/candidate.tar",
+  ]);
+  assert.deepEqual(
+    validateLinuxArchiveToolPaths({
+      dpkgQuery: "/usr/bin/dpkg-query",
+      gnuTar: "/usr/bin/tar",
+      xz: "/usr/bin/xz",
+    }),
+    { dpkgQuery: "/usr/bin/dpkg-query", gnuTar: "/usr/bin/tar", xz: "/usr/bin/xz" },
+  );
+});
+
+test("rejects archive toolchain drift and malformed package metadata", () => {
+  const valid = {
+    osRelease: { ID: "ubuntu", VERSION_ID: "24.04" },
+    tarVersion: "tar (GNU tar) 1.35\n",
+    xzVersion: "xz (XZ Utils) 5.4.5\n",
+    packageVersions: { tar: "1.35+dfsg-3ubuntu0.4", "xz-utils": "5.6.1+really5.4.5-1ubuntu0.3" },
+  };
+  assert.throws(
+    () =>
+      validateLinuxArchiveToolchain({ ...valid, osRelease: { ID: "debian", VERSION_ID: "12" } }),
+    /Ubuntu 24.04/,
+  );
+  assert.throws(
+    () => validateLinuxArchiveToolchain({ ...valid, tarVersion: "tar (GNU tar) 1.36\n" }),
+    /tar 1.35/,
+  );
+  assert.throws(
+    () => validateLinuxArchiveToolchain({ ...valid, xzVersion: "xz (XZ Utils) 5.6.0\n" }),
+    /XZ Utils 5.4.5/,
+  );
+  assert.throws(() => parseDpkgPackageVersions("tar=1.35\ntar=1.35\n"), /duplicated/);
+  assert.throws(() => parseOsRelease("ID=ubuntu\nID=debian\n"), /duplicate/);
+  assert.throws(
+    () =>
+      validateLinuxArchiveToolPaths({
+        dpkgQuery: "/usr/bin/dpkg-query",
+        gnuTar: "/tmp/tar",
+        xz: "/usr/bin/xz",
+      }),
+    /reviewed path/,
+  );
+  assert.throws(
+    () =>
+      deterministicTarArguments({
+        candidateName: "openbot-node-1.2.3-linux-x64-unsigned\nother",
+        sourceDateEpoch: 1_700_000_000,
+        tarPath: "/tmp/candidate.tar",
+        parentDirectory: "/tmp/input",
+      }),
+    /unsafe/,
+  );
+});
+
+test("revalidates an unsigned candidate before archive creation", async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), "openbot-candidate-verification-test-"));
+  const candidate = path.join(parent, "openbot-node-1.2.3-linux-x64-unsigned");
+  await mkdir(path.join(candidate, "app"), { recursive: true });
+  await writeFile(path.join(candidate, "app/index.js"), "export {};\n", { mode: 0o644 });
+  await writeFile(path.join(candidate, "runtime"), "executable\n", { mode: 0o755 });
+  const manifest = await createFileManifest(candidate, {
+    architecture: "x64",
+    version: "1.2.3",
+    sourceCommit: "e".repeat(40),
+    sourceDateEpoch: 1_700_000_000,
+  });
+  await writeFile(path.join(candidate, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeChecksums(
+    candidate,
+    await listRegularFiles(candidate),
+    path.join(candidate, "SHA256SUMS"),
+  );
+  assert.equal((await verifyCandidateDirectory(candidate)).sourceCommit, "e".repeat(40));
+  const checksumText = await readFile(path.join(candidate, "SHA256SUMS"), "utf8");
+  assert.deepEqual(await verifyChecksums(candidate, checksumText), [
+    "app/index.js",
+    "manifest.json",
+    "runtime",
+  ]);
+  await writeFile(path.join(candidate, "app/index.js"), "tampered\n");
+  await assert.rejects(verifyCandidateDirectory(candidate), /manifest does not match staged bytes/);
 });

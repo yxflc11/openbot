@@ -90,6 +90,9 @@ which runtime, dependency set, service file, or source revision it received.
 | Production-only SPDX SBOM | A monorepo-wide inventory can include test Providers and hide the actual runtime closure | Operators see the packages that can reach the Node entry point, without test-only workspaces |
 | Clean source commit and deterministic source time | Dirty worktrees and wall-clock/random SBOM fields cannot be reproduced | The same reviewed inputs have a stable manifest, SBOM, and checksum set |
 | Symlink, path, count, mode, and size bounds | Packaging inputs are still untrusted filesystem data | Traversal and unbounded payloads fail without creating an installable-looking result |
+| Revalidate the manifest and every checksum before compression | A staged directory can change between construction and packaging | Changed, missing, duplicated, linked, or unlisted files stop before archive creation |
+| Ubuntu, GNU tar, XZ, and package-revision gates | Compression bytes can change across tools, versions, builds, and thread modes | Build metadata identifies the exact toolchain and version drift fails closed |
+| Two same-job single-thread builds | One successful archive does not prove reproducibility | Publication can require byte-identical archives and sidecars instead of trusting a claim |
 
 Build all workspaces and stage a candidate with the exact reviewed inputs:
 
@@ -109,10 +112,29 @@ already exist, and the npm executable must report exactly `10.9.8`. The result i
 app and its allowlisted worker assets, official Node executable and notice, both systemd profiles,
 English/Chinese enrollment guidance, SPDX SBOM, `manifest.json`, and `SHA256SUMS`.
 
-The directory name and manifest say `unsigned`. It is not a release, installer, Linux support
-claim, or substitute for signature verification. Reproducible `.tar.xz` construction, tag-only
-GitHub provenance, install/upgrade/rollback transactions, and real x64/arm64 host evidence remain
-required by [ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md).
+On Ubuntu 24.04, turn that verified directory into a deterministic transport archive:
+
+```bash
+npm run release:node-linux:archive -- \
+  --candidate /safe-output/openbot-node-0.1.0-linux-x64-unsigned \
+  --dpkg-query /usr/bin/dpkg-query \
+  --gnu-tar /usr/bin/tar \
+  --out-dir /safe-archives \
+  --xz /usr/bin/xz
+```
+
+The output directory must already exist and be a real directory. The packer requires Ubuntu
+`24.04`, GNU tar `1.35`, XZ Utils `5.4.5`, and the reviewed `/usr/bin` paths; records the installed
+`tar` and `xz-utils` package revisions; fixes ownership, modes, timestamps, ordering, PAX headers,
+compression preset, SHA-256 stream check, and one-thread encoding; then tests the compressed stream
+and archive member root. Existing outputs are never overwritten. A trusted release job must run the
+command twice into separate empty directories and byte-compare the `.tar.xz`, `.build.json`, and
+`.SHA256SUMS` files before publication.
+
+Both the directory and archive sidecar say `unsigned`. They are not a release, installer, Linux
+support claim, or substitute for signature verification. Tag-only GitHub provenance,
+install/upgrade/rollback transactions, and real x64/arm64 host evidence remain required by
+[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md).
 
 ## Revoke or replace a Node
 
