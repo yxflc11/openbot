@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+const SETUP_NODE_PIN = "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
+
 export function validateSecurityWorkflow(workflow) {
   const requiredFragments = [
     "permissions:\n  contents: read",
@@ -84,7 +86,7 @@ export function validateSecurityWorkflow(workflow) {
     "- name: macOS arm64\n            runner: macos-15",
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "persist-credentials: false",
-    "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    SETUP_NODE_PIN,
     "node-version: 22.22.2",
     "cache: npm",
     "- run: npm ci",
@@ -110,6 +112,14 @@ export function validateSecurityWorkflow(workflow) {
     if (!portableJob.includes(fragment)) {
       throw new Error(`CI portable matrix is missing required fragment: ${fragment}`);
     }
+  }
+
+  const setupNodeReferences = workflow.match(/actions\/setup-node@[^\s]+/g) ?? [];
+  if (
+    setupNodeReferences.length !== 4 ||
+    setupNodeReferences.some((reference) => reference !== SETUP_NODE_PIN)
+  ) {
+    throw new Error("CI must use the exact reviewed setup-node pin in all four jobs.");
   }
 
   const companionBuild = portableJob.indexOf("name: Build the pinned macOS Worker companion");

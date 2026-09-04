@@ -80,8 +80,8 @@ test("rejects action, Node, or checkout-security drift in the portable job", () 
     () =>
       validateSecurityWorkflow(
         `${beforePortable}${portableJob.replace(
-          "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4\n        with:\n          node-version: 22.22.2",
-          "actions/setup-node@v4\n        with:\n          node-version: 22",
+          "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n        with:\n          node-version: 22.22.2",
+          "actions/setup-node@v7\n        with:\n          node-version: 22",
         )}${afterPortable}`,
       ),
     /missing required fragment/,
@@ -104,6 +104,30 @@ test("rejects action, Node, or checkout-security drift in the portable job", () 
   );
   const changed = `${beforePortable}${portableWithoutCheckoutProtection}${afterPortable}`;
   assert.throws(() => validateSecurityWorkflow(changed), /missing required fragment/);
+});
+
+test("requires the reviewed setup-node pin in every CI job", () => {
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace(
+          "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0",
+          "actions/setup-node@v7",
+        ),
+      ),
+    /exact reviewed setup-node pin/,
+  );
+
+  assert.throws(
+    () =>
+      validateSecurityWorkflow(
+        workflow.replace(
+          "      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0\n",
+          "",
+        ),
+      ),
+    /exact reviewed setup-node pin/,
+  );
 });
 
 test("rejects removal or broadening of the native macOS plist gate", () => {

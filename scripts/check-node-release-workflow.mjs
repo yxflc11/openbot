@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const ATTEST_PIN = "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6";
+const SETUP_NODE_PIN = "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
 const UPLOAD_PIN = "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
 
 export function validateNodeReleaseWorkflow(workflow) {
@@ -20,7 +21,7 @@ export function validateNodeReleaseWorkflow(workflow) {
     "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "fetch-depth: 0",
     "persist-credentials: false",
-    "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    SETUP_NODE_PIN,
     "node-version: 22.22.2",
     'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main',
     "https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-$" + "{RELEASE_ARCH}.tar.xz",
@@ -52,6 +53,10 @@ export function validateNodeReleaseWorkflow(workflow) {
 
   if ((workflow.match(new RegExp(escapeRegExp(ATTEST_PIN), "g")) ?? []).length !== 2) {
     throw new Error("Node release workflow must use the exact attest pin twice.");
+  }
+  const setupNodeReferences = workflow.match(/actions\/setup-node@[^\s]+/g) ?? [];
+  if (setupNodeReferences.length !== 1 || setupNodeReferences[0] !== SETUP_NODE_PIN) {
+    throw new Error("Node release workflow must use the exact setup-node pin once.");
   }
   if ((workflow.match(new RegExp(escapeRegExp(UPLOAD_PIN), "g")) ?? []).length !== 3) {
     throw new Error("Node release workflow must use the exact upload pin three times.");
