@@ -119,6 +119,10 @@ try {
     sourceCommit: options.sourceCommit,
     version: options.version,
   });
+  run("/usr/bin/xattr", ["-cr", application]);
+  if (run("/usr/bin/xattr", ["-lr", application]).trim() !== "") {
+    throw new Error("The macOS candidate contains extended attributes after sanitization.");
+  }
   run("/usr/bin/plutil", ["-lint", path.join(application, "Contents/Info.plist")]);
   run("/usr/bin/plutil", [
     "-lint",

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,12 +37,19 @@ if (
 const scratch = await mkdtemp(path.join(tmpdir(), "openbot-macos-distribution-"));
 try {
   const application = path.join(scratch, "OpenBot Worker Host.app");
-  run("/usr/bin/ditto", [options.application, application]);
+  run("/usr/bin/ditto", ["--noextattr", "--noqtn", "--norsrc", options.application, application]);
   run("/usr/bin/ditto", [
+    "--noextattr",
+    "--noqtn",
+    "--norsrc",
     options.provisioningProfile,
     path.join(application, "Contents/embedded.provisionprofile"),
   ]);
   await chmod(path.join(application, "Contents/embedded.provisionprofile"), 0o644);
+  run("/usr/bin/xattr", ["-cr", application]);
+  if (run("/usr/bin/xattr", ["-lr", application]).trim() !== "") {
+    throw new Error("The macOS distribution application contains extended attributes.");
+  }
   const entitlementSource = await readFile(options.entitlementsTemplate, "utf8");
   const entitlements = path.join(scratch, "OpenBotWorkerHost.entitlements.plist");
   await writeFile(
@@ -101,6 +108,23 @@ try {
     options.outputPackage,
   ]);
   run("/usr/sbin/pkgutil", ["--check-signature", options.outputPackage]);
+  const payloadFiles = run("/usr/sbin/pkgutil", ["--payload-files", options.outputPackage]);
+  if (
+    payloadFiles
+      .split(/\r?\n/)
+      .some((entry) => entry.split("/").some((segment) => segment.startsWith("._")))
+  ) {
+    throw new Error("The macOS package payload contains AppleDouble files.");
+  }
+  const expandedPackage = path.join(scratch, "expanded-package");
+  run("/usr/sbin/pkgutil", ["--expand", options.outputPackage, expandedPackage]);
+  if (
+    (await readdir(expandedPackage, { recursive: true })).some(
+      (entry) => path.basename(entry) === "Scripts",
+    )
+  ) {
+    throw new Error("The macOS package unexpectedly contains installer scripts.");
+  }
   const notarization = JSON.parse(
     run("/usr/bin/xcrun", [
       "notarytool",
@@ -130,7 +154,12 @@ function run(command, arguments_) {
   return execFileSync(command, arguments_, {
     cwd: repositoryRoot,
     encoding: "utf8",
-    env: { PATH: "/usr/bin:/bin:/usr/sbin:/sbin", LC_ALL: "C", TZ: "UTC" },
+    env: {
+      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+      COPYFILE_DISABLE: "1",
+      LC_ALL: "C",
+      TZ: "UTC",
+    },
     maxBuffer: 16 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
   });
