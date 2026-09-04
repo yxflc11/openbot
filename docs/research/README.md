@@ -61,3 +61,6 @@ The [Artifact read integrity](artifact-read-integrity.md) audit applies OCI desc
 to the already-stored size and SHA-256 so changed screenshot bytes fail before delivery.
 The proposed [Cross-platform Node CI baseline](cross-platform-node-ci.md) records explicit hosted
 runner families and the evidence boundary before a Windows/macOS/Linux matrix is introduced.
+The accepted [Provider conformance scenario runner](provider-conformance-runner.md) then compares
+MCP, OCI, Sonobuoy, and the existing Vitest/Provider SDK boundary before adding bounded orchestration
+outside the authoritative Server process.

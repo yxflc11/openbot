@@ -47,3 +47,5 @@ Owner 刚刚检查过的同一份包实例。
 SHA-256 元数据，使被替换的截图字节在返回前失败。
 拟议的[跨平台 Node CI 基线](cross-platform-node-ci.md)记录明确的托管 runner 系列和证据边界，
 作为引入 Windows/macOS/Linux 测试矩阵前的依据。
+已接受的 [Provider 一致性场景 runner](provider-conformance-runner.md)随后比较 MCP、OCI、
+Sonobuoy 与现有 Vitest/Provider SDK 边界，确认只在权威 Server 进程之外补充有界编排。
