@@ -10,10 +10,7 @@ public struct URLSessionNodeEnrollmentClient: NodeEnrollmentClient, Sendable {
     public init() {}
 
     public func exchange(nodeId: String, serverUrl: String, token: String) async throws -> NodeIdentity {
-        guard token.count >= 48,
-              token.count <= 256,
-              token.range(of: #"^obenr_[A-Za-z0-9_-]+$"#, options: .regularExpression) != nil
-        else {
+        guard isValidEnrollmentToken(token) else {
             throw OpenBotMacOSError.enrollmentFailure
         }
         let configuration = try MacOSNodeConfiguration(nodeId: nodeId, serverUrl: serverUrl)

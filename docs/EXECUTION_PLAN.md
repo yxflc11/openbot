@@ -70,7 +70,7 @@ interface must also be able to hold a future proof-of-possession private key.
 | --- | --- | --- | --- | --- | --- |
 | G3 | Active locally; archive, dormant provenance workflow, native smoke, and install-transaction design implemented | Linux Worker Host, installer, systemd, Secret Service | Linux has the simplest daemon and packaging path, so it establishes the shared lifecycle with the least platform-specific surface. | Signed archive first, then deb/rpm; dedicated service account; predictable install/start/stop/upgrade/rollback; protected credentials. This becomes the reference host implementation. | Tested systemd lifecycle and recovery; x64/arm64 evidence; permissions and keyring failure close safely; no inbound public control port. |
 | G4 | Windows host and build gate implemented locally; hosted and native evidence pending | Windows Worker Host, installer, Service, Credential Manager | Windows service identity, ACLs, installers, and session isolation differ substantially; the shared lifecycle should exist before solving those differences. | A signed installer and recoverable Windows Service with credentials outside plain files. Enterprise deployment and uninstall become auditable. | Real Windows x64 evidence first; ARM64 remains unclaimed until tested; service-account ACL tests; install/upgrade/uninstall/rollback; Credential Manager denial fails closed. |
-| G5 | Source-complete locally; arm64 candidate and ad hoc mechanics pass, external distribution/real-device gates pending | macOS Worker Host, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials and truthful permission diagnostics. | Native core, dual-mode app/Host, Keychain transaction, LaunchAgent registration, exact candidate, package/signing/notary gates, Swift tests, and local arm64 build are implemented. Developer ID profiles, notarization, install lifecycle, locked-Keychain, and declared real-device evidence remain required; no desktop-control claim exists. |
+| G5 | Source-complete locally, including Desktop-guided setup; hosted nested-package and controlled-device gates pending | macOS Worker Host, Desktop companion, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials, one-install Desktop guidance, and truthful permission diagnostics. | Native core, dual-mode app/Host, Keychain transaction, LaunchAgent registration, strict Desktop control protocol, exact candidate, nested-package gate, package/signing/notary gates, Swift tests, and local arm64 compile/link evidence are implemented. Hosted nested packaging, Developer ID profiles, notarization, install lifecycle, locked-Keychain, and declared real-device evidence remain required. |
 | G6 | Planned | Node proof of possession, mTLS, rotation, revocation, and replay defense | Native services increase the value of a stolen bearer token. Real input must not be enabled while a copied credential can impersonate a Worker Host. | A Node proves possession of its device key, connections authenticate both directions, credentials rotate, compromised Nodes can be revoked, and captured messages cannot be replayed. | Preserve one-time enrollment; non-exportable-key adapter where the OS permits; bounded challenge/response; short-lived credentials; rotation and overlap rules; replay tests; Server-owned audit; fail-closed clock/storage/network behavior. |
 
 ### Wave C — expand Employee capability without importing authority
@@ -124,11 +124,15 @@ Every non-trivial slice follows the same sequence:
   dispatch audit, and Web interaction tests passed locally and in the focused remote suite.
 - The work remains in focused stacked review branches ahead of `origin/main`; a green PR is an Owner
   checkpoint, not permission to merge or release.
-- The current Desktop onboarding slice implements the four documented compositions, a bounded
-  Worker-computer checklist, strict public-intent persistence, and restart recovery. Local Desktop
-  and Web suites pass with 102 and 53 tests, and the packaged macOS arm64 application was exercised
-  through a five-computer plan and restart. The plan has no installer, enrollment, connection,
-  authorization, or platform-support authority; those service effects remain the next slice.
+- The current Desktop onboarding work implements the four documented compositions, a bounded
+  Worker-computer checklist, strict public-intent persistence, and restart recovery. The next local
+  slice now adds Desktop-guided macOS Worker setup: only the authenticated main process can issue a
+  short-lived enrollment token, the renderer sends only a bounded Node id, and the fixed Swift
+  companion reports actual Keychain and `SMAppService` state. Local Desktop and Web suites pass
+  with 120 and 54 tests. The unsigned Desktop package, including a locally built fixed companion,
+  passes its nested inventory gate and launches after the V8-snapshot regression fix. Hosted nested
+  packaging, signed distribution, and controlled-device service evidence remain pending; no macOS
+  support claim is permitted yet.
 - G1's explicit Linux x64, Windows x64, and macOS arm64 jobs have all been observed successfully,
   including the unsigned Desktop development-package matrix. This proves only compatibility with
   those hosted runner images, not installation or operation on user devices.

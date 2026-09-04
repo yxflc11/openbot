@@ -117,3 +117,8 @@ The accepted [Desktop setup intent](desktop-setup-plan.md) review next uses exis
 form semantics, typed Electron IPC, and restricted atomic JSON persistence for the four documented
 compositions and a bounded planned Worker count. It rejects additional state/form dependencies and
 keeps the plan distinct from installation, enrollment, authorization, service status, and support.
+The accepted [Desktop-guided macOS Worker onboarding](desktop-macos-worker-onboarding.md) review
+then reuses the already reviewed Swift Worker Host as one independently signed nested companion.
+Desktop requests a short-lived token only in its authenticated main process, passes it through one
+bounded private stdin request, and projects actual native registration state without exposing the
+token, a process bridge, or a persisted success flag to the renderer.

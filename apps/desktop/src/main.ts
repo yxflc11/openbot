@@ -13,17 +13,28 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { FileDesktopConnectionStore } from "./connection-config.js";
 import { DesktopConnectionController } from "./connection-controller.js";
+import { desktopWindowIconPath } from "./desktop-icon.js";
+import {
+  isDesktopSessionAuthenticated,
+  issueDesktopNodeEnrollmentToken,
+} from "./desktop-server-actions.js";
 import { isTrustedDesktopIpcSender } from "./ipc-security.js";
+import { DesktopLocalWorkerController } from "./local-worker-controller.js";
 import {
   DESKTOP_ENTRY_URL,
   DESKTOP_SCHEME,
   isDesktopAssetRequestMethod,
   resolveDesktopAssetPath,
 } from "./local-content.js";
+import { MacOSWorkerCompanion } from "./macos-worker-companion.js";
 import {
   DESKTOP_CONFIGURE_SERVER_CHANNEL,
   DESKTOP_CONNECTION_STATE_CHANNEL,
+  DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL,
+  DESKTOP_LOCAL_WORKER_STATE_CHANNEL,
+  DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL,
   DESKTOP_SAVE_SETUP_PLAN_CHANNEL,
+  DESKTOP_SETUP_LOCAL_WORKER_CHANNEL,
   DESKTOP_SETUP_PLAN_STATE_CHANNEL,
 } from "./runtime-contract.js";
 import { proxyDesktopServerRequest } from "./server-proxy.js";
@@ -70,11 +81,16 @@ function lockDownWebContents(contents: WebContents): void {
 function registerDesktopIpc(
   connectionController: DesktopConnectionController,
   setupPlanController: DesktopSetupPlanController,
+  localWorkerController: DesktopLocalWorkerController,
 ): void {
   ipcMain.removeHandler(DESKTOP_CONNECTION_STATE_CHANNEL);
   ipcMain.removeHandler(DESKTOP_CONFIGURE_SERVER_CHANNEL);
   ipcMain.removeHandler(DESKTOP_SETUP_PLAN_STATE_CHANNEL);
   ipcMain.removeHandler(DESKTOP_SAVE_SETUP_PLAN_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_LOCAL_WORKER_STATE_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_SETUP_LOCAL_WORKER_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL);
   ipcMain.handle(DESKTOP_CONNECTION_STATE_CHANNEL, (event) => {
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
       throw new Error("Desktop IPC sender is not allowed.");
@@ -99,6 +115,30 @@ function registerDesktopIpc(
     }
     return setupPlanController.save(plan);
   });
+  ipcMain.handle(DESKTOP_LOCAL_WORKER_STATE_CHANNEL, (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return localWorkerController.getState();
+  });
+  ipcMain.handle(DESKTOP_SETUP_LOCAL_WORKER_CHANNEL, (event, nodeId: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return localWorkerController.setup(nodeId);
+  });
+  ipcMain.handle(DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL, (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return localWorkerController.enable();
+  });
+  ipcMain.handle(DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL, (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return localWorkerController.openSettings();
+  });
 }
 
 async function createMainWindow(activeSession: Session): Promise<void> {
@@ -107,6 +147,11 @@ async function createMainWindow(activeSession: Session): Promise<void> {
     autoHideMenuBar: true,
     backgroundColor: "#f7f7f5",
     height: 840,
+    icon: desktopWindowIconPath({
+      appPath: app.getAppPath(),
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
     minHeight: 640,
     minWidth: 960,
     show: false,
@@ -164,6 +209,20 @@ async function startDesktop(): Promise<void> {
   const setupPlanController = new DesktopSetupPlanController(
     new FileDesktopSetupPlanStore(join(app.getPath("userData"), "openbot", "setup-plan.json")),
   );
+  const localWorkerController = new DesktopLocalWorkerController({
+    companion: new MacOSWorkerCompanion(process.resourcesPath),
+    getConnectionState: () => connectionController.getState(),
+    getSetupPlanState: () => setupPlanController.getState(),
+    isAuthenticated: () =>
+      isDesktopSessionAuthenticated(connectionController.getState(), (input, init) =>
+        activeSession.fetch(input, init),
+      ),
+    issueEnrollmentToken: (nodeId, connection) =>
+      issueDesktopNodeEnrollmentToken(nodeId, connection, (input, init) =>
+        activeSession.fetch(input, init),
+      ),
+    platform: process.platform,
+  });
   await Promise.all([connectionController.initialize(), setupPlanController.initialize()]);
   lockDownSession(activeSession);
   await activeSession.protocol.handle(DESKTOP_SCHEME, async (request) => {
@@ -183,7 +242,7 @@ async function startDesktop(): Promise<void> {
     return net.fetch(pathToFileURL(assetPath).toString());
   });
   desktopSession = activeSession;
-  registerDesktopIpc(connectionController, setupPlanController);
+  registerDesktopIpc(connectionController, setupPlanController, localWorkerController);
   await createMainWindow(activeSession);
 }
 

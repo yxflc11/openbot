@@ -1,7 +1,12 @@
 import Darwin
 import Foundation
 
-public struct MacOSConfigurationStore: Sendable {
+public protocol MacOSConfigurationStoring: Sendable {
+    func load() throws -> MacOSNodeConfiguration
+    func save(_ configuration: MacOSNodeConfiguration) throws
+}
+
+public struct MacOSConfigurationStore: MacOSConfigurationStoring, Sendable {
     public static let maximumBytes = 16 * 1024
 
     public let configurationURL: URL

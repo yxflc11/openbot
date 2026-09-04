@@ -11,7 +11,9 @@ public struct NodeChildLaunchPolicy: Equatable, Sendable {
         homeDirectory: URL,
         workDirectory: URL
     ) throws {
-        guard applicationRoot.path == "/Applications/OpenBot Worker Host.app",
+        guard applicationRoot.isFileURL,
+              applicationRoot.path == applicationRoot.standardizedFileURL.path,
+              applicationRoot.lastPathComponent == "OpenBot Worker Host.app",
               homeDirectory.isFileURL,
               workDirectory.isFileURL,
               workDirectory.path.hasPrefix(homeDirectory.path + "/")

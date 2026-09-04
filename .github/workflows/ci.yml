@@ -89,6 +89,30 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      - name: Build the pinned macOS Worker companion
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          npm install --global npm@10.9.9 --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = "10.9.9"
+          runtime_archive="$RUNNER_TEMP/node-v22.22.2-darwin-arm64.tar.gz"
+          companion_root="$RUNNER_TEMP/openbot-worker-companion"
+          source_commit="$(git rev-parse HEAD)"
+          npm_cli="$(command -v npm)"
+          curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+            https://nodejs.org/dist/v22.22.2/node-v22.22.2-darwin-arm64.tar.gz \
+            --output "$runtime_archive"
+          mkdir -p "$companion_root"
+          node scripts/build-macos-worker-host-candidate.mjs \
+            --arch arm64 \
+            --build-version 1 \
+            --node-archive "$runtime_archive" \
+            --npm-cli "$npm_cli" \
+            --out-dir "$companion_root" \
+            --source-commit "$source_commit" \
+            --version 0.0.0
+          echo "OPENBOT_DESKTOP_MACOS_WORKER_COMPANION=$companion_root/OpenBot Worker Host.app" \
+            >> "$GITHUB_ENV"
       - name: Package the unsigned Desktop development artifact
         run: npm run package --workspace @openbot/desktop
       - name: Validate macOS LaunchAgent contract with native plist parser

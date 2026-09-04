@@ -6,20 +6,41 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createDesktopFuseConfig,
+  desktopMacOSWorkerCompanionSource,
+  DESKTOP_ICON_RESOURCE_NAME,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
   packagedAsarPath,
+  packagedDesktopMacOSWorkerCompanion,
+  packagedDesktopResource,
   packagedElectronTarget,
   shouldIgnoreDesktopSource,
   validateDesktopAsarEntries,
 } from "./package-policy.mjs";
+import { validateMacOSWorkerHostApplication } from "../../../scripts/macos-worker-host-release.mjs";
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = join(appRoot, "..", "..");
 const rendererEntry = join(appRoot, "dist", "renderer", "index.html");
+const desktopIconBase = join(appRoot, "resources", "openbot-icon");
+const desktopIconPng = `${desktopIconBase}.png`;
 const packageManifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
+const workerCompanionSource = desktopMacOSWorkerCompanionSource(
+  process.env.OPENBOT_DESKTOP_MACOS_WORKER_COMPANION,
+  process.platform,
+);
 
-await access(rendererEntry);
+await Promise.all([
+  access(rendererEntry),
+  access(desktopIconPng),
+  access(`${desktopIconBase}.icns`),
+  access(`${desktopIconBase}.ico`),
+]);
+if (workerCompanionSource !== undefined) {
+  await validateMacOSWorkerHostApplication(workerCompanionSource, {
+    expectedOwner: process.getuid?.(),
+  });
+}
 
 const packagePaths = await packager({
   appBundleId: "dev.openbot.desktop",
@@ -28,9 +49,14 @@ const packagePaths = await packager({
   asar: true,
   dir: appRoot,
   electronVersion: "44.2.0",
+  extraResource: [
+    desktopIconPng,
+    ...(workerCompanionSource === undefined ? [] : [workerCompanionSource]),
+  ],
   afterCopy: [async ({ buildPath }) => stageDesktopRuntimeDependencies(buildPath)],
   executableName: "openbot",
   ignore: (candidatePath) => shouldIgnoreDesktopSource(appRoot, candidatePath),
+  icon: desktopIconBase,
   name: "OpenBot",
   out: join(appRoot, "out"),
   overwrite: true,
@@ -49,6 +75,10 @@ validateDesktopAsarEntries(listPackage(asarPath, { isPack: false }));
 const expectedFuses = createDesktopFuseConfig(process.platform, process.arch);
 await flipFuses(target, expectedFuses);
 
+await access(
+  packagedDesktopResource(packagePaths[0], process.platform, DESKTOP_ICON_RESOURCE_NAME),
+);
+
 const actualFuses = await getCurrentFuseWire(target);
 for (const fuseIndex of Object.values(FuseV1Options).filter((value) => typeof value === "number")) {
   const expectedState = expectedFuses[fuseIndex] ? FuseState.ENABLE : FuseState.DISABLE;
@@ -57,7 +87,31 @@ for (const fuseIndex of Object.values(FuseV1Options).filter((value) => typeof va
   }
 }
 
-console.log(`Packaged unsigned OpenBot Desktop development artifact: ${packagePaths[0]}`);
+const packagedWorkerCompanion = packagedDesktopMacOSWorkerCompanion(
+  packagePaths[0],
+  process.platform,
+);
+if (workerCompanionSource !== undefined) {
+  if (packagedWorkerCompanion === undefined) {
+    throw new Error("Desktop package did not resolve its macOS Worker companion.");
+  }
+  await validateMacOSWorkerHostApplication(packagedWorkerCompanion, {
+    expectedOwner: process.getuid?.(),
+  });
+} else if (packagedWorkerCompanion !== undefined) {
+  try {
+    await access(packagedWorkerCompanion);
+    throw new Error("Desktop package contains an undeclared macOS Worker companion.");
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+}
+
+console.log(
+  `Packaged unsigned OpenBot Desktop development artifact${
+    workerCompanionSource === undefined ? " without" : " with"
+  } the macOS Worker companion: ${packagePaths[0]}`,
+);
 
 async function stageDesktopRuntimeDependencies(buildPath) {
   const destinationRoot = join(buildPath, "node_modules");

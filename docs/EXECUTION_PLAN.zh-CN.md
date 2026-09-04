@@ -67,7 +67,7 @@ Server 始终是员工身份、授权、路由、审批和审计的唯一权威�
 | --- | --- | --- | --- | --- | --- |
 | G3 | 本地进行中；已实现压缩包、休眠来源证明工作流、原生运行自检与安装事务设计 | Linux 工作主机、安装器、systemd、Secret Service | Linux 的 daemon 和打包路径最直接，适合用最小的平台特有面积确定公共生命周期。 | 先签名压缩包，再提供 deb/rpm；专用服务账号；安装、启动、停止、升级、回滚可预测；凭证受保护。它会成为其他平台的参考实现。 | systemd 生命周期和恢复测试；x64/arm64 证据；权限或密钥库失败时安全关闭；不开放公网入站控制端口。 |
 | G4 | Windows 主机与构建门槛已在本地实现；等待托管和原生证据 | Windows 工作主机、安装器、Service、Credential Manager | Windows 的服务身份、ACL、安装器和 Session 隔离差异较大，应该在公共生命周期确定后解决。 | 提供签名安装器、可恢复的 Windows Service，并让凭证离开明文文件；企业部署与卸载可审计。 | 先取得真实 Windows x64 证据；ARM64 未测试前不声明支持；服务账号 ACL 测试；安装/升级/卸载/回滚；Credential Manager 拒绝时安全关闭。 |
-| G5 | 本地源码已完成；arm64 候选与 ad hoc 机制通过，等待外部分发和真实设备门槛 | macOS 工作主机、安装器、launchd、Keychain | macOS 可以复用主机协议，但要额外解决签名、公证、Keychain access group、launchd 和隐私权限。 | 提供签名、公证的安装包和 launchd 服务，以 Keychain 保存凭证，并给出真实的权限诊断。 | 原生核心、双模式 App/Host、Keychain 事务、LaunchAgent 登记、精确候选、打包/签名/公证门槛、Swift 测试与本机 arm64 构建已实现；仍需 Developer ID profile、公证、安装生命周期、Keychain 锁定和所声明真实设备证据；尚无桌面控制声明。 |
+| G5 | 本地源码已完成，包含 Desktop 引导配置；等待托管内嵌打包与受控真实设备门槛 | macOS 工作主机、Desktop companion、安装器、launchd、Keychain | macOS 可以复用主机协议，但要额外解决签名、公证、Keychain access group、launchd 和隐私权限。 | 提供签名、公证的安装包和 launchd 服务，以 Keychain 保存凭证，通过一次安装完成 Desktop 引导，并给出真实的权限诊断。 | 原生核心、双模式 App/Host、Keychain 事务、LaunchAgent 登记、严格 Desktop 控制协议、精确候选、内嵌打包门槛、打包/签名/公证门槛、Swift 测试与本机 arm64 编译链接证据已实现；仍需托管内嵌打包、Developer ID profile、公证、安装生命周期、Keychain 锁定和所声明真实设备证据。 |
 | G6 | 已计划 | Node 持有证明、mTLS、轮换、撤销与防重放 | 原生服务让被盗 bearer token 的价值更高；可复制凭证仍能冒充工作主机时，不能开放真实输入。 | Node 用设备私钥证明身份；连接双向认证；凭证可轮换；失陷 Node 可吊销；截获消息不能重放。 | 保留单次登记；系统允许时使用不可导出密钥；有界挑战应答；短期凭证；明确轮换重叠规则；防重放测试；Server 权威审计；时钟/存储/网络失败时安全关闭。 |
 
 ### 波次 C——扩展员工能力，但不导入权限
@@ -114,10 +114,12 @@ Server 始终是员工身份、授权、路由、审批和审计的唯一权威�
   扫描、脱敏结构化日志、安全错误与派发审计，以及 Web 交互测试均已在本地和聚焦远程套件通过。
 - 当前工作保留在领先于 `origin/main` 的多个聚焦堆叠审核分支中；绿色 PR 是 Owner 检查点，不代表
   获得合并或发布权限。
-- 当前 Desktop 引导切片已实现四种既定组合、有界的 Worker 电脑清单、严格公开意图存储和重启
-  恢复。本地 Desktop 与 Web 套件分别以 102 项和 53 项测试通过；打包后的 macOS arm64 应用已实际
-  完成五台电脑计划与重启验证。计划不具备安装、登记、连接、授权或平台支持权限；这些服务副作用
-  仍属于下一切片。
+- 当前 Desktop 引导工作已实现四种既定组合、有界的 Worker 电脑清单、严格公开意图存储和重启
+  恢复。下一段本地切片又加入 Desktop 引导的 macOS Worker 配置：只有已鉴权 main process 可以
+  签发短期登记 token，renderer 只发送有界 Node id，固定 Swift companion 返回真实 Keychain 与
+  `SMAppService` 状态。本地 Desktop 与 Web 套件分别以 120 项和 54 项测试通过。包含本机所构建固定
+  companion 的未签名 Desktop 包已通过内嵌清单门槛，并在 V8 snapshot 回归修复后成功启动；但托管
+  内嵌打包、签名分发和受控真实设备服务证据仍待完成，当前不能声明 macOS 支持。
 - G1 的 Linux x64、Windows x64 与 macOS arm64 任务均已成功观察，包括未签名 Desktop 开发包
   矩阵。这只证明与这些托管 runner 镜像兼容，不证明在用户真实设备上可安装或运行。
 - G2 的严格场景 runner 和真实设备报告契约已经在本地实现。测试覆盖确定性生命周期顺序、取消

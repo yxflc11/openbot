@@ -1,5 +1,5 @@
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { basename, isAbsolute, join, relative, sep } from "node:path";
 
 const ALLOWED_PACKAGE_ROOTS = new Set(["dist"]);
 const ALLOWED_PACKAGE_FILES = new Set(["package.json"]);
@@ -27,6 +27,39 @@ export const REQUIRED_DESKTOP_ASAR_ENTRIES = Object.freeze([
 export const DESKTOP_WINDOWS_METADATA = Object.freeze({
   CompanyName: "OpenBot contributors",
 });
+
+export const DESKTOP_ICON_RESOURCE_NAME = "openbot-icon.png";
+export const DESKTOP_MACOS_WORKER_COMPANION_NAME = "OpenBot Worker Host.app";
+
+export function packagedDesktopResource(bundlePath, platform, resourceName) {
+  if (platform === "darwin") {
+    return join(bundlePath, "OpenBot.app", "Contents", "Resources", resourceName);
+  }
+  if (platform === "win32" || platform === "linux") {
+    return join(bundlePath, "resources", resourceName);
+  }
+  throw new Error(`Unsupported Desktop package platform: ${platform}`);
+}
+
+export function desktopMacOSWorkerCompanionSource(input, platform) {
+  if (input === undefined || input === "") return undefined;
+  if (
+    platform !== "darwin" ||
+    typeof input !== "string" ||
+    input.length > 4_096 ||
+    !isAbsolute(input) ||
+    basename(input) !== DESKTOP_MACOS_WORKER_COMPANION_NAME ||
+    /[\0\r\n]/u.test(input)
+  ) {
+    throw new Error("Desktop macOS Worker companion source is invalid.");
+  }
+  return input;
+}
+
+export function packagedDesktopMacOSWorkerCompanion(bundlePath, platform) {
+  if (platform !== "darwin") return undefined;
+  return packagedDesktopResource(bundlePath, platform, DESKTOP_MACOS_WORKER_COMPANION_NAME);
+}
 
 export function shouldIgnoreDesktopSource(appRoot, candidatePath) {
   const platformCandidate =

@@ -91,3 +91,7 @@ UI，并在 ASAR 打包后校验精确运行时依赖闭包。
 已接受的 [Desktop 安装意图](desktop-setup-plan.md)审查接着使用现有 React、原生表单语义、类型化
 Electron IPC 和受限原子 JSON 持久化表达四种产品组合及有上限的计划 Worker 数量。它不增加状态机
 或表单依赖，并把计划与安装、登记、授权、服务状态和支持声明严格区分。
+已接受的 [Desktop 引导 macOS Worker 配置](desktop-macos-worker-onboarding.md)审查随后把已经审查的
+Swift Worker Host 复用为一个独立签名的 Desktop 内嵌 companion。Desktop 只在已经鉴权的 main
+process 申请短期 token，通过一条有界私有 stdin 请求传递，并投影真实原生登记状态；renderer 不会
+获得 token、进程桥或可能漂移的成功标记。

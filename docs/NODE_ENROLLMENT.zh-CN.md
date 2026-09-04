@@ -109,20 +109,39 @@ npm run release:node-macos:package -- \
 重算后的运行时清单、外层签名、安装包签名、公证、staple、Gatekeeper、payload 清单以及“不含
 安装脚本”全部通过，打包才会成功；不存在 ad hoc 分发回退。
 
-验证过的安装包把 App 放入 `/Applications/OpenBot Worker Host.app` 后，专用用户打开它，输入
-准确 Node id、`wss:` Server URL 和一次性登记令牌，然后选择 **Enroll & Enable**。令牌会立即
-清空；返回的身份绑定 Server URL，并作为唯一一个不同步、`WhenUnlockedThisDeviceOnly` 的数据
-保护 Keychain 条目保存。如果 macOS 显示 **requires approval**，请在 **系统设置 > 通用 >
-登录项**中批准 OpenBot。Keychain 锁定/拒绝、entitlement 缺失、App 被移动/篡改或批准未完成时，
-Host 都保持停止。
+独立/手动路径会由验证过的安装包把 App 放入 `/Applications/OpenBot Worker Host.app`。专用用户
+打开它，输入准确 Node id、`wss:` Server URL 和一次性登记令牌，然后选择 **Enroll & Enable**。
+令牌会立即清空；返回的身份绑定 Server URL，并作为唯一一个不同步、
+`WhenUnlockedThisDeviceOnly` 的数据保护 Keychain 条目保存。如果 macOS 显示
+**requires approval**，请在 **系统设置 > 通用 > 登录项**中批准 OpenBot。Keychain 锁定/拒绝、
+entitlement 缺失、App 被移动/篡改或批准未完成时，Host 都保持停止。
+
+### Desktop 引导路径（实验性源码）
+
+OpenBot Desktop 也可以在一个顶层安装中携带同一个独立签名的 `OpenBot Worker Host.app`。Owner
+选择包含本机 Worker 的组合、连接一个 Server、登录、为当前电脑命名并明确开始配置后，renderer
+只发送这个有界 Node id。Desktop main process 会先检查固定 companion 及其真实状态，再通过专用
+的已鉴权 Session 申请十分钟有效、只能使用一次的登记 token。token 只通过私有子进程 stdin 写给
+固定 companion，绝不进入 renderer 状态、argv、环境变量、文件或日志。
+
+Swift companion 会复用独立控制器的登记、Keychain、严格配置与 `SMAppService` 注册逻辑。
+Desktop 只显示白名单内的原生结果：未配置、已禁用、需要批准、已启用、不可用或无效。需要批准时，
+Desktop 可以打开登录项设置，但只有 `SMAppService` 自己返回 enabled 才会显示成功。Desktop 重启
+后重新读取原生状态，不保存成功标记。独立 App 继续作为高级自部署和恢复路径。
+
+这条路径的本地源码已经完成，macOS CI 定义也要求先构建固定 companion 候选再打包 Desktop。
+本机未签名 Desktop 包已经通过 companion 内嵌清单门槛并成功启动。它目前还不是受支持的安装方式：
+托管内嵌安装包尚未观察，未签名构建也不能证明 Keychain access group、登记、登录/重启、替换、
+回滚或卸载。必须通过下述签名、公证和受控真实设备门槛后才能作出这些声明。
 
 替换 App 前先禁用后台项，替换后再启用。卸载时先选 **Disable**，可选 **Remove Local
 Identity**，然后由管理员把固定 App 移到废纸篓并忘记其 package receipt。安装器不会选择用户、
 处理登记令牌、修改 home 目录或启动服务。
 
-这台开发 Mac 没有匹配的 Developer ID 身份、profile 或 notary 凭据。本机 arm64 构建、Swift
-测试、候选校验与 ad hoc 签名机制已经通过，但分发、Keychain 授权、登记、安装/升级/回滚/卸载、
-重启与 Intel 仍属于受控真实设备证据门槛。
+这台开发 Mac 没有匹配的 Developer ID 身份、profile 或 notary 凭据。本机 arm64 候选校验和
+ad hoc 签名机制已经通过。Desktop 引导的 Swift 源码也能用本机兼容 SDK 编译并链接，但这台机器的
+beta Command Line Tools 无法加载匹配的 `TestingMacros` 原生测试插件。托管 Swift 测试执行、
+Desktop 内嵌打包、分发、Keychain 授权、登记、安装/升级/回滚/卸载、重启与 Intel 仍属于证据门槛。
 
 ## 可验证的 Linux 发布候选目录
 

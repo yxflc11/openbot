@@ -3,7 +3,6 @@ import Foundation
 import Security
 
 public struct InstalledWorkerHostApplication: Sendable {
-    public static let fixedRoot = URL(fileURLWithPath: "/Applications/OpenBot Worker Host.app")
     public static let hostRelativePath = "Contents/MacOS/OpenBotWorkerHostControl"
 
     public let root: URL
@@ -12,33 +11,52 @@ public struct InstalledWorkerHostApplication: Sendable {
     public let nodeEntry: URL
 
     public init(hostURL: URL) throws {
-        let resolvedHost = hostURL.resolvingSymlinksInPath().standardizedFileURL
-        let expectedHost = Self.fixedRoot
+        let standardizedHost = hostURL.standardizedFileURL
+        let applicationRoot = standardizedHost
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let expectedHost = applicationRoot
             .appendingPathComponent(Self.hostRelativePath)
             .standardizedFileURL
-        guard resolvedHost.path == expectedHost.path else {
+        guard hostURL.isFileURL,
+              hostURL.path == standardizedHost.path,
+              applicationRoot.lastPathComponent == "OpenBot Worker Host.app",
+              standardizedHost.path == expectedHost.path
+        else {
             throw OpenBotMacOSError.invalidBundle
         }
-        root = Self.fixedRoot
+        root = applicationRoot
         hostExecutable = expectedHost
         nodeExecutable = root.appendingPathComponent("Contents/Resources/node/bin/node")
         nodeEntry = root.appendingPathComponent("Contents/Resources/node/app/index.js")
     }
 
     public func validate() throws {
-        try validateRegularFile(hostExecutable, executable: true)
-        try validateRegularFile(nodeExecutable, executable: true)
-        try validateRegularFile(nodeEntry, executable: false)
+        var rootMetadata = stat()
+        guard lstat(root.path, &rootMetadata) == 0,
+              (rootMetadata.st_mode & S_IFMT) == S_IFDIR,
+              [uid_t(0), getuid()].contains(rootMetadata.st_uid),
+              (rootMetadata.st_mode & 0o022) == 0
+        else {
+            throw OpenBotMacOSError.invalidBundle
+        }
+        try validateRegularFile(hostExecutable, executable: true, owner: rootMetadata.st_uid)
+        try validateRegularFile(nodeExecutable, executable: true, owner: rootMetadata.st_uid)
+        try validateRegularFile(nodeEntry, executable: false, owner: rootMetadata.st_uid)
         try validateCode(at: root)
         try validateCurrentCode()
-        _ = try WorkerHostRuntimeManifest.loadAndValidate(applicationRoot: root)
+        _ = try WorkerHostRuntimeManifest.loadAndValidate(
+            applicationRoot: root,
+            expectedOwner: rootMetadata.st_uid
+        )
     }
 
-    private func validateRegularFile(_ url: URL, executable: Bool) throws {
+    private func validateRegularFile(_ url: URL, executable: Bool, owner: uid_t) throws {
         var metadata = stat()
         guard lstat(url.path, &metadata) == 0,
               (metadata.st_mode & S_IFMT) == S_IFREG,
-              metadata.st_uid == 0,
+              metadata.st_uid == owner,
               metadata.st_nlink == 1,
               (metadata.st_mode & 0o022) == 0,
               (!executable || (metadata.st_mode & 0o111) != 0),

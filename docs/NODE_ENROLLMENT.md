@@ -125,13 +125,38 @@ profile type/expiry, nested signature, refreshed runtime manifest, outer signatu
 signature, notarization, staple, Gatekeeper result, payload inventory, and absence of installer
 scripts all pass. There is no ad hoc distribution fallback.
 
-After a verified package places the app at `/Applications/OpenBot Worker Host.app`, the dedicated
-user opens it, enters the exact Node id, `wss:` Server URL, and one-time enrollment token, then
-selects **Enroll & Enable**. The token is cleared immediately; the returned identity is bound to the
-Server URL and stored as one non-synchronizing `WhenUnlockedThisDeviceOnly` data-protection Keychain
-item. If macOS reports **requires approval**, approve OpenBot under **System Settings > General >
-Login Items**. A locked/denied Keychain, missing entitlement, moved/tampered app, or incomplete
-approval leaves the Host stopped.
+For the standalone/manual path, a verified package places the app at
+`/Applications/OpenBot Worker Host.app`. The dedicated user opens it, enters the exact Node id,
+`wss:` Server URL, and one-time enrollment token, then selects **Enroll & Enable**. The token is
+cleared immediately; the returned identity is bound to the Server URL and stored as one
+non-synchronizing `WhenUnlockedThisDeviceOnly` data-protection Keychain item. If macOS reports
+**requires approval**, approve OpenBot under **System Settings > General > Login Items**. A
+locked/denied Keychain, missing entitlement, moved/tampered app, or incomplete approval leaves the
+Host stopped.
+
+### Desktop-guided path (experimental source)
+
+OpenBot Desktop can instead carry the same independently signed `OpenBot Worker Host.app` inside
+one top-level installation. After the Owner selects a composition containing a local Worker,
+connects one Server, signs in, names this computer, and explicitly starts setup, the renderer sends
+only that bounded Node id. The Desktop main process first checks the fixed companion and its actual
+state, then uses its dedicated authenticated Session to request a ten-minute, single-use enrollment
+token. The token is written to the fixed companion only through private child stdin; it never enters
+renderer state, argv, environment, a file, or logs.
+
+The Swift companion reuses the same enrollment, Keychain, strict configuration, and
+`SMAppService` registration code as the standalone controller. Desktop displays only allowlisted
+native outcomes: not configured, disabled, requires approval, enabled, unavailable, or invalid.
+When approval is required, Desktop can open Login Items settings, but it does not report success
+until `SMAppService` itself reports enabled. Restarting Desktop rereads native state rather than a
+saved success flag. The standalone app remains the advanced self-hosting and recovery path.
+
+This path is source-complete locally and the macOS CI definition now requires the fixed companion
+candidate before packaging Desktop. A local unsigned Desktop package has passed the nested
+companion inventory gate and launched. It is not yet a supported installation: the hosted nested
+package has not been observed, and an unsigned build cannot prove the Keychain access group,
+registration, login/reboot behavior, replacement, rollback, or uninstall. Those claims require the
+signed/notarized controlled-device gates below.
 
 Disable the background item before replacing the app and re-enable it afterward. To uninstall,
 first choose **Disable**, optionally choose **Remove Local Identity**, then have an administrator
@@ -139,9 +164,11 @@ move the fixed app to Trash and forget its package receipt. The installer never 
 handles an enrollment token, edits a home directory, or starts the service.
 
 This development Mac has no matching Developer ID identities, profiles, or notary credentials.
-Local arm64 build, Swift tests, candidate validation, and ad hoc signing mechanics pass, but
-distribution, Keychain authorization, registration, install/upgrade/rollback/uninstall, reboot,
-and Intel remain controlled-device evidence gates.
+Local arm64 candidate validation and ad hoc signing mechanics pass. The Desktop-guided Swift source
+also compiles and links against the available compatible SDK, while this machine's beta Command
+Line Tools cannot load the matching `TestingMacros` plugin for native tests. Hosted Swift test
+execution, nested Desktop packaging, distribution, Keychain authorization, registration,
+install/upgrade/rollback/uninstall, reboot, and Intel remain evidence gates.
 
 ## Verifiable Linux release candidate
 
