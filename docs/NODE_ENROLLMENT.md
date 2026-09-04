@@ -195,9 +195,12 @@ are never read or modified.
 
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
 unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted
-bootstrap, safe archive extraction with final digest binding, root ownership checks, systemd command
-adapter, explicit recovery command, and native x64/arm64 evidence are still required before an
-installation command can be published. No live remote attestation has been accepted yet.
+bootstrap, root ownership and extraction/install serialization, a systemd command adapter, an
+explicit recovery command, and native x64/arm64 evidence are still required before an installation
+command can be published. The rootless safe-extraction adapter now rejects unsafe inventories,
+extracts into a private empty root, rechecks the archive digest, and rebuilds the candidate manifest;
+the existing x64 archive passed this path under Ubuntu container emulation. No live remote
+attestation has been accepted yet.
 
 ## Revoke or replace a Node
 

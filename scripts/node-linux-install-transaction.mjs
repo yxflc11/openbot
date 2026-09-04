@@ -67,8 +67,8 @@ export function validateLinuxInstallProvenance(provenance, manifest) {
 }
 
 /**
- * Rootless transaction core. A future privileged bootstrap must create `verifiedProvenance`
- * directly from the pinned gh verifier and safely extract the archive into this staging root.
+ * Rootless transaction core. A future privileged bootstrap must obtain `verifiedProvenance` and
+ * the candidate directly from the pinned verifier and safe extraction adapters.
  */
 export async function installStagedLinuxRelease(options) {
   const installRoot = assertAbsoluteRoot(options.installRoot, "install");

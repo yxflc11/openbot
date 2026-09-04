@@ -58,10 +58,11 @@ limitations, and replacement plans are recorded in the research note and reuse l
 2. The installer accepts only the absolute GNU tar `1.35` and xz `5.4.5` tools, preflights a bounded
    verbose archive inventory, and rejects links, special files, duplicate or escaping paths,
    unexpected roots, unsafe modes/owners, and excessive members or expanded bytes. It extracts with
-   no owner/permission preservation into an empty private staging root, refuses overwrites, then
-   checks the archive digest again and fully rebuilds the candidate manifest and checksums before
-   placing it in `versions/`. Existing version paths are never overwritten. Identical reinstall is
-   a no-op; conflicting bytes fail.
+   no owner/permission preservation into an empty private staging root and uses `--keep-old-files`
+   to refuse races or overwrites. GNU tar's incompatible `--no-overwrite-dir` flag is not combined
+   with it. The installer then checks the archive digest again and fully rebuilds the candidate
+   manifest and checksums before placing it in `versions/`. Existing version paths are never
+   overwritten. Identical reinstall is a no-op; conflicting bytes fail.
 3. The public install path must verify the outer archive's GitHub attestation before extraction,
    binding `yxflc11/openbot`, the exact certificate SAN for
    `.github/workflows/node-linux-release.yml@refs/tags/node-v<SemVer>`, the matching tag source ref

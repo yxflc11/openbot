@@ -42,7 +42,7 @@
 | `systemd-sysupdate` | systemd `v255` / `db11bab38ccf1ed257f310d29070843d4c58ea01` | LGPL-2.1-or-later | Maintained upstream with unit/integration tests; Ubuntu 24.04 ships the v255 line | Provides versioned whole-resource acquisition and current-symlink switching. It does not know OpenBot's attestation policy, separate credentials/configuration, or whether the Worker Host successfully reconnected; open issue `systemd/systemd#24082` records a downgrade/current-selection edge case | Reject as the first application installer; retain as update-system prior art |
 | Debian package lifecycle | Debian Policy `4.7.4.1`, released 2026-03-31; Ubuntu 24.04 `debhelper 13.14.1ubuntu4` | Policy GPL-2.0-or-later; debhelper GPL-2.0-or-later | Mature distribution process and extensive package tooling | Establishes idempotent, noninteractive maintainer scripts, preserved configuration, explicit failure exits, and install/upgrade/remove/purge tests. It also documents half-installed and half-configured error states and does not supply application-health rollback | Adopt its lifecycle rules later for `.deb`; do not make it the archive transaction engine |
 | GitHub CLI attestation verifier | `gh` `v2.93.0` | MIT | Current immutable release with source tests and official artifact-attestation documentation | Verifies an artifact digest and SLSA provenance and can bind repository, certificate identity, source ref/digest, OIDC issuer, and hosted-runner policy. Source inspection found that `--signer-workflow` is compiled as a start-anchored prefix regular expression in this release, while `--cert-identity` compares the certificate SAN exactly | Select the exact certificate identity form for the online bootstrap path, pin the executable version, and parse only bounded JSON output |
-| GNU tar extraction | GNU tar `1.35`; Ubuntu package revision first exercised as `1.35+dfsg-3ubuntu0.4`; xz `5.4.5` first exercised as `5.6.1+really5.4.5-1ubuntu0.3` | GPL-3.0-or-later; public-domain/LGPL/GPL mix | Mature upstream and Ubuntu security maintenance; already used by the deterministic archive path | Rejects `..` extraction by default and supplies keep-existing, no-owner, no-permission, and no-directory-overwrite controls. These defaults are not enough alone: OpenBot must preflight types/paths/counts/sizes and post-verify extracted bytes | Select the absolute binaries with exact upstream version checks, a strict inventory, an empty private staging root, conservative extraction flags, and post-extraction manifest verification |
+| GNU tar extraction | GNU tar `1.35`; Ubuntu package revision first exercised as `1.35+dfsg-3ubuntu0.4`; xz `5.4.5` first exercised as `5.6.1+really5.4.5-1ubuntu0.3` | GPL-3.0-or-later; public-domain/LGPL/GPL mix | Mature upstream and Ubuntu security maintenance; already used by the deterministic archive path | Rejects `..` extraction by default and supplies keep-existing plus ownership/permission controls. GNU tar rejects combining `--keep-old-files` with `--no-overwrite-dir`; the private empty staging invariant makes keep-existing the useful race/overwrite guard. These controls are not enough alone: OpenBot must preflight types/paths/counts/sizes and post-verify extracted bytes | Select the absolute binaries with exact upstream version checks, a strict inventory, an empty private staging root, compatible conservative extraction flags, and post-extraction manifest verification |
 | `node-tar` | `7.5.22` / `2a22bfc5d3a432a606d9da0e2d87ba634aa3b1cb` | BlueOak-1.0.0 | Active project with extensive tests and rapid fixes | Provides path/link safeguards and extraction limits, but 2026 advisories repeatedly affected hardlink, symlink, PAX, and parser boundaries through versions in the 7.5 line. Adding it would create a second privileged archive implementation beside the already-pinned GNU tar path | Reject for the first installer; reconsider only after a quiet security window and a separate adversarial corpus review |
 | `tar-stream` | `3.2.1` / `246572f479d92b0748b21c873e58c64a84a0b826` | MIT | Maintained streaming parser with tests and PAX support | Exposes entry streams but deliberately provides no filesystem extraction policy. OpenBot would have to implement safe creation, ancestry, modes, interruption cleanup, and race handling itself | Reject because it moves the most security-sensitive filesystem behavior into local code |
 | OSTree | `v2026.1` | LGPL-2.0-or-later, with separately licensed documentation | Active releases, package/VM integration tests, and security advisories | Strong content-addressed system and application tree deployment with transactional rollback, but introduces a repository, daemon/library/tooling, policy, and host-integration model far wider than one Worker Host | Reject for the first host; reconsider only for managed immutable fleets |
@@ -137,10 +137,24 @@
 - Seven provenance tests cover the exact argument vector, hostile predicate data, wrong verifier
   release, non-zero execution, malformed/empty/duplicate output, predicate and digest mismatch,
   pre/post archive replacement, symlink/size rejection, process timeout, and output overflow.
+- A rootless safe-extraction adapter now requires an empty `0700` staging root, verifies the
+  provenance digest, exact GNU tar/xz version lines and compressed stream, accepts only a sorted
+  root-owned inventory of safe-mode directories and regular files, rejects links/special files/
+  duplicates/escapes and excessive counts or expanded bytes, and uses compatible keep-existing,
+  no-owner, no-permission, no-ACL/xattr/SELinux extraction flags. It then compares the actual tree to
+  the preflight inventory, rechecks the archive digest, and rebuilds the manifest and checksums.
+- Six extraction tests cover the exact commands, unsafe inventory forms, complete extraction,
+  partial cleanup, mid-extraction archive replacement, private-root enforcement, and digest
+  mismatch. The first real Ubuntu trial caught GNU tar's incompatible `--keep-old-files` plus
+  `--no-overwrite-dir` combination; the latter was removed before acceptance.
+- The corrected command then extracted the existing 29,155,296-byte x64 archive in the pinned
+  Ubuntu 24.04 `linux/amd64` container. The resulting candidate revalidated as version
+  `0.1.0-dev.1`, source commit `9644451b6014620a6b7e6b2568d056046ae2c1c2`, and x64. This remains
+  container-emulated command evidence, not native-host or privileged-install evidence.
 - These tests use real temporary directories, manifests, checksums, renames, symlinks, durable state
   writes, real bounded child processes, and injected verifier/service outcomes. They do not accept a
-  live remote attestation or exercise root ownership, archive extraction, systemd, reboot recovery,
-  or a native Linux host.
+  live remote attestation or exercise root ownership, serialized privileged extraction, systemd,
+  reboot recovery, or a native Linux host.
 
 ## Unresolved questions
 

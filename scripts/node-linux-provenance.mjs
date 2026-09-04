@@ -19,6 +19,7 @@ const maximumVersionOutputBytes = 4 * 1024;
 const maximumVerificationOutputBytes = 2 * 1024 * 1024;
 const versionDeadlineMs = 5_000;
 const verificationDeadlineMs = 30_000;
+const maximumCommandDeadlineMs = 60_000;
 
 export function linuxAttestationVerifyArguments({ archivePath, sourceCommit, version }) {
   const releaseVersion = assertReleaseVersion(version);
@@ -278,7 +279,7 @@ function assertCommandRequest(request) {
     ) ||
     !Number.isSafeInteger(request.timeoutMs) ||
     request.timeoutMs < 1 ||
-    request.timeoutMs > verificationDeadlineMs ||
+    request.timeoutMs > maximumCommandDeadlineMs ||
     !Number.isSafeInteger(request.maximumBytes) ||
     request.maximumBytes < 1 ||
     request.maximumBytes > maximumVerificationOutputBytes
