@@ -5,16 +5,17 @@ const ALLOWED_PACKAGE_ROOTS = new Set(["dist"]);
 const ALLOWED_PACKAGE_FILES = new Set(["package.json"]);
 
 export function shouldIgnoreDesktopSource(appRoot, candidatePath) {
-  const candidate =
+  const platformCandidate =
     candidatePath === appRoot
       ? ""
       : isAbsolute(candidatePath) && candidatePath.startsWith(`${appRoot}${sep}`)
         ? relative(appRoot, candidatePath)
         : candidatePath.replace(/^[/\\]+/u, "");
+  const candidate = platformCandidate.replaceAll("\\", "/");
   if (candidate === "") return false;
-  if (candidate.startsWith(`..${sep}`) || candidate === "..") return true;
+  if (candidate.split("/").includes("..")) return true;
   if (ALLOWED_PACKAGE_FILES.has(candidate)) return false;
-  return !ALLOWED_PACKAGE_ROOTS.has(candidate.split(sep)[0]);
+  return !ALLOWED_PACKAGE_ROOTS.has(candidate.split("/")[0]);
 }
 
 export function packagedElectronTarget(bundlePath, platform) {

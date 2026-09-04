@@ -28,8 +28,16 @@ describe("Desktop package source policy", () => {
     expect(shouldIgnoreDesktopSource(appRoot, "/node_modules/.vite/results.json")).toBe(true);
   });
 
+  it("normalizes callback paths independently of the CI host separator", () => {
+    expect(shouldIgnoreDesktopSource(appRoot, "\\package.json")).toBe(false);
+    expect(shouldIgnoreDesktopSource(appRoot, "\\dist\\renderer\\index.html")).toBe(false);
+    expect(shouldIgnoreDesktopSource(appRoot, "\\src\\main.ts")).toBe(true);
+  });
+
   it("fails closed for paths outside the Desktop workspace", () => {
     expect(shouldIgnoreDesktopSource(appRoot, join(appRoot, "..", "web", "dist"))).toBe(true);
+    expect(shouldIgnoreDesktopSource(appRoot, "/dist/../src/main.ts")).toBe(true);
+    expect(shouldIgnoreDesktopSource(appRoot, "\\dist\\..\\src\\main.ts")).toBe(true);
   });
 
   it("maps the three declared platforms without inventing another target", () => {
