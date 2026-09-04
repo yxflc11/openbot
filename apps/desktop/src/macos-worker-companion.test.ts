@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  MACOS_WORKER_COMPANION_TIMEOUT_MS,
   MAXIMUM_MACOS_WORKER_COMPANION_BYTES,
   MacOSWorkerCompanion,
   macOSWorkerCompanionExecutable,
@@ -77,38 +76,33 @@ describe("macOS Worker companion protocol", () => {
   it("kills and rejects a companion that overflows output or exits unsuccessfully", async () => {
     const resources = await stagedResources();
     const overflowChild = new FakeCompanionProcess();
-    const overflowResult = new MacOSWorkerCompanion(resources, () => overflowChild).invoke(
+    const overflowSpawner = vi.fn(() => overflowChild);
+    const overflowResult = new MacOSWorkerCompanion(resources, overflowSpawner).invoke(
       macOSWorkerStatusRequest(),
     );
-    await waitForInput(overflowChild);
+    await vi.waitFor(() => expect(overflowSpawner).toHaveBeenCalledOnce());
     overflowChild.stdout.write(Buffer.alloc(MAXIMUM_MACOS_WORKER_COMPANION_BYTES + 2));
     await expect(overflowResult).resolves.toEqual({ status: "invalid" });
     expect(overflowChild.kill).toHaveBeenCalledWith("SIGKILL");
 
     const failedChild = new FakeCompanionProcess();
-    const failedResult = new MacOSWorkerCompanion(resources, () => failedChild).invoke(
+    const failedSpawner = vi.fn(() => failedChild);
+    const failedResult = new MacOSWorkerCompanion(resources, failedSpawner).invoke(
       macOSWorkerStatusRequest(),
     );
-    await waitForInput(failedChild);
+    await vi.waitFor(() => expect(failedSpawner).toHaveBeenCalledOnce());
     failedChild.emit("exit", 1, null);
     await expect(failedResult).resolves.toEqual({ status: "invalid" });
   });
 
   it("kills and rejects a companion that exceeds the fixed deadline", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    try {
-      const resources = await stagedResources();
-      const child = new FakeCompanionProcess();
-      const result = new MacOSWorkerCompanion(resources, () => child).invoke(
-        macOSWorkerStatusRequest(),
-      );
-      await waitForInput(child);
-      await vi.advanceTimersByTimeAsync(MACOS_WORKER_COMPANION_TIMEOUT_MS);
-      await expect(result).resolves.toEqual({ status: "invalid" });
-      expect(child.kill).toHaveBeenCalledWith("SIGKILL");
-    } finally {
-      vi.useRealTimers();
-    }
+    const resources = await stagedResources();
+    const child = new FakeCompanionProcess();
+    const result = new MacOSWorkerCompanion(resources, () => child, 1).invoke(
+      macOSWorkerStatusRequest(),
+    );
+    await expect(result).resolves.toEqual({ status: "invalid" });
+    expect(child.kill).toHaveBeenCalledWith("SIGKILL");
   });
 
   async function stagedResources(): Promise<string> {
@@ -121,13 +115,6 @@ describe("macOS Worker companion protocol", () => {
     return root;
   }
 });
-
-async function waitForInput(child: FakeCompanionProcess): Promise<void> {
-  for (let attempt = 0; attempt < 20 && child.input.byteLength === 0; attempt += 1) {
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
-  expect(child.input.byteLength).toBeGreaterThan(0);
-}
 
 class FakeCompanionProcess extends EventEmitter {
   readonly stdout = new PassThrough();

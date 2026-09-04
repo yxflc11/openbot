@@ -92,10 +92,21 @@ export function macOSWorkerEnrollRequest(input: {
 export class MacOSWorkerCompanion implements MacOSWorkerCompanionInvoker {
   readonly #resourcesPath: string;
   readonly #spawn: CompanionSpawner;
+  readonly #timeoutMilliseconds: number;
 
-  constructor(resourcesPath: string, spawnProcess: CompanionSpawner = spawn as CompanionSpawner) {
+  constructor(
+    resourcesPath: string,
+    spawnProcess: CompanionSpawner = spawn as CompanionSpawner,
+    timeoutMilliseconds = MACOS_WORKER_COMPANION_TIMEOUT_MS,
+  ) {
     this.#resourcesPath = resourcesPath;
     this.#spawn = spawnProcess;
+    this.#timeoutMilliseconds =
+      Number.isSafeInteger(timeoutMilliseconds) &&
+      timeoutMilliseconds >= 1 &&
+      timeoutMilliseconds <= MACOS_WORKER_COMPANION_TIMEOUT_MS
+        ? timeoutMilliseconds
+        : MACOS_WORKER_COMPANION_TIMEOUT_MS;
   }
 
   async invoke(request: MacOSWorkerCompanionRequest): Promise<DesktopLocalWorkerState> {
@@ -127,7 +138,7 @@ export class MacOSWorkerCompanion implements MacOSWorkerCompanionInvoker {
       return unavailableState();
     }
 
-    return invokeCompanion(this.#spawn, executable, request);
+    return invokeCompanion(this.#spawn, executable, request, this.#timeoutMilliseconds);
   }
 }
 
@@ -135,6 +146,7 @@ function invokeCompanion(
   spawnProcess: CompanionSpawner,
   executable: string,
   request: MacOSWorkerCompanionRequest,
+  timeoutMilliseconds: number,
 ): Promise<DesktopLocalWorkerState> {
   return new Promise((resolve) => {
     const frame = Buffer.from(`${JSON.stringify(request)}\n`, "utf8");
@@ -188,7 +200,7 @@ function invokeCompanion(
     };
     const timer = setTimeout(() => {
       abort();
-    }, MACOS_WORKER_COMPANION_TIMEOUT_MS);
+    }, timeoutMilliseconds);
 
     child.stdout.on("data", (chunk: Buffer | Uint8Array | string) => {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
