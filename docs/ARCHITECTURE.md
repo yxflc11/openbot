@@ -13,7 +13,8 @@ OpenBot 必须拆成 **Server、Node、Client** 三部分：
 ```mermaid
 flowchart LR
     subgraph Client["Clients"]
-      PWA["Responsive Web / PWA"]
+      DESKTOP["OpenBot Desktop"]
+      WEB["Responsive Web"]
     end
 
     subgraph Server["OpenBot Server"]
@@ -36,7 +37,8 @@ flowchart LR
       VM[VM / managed runtime]
     end
 
-    PWA -->|HTTPS| APP
+    DESKTOP -->|HTTPS| APP
+    WEB -->|HTTPS| APP
     APP --> RT --> AG --> PG --> NR
     APP & RT & PG & NR <--> DB
     ND1 -->|Outbound WSS/mTLS| NR
@@ -62,7 +64,7 @@ flowchart LR
 - CopilotKit Intelligence → `local-threads`；
 - 单机 computer supervisor → Node Registry + provider protocol；
 - 仅容器浏览器 → Docker / Cua / Lume provider；
-- 桌面优先 UI → 移动端可用的 PWA；
+- 同一套频道 UI → Desktop 内置 Client 与响应式 Web Client；
 - API-key/AG-UI Agent → 可选 Codex/Claude/Grok CLI adapter。
 
 ## 3. Server 组件
@@ -75,7 +77,7 @@ flowchart LR
 - 所有设备看到同一 thread/run/approval；
 - channel membership 在 Server 校验；
 - 消息、附件和组件都使用本地 object/storage contract；
-- PWA 可安装到主屏幕，但仍是同一 Web 应用。
+- Desktop 打包本地 UI 资源，Web 由 Server 托管；两者只通过 Server 读取和控制同一状态。
 
 ### Local Owner Auth
 
@@ -257,33 +259,38 @@ Client 不直连 Node：
 ### 单机入门
 
 ```text
-一台 Linux/Mac：Server + PostgreSQL + Node + Docker
+同一个 OpenBot Desktop：Client + Server + PostgreSQL + Worker Host（按引导选择）
 ```
 
 ### 家庭常驻
 
 ```text
 Linux/NAS Server：控制面 + Docker Node
-Windows/macOS/Linux PC：员工工作主机
-手机/笔记本：Tailscale + PWA
+Windows/macOS/Linux PC：同一个 Desktop，可同时作为 Client 与员工工作主机
+手机/平板/未安装 Desktop 的电脑：Tailscale + Web Client
 ```
 
 ### 云控制面
 
 ```text
 云服务器：Server + PostgreSQL
-家中 Windows/macOS/Linux PC：出站连接的工作主机
+家中 Windows/macOS/Linux PC：Desktop Client + 出站连接的工作主机
 其他服务器：按需注册 Linux/Coder/Compute Node
 ```
 
 ## 9. 技术栈
 
-- 延续上游的 TypeScript、React/Vite、Hono、Bun/Node 和 PostgreSQL。
+- 完整选择、版本基线和升级规则见[技术基线](TECHNOLOGY.zh-CN.md)。
+- 核心使用 TypeScript；Desktop 使用 Electron；共享 UI 使用 React/Vite。
+- Server 与可移植 Worker 逻辑使用 Node.js；权威状态使用 PostgreSQL。
+- Swift 与 C# 只实现 macOS 和 Windows 必需的窄平台适配器。
+- Python、Rust 和 Go 不是 OpenBot 核心语言；外部 Agent 保留各自的上游语言。
 - AG-UI 作为 Agent ↔ Server 事件协议。
 - 自定义版本化协议处理 Server ↔ Node。
 - WebSocket 用于控制与实时状态；WebRTC/WS relay 用于屏幕。
 - Cua 通过 MCP/SDK provider 接入。
-- Docker Compose 负责入门部署；Linux systemd、macOS launchd 负责 Node daemon。
+- Desktop 引导可配置 Client/Server/Worker 组合；高级用户仍可用 Docker Compose、systemd、
+  launchd 或 Windows Service 独立部署。
 
 ## 10. 上游策略
 

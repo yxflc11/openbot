@@ -76,3 +76,8 @@ Apple Security 与现有 Node core/Zod，并用私有凭证管道和有界固定
 随后接受的 [macOS 注册与安装包](macos-worker-host-package-and-registration.md)审查让登记保持在
 专用用户权限内，将身份绑定到精确 Server，并选择带失败关闭 Developer ID/公证门槛的纯应用 Apple
 安装包。TCC 与真实设备证据仍是独立门槛。
+
+已接受的 [Desktop 应用基础](desktop-application-foundation.md)调研选择 Electron 与稳定版 Electron
+Forge 来交付同一个可安装的 TypeScript/React/Vite Client，同时保留完整 Web Client、Server 唯一
+权威，并把 Swift 与 C# 限制在很薄的平台适配器内。依赖引入、签名、更新和真实设备支持仍是后续
+门槛。

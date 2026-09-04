@@ -7,12 +7,14 @@ OpenBot 是一个受 Grok Bot 体验启发的开源、自托管、跨平台数�
 
 ## 2. 用户体验
 
-- 用户在手机、平板或笔记本浏览器打开自己的 OpenBot PWA。
+- 用户可以像使用 Grok Bot 一样安装 OpenBot Desktop，也可以直接打开自己的 OpenBot Web。
+- 每台电脑安装同一个 Desktop；首次引导只决定这台电脑启用 Client、Server、Worker Host 中的哪些角色。
+- 工作电脑仍然是完整的用户电脑，可以直接打开频道、审批、查看进度和使用其他工作电脑。
 - 频道、聊天记录、记忆、审批和审计保存在自己的 Server。
 - Server 在后台为 Bot 选择已经声明、在线且获得授权的工作主机。
 - 用户可以看屏幕、暂停、批准、拒绝或接管。
 - 更换 Mac mini、Windows PC、Linux 主机或隔离环境，不会丢失频道和员工身份。
-- 桌面端和手机端都默认进入 Grok Bot 式长期频道；Marvis 式办公室作为可选插件保留，不进入当前版本导航和 Web 构建。
+- Desktop 与 Web 都默认进入 Grok Bot 式长期频道；Marvis 式办公室作为延期的可选插件保留，不进入当前版本导航和构建。
 - Bot 外观由头部、身体、移动方式、配件和强调色组合，并作为持久身份在所有界面复用。
 - 点击 Bot 可以查看员工个人主页、进化档案、技能图谱、可审计决策轨迹、记忆、工作记录和配置。
 - 员工可以导出为安全模板、复制为新员工或通过认证流程转移；电脑权限和凭证不随员工包迁移。
@@ -29,7 +31,7 @@ OpenBot 是一个受 Grok Bot 体验启发的开源、自托管、跨平台数�
 - 节点注册、能力发现和确定性路由；
 - 策略、审批、凭证和审计；
 - routine、重试、熔断和通知；
-- 面向所有设备的 Web/PWA。
+- 面向所有设备的完整 Web Client，以及供 Desktop 复用的 Server API。
 
 Server 可以部署在 Mac Mini、普通 Linux 主机、NAS 虚拟机或云服务器。
 
@@ -58,7 +60,7 @@ Bot 被授权使用的可替换工作电脑或运行环境，负责：
 
 ### 场景 A：节点可替换
 
-1. 用户从手机 PWA 给 `Ops` 下达测试页填表任务。
+1. 用户从 Desktop 或手机 Web Client 给 `Ops` 下达测试页填表任务。
 2. Server 选择在线 Linux Node。
 3. Node 完成填写但不提交，回传截图。
 4. 用户在同一频道看到结果。
@@ -87,7 +89,8 @@ Bot 被授权使用的可替换工作电脑或运行环境，负责：
 
 ## 6. V1 必须有
 
-- 完全本地的 Web/PWA 频道，不依赖 Telegram/飞书。
+- 可安装 Desktop 与完整 Web Client 使用同一套本地频道，不依赖 Telegram/飞书。
+- 同一个 Desktop 可以只做 Client，也可以按引导配置 Server、Worker Host 或两者。
 - 本地 PostgreSQL 保存线程、记忆、策略、审批和审计。
 - 不连接 CopilotKit Intelligence 时也能完整启动和工作。
 - 一个 Server、一台 Linux Worker Host、`chief` 和 `ops`。
@@ -106,7 +109,7 @@ Bot 被授权使用的可替换工作电脑或运行环境，负责：
 - 不开放 Node、Docker supervisor、Cua 或数据库公网端口。
 - 不做观察用户操作后自动学习。
 - 不支持自主支付、转账或主密钥操作。
-- 不要求原生 iOS/Android App；优先做好 PWA。
+- 不要求原生 iOS/Android App；移动设备先使用响应式 Web Client。
 - 不把原始模型思维链当成审计记录；只展示结构化证据和简明决策轨迹。
 - 不承诺 iOS V1 可以无人值守控制任意系统界面。
 
@@ -115,10 +118,11 @@ Bot 被授权使用的可替换工作电脑或运行环境，负责：
 | 用户可感知能力 | 阶段 | 实现路径 |
 | --- | --- | --- |
 | 具名 Bot 和本地频道 | M0 | Adapt CopilotKit/OpenBot app/server |
+| 像普通软件一样安装 | Desktop 阶段 | Electron Client + 引导式 Client/Server/Worker 角色配置 |
 | 持久线程和记忆 | M0 | Local Threads + PostgreSQL |
 | 每个 Bot 有工作电脑 | M1/M3 | 跨平台 Worker Host + Browser/Windows/macOS/Linux Provider |
 | 一直在线 | M1 | Server service + Node daemon |
-| 任意设备访问 | M2 | HTTPS PWA + Tailscale |
+| 任意设备访问 | M2 | HTTPS Web Client + Tailscale；桌面电脑也可使用 Desktop |
 | 看着它工作 | M1/M2 | 节点屏幕流经 Server relay |
 | 人接管 | M2 | 独占短时 control lease |
 | 敏感动作审批 | M2 | Action Gateway + local channel approval |
