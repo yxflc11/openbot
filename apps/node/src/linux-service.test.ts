@@ -12,6 +12,8 @@ describe("Linux systemd service profiles", () => {
     expect(source).toContain("StateDirectory=openbot-node");
     expect(source).toContain("StateDirectoryMode=0700");
     expect(source).toContain("OPENBOT_NODE_CREDENTIAL_STORE=file");
+    expect(source).toContain("/opt/openbot-node/current/bin/node");
+    expect(source).toContain("/opt/openbot-node/current/app/index.js");
     expect(source).not.toContain("secret-service");
     expectCommonHardening(source);
   });
@@ -22,6 +24,8 @@ describe("Linux systemd service profiles", () => {
     expect(source).toContain("PartOf=graphical-session.target");
     expect(source).toContain("EnvironmentFile=%h/.config/openbot/node.env");
     expect(source).toContain("OPENBOT_NODE_CREDENTIAL_STORE=secret-service");
+    expect(source).toContain("/opt/openbot-node/current/bin/node");
+    expect(source).toContain("/opt/openbot-node/current/app/index.js");
     expect(source).not.toMatch(/OPENBOT_NODE_CREDENTIAL_STORE=file(?:\s|$)/);
     expect(source).not.toContain("User=");
     expectCommonHardening(source);

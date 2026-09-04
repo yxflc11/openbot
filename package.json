@@ -16,7 +16,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "npm run docs:check && npm run research:check && npm run migrations:check && npm run security:config-check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "check": "npm run docs:check && npm run research:check && npm run migrations:check && npm run security:config-check && npm run release:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "db:up": "docker compose --env-file .env -f deploy/server/compose.yaml up -d postgres",
     "db:stop": "docker compose --env-file .env -f deploy/server/compose.yaml stop postgres",
     "db:verify": "turbo run build --filter=@openbot/server && node scripts/verify-database.mjs",
@@ -32,6 +32,8 @@
     "migrations:check": "node --test scripts/check-migrations.test.mjs && node scripts/check-migrations.mjs",
     "node:enrollment-token": "node --env-file-if-exists=.env scripts/issue-node-enrollment.mjs",
     "research:check": "node --test scripts/check-pr-research.test.mjs && node scripts/check-pr-research.mjs",
+    "release:check": "node --test scripts/node-linux-release.test.mjs",
+    "release:node-linux:candidate": "npm run build && node scripts/build-node-linux-candidate.mjs",
     "security:config-check": "node --test scripts/check-security-workflow.test.mjs && node scripts/check-security-workflow.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
@@ -39,6 +41,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.11",
     "@types/node": "26.4.1",
+    "@vercel/ncc": "0.45.0",
     "turbo": "2.10.12",
     "typescript": "7.0.2",
     "vitest": "4.1.11"

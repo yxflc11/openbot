@@ -201,6 +201,9 @@ Node 上报的临时画面必须绑定已在该连接上运行的 Run，协议�
 
 - `SECURITY.md` 提供私密漏洞报告渠道后再公开真实账号支持。
 - 发布前生成 SBOM、依赖许可证报告和二进制校验和。
+- Linux Worker 发布候选必须来自干净源码提交，使用固定 ncc/npm 和哈希校验的官方 Node 运行时；
+  本地候选明确标为未签名。只有授权 tag workflow 完成来源证明后才能成为发布资产，校验和与 SBOM
+  本身不代表安全或平台支持。
 - 示例配置永远使用占位符；CI 扫描 secret。
 - threat model、默认策略和已知限制随版本发布。
 - 不把 Tailscale、Docker socket、Cua daemon 或数据库端口暴露到公网。

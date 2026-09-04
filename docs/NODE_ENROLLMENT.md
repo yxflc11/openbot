@@ -77,6 +77,43 @@ After either first start succeeds, remove the enrollment token and restart. A mi
 error, or oversized output stops identity setup. OpenBot does not create or automatically unlock a
 keyring. Do not run the desktop profile against the Owner's primary login or password collection.
 
+## Verifiable Linux release candidate
+
+The repository can now build a bounded, unsigned x64 or arm64 candidate directory before an
+installer is allowed to consume it. This stage exists so an installation script never has to guess
+which runtime, dependency set, service file, or source revision it received.
+
+| Gate | Why it runs | Benefit |
+| --- | --- | --- |
+| Exact Node archive name, size, and SHA-256 | A host-wide or substituted runtime changes the code that executes | The candidate always carries the reviewed Node `22.22.2` Linux runtime for its declared architecture |
+| Exact ncc and output inventory | Silent externals or new companion assets can make the package incomplete | Every runtime JavaScript file is allowlisted and build drift stops before staging |
+| Production-only SPDX SBOM | A monorepo-wide inventory can include test Providers and hide the actual runtime closure | Operators see the packages that can reach the Node entry point, without test-only workspaces |
+| Clean source commit and deterministic source time | Dirty worktrees and wall-clock/random SBOM fields cannot be reproduced | The same reviewed inputs have a stable manifest, SBOM, and checksum set |
+| Symlink, path, count, mode, and size bounds | Packaging inputs are still untrusted filesystem data | Traversal and unbounded payloads fail without creating an installable-looking result |
+
+Build all workspaces and stage a candidate with the exact reviewed inputs:
+
+```bash
+npm run release:node-linux:candidate -- \
+  --arch x64 \
+  --node-archive /trusted-inputs/node-v22.22.2-linux-x64.tar.xz \
+  --npm-cli /trusted-tools/npm-10.9.8 \
+  --out-dir /safe-output \
+  --source-commit 0123456789abcdef0123456789abcdef01234567 \
+  --source-date-epoch 1788480000 \
+  --version 0.1.0
+```
+
+The source commit must equal `HEAD`, the worktree must be clean, the output candidate must not
+already exist, and the npm executable must report exactly `10.9.8`. The result includes the bundled
+app and its allowlisted worker assets, official Node executable and notice, both systemd profiles,
+English/Chinese enrollment guidance, SPDX SBOM, `manifest.json`, and `SHA256SUMS`.
+
+The directory name and manifest say `unsigned`. It is not a release, installer, Linux support
+claim, or substitute for signature verification. Reproducible `.tar.xz` construction, tag-only
+GitHub provenance, install/upgrade/rollback transactions, and real x64/arm64 host evidence remain
+required by [ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md).
+
 ## Revoke or replace a Node
 
 An authenticated Owner can call `POST /api/v1/nodes/:nodeId/revoke`. Revocation updates the

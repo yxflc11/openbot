@@ -65,6 +65,40 @@ Linux 明确提供两种配置，因为 Secret Service 属于用户的 D-Bus 登
 不存在、密钥库锁定或拒绝、超时、身份格式错误、工具报错或输出超限，都会中止身份初始化。
 OpenBot 不会创建或自动解锁密钥库。不要让桌面配置使用 Owner 的主登录账号或主密码集合。
 
+## 可验证的 Linux 发布候选目录
+
+仓库现在可以在安装器获准使用前，生成一个有界、未签名的 x64 或 arm64 候选目录。设置这一层，
+是为了让安装脚本不必猜测收到的运行时、依赖集合、服务文件或源码版本。
+
+| 检查门 | 为什么要做 | 好处 |
+| --- | --- | --- |
+| 精确校验 Node 压缩包名称、大小和 SHA-256 | 使用主机自带或被替换的运行时会改变实际执行代码 | 候选目录始终携带对应架构、已审查的 Node `22.22.2` Linux 运行时 |
+| 固定 ncc 和输出清单 | 静默外置依赖或新增配套文件会造成不完整包 | 每个运行时 JavaScript 文件都在白名单内，构建漂移会在暂存前停止 |
+| 只含生产依赖的 SPDX SBOM | 整个 monorepo 的清单会混入测试 Provider，掩盖真实运行闭包 | 运维者看到的只是能从 Node 入口到达的包，不含测试工作区 |
+| 干净源码提交和确定性源码时间 | 脏工作树、当前时钟和随机 SBOM 字段不能复现 | 相同的已审查输入会得到稳定清单、SBOM 和校验和集合 |
+| 限制符号链接、路径、数量、权限和大小 | 打包输入仍是不可信文件系统数据 | 路径穿越或无界载荷会失败，不会产生看似可安装的结果 |
+
+使用精确、已审查的输入构建全部工作区并暂存候选目录：
+
+```bash
+npm run release:node-linux:candidate -- \
+  --arch x64 \
+  --node-archive /trusted-inputs/node-v22.22.2-linux-x64.tar.xz \
+  --npm-cli /trusted-tools/npm-10.9.8 \
+  --out-dir /safe-output \
+  --source-commit 0123456789abcdef0123456789abcdef01234567 \
+  --source-date-epoch 1788480000 \
+  --version 0.1.0
+```
+
+源码提交必须等于 `HEAD`，工作树必须干净，目标候选目录不能已经存在，npm 可执行文件必须准确
+报告 `10.9.8`。结果包含打包后的应用及白名单 worker 配套文件、官方 Node 可执行文件和声明、两种
+systemd 配置、中英文登记说明、SPDX SBOM、`manifest.json` 与 `SHA256SUMS`。
+
+目录名和 manifest 都明确标为 `unsigned`。它不是发布、安装器、Linux 支持声明，也不能代替签名
+验证。[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md)仍要求可复现 `.tar.xz`、仅限
+tag 的 GitHub 来源证明、安装/升级/回滚事务，以及真实 x64/arm64 主机证据。
+
 ## 吊销或重新登记
 
 已登录的 Owner 可以调用 `POST /api/v1/nodes/:nodeId/revoke`。Server 会持久化吊销状态、追加身份

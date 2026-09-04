@@ -13,7 +13,7 @@ StateDirectory=openbot-node
 StateDirectoryMode=0700
 WorkingDirectory=%S/openbot-node
 EnvironmentFile=%h/.config/openbot/node.env
-ExecStart=/usr/bin/env OPENBOT_NODE_CREDENTIAL_STORE=secret-service OPENBOT_NODE_WORK_DIRECTORY=%S/openbot-node /usr/bin/node /opt/openbot/apps/node/dist/index.js
+ExecStart=/usr/bin/env OPENBOT_NODE_CREDENTIAL_STORE=secret-service OPENBOT_NODE_WORK_DIRECTORY=%S/openbot-node /opt/openbot-node/current/bin/node /opt/openbot-node/current/app/index.js
 Restart=on-failure
 RestartSec=5
 UMask=0077
