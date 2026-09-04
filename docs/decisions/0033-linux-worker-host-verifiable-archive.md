@@ -57,6 +57,10 @@ injection, archived packager, or second SBOM dependency is needed.
    attestation, reproducibility, or upload is a release failure.
 7. Checksums, SBOMs, and attestations do not grant platform support. Real Ubuntu 24.04 x64/arm64
    install, service lifecycle, keyring, upgrade, rollback, and recovery evidence remains required.
+8. Tag builds run x64 on `ubuntu-24.04` and arm64 on GA `ubuntu-24.04-arm`. Before attestation, the
+   bundled Node binary must start the bundled entry point, make a schema-valid `node.hello` to an
+   isolated loopback gateway, declare the matching Linux architecture and no unconfigured
+   capabilities, then terminate cleanly. This proves packaged startup on the hosted CPU only.
 
 ## Verification plan
 

@@ -21,6 +21,7 @@
   - `CycloneDX npm SBOM release security tests`
   - `actions attest v4 release provenance SBOM`
   - `actions upload-artifact v7 direct upload Node 24 release tests issues`
+  - `GitHub ubuntu-24.04-arm GA runner image inventory systemd xz transition issue`
 - Standards and primary documentation queries:
   - `Node.js single executable application stability Linux arm64 caveat`
   - `Node.js v22.22.2 signed SHASUMS linux x64 arm64`
@@ -43,6 +44,7 @@
 | CycloneDX npm CLI | `6.0.0` / `e16960691fc8e09f8df3bd2e0b3e3828f859ab94`; npm integrity `sha512-kpWjjV0j5y0mMHUB5dSx1hxweH8K2blSqkgdQ6eHgU7aClB4CcXGhbHtGY6WVHSo3A01Rt7WOLas/wQ1E+tBDg==` | Apache-2.0 | Active OWASP project; the release fixes workspace shell injection and adds regression tests | Strong npm-specific generator, but it adds another executable dependency and does not remove OpenBot's need to project the exact bundled production graph | Keep as fallback if native npm output proves insufficient |
 | GitHub artifact attestation | `actions/attest` `v4.2.2` / `1e69f48acb82d1966a394da916b4c1698aa569d6` | MIT | Maintained GitHub action with signed immutable release | Binds archive/checksum subjects and SBOMs to workflow, repository, commit, and event through Sigstore. It requires OIDC and write permissions and is unavailable for private repositories outside Enterprise Cloud | Select for a tag-only trusted release workflow after repository eligibility and Owner publication authorization are confirmed |
 | GitHub workflow artifact upload | `actions/upload-artifact` `v7.0.1` / `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | MIT | Signed release published 2026-04-10; Node 24 action with direct-file upload support and repository tests. Current issue `#811` reports download-action failures for some artifacts, so the first remote run must exercise retrieval | `archive: false` preserves the already-deterministic `.tar.xz` and sidecar bytes instead of wrapping them in a service ZIP. Workflow artifacts expire and are not a durable GitHub Release | Select only as temporary review transport; exact checksums and attestations remain authoritative, and durable release publication stays separately authorized |
+| GitHub-hosted Ubuntu 24.04 arm64 runner | `actions/runner-images` inventory commit `c623f51349e6e669403715506fe7f4c63b14e08b`, image `20260823.101.1`, label `ubuntu-24.04-arm` | MIT plus installed-tool licenses and GitHub service terms | The official inventory records Ubuntu 24.04.4 arm64, systemd `255.4-1ubuntu8.17`, tar `1.35+dfsg-3ubuntu0.4`, xz-utils `5.6.1+really5.4.5-1ubuntu0.3`, and npm `10.9.8`. The label is GA; issue `actions/runner-images#14100` records the 2026 transition from Arm partner maintenance to GitHub | Lets the arm64 package execute on matching hosted CPU rather than being cross-built only. It remains an ephemeral VM without production service/keyring lifecycle evidence | Select for the arm64 tag-build job and packaged entry-point handshake smoke test; retain real-device gates |
 
 ## Reuse decision
 
@@ -60,7 +62,8 @@
   paths and modes, emit a canonical file manifest and checksums, and make archive creation
   reproducible from explicit local inputs. A tag workflow must also validate bounded SemVer, require
   the tagged commit to be reachable from `main`, grant only read/OIDC/attestation permissions, attest
-  both provenance and the embedded SBOM, and stop before any GitHub Release mutation.
+  both provenance and the embedded SBOM, execute the packaged entry point on a matching x64/arm64
+  hosted CPU, and stop before any GitHub Release mutation.
 - Upgrade, replacement, or exit plan: each Node, ncc, npm, or attestation update repeats source,
   release, test, issue, platform, integrity, and license review. ncc can be replaced by another
   bundler because the archive contract is bundle/runtime/manifest based rather than ncc-specific.
@@ -91,6 +94,11 @@
   symlink escapes, duplicate entries, oversized files/counts, unexpected ncc assets/externals,
   test-only dependency leakage, tool-version drift, changed staged bytes, malformed/movable tag
   inputs, a commit outside `main`, broadened permissions, changed action pins, and unavailable signer.
+- Packaged-runtime smoke test: on the matching hosted architecture, start the bundled application
+  using its bundled Node binary and an isolated loopback WebSocket gateway; validate the bounded
+  `node.hello` against the protocol schema, declared Linux architecture, fixed smoke identity, empty
+  Provider set, and graceful termination. A timeout, early exit, extra capability, or malformed hello
+  fails the release job.
 - Platforms and devices: build both archives on the pinned Ubuntu 24.04 release image; execute and
   install the x64 archive on real Ubuntu 24.04 x64 and the arm64 archive on real Ubuntu 24.04 arm64.
   Cross-arch construction alone is not runtime evidence.
@@ -127,8 +135,10 @@
   `node-v<SemVer>` tag. It builds and attests review artifacts but does not create a GitHub Release,
   modify a tag, push a package, or mark Linux supported.
 - Each architecture must build twice in one Ubuntu 24.04 job and compare archive plus sidecars before
-  attestation. The tagged commit must be an ancestor of `origin/main`; this rejects provenance for an
-  arbitrary side-branch tag even if a writer can create it.
+  attestation. x64 uses `ubuntu-24.04`; arm64 uses GA `ubuntu-24.04-arm`. Each job must execute the
+  packaged runtime on its matching CPU before compression. The tagged commit must be an ancestor of
+  `origin/main`; this rejects provenance for an arbitrary side-branch tag even if a writer can create
+  it.
 - `actions/upload-artifact` is temporary transport only. Exact file SHA-256 and verified provenance
   are the identity; retrieval and `gh attestation verify --repo yxflc11/openbot` remain mandatory
   observation steps after an authorized first tag.
