@@ -178,9 +178,10 @@ Every non-trivial slice follows the same sequence:
   self-contained x64 host and rejects WinSW plus `node-windows` at the privileged boundary. The
   first prototype must run as LocalService, launch only a fixed verified release, drain then bound
   the child process tree, and fail closed on identity, ACL, release, or credential uncertainty.
-  This is a research decision only: the current macOS host lacks a Windows/.NET toolchain, the
-  private graceful-stop channel remains unresolved, and no native Windows lifecycle evidence or
-  support claim exists.
+  Redirected child standard input is now the exact bounded graceful-stop channel, and a pinned
+  maintained Job Object package supplies forced process-tree containment. The portable Node half
+  can be tested locally, but the current macOS host lacks a Windows/.NET toolchain and no native
+  Windows lifecycle evidence or support claim exists.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

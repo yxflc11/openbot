@@ -28,6 +28,14 @@ evidence gates are recorded in the
   generated service configuration unconditionally.
 - Direct Win32 service callbacks remain a fallback only. They would make OpenBot own more SCM
   interop, timeout, and error behavior than the released first-party adapter.
+- Redirected standard input is the selected private graceful-stop channel. It is an inherited
+  parent-child pipe with no named endpoint, network listener, credential, or general command API;
+  Windows process signals are rejected because Node documents them as abrupt termination.
+- `Meziantou.Framework.Win32.Jobs` `4.0.0` at
+  `111934ad792cefd946e99bfd1bba71c39e45f163` is the selected process-tree adapter. Its released
+  `net10.0` package has no runtime package dependencies and has Windows tests for assignment,
+  termination, and kill-on-close. A local P/Invoke copy and .NET `Process.Kill(true)` are rejected;
+  Microsoft documents that the latter's completion does not prove descendant exit.
 - Microsoft defines LocalService as a minimal local identity with anonymous network credentials.
   A virtual service account provides a service SID but reaches networks as the machine account, so
   it remains part of the later native credential-store comparison.
@@ -42,14 +50,15 @@ managed .NET runtime.
 
 ## Source incorporation
 
-No upstream source or tests are copied or substantially adapted. The selected NuGet package will be
-consumed as a pinned binary dependency only after its exact dependency graph, license notices, and
-SBOM entries are checked in with the implementation.
+No upstream source or tests are copied or substantially adapted. The selected NuGet packages will
+be consumed as pinned binary dependencies only after their exact dependency graphs, license
+notices, and SBOM entries are checked in with the implementation.
 
 ## Verification plan
 
-- Unit-test fixed child selection, duplicate starts, bounded drain and termination, child crash,
-  cancellation, lifecycle races, and redacted diagnostics without requiring SCM.
+- Unit-test fixed child selection, exact/fragmented/malformed/oversized standard-input control,
+  parent EOF, repeated stops, cooperative Provider cancellation, bounded drain and job termination,
+  child crash, lifecycle races, and redacted diagnostics without requiring SCM.
 - Build and restore deterministically on a pinned Windows x64 lane, then verify the self-contained
   artifact inventory, hashes, SBOM, dependencies, and absence of a separately required runtime.
 - On a controlled native Windows x64 target, prove install, identity, ACLs, non-interactive session,
@@ -69,20 +78,24 @@ SBOM entries are checked in with the implementation.
 3. The host may launch only the packaged OpenBot Node at a fixed path derived from the verified
    active release. It accepts no operator-supplied executable, shell, working directory, environment
    map, or passthrough arguments.
-4. SCM Stop first requests a bounded graceful Node drain through a private, authenticated,
-   capability-free local control path. After the deadline, it terminates the complete process tree
-   and reports a generic failure. The exact channel must be separately accepted before code is
-   merged; a kill-only wrapper does not satisfy this decision.
-5. The service host is not an authority. Enrollment, Node state, capability routing, approvals, and
+4. In Windows service mode, the child reserves inherited standard input for lifecycle control. SCM
+   Stop writes exactly `OPENBOT_NODE_CONTROL/1 SHUTDOWN\n`; the Node accepts at most 64 total bytes,
+   treats malformed input or parent EOF before the command as failure, aborts active Providers,
+   waits for cooperative cleanup, closes its Server channel, and exits zero only after completion.
+   The service applies the outer deadline, so a Provider cannot block SCM indefinitely.
+5. The host assigns the child to one unnamed Windows Job Object with `KillOnJobClose` and no
+   breakaway flags. If graceful stop exceeds the deadline—or the host itself exits—the complete job
+   is terminated. A kill-only wrapper and `Process.Kill(true)` do not satisfy this decision.
+6. The service host is not an authority. Enrollment, Node state, capability routing, approvals, and
    audit remain Server-owned. Starting a service cannot enroll a Node or increase its capabilities.
-6. Missing dependencies, unsafe ACLs, an unverifiable release, wrong identity, credential-store
+7. Missing dependencies, unsafe ACLs, an unverifiable release, wrong identity, credential-store
    denial, or ambiguous child state blocks start. There is no fallback to LocalSystem, plaintext
    credentials, another release, or interactive execution.
-7. `Microsoft.Extensions.Hosting.WindowsServices` and all shipped dependencies must be pinned,
-   restored deterministically, recorded in the SBOM and notices, and scanned before packaging.
-8. This decision authorizes staged source and hosted Windows build work after the private shutdown
-   channel is resolved. It does not authorize an MSI technology, signing identity, release, support
-   claim, or credential-store implementation.
+8. Both selected NuGet packages and all shipped dependencies must be pinned, restored
+   deterministically, recorded in the SBOM and notices, and scanned before packaging.
+9. This decision authorizes the portable Node-side shutdown parser and cooperative drain first, then
+   hosted Windows service source and build work. It does not authorize an MSI technology, signing
+   identity, release, support claim, or credential-store implementation.
 
 ## Consequences
 
