@@ -94,6 +94,25 @@ real-device support.
 - The Cua, Lume, and coder providers are extension boundaries, not finished runtimes.
 - The optional office visualization is not part of the current product navigation or Web build.
 
+### Planned delivery path
+
+The following items describe the intended rollout, not currently downloadable products or support
+commitments:
+
+1. **Web and PWA access.** Keep one responsive channel client for desktop and mobile browsers, then
+   add installation, notifications, remote approval, recovery, and exclusive takeover. A separate
+   native desktop or mobile client is not a committed milestone; the installable PWA comes first.
+2. **Native Worker Hosts.** Complete Linux systemd, Windows Service, and macOS launchd lifecycles
+   with protected OS credential stores, recoverable upgrades, and named real-device evidence before
+   calling a platform supported.
+3. **Agent/runtime and Provider adapters.** Add executable browser, desktop, and isolated coder
+   integrations only behind the Server-authorized capability, policy, approval, audit, and sandbox
+   boundaries. Today's typed Cua, Lume, and coder packages are extension boundaries for that work.
+4. **Public distribution.** Publish installable Worker Hosts or GitHub Packages only after the
+   relevant `node-v*` workflow has run from a reviewed tag and the artifacts have reproducibility,
+   provenance, signing/notarization, SBOM, install, upgrade, rollback, and recovery evidence. The
+   workflow definition passing CI is not enough.
+
 ## Quick start
 
 ### Requirements
