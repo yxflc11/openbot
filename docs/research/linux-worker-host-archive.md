@@ -136,6 +136,12 @@
 - A read-only `gh repo view` query on 2026-09-04 reported `yxflc11/openbot` as `PUBLIC` with default
   branch `main`. GitHub's current primary documentation permits attestations for public repositories
   on current plans and requires `contents: read`, `id-token: write`, and `attestations: write`.
+- The first authorized branch push on 2026-09-04 exposed a pre-job workflow validation failure.
+  GitHub's context-availability table permits `github` and `matrix`, but not `runner`, in
+  `jobs.<job_id>.env`; `runner.temp` is unavailable until a runner owns the job. The release root is
+  therefore a matrix-specific sibling of `github.workspace`, outside the checkout, and the local
+  workflow checker rejects reintroducing a job-level `runner` reference. No upstream workflow text
+  is copied or substantially adapted by this correction.
 - The first workflow slice is deliberately dormant until an Owner explicitly pushes a matching
   `node-v<SemVer>` tag. It builds and attests review artifacts but does not create a GitHub Release,
   modify a tag, push a package, or mark Linux supported.

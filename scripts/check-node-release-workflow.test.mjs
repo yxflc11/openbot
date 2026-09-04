@@ -28,6 +28,19 @@ test("rejects widened triggers or publication authority", () => {
   );
 });
 
+test("rejects a runner context before a release job is assigned", () => {
+  assert.throws(
+    () =>
+      validateNodeReleaseWorkflow(
+        workflow.replace(
+          "RELEASE_ROOT: ${{ github.workspace }}-node-release-${{ matrix.arch }}",
+          "RELEASE_ROOT: ${{ runner.temp }}/openbot-node-release-${{ matrix.arch }}",
+        ),
+      ),
+    /missing required fragment|broadens/,
+  );
+});
+
 test("rejects moving action references and omitted attestations", () => {
   assert.throws(
     () =>

@@ -28,7 +28,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     env:
-      RELEASE_ROOT: ${{ runner.temp }}/openbot-node-release-${{ matrix.arch }}
+      RELEASE_ROOT: ${{ github.workspace }}-node-release-${{ matrix.arch }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

@@ -12,6 +12,7 @@ export function validateNodeReleaseWorkflow(workflow) {
     "group: node-linux-provenance-$" + "{{ github.ref }}",
     "cancel-in-progress: false",
     "runs-on: $" + "{{ matrix.runner }}",
+    "RELEASE_ROOT: $" + "{{ github.workspace }}-node-release-${{ matrix.arch }}",
     "timeout-minutes: 30",
     "fail-fast: false",
     "- arch: x64\n            runner: ubuntu-24.04",
@@ -76,7 +77,7 @@ export function validateNodeReleaseWorkflow(workflow) {
   }
 
   if (
-    /workflow_dispatch:|pull_request:|branches:|contents: write|packages: write|continue-on-error:|uses: [^\n]+@(v|main\b)|gh release|create-release|softprops\/action-gh-release|push-to-registry:\s*true/.test(
+    /workflow_dispatch:|pull_request:|branches:|contents: write|packages: write|continue-on-error:|uses: [^\n]+@(v|main\b)|gh release|create-release|softprops\/action-gh-release|push-to-registry:\s*true|RELEASE_ROOT:\s*\$\{\{ runner\./.test(
       workflow,
     )
   ) {
