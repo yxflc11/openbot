@@ -1,6 +1,6 @@
 # Research: Desktop-guided macOS Worker Host onboarding
 
-- Status: Implemented locally; hosted packaging and controlled-device evidence pending
+- Status: Implemented; hosted portable packaging passed; controlled-device evidence pending
 - Date: 2026-09-05
 - Owner: @yxflc11
 - Related issue: phase 3 in `docs/ROADMAP.md`; stacked after pull request #10
@@ -126,14 +126,13 @@
   Keychain, registration, approval, login/reboot, disable, upgrade, rollback, and uninstall.
 - User-visible documentation and translations: update technology, roadmap, execution checkpoint,
   Node enrollment, and both reuse/research indexes in English and Simplified Chinese where paired.
-- Support level that the current evidence permits: experimental, locally source-complete
-  Desktop-guided macOS onboarding. Hosted nested-package evidence is still required. No signed
-  distribution or macOS/Windows/Linux support claim is permitted until the corresponding
-  real-device gates pass.
+- Support level that the current evidence permits: experimental, source-complete Desktop-guided
+  macOS onboarding with hosted native-test and nested-package evidence. No signed distribution or
+  macOS/Windows/Linux support claim is permitted until the corresponding real-device gates pass.
 
-## Evidence observed locally
+## Evidence observed
 
-- Desktop and shared Web suites pass with 120 and 54 tests, including authentication, preflight,
+- Desktop and shared Web suites pass with 122 and 54 tests, including authentication, preflight,
   private token delivery, fixed path/argv/environment, concurrency, output bounds, restart state,
   and the approval journey.
 - The unsigned macOS arm64 Desktop package completes its fuse and inventory gates both without a
@@ -142,10 +141,15 @@
   This is local layout and launch evidence only, not distribution evidence.
 - The extended Swift product compiles and links against the compatible macOS SDK available on this
   development machine. The installed beta Command Line Tools cannot load a matching
-  `TestingMacros` plugin for the native tests, so hosted native test execution remains required.
+  `TestingMacros` plugin for the native tests. The pinned hosted `macos-15` lane passed the native
+  Swift check instead.
 - The security workflow validator requires the macOS companion candidate to be built before the
-  Desktop package and passed only through the fixed packaging environment variable. The hosted
-  workflow itself has not yet been observed for this change.
+  Desktop package and passed only through the fixed packaging environment variable. At merge
+  commit `c44ab286b6af5823807819b4851693c2e121e373`, main CI run
+  [`33904784040`](https://github.com/yxflc11/openbot/actions/runs/33904784040) passed all seven jobs,
+  including the hosted macOS arm64 companion build, native check, nested Desktop package, and
+  native plist validation. This remains unsigned hosted-runner evidence, not a controlled-device
+  or distribution claim.
 
 ## Unresolved questions
 
