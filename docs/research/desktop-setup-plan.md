@@ -1,6 +1,6 @@
 # Research: Desktop setup intent and multi-computer plan
 
-- Status: Implemented and locally verified; hosted CI pending
+- Status: Implemented and verified in hosted CI
 - Date: 2026-09-05
 - Owner: @yxflc11
 - Related issue: N/A; stacked after pull request #9
@@ -96,8 +96,12 @@
   Server screen, quit, reopened, and recovered the same plan.
 - The retained setup file was the canonical 108-byte v1 document with POSIX mode `0600`. The
   temporary real-user test plan was removed after verification.
-- This is local development evidence. Hosted Windows/macOS/Linux package jobs and every real
-  service, privilege, enrollment, signing, update, rollback, and user-device claim remain pending.
+- Pull request #10 passed the repository check, security, database, Windows Worker build-only, and
+  Linux x64, Windows x64, and macOS arm64 portable package jobs. The first Windows attempt exceeded
+  the existing keyring test's five-second budget by 377 ms; the unchanged failed job passed on its
+  isolated rerun. This is hosted-runner evidence, not a user-device support claim.
+- Every real service, privilege, enrollment, signing, update, rollback, and user-device claim
+  remains pending.
 
 ## Unresolved questions
 
