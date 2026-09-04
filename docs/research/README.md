@@ -90,6 +90,8 @@ actions, mutable paths, or pre-enrollment auto-start. WiX v7 is technically viab
 unused until the Owner explicitly decides its OSMF EULA and any fee obligation.
 The accepted [macOS Worker Host launchd boundary](macos-worker-host-launchd.md) next selects a
 user-approved macOS 13+ `SMAppService` LaunchAgent for the dedicated standard account. A narrow
-app-relative launcher will replace itself with the fixed packaged Node so launchd owns restart,
-logout, and bounded shutdown without a third-party supervisor; signing, packaging, Keychain, TCC,
-and real-device evidence remain separate gates.
+app-relative native Host remains responsible for Keychain and child containment. The follow-on
+[macOS Worker Host configuration and Keychain](macos-worker-host-config-and-keychain.md) review
+selects direct Apple Security plus existing Node core/Zod, and replaces immediate `exec` with a
+private credential handoff and bounded fixed-child supervisor. Signing, packaging, registration,
+TCC, and real-device evidence remain separate gates.

@@ -1,6 +1,6 @@
 # ADR-0038: The macOS Worker Host is a user-approved LaunchAgent
 
-- Status: Accepted
+- Status: Accepted; immediate-`exec` process model superseded by ADR-0039
 - Date: 2026-09-04
 
 ## Context
@@ -26,7 +26,8 @@ privilege boundaries, and platform fit are recorded in the research file.
 Use the operating-system service standard directly. `SMAppService` registers one app-bundled
 LaunchAgent subject to user approval, while launchd supplies process restart, throttling, logout
 cleanup, SIGTERM, and a final SIGKILL bound. Implement only the missing OpenBot registration,
-immutable bundle path, configuration preflight, and fixed Node `exec` adapter.
+immutable bundle path, configuration preflight, and fixed Node adapter. ADR-0039 supersedes the
+initial immediate-`exec` process model after the Keychain handoff review.
 
 Third-party service wrappers are rejected because they add mutable command, environment, package
 manager, restart, or process-observation surfaces without closing an OpenBot boundary gap. A system
@@ -56,9 +57,9 @@ rollback, uninstall, and TCC.
   select a user, enroll, store credentials, or start the service from a privileged script.
 - The plist uses `BundleProgram`, `KeepAlive.SuccessfulExit=false`, `ThrottleInterval=30`,
   `ProcessType=Background`, `ExitTimeOut=25`, and `Umask=077`.
-- A narrow launcher validates fixed per-user configuration and signed bundle paths, then replaces
-  itself with the fixed packaged Node. It accepts no arbitrary command and adds no restart loop or
-  control endpoint.
+- A narrow native Host validates fixed per-user configuration and signed bundle paths, then starts
+  only the fixed packaged Node. ADR-0039 keeps the Host alive as the Keychain gate and bounded child
+  supervisor; it accepts no arbitrary command and adds no restart loop or public control endpoint.
 - Credentials remain outside plist, package, arguments, environment, and logs. Keychain failure
   never falls back to a file.
 - The Node and first browser-only profile receive no desktop privacy permission. A later Provider

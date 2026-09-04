@@ -1,7 +1,7 @@
 # Research: macOS Worker Host launchd boundary
 
-- Status: Static LaunchAgent contract implemented locally; launcher, registration, signing, packaging,
-  Keychain, and real-device evidence pending
+- Status: Static LaunchAgent contract implemented locally; process model superseded by ADR-0039;
+  native Host, registration, signing, packaging, Keychain, and real-device evidence pending
 - Date: 2026-09-04
 - Owner: OpenBot maintainers
 - Related issue: G5 in `docs/EXECUTION_PLAN.md`
@@ -42,7 +42,7 @@
 | `node-mac` | npm `1.0.1`, repository [`2bf9e64f`](https://github.com/coreybutler/node-mac/tree/2bf9e64f637f3ab1f036bf69c1205d0f6c227e7b) | Declared MIT, but the reviewed repository license contains an unresolved merge marker and GitHub reports `NOASSERTION` | The reviewed core commit is dated 2020-07-09, the package declares Mocha but contains no test files, and open issues include unresolved path and executable-selection behavior. | Defaults to a root LaunchDaemon, accepts broad caller paths and environment, invokes shell commands, and inserts a second JavaScript restarter between launchd and the Node. That duplicates restart policy and complicates complete shutdown. | Reject. Do not ship, copy, or adapt it. |
 | `emorydunn/LaunchAgent` | [`0.3.0` / `9f6d33ab`](https://github.com/emorydunn/LaunchAgent/tree/9f6d33abfa4a0a45a877e9b884391981c1f4152b) | MIT | Includes property-list and native lifecycle tests, but the release commit is dated 2022-04-06. Open issues include missing conditional `KeepAlive` support and global-agent permission confusion. | Its broad encoder is unnecessary for one fixed plist. Control methods use detached `Process.launchedProcess`, retain deprecated `load`/`unload`, and do not return authoritative command outcomes. It does not provide app-bundle registration or OpenBot policy. | Reject as a shipped dependency. Generate and validate one fixed plist locally. |
 | Homebrew Services | [`Homebrew/brew 6.0.21` / `56014701`](https://github.com/Homebrew/brew/tree/560147012b9678b42ef5e83b690f0895552d1366) | BSD-2-Clause | Current release with extensive service tests. The earlier `homebrew-services` tap is archived and its implementation moved into `brew`. | Correctly distinguishes user and root domains, but adopting it would require a mutable package manager, Ruby runtime, formula state, trust store, and root/user conventions that OpenBot cannot make an install prerequisite. It is useful operational prior art, not a product lifecycle boundary. | Reject as a runtime or installer dependency. |
-| Swift Service Lifecycle | [`2.11.0` / `9829955b`](https://github.com/swift-server/swift-service-lifecycle/tree/9829955b385e5bb88128b73f1b8389e9b9c3191a) | Apache-2.0 | Active Swift Server Work Group project with signal and graceful-shutdown tests; the reviewed package adds `swift-log` and `swift-async-algorithms`. | Useful when a Swift process owns several long-running services. The macOS slice can instead let launchd signal the existing Node directly after a launcher `exec`, so the package adds code without closing a boundary gap. | Reject for the first host. Reconsider only if a future native broker owns multiple services. |
+| Swift Service Lifecycle | [`2.11.0` / `9829955b`](https://github.com/swift-server/swift-service-lifecycle/tree/9829955b385e5bb88128b73f1b8389e9b9c3191a) | Apache-2.0 | Active Swift Server Work Group project with signal and graceful-shutdown tests; the reviewed package adds `swift-log` and `swift-async-algorithms`. | Useful when a Swift process owns several long-running services. The first launchd review expected direct Node signaling after `exec`; ADR-0039 now requires a small Keychain-aware supervisor, but it still owns only one fixed child and does not need this package's multi-service abstraction. | Reject for the first host. Reconsider only if a future native broker owns multiple services. |
 | System LaunchDaemon | Current launchd system-domain contract | Apple platform/API terms | Stable and testable only with administrator privileges and a dedicated service account. | Appropriate for user-independent headless work, but it has no WindowServer session and Apple documents that the data-protection Keychain is available only in user context. It cannot satisfy the dedicated-user, locked-Keychain, or future desktop Provider journey. | Reject as the default macOS Node profile. A future separately scoped fleet daemon must not inherit desktop or user-Keychain claims. |
 
 ## Reuse decision
@@ -55,10 +55,10 @@
   `SMAppService` registers the app-bundled job subject to user approval and exposes a stable status
   enum. No third-party supervisor or package manager is needed.
 - Exact OpenBot-specific gap: build a minimal app that registers one fixed plist; add a signed
-  app-relative launcher that derives only the dedicated user's fixed Application Support paths,
-  constructs an allowlisted environment, and replaces itself with the hash-manifested Node runtime;
-  validate the plist, app layout, configuration boundary, and lifecycle without parsing diagnostic
-  prose.
+  app-relative native Host that derives only the dedicated user's fixed Application Support paths,
+  constructs an allowlisted environment, and starts only the hash-manifested Node runtime; validate
+  the plist, app layout, configuration boundary, and lifecycle without parsing diagnostic prose.
+  ADR-0039 adds the exact Keychain handoff and child-containment gap.
 - Upgrade, replacement, or exit plan: keep the plist schema and launcher contract local and small.
   Package versions replace the whole signed app, preserve only the separately validated per-user
   configuration and Keychain item, and reregister after a compatible upgrade. If Apple replaces
@@ -80,9 +80,10 @@
   `Contents/Library/LaunchAgents/com.openbot.worker-host.node.plist`. It uses one app-relative
   `BundleProgram`, no shell-selected command, no credential-bearing argument or environment value,
   and no mutable `PATH` lookup.
-- The launcher performs only path/config preflight and then `exec`s the fixed bundled Node, so
-  launchd directly owns the long-running PID. It does not restart, daemonize, fork into the
-  background, open a control port, or accept caller-selected commands.
+- The native Host performs path/config preflight and starts only the fixed bundled Node. ADR-0039
+  supersedes immediate `exec`: the Host remains alive as the Keychain gate and bounded child-process
+  supervisor. It does not add a restart loop, daemonize, fork into the background, open a control
+  port, or accept caller-selected commands.
 - Use conditional `KeepAlive` with `SuccessfulExit=false`: an unexpected non-zero exit is retried,
   while a graceful zero exit is not turned into a restart loop. Set `ThrottleInterval=30`,
   `ProcessType=Background`, `ExitTimeOut=25`, and a private `Umask=077`. Do not set

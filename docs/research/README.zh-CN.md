@@ -69,3 +69,8 @@ x64 证据仍是必须通过的失败关闭门槛。
 已接受平台契约的 [Windows Worker Host 安装器](windows-worker-host-installer.md)调研随后选择
 Windows Installer 5.0 标准事务，并禁止凭证、下载、自定义动作、可变路径或登记前自动启动。WiX v7
 在技术上可行，但 Owner 明确决定其 OSMF EULA 和可能的费用义务前不会使用。
+已接受的 [macOS Worker Host launchd 边界](macos-worker-host-launchd.md)选择 macOS 13+、由专用
+标准用户批准的 `SMAppService` LaunchAgent。后续
+[macOS Worker Host 配置与 Keychain](macos-worker-host-config-and-keychain.md)审查选择直接使用
+Apple Security 与现有 Node core/Zod，并用私有凭证管道和有界固定子进程监管取代立即 `exec`。
+签名、打包、注册、TCC 与真实设备证据仍是独立门槛。
