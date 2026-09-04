@@ -56,9 +56,9 @@ simulated fixtures, or capability declarations as substitutes for the evidence g
 
 | ID | Status | Slice | Why now | Deliverable and benefit | Exit gate |
 | --- | --- | --- | --- | --- | --- |
-| G0 | Branch published; PR/main CI event and full remote evidence pending | Publish and observe the hardened baseline | Local success does not prove a clean GitHub runner can install, build, test, and scan the branch. | A remote, reviewable security baseline. Later failures can be attributed to new work instead of an unknown starting state. | The authorized branch push is complete and an invalid release-workflow context found remotely was repaired. The full suite still needs a PR or main event; no PR, merge, or release is implied. |
-| G1 | Active locally; remote evidence pending | Windows/macOS/Linux hosted CI matrix | Cross-platform implementation without cross-platform feedback accumulates path, shell, permission, and runtime regressions. | Every portable protocol, Node, Provider SDK, config, and Web change is checked on explicit runner families. | Pinned runner families and Node version; deterministic portable tests on all three OSes; honest docs that hosted CI is not real-device support. |
-| G2 | Active locally; real-device suites and evidence pending | Provider conformance runner and real-device evidence contract | Hosted VMs cannot prove service recovery, keyring access, GUI permissions, hardware isolation, or desktop behavior. | One repeatable scenario runner and bounded evidence format that makes platform claims reproducible instead of anecdotal. | Hermetic negative fixtures; expiring target-bound reports; no secrets in artifacts; named OS/version/architecture/hardware for real-device reports; no self-certification. |
+| G0 | Complete: PR #5 and merged-main CI passed | Publish and observe the hardened baseline | Local success does not prove a clean GitHub runner can install, build, test, and scan the branch. | A remote, reviewable security baseline. Later failures can be attributed to new work instead of an unknown starting state. | PR head `b33831d` and merge commit `2033cb4` each passed all seven CI jobs: check, security, database, three portable OS jobs, and the Windows build-only job. This is CI evidence, not a release or platform-support claim. |
+| G1 | Complete at hosted-CI level; real-device support unclaimed | Windows/macOS/Linux hosted CI matrix | Cross-platform implementation without cross-platform feedback accumulates path, shell, permission, and runtime regressions. | Every portable protocol, Node, Provider SDK, config, and Web change is checked on explicit runner families. | The pinned Node version and explicit Linux x64, Windows x64, and macOS arm64 jobs passed on both the PR head and merged main. Hosted runners do not establish real-device support. |
+| G2 | Contract verified in hosted CI; Provider-specific suites and real-device evidence pending | Provider conformance runner and real-device evidence contract | Hosted VMs cannot prove service recovery, keyring access, GUI permissions, hardware isolation, or desktop behavior. | One repeatable scenario runner and bounded evidence format that makes platform claims reproducible instead of anecdotal. | Hermetic contract and negative-fixture tests passed in hosted CI. Expiring target-bound reports, secret-free artifacts, named device metadata, Provider-specific suites, and controlled real-device reports remain required before any support claim. |
 
 ### Wave B — make Worker Hosts installable and trustworthy
 
@@ -69,8 +69,8 @@ interface must also be able to hold a future proof-of-possession private key.
 | ID | Status | Slice | Why this order | Deliverable and benefit | Exit gate |
 | --- | --- | --- | --- | --- | --- |
 | G3 | Active locally; archive, dormant provenance workflow, native smoke, and install-transaction design implemented | Linux Worker Host, installer, systemd, Secret Service | Linux has the simplest daemon and packaging path, so it establishes the shared lifecycle with the least platform-specific surface. | Signed archive first, then deb/rpm; dedicated service account; predictable install/start/stop/upgrade/rollback; protected credentials. This becomes the reference host implementation. | Tested systemd lifecycle and recovery; x64/arm64 evidence; permissions and keyring failure close safely; no inbound public control port. |
-| G4 | Windows host and build gate implemented locally; hosted and native evidence pending | Windows Worker Host, installer, Service, Credential Manager | Windows service identity, ACLs, installers, and session isolation differ substantially; the shared lifecycle should exist before solving those differences. | A signed installer and recoverable Windows Service with credentials outside plain files. Enterprise deployment and uninstall become auditable. | Real Windows x64 evidence first; ARM64 remains unclaimed until tested; service-account ACL tests; install/upgrade/uninstall/rollback; Credential Manager denial fails closed. |
-| G5 | Source-complete locally; arm64 candidate and ad hoc mechanics pass, external distribution/real-device gates pending | macOS Worker Host, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials and truthful permission diagnostics. | Native core, dual-mode app/Host, Keychain transaction, LaunchAgent registration, exact candidate, package/signing/notary gates, Swift tests, and local arm64 build are implemented. Developer ID profiles, notarization, install lifecycle, locked-Keychain, and declared real-device evidence remain required; no desktop-control claim exists. |
+| G4 | Hosted Windows build gate passed; native service and installer evidence pending | Windows Worker Host, installer, Service, Credential Manager | Windows service identity, ACLs, installers, and session isolation differ substantially; the shared lifecycle should exist before solving those differences. | A signed installer and recoverable Windows Service with credentials outside plain files. Enterprise deployment and uninstall become auditable. | The build-only job passed on Windows x64 hosted runners. Real Windows x64 Job Object/SCM lifecycle evidence remains required; ARM64 remains unclaimed until tested, as do installer, service-account ACL, Credential Manager, upgrade, uninstall, and rollback evidence. |
+| G5 | Source-complete; hosted macOS arm64 build/tests passed; distribution and real-device gates pending | macOS Worker Host, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials and truthful permission diagnostics. | Native core, dual-mode app/Host, Keychain transaction, LaunchAgent registration, exact candidate, package/signing/notary gates, Swift tests, and hosted arm64 build are implemented. Developer ID profiles, notarization, install lifecycle, locked-Keychain, and declared real-device evidence remain required; no desktop-control claim exists. |
 | G6 | Planned | Node proof of possession, mTLS, rotation, revocation, and replay defense | Native services increase the value of a stolen bearer token. Real input must not be enabled while a copied credential can impersonate a Worker Host. | A Node proves possession of its device key, connections authenticate both directions, credentials rotate, compromised Nodes can be revoked, and captured messages cannot be replayed. | Preserve one-time enrollment; non-exportable-key adapter where the OS permits; bounded challenge/response; short-lived credentials; rotation and overlap rules; replay tests; Server-owned audit; fail-closed clock/storage/network behavior. |
 
 ### Wave C — expand Employee capability without importing authority
@@ -119,18 +119,21 @@ Every non-trivial slice follows the same sequence:
 
 ## Current checkpoint
 
-- The DEV-001 local security baseline is complete: Server-owned approval policy, durable throttles,
-  dependency/history scanning, redacted structured logs, safe failures and dispatch audit, and Web
-  interaction tests are verified locally.
-- The branch contains focused goal commits ahead of `origin/main` and has not been pushed by this
-  goal.
-- G1's explicit Linux x64, Windows x64, and macOS arm64 matrix is implemented locally with a
-  fail-closed repository policy check. It remains unverified remote configuration, not platform
-  support, until all three hosted jobs are observed.
+- The DEV-001 security baseline is complete at the local and hosted-CI evidence levels: Server-owned
+  approval policy, durable throttles, dependency/history scanning, redacted structured logs, safe
+  failures and dispatch audit, and Web interaction tests passed on PR #5 and merged main.
+- The `codex/dev-001-hardening` branch was pushed. PR #5 head `b33831d` passed all seven CI jobs and
+  was merged as `2033cb4`; the same seven jobs then passed on main. The merge happened before this
+  documentation closeout and does not authorize any tag, release, Package, or repository-setting
+  change.
+- G1's explicit Linux x64, Windows x64, and macOS arm64 matrix passed on the PR head and merged main.
+  This proves build/test compatibility only on the named hosted runner images, not platform or
+  real-device support.
 - G2's strict scenario runner and real-device report contract are implemented locally. Tests cover
   deterministic lifecycle order, abort deadlines, cleanup failures, untrusted-result rejection,
   secret suppression, expected-failure expiry, required device metadata, and non-overwriting private
-  evidence files. Provider-specific suites and controlled real-device reports remain outstanding.
+  evidence files; those contract tests also passed in hosted CI. Provider-specific suites and
+  controlled real-device reports remain outstanding.
 - G3 now implements the two explicit systemd profiles and the bounded Linux Secret Service adapter.
   Tests cover exact non-fallback selection, helper stdin, timeout/output limits, missing/error
   outcomes, wrong identities, write verification, and unit hardening. The first archive slice now
@@ -141,7 +144,8 @@ Every non-trivial slice follows the same sequence:
   were byte-identical and passed SHA-256/XZ integrity checks; this is packaging evidence, not a real
   host support claim. A tag-only workflow is now locally implemented with exact action pins, least
   privilege, main-ancestry/SemVer gates, two-build comparison, build and SBOM attestations, and
-  direct temporary review uploads. It has not run remotely and cannot create a GitHub Release.
+  direct temporary review uploads. No `node-v*` tag has run this workflow remotely, and it cannot
+  create a GitHub Release.
   The matrix now assigns x64 and arm64 to matching hosted CPU runners and requires the packaged Node
   plus application to complete a schema-valid least-authority loopback handshake before attestation.
   The x64 path passed under local Ubuntu container emulation; both native hosted jobs remain
@@ -189,8 +193,9 @@ Every non-trivial slice follows the same sequence:
   checked-in graph, built with zero warnings, passed six pure supervision contracts, and
   cross-published one 76,277,833-byte `win-x64` PE plus the matching third-party notice. CI pins
   `actions/setup-dotnet` `v5.3.0` by full commit, rejects unlocked dependency or artifact-shape
-  drift, and uploads nothing. The current macOS host has no PowerShell or Windows SCM, so the hosted
-  job, real Job Object/SCM lifecycle, installer, ACL, and support evidence are still pending.
+  drift, and uploads nothing. The hosted Windows build-only job passed on the PR head and merged
+  main. Real Job Object/SCM lifecycle, installer, ACL, Credential Manager, and support evidence are
+  still pending.
 - G4 installer research selects Windows Installer 5.0 standard transactions so file, service,
   repair, upgrade, and rollback state remain operating-system managed. It prohibits custom actions,
   downloads, credential properties, mutable install paths, and auto-start before enrollment. WiX
@@ -200,9 +205,10 @@ Every non-trivial slice follows the same sequence:
   standard account and rejects a root daemon plus third-party supervisors. The first static plist
   now fixes one app-relative launcher, unsuccessful-exit restart, a 30-second retry throttle,
   background resource class, 25-second stop bound, and private umask without credentials or mutable
-  arguments. Four fail-closed contract tests and local native `plutil` validation pass; the hosted
-  macOS lane will rerun both after an authorized push. The launcher, registration app, package,
-  Keychain, native lifecycle, signing, and notarization remain pending, so no service or platform
+  arguments. Four fail-closed contract tests and native `plutil` validation passed in the hosted
+  macOS arm64 job on both the PR head and merged main. Source for the launcher, registration app,
+  package, and Keychain path is present, but Developer ID distribution, notarization, install
+  lifecycle, locked-Keychain, and real-device evidence remain pending, so no service or platform
   support is claimed.
 - G5 configuration and Keychain research selects direct Apple Security plus the existing Node core
   and Zod. It supersedes the immediate-`exec` clause: a signed native Host must keep the credential
@@ -212,8 +218,7 @@ Every non-trivial slice follows the same sequence:
   accepted design. The strict fixed-file loader and one-shot `stdio-v3` identity gate are now
   implemented with 37 focused passing tests; native Host source, entitlement, registration, and
   real Keychain evidence remain pending.
-- G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
-  release, and repository-setting changes are separate actions and are not authorized.
-- While G0 awaits that decision, repository-local planning, research, and verification may continue;
-  no hosted-matrix or platform-support claim may be made until the corresponding remote evidence is
-  observed.
+- Distribution remains source-only and pre-alpha. There is no published desktop/mobile client,
+  installable Worker Host distribution, or OpenBot artifact in GitHub Packages. The earlier
+  source-only `v0.1.0-alpha.1` foundation-preview GitHub Release has no binary assets and predates
+  the current codebase; it is not evidence that the tag-only Worker Host release workflow works.

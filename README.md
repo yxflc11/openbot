@@ -51,8 +51,13 @@ present the learning-graph concept as an OpenBot invention.
 
 ## Project status
 
-OpenBot currently provides a tested vertical slice from a local channel to a remote execution Node
-and back. The table deliberately separates working code from planned capabilities.
+OpenBot is currently a source-only, pre-alpha codebase. It provides a tested vertical slice from a
+local channel to a remote execution Node and back, but there is no published desktop or mobile
+client, installable Worker Host distribution, or OpenBot artifact in GitHub Packages. The only
+GitHub Release is the earlier source-only `v0.1.0-alpha.1` foundation preview, which has no binary
+assets and does not contain the current codebase. Run the current code from source. The table below
+deliberately separates working code from planned capabilities; hosted CI compatibility is not
+real-device support.
 
 | Area | Available now | Next step |
 | --- | --- | --- |
@@ -66,7 +71,7 @@ and back. The table deliberately separates working code from planned capabilitie
 | Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
 | Office view | Isolated `@openbot/office-plugin` package with no core-app dependency | Optional plugin lifecycle after the channel workflow is mature |
 
-### What the current release does not claim
+### What the current codebase does not claim
 
 - It does not perform unattended form submissions or arbitrary desktop actions.
 - It does not yet issue cryptographic, single-use capability leases after approval.
