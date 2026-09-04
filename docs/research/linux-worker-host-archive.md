@@ -34,6 +34,7 @@
 | Candidate | Exact release or commit | License | Maintenance and tests | Platform/API/security fit | Decision |
 | --- | --- | --- | --- | --- | --- |
 | Node.js release archive | `v22.22.2` annotated tag target `2645dc73720b1b4f27c49f395d3c66025ce126cc`; official Linux x64 `.tar.xz` SHA-256 `88fd1ce767091fd8d4a99fdb2356e98c819f93f3b1f8663853a2dee9b438068a`; arm64 `e9e1930fd321a470e29bb68f30318bf58e3ecb4acb4f1533fb19c58328a091fe` | Node.js license plus bundled notices | Official release artifacts, signed checksum manifest, and Node release CI | Supplies a reviewed runtime without relying on a host-wide Node installation. Only the required executable and its upstream license/notices should enter the OpenBot archive | Select and verify the exact artifact hash before listing or extraction |
+| GNU tar and XZ Utils | GNU tar `1.35`, official source SHA-256 `4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16`; Ubuntu 24.04 amd64 currently `1.35+dfsg-3ubuntu0.4`. Ubuntu xz-utils reports upstream `5.4.5`, currently `5.6.1+really5.4.5-1ubuntu0.3` on amd64; upstream tag target `49053c0a649f4c8bd2b8d97ce915f401fbc0f3d9` | GPL-3.0-or-later; public-domain/LGPL/GPL mix | GNU tar documents exact reproducibility flags. Ubuntu maintains security-patched packages. The XZ manual warns output can vary across versions and builds, and single- versus multi-thread output differs | Select only on the Ubuntu 24.04 release job; require GNU tar 1.35 and xz 5.4.5, force one thread and fixed options, record the OS package revisions, and compare two same-job builds byte for byte |
 | `@vercel/ncc` | `0.45.0` / `cb1f1f058bfa7de4cb63f2411e14a724e714e260`; npm integrity `sha512-8zPi1yO2mHpoKTD+e+Bf0ZT3e+sWHSOyGapm9s7b5R0gxJi3CiFTqmeQiMEyu6ejrz2s09M8JkEoUaTWjBJPQQ==` | MIT | Released 2026-08-13; release commit has successful Node 22 Linux, Node 24 Windows, Node 26 Linux, Dependabot, and Socket checks. Open issues include ESM/export and multi-output edge cases | Produces one deployable JS entry plus an upstream-generated license file and webpack stats. OpenBot must run a bundle smoke test and reject unexpected assets or externals | Select as an exact build-only dependency |
 | Node.js Single Executable Applications | Node `v22.22.2` behavior reviewed; current documentation still marks SEA `Stability: 1.1` | Node.js license | Tested upstream on a bounded platform set | Creation remains subject to change, supports one embedded script, and documents a Linux arm64 container ELF hash-table caveat. It adds binary injection complexity without improving OpenBot's current service boundary | Reject for the first stable archive format; reconsider after the API stabilizes and both architectures pass native evidence |
 | `vercel/pkg` | `5.8.1` / `5dc987b90ffd191263eb0202833dc382cea0d47d` | MIT | Repository archived; last push 2024-01-03 | A frozen runtime packager is not a viable new security-sensitive release dependency | Reject |
@@ -46,7 +47,8 @@
 - Selected option: released dependencies and platform artifacts plus narrow validation/projection
   adapters.
 - Selected upstream or standard: Node.js `v22.22.2` archives, `@vercel/ncc` `0.45.0`, npm SBOM
-  `10.9.8`, SPDX 2.3 output, and `actions/attest` `v4.2.2` for authorized releases.
+  `10.9.8`, SPDX 2.3 output, GNU tar 1.35, Ubuntu's security-patched xz 5.4.5 line, and
+  `actions/attest` `v4.2.2` for authorized releases.
 - Why this is the first viable option: it keeps an ordinary upstream Node executable, isolates the
   application into one auditable bundle, reuses an already-selected package-manager SBOM command,
   and defers networked signing to the release boundary. No experimental executable injection or
@@ -77,7 +79,8 @@
 
 - Automated tests: exact platform/hash table, safe runtime archive listing, production dependency
   closure, stable SPDX semantics, allowed ncc output, canonical manifest order, fixed modes,
-  checksum verification, and byte-identical repeat builds on the release image.
+  checksum verification, exact GNU tar/xz version gates, fixed archive arguments, compressed-stream
+  integrity, and byte-identical repeat builds inside one release job.
 - Negative and fail-closed tests: wrong hash or architecture, path traversal, absolute paths,
   symlink escapes, duplicate entries, oversized files/counts, unexpected ncc assets/externals,
   test-only dependency leakage, tool-version drift, changed staged bytes, and unavailable signer.

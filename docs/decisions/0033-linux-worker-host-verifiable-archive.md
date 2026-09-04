@@ -20,6 +20,9 @@ The reviewed alternatives and exact pins are recorded in
 - Node SEA remains stability 1.1 with a Linux arm64 container caveat; `vercel/pkg` is archived.
 - npm `10.9.8` already emits SPDX 2.3, while `actions/attest` `v4.2.2` provides Sigstore-backed
   provenance only when the release workflow has the required eligibility and authority.
+- GNU tar 1.35 documents the selected reproducibility flags. XZ explicitly warns that compressed
+  bytes can differ across versions/builds and threading modes, so the release job must pin the
+  Ubuntu 24.04 package baseline, force single-thread encoding, and compare two same-job builds.
 
 ## Reuse decision
 
@@ -43,8 +46,9 @@ injection, archived packager, or second SBOM dependency is needed.
    The build rejects test-only packages, missing reachable packages, ambiguous versions, or a
    dependency list that differs from the ncc bundle inventory.
 5. Staged paths, file modes, manifest key/file order, ownership metadata, timestamps, and
-   compression settings are fixed. Two builds from the same inputs on the release image must be
-   byte-identical before publication can be enabled.
+   compression settings are fixed. Archive creation requires GNU tar 1.35 and xz 5.4.5, records the
+   Ubuntu package revisions, and uses one xz thread. Two builds from the same inputs in one release
+   job must be byte-identical before publication can be enabled.
 6. Local and pull-request artifacts are visibly unsigned candidates. Only an authorized, tag-only
    trusted workflow may create a release and use `actions/attest` `v4.2.2` for archive/checksum and
    SBOM provenance. Missing eligibility, OIDC, permissions, or attestation is a release failure.
