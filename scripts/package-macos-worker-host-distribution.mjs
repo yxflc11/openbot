@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertMacOSAccessGroup,
+  assertMacOSExtendedAttributes,
   distributionSigningPlan,
   expandEntitlementsTemplate,
   validateMacOSWorkerHostApplication,
@@ -47,9 +48,9 @@ try {
   ]);
   await chmod(path.join(application, "Contents/embedded.provisionprofile"), 0o644);
   run("/usr/bin/xattr", ["-cr", application]);
-  if (run("/usr/bin/xattr", ["-lr", application]).trim() !== "") {
-    throw new Error("The macOS distribution application contains extended attributes.");
-  }
+  assertMacOSExtendedAttributes(run("/usr/bin/xattr", ["-r", application]), {
+    allowProvenance: true,
+  });
   const entitlementSource = await readFile(options.entitlementsTemplate, "utf8");
   const entitlements = path.join(scratch, "OpenBotWorkerHost.entitlements.plist");
   await writeFile(

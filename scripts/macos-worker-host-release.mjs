@@ -76,6 +76,20 @@ export function assertMacOSAccessGroup(value) {
   return value;
 }
 
+export function assertMacOSExtendedAttributes(output, { allowProvenance = false } = {}) {
+  if (typeof output !== "string" || output.length > 64 * 1024) {
+    throw new Error("macOS extended-attribute output is outside the reviewed bound.");
+  }
+  const entries = output.trim() === "" ? [] : output.trim().split(/\r?\n/);
+  for (const entry of entries) {
+    const separator = entry.lastIndexOf(": ");
+    const attribute = separator === -1 ? "" : entry.slice(separator + 2);
+    if (!allowProvenance || attribute !== "com.apple.provenance") {
+      throw new Error("The macOS application contains an unexpected extended attribute.");
+    }
+  }
+}
+
 export async function verifyMacOSNodeRuntimeArchive(filePath, architecture) {
   const target = MACOS_RUNTIME_TARGETS[assertMacOSArchitecture(architecture)];
   const metadata = await stat(filePath);

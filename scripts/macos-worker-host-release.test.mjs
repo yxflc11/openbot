@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   MACOS_NCC_OUTPUTS,
   assertMacOSAccessGroup,
+  assertMacOSExtendedAttributes,
   distributionSigningPlan,
   expandEntitlementsTemplate,
   stageMacOSWorkerHostApplication,
@@ -71,6 +72,26 @@ test("expands only the exact shared access group", async () => {
   assert.throws(
     () => expandEntitlementsTemplate(`${template}OPENBOT_ACCESS_GROUP`, group),
     /placeholder/,
+  );
+});
+
+test("rejects dangerous extended attributes while tolerating system provenance", () => {
+  assert.doesNotThrow(() => assertMacOSExtendedAttributes(""));
+  assert.doesNotThrow(() =>
+    assertMacOSExtendedAttributes("/tmp/OpenBot.app: com.apple.provenance\n", {
+      allowProvenance: true,
+    }),
+  );
+  assert.throws(
+    () =>
+      assertMacOSExtendedAttributes("/tmp/OpenBot.app: com.apple.quarantine\n", {
+        allowProvenance: true,
+      }),
+    /unexpected extended attribute/,
+  );
+  assert.throws(
+    () => assertMacOSExtendedAttributes("/tmp/OpenBot.app: com.apple.FinderInfo\n"),
+    /unexpected extended attribute/,
   );
 });
 

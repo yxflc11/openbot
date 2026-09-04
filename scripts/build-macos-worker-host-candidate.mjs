@@ -9,6 +9,7 @@ import {
   validateNccStats,
 } from "./node-linux-release.mjs";
 import {
+  assertMacOSExtendedAttributes,
   inspectMachOArchitecture,
   stageMacOSWorkerHostApplication,
   verifyMacOSNodeRuntimeArchive,
@@ -120,9 +121,9 @@ try {
     version: options.version,
   });
   run("/usr/bin/xattr", ["-cr", application]);
-  if (run("/usr/bin/xattr", ["-lr", application]).trim() !== "") {
-    throw new Error("The macOS candidate contains extended attributes after sanitization.");
-  }
+  assertMacOSExtendedAttributes(run("/usr/bin/xattr", ["-r", application]), {
+    allowProvenance: true,
+  });
   run("/usr/bin/plutil", ["-lint", path.join(application, "Contents/Info.plist")]);
   run("/usr/bin/plutil", [
     "-lint",
