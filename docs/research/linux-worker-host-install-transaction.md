@@ -39,16 +39,33 @@
 | FHS paths plus POSIX atomic rename | Filesystem Hierarchy Standard 3.0; POSIX.1-2024 `rename()` | Published standards; no source incorporated | Stable primary specifications | FHS assigns add-on software to `/opt` and private package state to `/var/lib`; POSIX requires same-filesystem rename replacement to be atomic and to operate on a final symlink itself | Adopt the layout and atomic switch primitives |
 | `systemd-sysupdate` | systemd `v255` / `db11bab38ccf1ed257f310d29070843d4c58ea01` | LGPL-2.1-or-later | Maintained upstream with unit/integration tests; Ubuntu 24.04 ships the v255 line | Provides versioned whole-resource acquisition and current-symlink switching. It does not know OpenBot's attestation policy, separate credentials/configuration, or whether the Worker Host successfully reconnected; open issue `systemd/systemd#24082` records a downgrade/current-selection edge case | Reject as the first application installer; retain as update-system prior art |
 | Debian package lifecycle | Debian Policy `4.7.4.1`, released 2026-03-31; Ubuntu 24.04 `debhelper 13.14.1ubuntu4` | Policy GPL-2.0-or-later; debhelper GPL-2.0-or-later | Mature distribution process and extensive package tooling | Establishes idempotent, noninteractive maintainer scripts, preserved configuration, explicit failure exits, and install/upgrade/remove/purge tests. It also documents half-installed and half-configured error states and does not supply application-health rollback | Adopt its lifecycle rules later for `.deb`; do not make it the archive transaction engine |
-| GitHub CLI attestation verifier | `gh` `v2.93.0` | MIT | Current immutable release with source tests and official artifact-attestation documentation | Verifies an artifact digest and SLSA provenance and can bind repository, exact signer workflow, source ref/digest, OIDC issuer, and hosted-runner policy. Historical offline-bundle and signer-pattern issues make exact arguments and contract tests necessary | Select as the reviewed external provenance verifier for the online bootstrap path; do not parse human output |
+| GitHub CLI attestation verifier | `gh` `v2.93.0` | MIT | Current immutable release with source tests and official artifact-attestation documentation | Verifies an artifact digest and SLSA provenance and can bind repository, certificate identity, source ref/digest, OIDC issuer, and hosted-runner policy. Source inspection found that `--signer-workflow` is compiled as a start-anchored prefix regular expression in this release, while `--cert-identity` compares the certificate SAN exactly | Select the exact certificate identity form for the online bootstrap path, pin the executable version, and parse only bounded JSON output |
 | OSTree | `v2026.1` | LGPL-2.0-or-later, with separately licensed documentation | Active releases, package/VM integration tests, and security advisories | Strong content-addressed system and application tree deployment with transactional rollback, but introduces a repository, daemon/library/tooling, policy, and host-integration model far wider than one Worker Host | Reject for the first host; reconsider only for managed immutable fleets |
 | Focused OpenBot transaction coordinator | Current repository after ADR-0033 | MIT | Must be covered by deterministic state-machine, filesystem, command-contract, crash-recovery, and real-host tests | Can bind the already-reviewed manifest and service contract, preserve configuration and credentials, use version directories, and roll back specifically when OpenBot service activation fails | Implement only the missing coordinator and validation gap |
+
+### GitHub CLI policy-source finding
+
+- The `cli/cli` `v2.93.0` `internal/attestation/policy.go` implementation turns
+  `--signer-workflow` into a regular expression anchored only at the start. A longer workflow
+  identity can therefore satisfy that flag. OpenBot must not describe it as an exact match.
+- The same implementation applies `--cert-identity` as an exact certificate SAN value. For release
+  `1.2.3`, OpenBot will require
+  `https://github.com/yxflc11/openbot/.github/workflows/node-linux-release.yml@refs/tags/node-v1.2.3`.
+- The verifier contract also supplies the exact repository, tag source ref, 40-character source
+  commit, SLSA provenance predicate, GitHub Actions OIDC issuer, and
+  `--deny-self-hosted-runners`. It invokes `/usr/bin/gh` without a shell, requires exactly
+  `gh 2.93.0`, bounds time and output, and rejects empty or ambiguous JSON results.
+- `verificationResult.statement.predicate` is workflow-controlled data. The bootstrap derives its
+  accepted repository, workflow, ref, commit, and runner policy only from its own expected inputs
+  after `gh` succeeds; it does not grant authority to predicate fields.
 
 ## Reuse decision
 
 - Selected option: open standards, a released external verifier, existing systemd commands, and a
   narrow OpenBot-specific transaction coordinator.
 - Selected upstream or standard: FHS 3.0, POSIX.1-2024 `rename()`, systemd v255 service-manager
-  semantics, GitHub CLI v2.93.0 attestation verification, and Debian Policy 4.7.4.1 lifecycle rules.
+  semantics, GitHub CLI v2.93.0 attestation verification with exact certificate SAN matching, and
+  Debian Policy 4.7.4.1 lifecycle rules.
 - Why this is the first viable option: the standards supply the durable layout and atomic pointer
   change, `gh` supplies the already-selected provenance verification, and systemd supplies service
   lifecycle. A general OS updater or content-addressed host deployment adds authority and state

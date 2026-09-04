@@ -154,13 +154,23 @@ only a filename. It still does not prove that the source is safe or that either 
 on a real host.
 
 After an explicitly authorized first tag run, download each direct artifact, run its
-`SHA256SUMS`, and verify the archive against the exact repository and signer workflow:
+`SHA256SUMS`, and verify the archive against the exact repository, certificate identity, tag,
+source commit, issuer, and hosted-runner policy. Replace the example version and commit together:
 
 ```bash
 gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
   --repo yxflc11/openbot \
-  --signer-workflow yxflc11/openbot/.github/workflows/node-linux-release.yml
+  --cert-identity https://github.com/yxflc11/openbot/.github/workflows/node-linux-release.yml@refs/tags/node-v0.1.0 \
+  --source-ref refs/tags/node-v0.1.0 \
+  --source-digest 0000000000000000000000000000000000000000 \
+  --predicate-type https://slsa.dev/provenance/v1 \
+  --cert-oidc-issuer https://token.actions.githubusercontent.com \
+  --deny-self-hosted-runners
 ```
+
+GitHub CLI `2.93.0` treats `--signer-workflow` as a prefix match internally, so it is deliberately
+not used here. The install verifier pins that CLI release and uses bounded JSON output in addition
+to the exact command policy.
 
 The workflow does not create or edit a GitHub Release, move a tag, publish a package, or change a
 support label. Pushing the branch, creating the tag, and durable release publication remain separate

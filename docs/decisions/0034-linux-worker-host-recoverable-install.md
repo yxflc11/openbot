@@ -19,7 +19,9 @@ The acceptance journey and exact upstream comparison are recorded in the
   final path is a symbolic link.
 - systemd `v255` / `db11bab38ccf1ed257f310d29070843d4c58ea01` supplies the service lifecycle and
   versioned-update prior art, but its generic updater cannot judge OpenBot provenance or Node health.
-- GitHub CLI `v2.93.0` supplies exact, machine-readable attestation verification and policy flags.
+- GitHub CLI `v2.93.0` supplies machine-readable attestation verification and policy flags. Its
+  source shows that `--signer-workflow` is a prefix match, so OpenBot instead requires the exact
+  certificate SAN with `--cert-identity`.
 - Debian Policy `4.7.4.1` requires idempotent noninteractive lifecycle scripts and explicitly
   documents partial package states; OSTree `v2026.1` provides wider host deployment than G3 needs.
 
@@ -53,9 +55,11 @@ limitations, and replacement plans are recorded in the research note and reuse l
 2. The installer stages and fully revalidates a release before placing it in `versions/`. Existing
    version paths are never overwritten. Identical reinstall is a no-op; conflicting bytes fail.
 3. The public install path must verify the outer archive's GitHub attestation before extraction,
-   binding `yxflc11/openbot`, `.github/workflows/node-linux-release.yml`, the exact `node-v<SemVer>`
-   tag ref and source commit, the SLSA provenance predicate, the GitHub Actions OIDC issuer, and
-   hosted runners. A checksum or `signed: false` inner manifest is not provenance.
+   binding `yxflc11/openbot`, the exact certificate SAN for
+   `.github/workflows/node-linux-release.yml@refs/tags/node-v<SemVer>`, the matching tag source ref
+   and source commit, the SLSA provenance predicate, the GitHub Actions OIDC issuer, and hosted
+   runners. A checksum or `signed: false` inner manifest is not provenance, and the prefix-matching
+   `--signer-workflow` flag is insufficient for this boundary.
 4. Configuration and credentials remain outside every version directory. Install, upgrade,
    rollback, remove, and prune never read, copy, overwrite, migrate, or delete them. Purge is a
    separate explicit future command.

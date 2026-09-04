@@ -133,14 +133,22 @@ npm run release:node-linux:archive -- \
 触发事件和源码提交，而不必只相信文件名。但它仍不能证明源码安全，也不能证明两个架构能在真实
 主机运行。
 
-首次 tag 运行得到明确授权后，下载每个直接制品，检查 `SHA256SUMS`，再把压缩包绑定到精确仓库
-和签名工作流：
+首次 tag 运行得到明确授权后，下载每个直接制品，检查 `SHA256SUMS`，再把压缩包绑定到精确仓库、
+证书身份、tag、源码提交、签发者和托管 runner 策略。下面的版本与提交必须一起替换：
 
 ```bash
 gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
   --repo yxflc11/openbot \
-  --signer-workflow yxflc11/openbot/.github/workflows/node-linux-release.yml
+  --cert-identity https://github.com/yxflc11/openbot/.github/workflows/node-linux-release.yml@refs/tags/node-v0.1.0 \
+  --source-ref refs/tags/node-v0.1.0 \
+  --source-digest 0000000000000000000000000000000000000000 \
+  --predicate-type https://slsa.dev/provenance/v1 \
+  --cert-oidc-issuer https://token.actions.githubusercontent.com \
+  --deny-self-hosted-runners
 ```
+
+GitHub CLI `2.93.0` 内部把 `--signer-workflow` 当作前缀匹配，所以这里刻意不使用它。安装验证器
+还会固定该 CLI 版本，并在上述精确命令策略之外只接受有界 JSON 输出。
 
 该工作流不会创建或修改 GitHub Release、移动 tag、发布软件包或改变支持标签。推送分支、创建 tag
 和长期发布仍是各自独立的 Owner 授权动作。第一次远程执行还必须验证制品确实可下载，并分别验证
