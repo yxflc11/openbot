@@ -22,6 +22,9 @@ The acceptance journey and exact upstream comparison are recorded in the
 - GitHub CLI `v2.93.0` supplies machine-readable attestation verification and policy flags. Its
   source shows that `--signer-workflow` is a prefix match, so OpenBot instead requires the exact
   certificate SAN with `--cert-identity`.
+- GNU tar `1.35` and xz `5.4.5` are already pinned by the archive workflow. `node-tar 7.5.22` was
+  rejected after reviewing its dense 2026 path/link advisory history, and `tar-stream 3.2.1` was
+  rejected because it would leave privileged filesystem extraction policy to OpenBot.
 - Debian Policy `4.7.4.1` requires idempotent noninteractive lifecycle scripts and explicitly
   documents partial package states; OSTree `v2026.1` provides wider host deployment than G3 needs.
 
@@ -52,8 +55,13 @@ limitations, and replacement plans are recorded in the research note and reuse l
 1. Installed immutable versions live below `/opt/openbot-node/versions/`. The active service path
    remains `/opt/openbot-node/current`, which is a relative symlink replaced atomically on the same
    filesystem. Version directory identity binds version, Linux architecture, and source commit.
-2. The installer stages and fully revalidates a release before placing it in `versions/`. Existing
-   version paths are never overwritten. Identical reinstall is a no-op; conflicting bytes fail.
+2. The installer accepts only the absolute GNU tar `1.35` and xz `5.4.5` tools, preflights a bounded
+   verbose archive inventory, and rejects links, special files, duplicate or escaping paths,
+   unexpected roots, unsafe modes/owners, and excessive members or expanded bytes. It extracts with
+   no owner/permission preservation into an empty private staging root, refuses overwrites, then
+   checks the archive digest again and fully rebuilds the candidate manifest and checksums before
+   placing it in `versions/`. Existing version paths are never overwritten. Identical reinstall is
+   a no-op; conflicting bytes fail.
 3. The public install path must verify the outer archive's GitHub attestation before extraction,
    binding `yxflc11/openbot`, the exact certificate SAN for
    `.github/workflows/node-linux-release.yml@refs/tags/node-v<SemVer>`, the matching tag source ref
