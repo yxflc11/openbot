@@ -13,8 +13,26 @@ describe("evaluatePolicy", () => {
   it("requires approval for configured side effects", () => {
     expect(
       evaluatePolicy({ action: "form.submit", target: "https://example.test/form" }, [
-        { id: "submit-review", action: "form.submit", effect: "require_approval" },
+        {
+          id: "submit-review",
+          action: "form.submit",
+          effect: "require_approval",
+          minimumRisk: "write",
+        },
       ]).effect,
     ).toBe("require_approval");
+  });
+
+  it("returns the Server-owned minimum risk with the matching rule", () => {
+    expect(
+      evaluatePolicy({ action: "account.delete", target: "account:owner" }, [
+        {
+          id: "delete-review",
+          action: "account.delete",
+          effect: "require_approval",
+          minimumRisk: "destructive",
+        },
+      ]),
+    ).toMatchObject({ effect: "require_approval", minimumRisk: "destructive" });
   });
 });

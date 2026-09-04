@@ -450,6 +450,57 @@ describe("run dispatcher", () => {
     await dispatcher.stop();
   });
 
+  it("rejects approval actions that are absent from the Server policy catalog", async () => {
+    const harness = createApprovalHarness();
+    await harness.dispatcher.start();
+
+    harness.send({ action: "shell.execute", target: "host:local", risk: "privileged" });
+    await waitFor(() => harness.failedErrors.length === 1);
+
+    expect(harness.requestedRisks).toEqual([]);
+    expect(harness.cancelled).toEqual([
+      "Execution requested an action that Server policy does not permit.",
+    ]);
+    await harness.dispatcher.stop();
+  });
+
+  it("rejects a Node risk below the Server policy minimum", async () => {
+    const harness = createApprovalHarness([
+      {
+        id: "destructive-test-action",
+        action: "record.delete",
+        effect: "require_approval",
+        minimumRisk: "destructive",
+      },
+    ]);
+    await harness.dispatcher.start();
+
+    harness.send({ action: "record.delete", target: "record:1", risk: "write" });
+    await waitFor(() => harness.failedErrors.length === 1);
+
+    expect(harness.requestedRisks).toEqual([]);
+    expect(harness.cancelled).toEqual([
+      "Execution reported a risk below the Server policy minimum.",
+    ]);
+    await harness.dispatcher.stop();
+  });
+
+  it("persists the Server policy risk instead of a higher Node claim", async () => {
+    const harness = createApprovalHarness();
+    await harness.dispatcher.start();
+
+    harness.send({
+      action: "form.submit",
+      target: "https://example.test/form",
+      risk: "privileged",
+    });
+    await waitFor(() => harness.requestedRisks.length === 1);
+
+    expect(harness.requestedRisks).toEqual(["write"]);
+    expect(harness.failedErrors).toEqual([]);
+    await harness.dispatcher.stop();
+  });
+
   it("drains accepted Node messages and ignores new ones after stop", async () => {
     let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
     let releaseProgress: (() => void) | undefined;
@@ -551,6 +602,93 @@ const artifactStorage = {
   },
   async remove() {},
 };
+
+function createApprovalHarness(policyRules?: ConstructorParameters<typeof RunDispatcher>[6]) {
+  let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
+  const requestedRisks: string[] = [];
+  const failedErrors: string[] = [];
+  const cancelled: string[] = [];
+  const dispatcher = new RunDispatcher(
+    {
+      async listDispatchableRuns() {
+        return [];
+      },
+      async getRunningRunForNode() {
+        return undefined;
+      },
+      async appendRunProgress() {
+        return undefined;
+      },
+      async requestApproval(_runId, _nodeId, input) {
+        requestedRisks.push(input.risk);
+        return undefined;
+      },
+      async completeRun() {
+        return undefined;
+      },
+      async failRun(_runId, _nodeId, error) {
+        failedErrors.push(error);
+        return undefined;
+      },
+      async failRunningRuns() {
+        return [];
+      },
+      async assignRun() {
+        return undefined;
+      },
+      async requeueAssignedRuns() {
+        return [];
+      },
+      async startRun() {
+        return undefined;
+      },
+      async upsertNode() {},
+      async markNodeOffline() {},
+    },
+    {
+      list: () => [],
+      onAvailable: () => () => undefined,
+      onUnavailable: () => () => undefined,
+      onRunMessage: (handler) => {
+        runHandler = handler;
+        return () => undefined;
+      },
+      offerRun: async () => ({ status: "unavailable" }),
+      confirmRun: () => false,
+      startRun: () => false,
+      settleRun: () => undefined,
+      cancelRun: (_nodeId, _runId, reason) => cancelled.push(reason),
+    },
+    { publish: () => undefined },
+    artifactStorage,
+    undefined,
+    undefined,
+    policyRules,
+  );
+
+  return {
+    dispatcher,
+    requestedRisks,
+    failedErrors,
+    cancelled,
+    send(input: { action: string; target: string; risk: "write" | "destructive" | "privileged" }) {
+      runHandler?.(linuxNode, {
+        type: "approval.request",
+        protocolVersion,
+        nodeId: linuxNode.id,
+        runId: queuedRun().id,
+        requestId: "00000000-0000-4000-8000-000000000011",
+        action: input.action,
+        target: input.target,
+        summary: "Review the prepared action",
+        risk: input.risk,
+        beforeState: {},
+        expiresInSeconds: 300,
+        requestedAt: new Date().toISOString(),
+      });
+    },
+  };
+}
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
   const deadline = Date.now() + timeoutMs;

@@ -5,6 +5,8 @@ import type {
   WorkspaceRealtimeEvent,
 } from "@openbot/domain";
 import type { CompletedArtifact } from "@openbot/protocol";
+import { evaluatePolicy, type PolicyRule } from "@openbot/policy";
+import { approvalPolicyRules, isRiskDowngrade } from "./approval-policy.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import type { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import type { ArtifactRecord, ControlPlaneStore } from "./control-plane-store.js";
@@ -66,6 +68,7 @@ export class RunDispatcher {
   readonly #artifacts: ArtifactStorage;
   readonly #frames: FramePublisher | undefined;
   readonly #workspace: WorkspacePublisher | undefined;
+  readonly #approvalPolicyRules: readonly PolicyRule[];
   // Preserve protocol order per Run without serializing independent Runs or Nodes.
   readonly #runMessageTails = new Map<string, Promise<void>>();
   // Node lifecycle listeners are not part of a Run tail but still write authoritative state.
@@ -85,6 +88,7 @@ export class RunDispatcher {
     artifacts: ArtifactStorage,
     frames?: FramePublisher,
     workspace?: WorkspacePublisher,
+    policyRules: readonly PolicyRule[] = approvalPolicyRules,
   ) {
     this.#store = store;
     this.#nodes = nodes;
@@ -92,6 +96,7 @@ export class RunDispatcher {
     this.#artifacts = artifacts;
     this.#frames = frames;
     this.#workspace = workspace;
+    this.#approvalPolicyRules = policyRules;
   }
 
   async start(): Promise<void> {
@@ -325,12 +330,34 @@ export class RunDispatcher {
         return;
       }
       case "approval.request": {
+        const policy = evaluatePolicy(
+          { action: message.action, target: message.target },
+          this.#approvalPolicyRules,
+        );
+        if (
+          policy.effect !== "require_approval" ||
+          policy.minimumRisk === undefined ||
+          isRiskDowngrade(message.risk, policy.minimumRisk)
+        ) {
+          const reason =
+            policy.effect !== "require_approval"
+              ? "Execution requested an action that Server policy does not permit."
+              : "Execution reported a risk below the Server policy minimum.";
+          this.#nodes.cancelRun(node.id, message.runId, reason);
+          const failed = await this.#store.failRun(message.runId, node.id, reason);
+          if (failed !== undefined) {
+            this.#nodes.settleRun(node.id, message.runId, "failed");
+            this.#publishUpdates([failed]);
+            await this.dispatchQueued();
+          }
+          return;
+        }
         const resolution = await this.#store.requestApproval?.(message.runId, node.id, {
           requestId: message.requestId,
           action: message.action,
           target: message.target,
           summary: message.summary,
-          risk: message.risk,
+          risk: policy.minimumRisk,
           beforeState: message.beforeState,
           expiresAt: new Date(Date.now() + message.expiresInSeconds * 1000).toISOString(),
         });

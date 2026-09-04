@@ -1,10 +1,12 @@
 export type PolicyEffect = "allow" | "require_approval" | "deny";
+export type PolicyRisk = "write" | "destructive" | "privileged";
 
 export interface PolicyRule {
   id: string;
   action: string;
   effect: PolicyEffect;
   targetPrefix?: string;
+  minimumRisk?: PolicyRisk;
 }
 
 export interface PolicyRequest {
@@ -16,6 +18,7 @@ export interface PolicyDecision {
   effect: PolicyEffect;
   ruleId: string;
   reason: string;
+  minimumRisk?: PolicyRisk;
 }
 
 /**
@@ -44,5 +47,6 @@ export function evaluatePolicy(
     effect: match.effect,
     ruleId: match.id,
     reason: `Matched policy rule ${match.id}.`,
+    ...(match.minimumRisk === undefined ? {} : { minimumRisk: match.minimumRisk }),
   };
 }
