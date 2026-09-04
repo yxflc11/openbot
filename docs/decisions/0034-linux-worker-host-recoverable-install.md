@@ -78,6 +78,10 @@ limitations, and replacement plans are recorded in the research note and reuse l
 6. Upgrade stages the new version while the old service may continue running, atomically switches
    `current`, then restarts and verifies the selected service. Any timeout, non-zero result, inactive
    state, malformed response, or interruption after switching triggers recovery to the prior target.
+   The system-profile adapter uses only `/usr/bin/systemctl`, a literal `openbot-node.service`, the
+   machine-readable `show` command with `LoadState`/`ActiveState`, and `restart`. It accepts only
+   loaded plus exactly active/inactive state, bounds every process, and never enables, implicitly
+   starts an inactive service, resets failures, reloads units, or accepts an arbitrary unit name.
 7. Recovery restores the prior pointer before attempting to start the old service. If that service
    also fails, the installer preserves both versions and the journal, reports a bounded generic
    failure, and performs no destructive cleanup.

@@ -75,6 +75,16 @@
   change, `gh` supplies the already-selected provenance verification, and systemd supplies service
   lifecycle. A general OS updater or content-addressed host deployment adds authority and state
   without knowing whether this Node actually starts safely.
+- System-service adapter contract: use only `/usr/bin/systemctl` from the reviewed systemd v255
+  line. `systemctl show` is the upstream machine-readable interface, so the adapter requests only
+  `LoadState` and `ActiveState`, requires `LoadState=loaded`, maps exactly `ActiveState=active` to
+  active and `ActiveState=inactive` to inactive, and fails closed for `failed`, transitional,
+  missing, masked, duplicated, or extra output. Restart targets only the literal
+  `openbot-node.service`; the adapter never enables, starts, stops, reloads unit files, resets a
+  failure counter, or accepts a caller-supplied unit name.
+- The first adapter is intentionally system-profile only. A user-profile adapter must separately
+  preserve the dedicated login session's D-Bus and Secret Service boundary and cannot be driven by
+  a root installer's environment.
 - Exact OpenBot-specific gap: bind a verified archive to its canonical manifest, enforce matching
   architecture and root-owned paths, preflight and safely extract only regular files/directories,
   serialize transactions, preserve a recovery journal, switch `current`, verify service health, and
