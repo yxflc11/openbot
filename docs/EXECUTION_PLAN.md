@@ -56,8 +56,8 @@ simulated fixtures, or capability declarations as substitutes for the evidence g
 
 | ID | Status | Slice | Why now | Deliverable and benefit | Exit gate |
 | --- | --- | --- | --- | --- | --- |
-| G0 | Branch published; PR/main CI event and full remote evidence pending | Publish and observe the hardened baseline | Local success does not prove a clean GitHub runner can install, build, test, and scan the branch. | A remote, reviewable security baseline. Later failures can be attributed to new work instead of an unknown starting state. | The authorized branch push is complete and an invalid release-workflow context found remotely was repaired. The full suite still needs a PR or main event; no PR, merge, or release is implied. |
-| G1 | Active locally; remote evidence pending | Windows/macOS/Linux hosted CI matrix | Cross-platform implementation without cross-platform feedback accumulates path, shell, permission, and runtime regressions. | Every portable protocol, Node, Provider SDK, config, and Web change is checked on explicit runner families. | Pinned runner families and Node version; deterministic portable tests on all three OSes; honest docs that hosted CI is not real-device support. |
+| G0 | Complete at hosted-PR evidence level | Publish and observe the hardened baseline | Local success does not prove a clean GitHub runner can install, build, test, and scan the branch. | A remote, reviewable security baseline. Later failures can be attributed to new work instead of an unknown starting state. | The focused baseline PR ran its full remote suite successfully. It remains an Owner-reviewed, unmerged checkpoint and does not authorize release. |
+| G1 | Complete at hosted-CI evidence level | Windows/macOS/Linux hosted CI matrix | Cross-platform implementation without cross-platform feedback accumulates path, shell, permission, and runtime regressions. | Every portable protocol, Node, Provider SDK, config, and Web change is checked on explicit runner families. | Pinned runner families and Node version plus deterministic portable and Desktop-package jobs passed on the three explicit hosted OSes. This is not real-device support. |
 | G2 | Active locally; real-device suites and evidence pending | Provider conformance runner and real-device evidence contract | Hosted VMs cannot prove service recovery, keyring access, GUI permissions, hardware isolation, or desktop behavior. | One repeatable scenario runner and bounded evidence format that makes platform claims reproducible instead of anecdotal. | Hermetic negative fixtures; expiring target-bound reports; no secrets in artifacts; named OS/version/architecture/hardware for real-device reports; no self-certification. |
 
 ### Wave B — make Worker Hosts installable and trustworthy
@@ -119,14 +119,14 @@ Every non-trivial slice follows the same sequence:
 
 ## Current checkpoint
 
-- The DEV-001 local security baseline is complete: Server-owned approval policy, durable throttles,
-  dependency/history scanning, redacted structured logs, safe failures and dispatch audit, and Web
-  interaction tests are verified locally.
-- The branch contains focused goal commits ahead of `origin/main` and has not been pushed by this
-  goal.
-- G1's explicit Linux x64, Windows x64, and macOS arm64 matrix is implemented locally with a
-  fail-closed repository policy check. It remains unverified remote configuration, not platform
-  support, until all three hosted jobs are observed.
+- The DEV-001 security baseline is complete at the hosted-PR evidence level: Server-owned approval
+  policy, durable throttles, dependency/history scanning, redacted structured logs, safe failures,
+  dispatch audit, and Web interaction tests passed locally and in the focused remote suite.
+- The work remains in focused stacked review branches ahead of `origin/main`; a green PR is an Owner
+  checkpoint, not permission to merge or release.
+- G1's explicit Linux x64, Windows x64, and macOS arm64 jobs have all been observed successfully,
+  including the unsigned Desktop development-package matrix. This proves only compatibility with
+  those hosted runner images, not installation or operation on user devices.
 - G2's strict scenario runner and real-device report contract are implemented locally. Tests cover
   deterministic lifecycle order, abort deadlines, cleanup failures, untrusted-result rejection,
   secret suppression, expected-failure expiry, required device metadata, and non-overwriting private

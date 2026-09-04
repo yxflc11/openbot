@@ -86,7 +86,7 @@ flowchart LR
   准确代理 IP 提供的单跳 `Forwarded`，原始地址不进入持久记录；
 - 登录成功签发随机 Session Token，浏览器只通过 `HttpOnly` Cookie 持有；
 - PostgreSQL 只保存 Token 摘要、过期时间和撤销时间；
-- `/api/v1` 默认拒绝匿名请求，写请求同时校验 Origin；
+- `/api/v1` 默认拒绝匿名请求，写请求同时精确校验请求自身 origin 或配置的 Web Origin；
 - 多用户、设备信任和高风险操作重新验证不混入 M0，后续在现有 Session 边界上扩展。
 
 ### Local Threads & Realtime

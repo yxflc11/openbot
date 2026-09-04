@@ -15,10 +15,15 @@
     "test": "vitest run src scripts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
+  "dependencies": {
+    "write-file-atomic": "8.0.0"
+  },
   "devDependencies": {
+    "@electron/asar": "4.3.0",
     "@electron/fuses": "2.1.3",
     "@electron/packager": "20.3.0",
     "@openbot/web": "0.0.0",
+    "@types/write-file-atomic": "4.0.3",
     "electron": "44.2.0"
   }
 }

@@ -27,7 +27,12 @@ import {
   protocolVersion,
 } from "@openbot/protocol";
 import { describe, expect, it, vi } from "vitest";
-import { createApp, ownerSessionCookie, secureOwnerSessionCookie } from "./app.js";
+import {
+  createApp,
+  isTrustedMutationOrigin,
+  ownerSessionCookie,
+  secureOwnerSessionCookie,
+} from "./app.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
@@ -58,6 +63,44 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
+  it("accepts configured Web origins and an exact same-origin Desktop proxy request", () => {
+    expect(
+      isTrustedMutationOrigin(testOrigin, "https://server.example/api/v1/auth/login", [testOrigin]),
+    ).toBe(true);
+    expect(
+      isTrustedMutationOrigin(
+        "https://server.example",
+        "https://server.example/api/v1/auth/login",
+        [testOrigin],
+      ),
+    ).toBe(true);
+    for (const origin of [undefined, "null", "https://attacker.example"]) {
+      expect(
+        isTrustedMutationOrigin(origin, "https://server.example/api/v1/auth/login", [testOrigin]),
+      ).toBe(false);
+    }
+    expect(isTrustedMutationOrigin("https://server.example", "not a URL", [testOrigin])).toBe(
+      false,
+    );
+  });
+
+  it("permits an exact same-origin login while retaining cross-site rejection", async () => {
+    const app = createTestApp({ store: createTestStore() });
+    const sameOrigin = await app.request("http://localhost/api/v1/auth/login", {
+      body: JSON.stringify({ password: "correct-owner-password" }),
+      headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+      method: "POST",
+    });
+    expect(sameOrigin.status).toBe(200);
+
+    const crossSite = await app.request("http://localhost/api/v1/auth/login", {
+      body: JSON.stringify({ password: "correct-owner-password" }),
+      headers: { "Content-Type": "application/json", Origin: "https://attacker.example" },
+      method: "POST",
+    });
+    expect(crossSite.status).toBe(403);
+  });
+
   it("reports M1 health", async () => {
     const app = createTestApp({ store: createTestStore() });
     const response = await app.request("/health");

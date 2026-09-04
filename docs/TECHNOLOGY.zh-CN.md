@@ -32,6 +32,11 @@ Desktop 首次引导提供同一产品的四种组合：
 “我会再添加五台电脑”只会生成五台设备的配置清单。它不是授权数量限制，也不会安装不同的
 应用。每台 Worker 电脑仍然可以作为用户正常使用 OpenBot 的 Client。
 
+目前实现的 Desktop Client 切片已经覆盖第一种组合：首次启动时输入一个已有 Server origin，
+Desktop 会验证 `/health`、显示原生确认、只保存这个公开 origin，然后打开共享的登录和频道界面。
+远程 Server 必须使用 HTTPS；本机开发可以使用 HTTP。更换 Server 会清除 Desktop 的独立浏览器
+Session。安装和管理 Server、Worker Host 服务属于下一段引导切片。
+
 ## 选择的语言与运行时
 
 | 边界 | 选择 | 原因 |
@@ -40,6 +45,7 @@ Desktop 首次引导提供同一产品的四种组合：
 | 独立开发运行时 | Node.js `24.20.0` LTS | 这是 2026-09-04 审查时的当前 LTS；Current 版本不作为生产默认值。 |
 | Desktop 外壳 | Electron `44.2.0` | 可以复用现有 Web 技术栈，并在不同桌面系统上交付同一套经过测试的 Chromium/Node 基线。 |
 | Desktop 打包与加固 | `@electron/packager` `20.3.0` 与 `@electron/fuses` `2.1.3` | 这两个当前稳定 Electron 软件包提供 OpenBot 所需的窄打包/ASAR 和严格 fuse API，同时避开 Forge 7 不兼容且含已知漏洞的开发依赖图。安装器、签名和发布仍使用后续单独审查的发布适配器。 |
+| Desktop Server 传输与配置 | Electron `44.2.0` 自定义协议、专用 `Session.fetch`、类型化 IPC、`write-file-atomic` `8.0.0`，以及只在构建时验证清单的 `@electron/asar` `4.3.0` | 安装包 renderer 保持同源；main process 只连接一个已经验证并确认的 Server。归档只携带经过审查的精确运行时依赖闭包。 |
 | 共享 UI | React `19.2.8` 与 Vite `8.2.2` | 这些精确版本已经在当前仓库中锁定、构建并通过测试。 |
 | Server HTTP 运行时 | Node.js 上的 Hono | 当前 Server、安全中间件、SSE 和停机流程已经使用并测试这个边界。 |
 | 权威数据 | PostgreSQL 17 | 已有 migration、条件状态变更、调度、审批和审计需要唯一事务真相源。 |
@@ -64,7 +70,8 @@ Desktop 是受信任的本地 Client，不是新的权威：
   或不受限制的网络能力；
 - main process 会检查每个 IPC 请求的发送者、schema、大小、状态和权限；
 - 导航、新窗口、权限、下载和打开外部 URL 默认拒绝；
-- 严格的 Content Security Policy 只允许安装包代码和已经声明的 Server 连接；
+- 严格的 Content Security Policy 让 renderer 只能连接安装包应用 origin；main process 另行强制
+  执行唯一已经声明的 Server 连接；
 - 即使 Desktop 启动了本地 Server、Worker Host、外部 Agent 或插件进程，它们的动作仍然必须通过
   Server 策略和审批；
 - 密钥只保存在平台密钥库或独立服务边界，不进入 renderer 状态或浏览器 local storage；
@@ -94,4 +101,6 @@ Swift 只用于 macOS 适配器，.NET 只用于 Windows 适配器。开发外�
 Agent 重写成 TypeScript。
 
 长期决定与候选证据见 [ADR-0041](decisions/0041-desktop-application-foundation.md)和
-[Desktop 基础调研](research/desktop-application-foundation.md)。
+[Desktop 基础调研](research/desktop-application-foundation.md)。已经实现的 Server 连接边界见
+[ADR-0042](decisions/0042-desktop-server-connection.md)及其
+[调研证据](research/desktop-server-connection.md)。

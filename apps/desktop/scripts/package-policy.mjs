@@ -3,6 +3,26 @@ import { isAbsolute, join, relative, sep } from "node:path";
 
 const ALLOWED_PACKAGE_ROOTS = new Set(["dist"]);
 const ALLOWED_PACKAGE_FILES = new Set(["package.json"]);
+const ALLOWED_RUNTIME_DEPENDENCY_ROOTS = [
+  "node_modules/signal-exit",
+  "node_modules/write-file-atomic",
+];
+
+export const DESKTOP_RUNTIME_DEPENDENCIES = Object.freeze({
+  "signal-exit": "4.1.0",
+  "write-file-atomic": "8.0.0",
+});
+
+export const REQUIRED_DESKTOP_ASAR_ENTRIES = Object.freeze([
+  "/dist/main.js",
+  "/dist/preload.cjs",
+  "/dist/renderer/index.html",
+  "/node_modules/signal-exit/dist/cjs/index.js",
+  "/node_modules/signal-exit/package.json",
+  "/node_modules/write-file-atomic/lib/index.js",
+  "/node_modules/write-file-atomic/package.json",
+  "/package.json",
+]);
 
 export const DESKTOP_WINDOWS_METADATA = Object.freeze({
   CompanyName: "OpenBot contributors",
@@ -19,13 +39,49 @@ export function shouldIgnoreDesktopSource(appRoot, candidatePath) {
   if (candidate === "") return false;
   if (candidate.split("/").includes("..")) return true;
   if (ALLOWED_PACKAGE_FILES.has(candidate)) return false;
+  if (
+    ALLOWED_RUNTIME_DEPENDENCY_ROOTS.some(
+      (root) => candidate === root || candidate.startsWith(`${root}/`),
+    )
+  ) {
+    return false;
+  }
   return !ALLOWED_PACKAGE_ROOTS.has(candidate.split("/")[0]);
+}
+
+export function validateDesktopAsarEntries(entries) {
+  const retained = new Set(
+    entries.map((entry) => {
+      const normalized = entry.replaceAll("\\", "/");
+      return normalized.startsWith("/") ? normalized : `/${normalized}`;
+    }),
+  );
+  for (const required of REQUIRED_DESKTOP_ASAR_ENTRIES) {
+    if (!retained.has(required)) {
+      throw new Error(`Packaged Desktop ASAR is missing ${required}.`);
+    }
+  }
+  for (const entry of retained) {
+    if (!entry.startsWith("/node_modules/")) continue;
+    const allowed = ALLOWED_RUNTIME_DEPENDENCY_ROOTS.some(
+      (root) => entry === `/${root}` || entry.startsWith(`/${root}/`),
+    );
+    if (!allowed) throw new Error(`Packaged Desktop ASAR contains unexpected dependency ${entry}.`);
+  }
 }
 
 export function packagedElectronTarget(bundlePath, platform) {
   if (platform === "darwin") return join(bundlePath, "OpenBot.app");
   if (platform === "win32") return join(bundlePath, "openbot.exe");
   if (platform === "linux") return join(bundlePath, "openbot");
+  throw new Error(`Unsupported Desktop package platform: ${platform}`);
+}
+
+export function packagedAsarPath(bundlePath, platform) {
+  if (platform === "darwin")
+    return join(bundlePath, "OpenBot.app", "Contents", "Resources", "app.asar");
+  if (platform === "win32" || platform === "linux")
+    return join(bundlePath, "resources", "app.asar");
   throw new Error(`Unsupported Desktop package platform: ${platform}`);
 }
 
