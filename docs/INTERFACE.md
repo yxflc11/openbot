@@ -70,6 +70,10 @@ sequenceDiagram
 
 用户提供的机器人设定被抽象成五个可组合层：
 
+![OpenBot 组合式 Bot 身份视觉母版](design/openbot-avatar-system.png)
+
+这张母版是 NFT-like 组合语言的视觉依据；运行时保存下面的结构化选择，而不是把整张图片作为头像数据重复保存。
+
 | 层 | 当前选项 |
 | --- | --- |
 | Head | 圆角、方形、猫耳 |
