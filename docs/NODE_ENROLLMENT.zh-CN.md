@@ -119,6 +119,30 @@ npm run release:node-linux:archive -- \
 代替签名验证。[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md)仍要求仅限 tag 的
 GitHub 来源证明、安装/升级/回滚事务，以及真实 x64/arm64 主机证据。
 
+## 仅 tag 来源证明工作流（已实现，未远程观察）
+
+公开仓库已有一个休眠的 [Node Linux 来源证明工作流](../.github/workflows/node-linux-release.yml)。
+只有 Owner 明确推送 `node-v<SemVer>` tag 后，它才会执行。工作流要求被标记提交位于 `main` 历史，
+在 Ubuntu 24.04 上分别构建 x64 和 arm64 候选，每个压缩包制作两次；只有压缩包及两个伴随文件
+逐字节一致时，才生成 GitHub 构建来源和 SBOM attestation，并上传三个原始文件供 14 天审查。
+
+这个顺序的原因是：先比较，再证明，最后上传。好处是使用者可以把下载字节绑定到仓库、工作流、
+触发事件和源码提交，而不必只相信文件名。但它仍不能证明源码安全，也不能证明两个架构能在真实
+主机运行。
+
+首次 tag 运行得到明确授权后，下载每个直接制品，检查 `SHA256SUMS`，再把压缩包绑定到精确仓库
+和签名工作流：
+
+```bash
+gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
+  --repo yxflc11/openbot \
+  --signer-workflow yxflc11/openbot/.github/workflows/node-linux-release.yml
+```
+
+该工作流不会创建或修改 GitHub Release、移动 tag、发布软件包或改变支持标签。推送分支、创建 tag
+和长期发布仍是各自独立的 Owner 授权动作。第一次远程执行还必须验证制品确实可下载，并分别验证
+两类 attestation；本地策略测试不能代替这些证据。
+
 ## 吊销或重新登记
 
 已登录的 Owner 可以调用 `POST /api/v1/nodes/:nodeId/revoke`。Server 会持久化吊销状态、追加身份

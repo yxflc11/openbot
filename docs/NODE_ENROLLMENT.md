@@ -136,6 +136,34 @@ support claim, or substitute for signature verification. Tag-only GitHub provena
 install/upgrade/rollback transactions, and real x64/arm64 host evidence remain required by
 [ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md).
 
+## Tag-only provenance workflow (implemented, not observed)
+
+The public repository has a dormant [Node Linux provenance workflow](../.github/workflows/node-linux-release.yml).
+It does nothing until an Owner explicitly pushes a `node-v<SemVer>` tag. The workflow then requires
+the tagged commit to be reachable from `main`, builds x64 and arm64 candidates independently on
+Ubuntu 24.04, creates each archive twice, and stops unless the archive and both sidecars are
+byte-identical. Only then does it create GitHub build-provenance and SBOM attestations and upload the
+three exact files for 14-day review.
+
+This order matters: compare before attest, and attest before upload. Its benefit is that a consumer
+can bind downloaded bytes to the repository, workflow, event, and source commit instead of trusting
+only a filename. It still does not prove that the source is safe or that either architecture works
+on a real host.
+
+After an explicitly authorized first tag run, download each direct artifact, run its
+`SHA256SUMS`, and verify the archive against the exact repository and signer workflow:
+
+```bash
+gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
+  --repo yxflc11/openbot \
+  --signer-workflow yxflc11/openbot/.github/workflows/node-linux-release.yml
+```
+
+The workflow does not create or edit a GitHub Release, move a tag, publish a package, or change a
+support label. Pushing the branch, creating the tag, and durable release publication remain separate
+Owner-authorized actions. The first remote run must also prove artifact retrieval and both
+attestation verification modes; local policy tests cannot provide that evidence.
+
 ## Revoke or replace a Node
 
 An authenticated Owner can call `POST /api/v1/nodes/:nodeId/revoke`. Revocation updates the

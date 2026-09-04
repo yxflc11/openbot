@@ -1,0 +1,161 @@
+name: Node Linux provenance
+
+on:
+  push:
+    tags:
+      - "node-v*"
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: node-linux-provenance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-attest:
+    name: Build and attest Linux ${{ matrix.arch }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+    env:
+      RELEASE_ROOT: ${{ runner.temp }}/openbot-node-release-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - name: Validate trusted tag and prepare pinned inputs
+        id: inputs
+        shell: bash
+        env:
+          RELEASE_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^node-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Node release tag must be node-v followed by bounded SemVer."
+            exit 1
+          fi
+          git show-ref --verify --quiet refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "::error::The tagged commit must be reachable from origin/main."
+            exit 1
+          fi
+
+          version="${GITHUB_REF_NAME#node-v}"
+          source_date_epoch="$(git show --no-patch --format=%ct "$GITHUB_SHA")"
+          mkdir -p "$RELEASE_ROOT/inputs" "$RELEASE_ROOT/candidates" \
+            "$RELEASE_ROOT/archives-1" "$RELEASE_ROOT/archives-2" "$RELEASE_ROOT/npm"
+
+          runtime_archive="$RELEASE_ROOT/inputs/node-v22.22.2-linux-${RELEASE_ARCH}.tar.xz"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            "https://nodejs.org/dist/v22.22.2/node-v22.22.2-linux-${RELEASE_ARCH}.tar.xz" \
+            --output "$runtime_archive"
+
+          npm pack --silent --ignore-scripts --pack-destination "$RELEASE_ROOT/npm" npm@10.9.8
+          npm_archive="$RELEASE_ROOT/npm/npm-10.9.8.tgz"
+          printf '%s  %s\n' \
+            '7d8c1be8e0d298792aac9410682c58dccda53dffe6a600bb8a4d074b3cc8c06e421ad69b469e1b36a8a46adbc2a13e366f920d412aae7551f447bc95982f6156' \
+            "$npm_archive" | sha512sum --check --status
+          tar --extract --gzip --file "$npm_archive" --directory "$RELEASE_ROOT/npm"
+          npm_cli="$RELEASE_ROOT/npm/package/bin/npm-cli.js"
+          test "$("$npm_cli" --version)" = '10.9.8'
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "source-date-epoch=$source_date_epoch" >> "$GITHUB_OUTPUT"
+          echo "runtime-archive=$runtime_archive" >> "$GITHUB_OUTPUT"
+          echo "npm-cli=$npm_cli" >> "$GITHUB_OUTPUT"
+      - name: Build verified candidate
+        shell: bash
+        env:
+          RELEASE_ARCH: ${{ matrix.arch }}
+          RELEASE_VERSION: ${{ steps.inputs.outputs.version }}
+          RUNTIME_ARCHIVE: ${{ steps.inputs.outputs.runtime-archive }}
+          RELEASE_NPM_CLI: ${{ steps.inputs.outputs.npm-cli }}
+          SOURCE_DATE_EPOCH: ${{ steps.inputs.outputs.source-date-epoch }}
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run release:node-linux:candidate -- \
+            --arch "$RELEASE_ARCH" \
+            --node-archive "$RUNTIME_ARCHIVE" \
+            --npm-cli "$RELEASE_NPM_CLI" \
+            --out-dir "$RELEASE_ROOT/candidates" \
+            --source-commit "$GITHUB_SHA" \
+            --source-date-epoch "$SOURCE_DATE_EPOCH" \
+            --version "$RELEASE_VERSION"
+      - name: Build twice and require byte-identical archives
+        shell: bash
+        env:
+          RELEASE_ARCH: ${{ matrix.arch }}
+          RELEASE_VERSION: ${{ steps.inputs.outputs.version }}
+        run: |
+          set -euo pipefail
+          candidate="$RELEASE_ROOT/candidates/openbot-node-${RELEASE_VERSION}-linux-${RELEASE_ARCH}-unsigned"
+          npm run release:node-linux:archive -- \
+            --candidate "$candidate" \
+            --dpkg-query /usr/bin/dpkg-query \
+            --gnu-tar /usr/bin/tar \
+            --out-dir "$RELEASE_ROOT/archives-1" \
+            --xz /usr/bin/xz
+          npm run release:node-linux:archive -- \
+            --candidate "$candidate" \
+            --dpkg-query /usr/bin/dpkg-query \
+            --gnu-tar /usr/bin/tar \
+            --out-dir "$RELEASE_ROOT/archives-2" \
+            --xz /usr/bin/xz
+
+          artifact="openbot-node-${RELEASE_VERSION}-linux-${RELEASE_ARCH}-unsigned.tar.xz"
+          cmp "$RELEASE_ROOT/archives-1/$artifact" "$RELEASE_ROOT/archives-2/$artifact"
+          cmp "$RELEASE_ROOT/archives-1/$artifact.build.json" \
+            "$RELEASE_ROOT/archives-2/$artifact.build.json"
+          cmp "$RELEASE_ROOT/archives-1/$artifact.SHA256SUMS" \
+            "$RELEASE_ROOT/archives-2/$artifact.SHA256SUMS"
+          cd "$RELEASE_ROOT/archives-1"
+          sha256sum --check "$artifact.SHA256SUMS"
+          /usr/bin/xz --test "$artifact"
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ${{ env.RELEASE_ROOT }}/archives-1/*.tar.xz
+            ${{ env.RELEASE_ROOT }}/archives-1/*.build.json
+            ${{ env.RELEASE_ROOT }}/archives-1/*.SHA256SUMS
+      - name: Attest archive SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: ${{ env.RELEASE_ROOT }}/archives-1/*.tar.xz
+          sbom-path: ${{ env.RELEASE_ROOT }}/candidates/openbot-node-${{ steps.inputs.outputs.version }}-linux-${{ matrix.arch }}-unsigned/SBOM.spdx.json
+      - name: Upload archive for review
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ env.RELEASE_ROOT }}/archives-1/*.tar.xz
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: false
+          archive: false
+      - name: Upload build metadata for review
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ env.RELEASE_ROOT }}/archives-1/*.build.json
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: false
+          archive: false
+      - name: Upload checksums for review
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ env.RELEASE_ROOT }}/archives-1/*.SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: false
+          archive: false
