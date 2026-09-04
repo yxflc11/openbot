@@ -70,3 +70,6 @@ a bounded `secret-tool` adapter without a silent backend fallback.
 The accepted [Linux Worker Host verifiable archive](linux-worker-host-archive.md) review then fixes
 the application bundler, official Node runtime hashes, production SBOM, deterministic manifest,
 checksums, and authorized release-provenance boundary before installation scripts are added.
+The accepted [Linux Worker Host recoverable install transaction](linux-worker-host-install-transaction.md)
+review now fixes the versioned layout, provenance gate, atomic activation, health-bound rollback,
+credential separation, and crash-recovery evidence before a privileged installer is exposed.

@@ -54,3 +54,6 @@ Sonobuoy 与现有 Vitest/Provider SDK 边界，确认只在权威 Server 进程
 `secret-tool` 适配器。
 已接受的 [Linux Worker Host 可验证压缩包](linux-worker-host-archive.md)审查随后在增加安装脚本前，
 固定应用打包器、官方 Node 运行时哈希、生产 SBOM、确定性清单、校验和与授权发布来源证明边界。
+已接受的 [Linux Worker Host 可恢复安装事务](linux-worker-host-install-transaction.md)审查现在会在
+开放高权限安装器前，固定版本化目录、来源证明门禁、原子启用、健康检查回滚、凭证隔离与崩溃恢复
+证据。
