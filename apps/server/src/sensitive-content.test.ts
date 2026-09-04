@@ -11,6 +11,30 @@ describe("sensitive text scanner", () => {
     ]);
   });
 
+  it.each([
+    ["AWS", ["AKIA", "A".repeat(16)].join("")],
+    ["GitHub", ["ghp_", "a".repeat(24)].join("")],
+    ["GitLab", ["glpat-", "a".repeat(24)].join("")],
+    ["npm", ["npm_", "a".repeat(36)].join("")],
+    ["Stripe", ["sk_live_", "a".repeat(24)].join("")],
+    ["OpenAI", ["sk-proj-", "a".repeat(24)].join("")],
+    ["Google", ["AIza", "a".repeat(35)].join("")],
+    ["Slack", ["xoxb-", "a".repeat(24)].join("")],
+  ])("rejects a high-confidence %s credential prefix", (_provider, value) => {
+    expect(scanSensitiveText(value, "content", { portable: false })).toEqual([
+      expect.objectContaining({ code: "credential-like-content" }),
+    ]);
+  });
+
+  it("rejects private-key markers and portable Windows home paths", () => {
+    expect(
+      scanSensitiveText("-----BEGIN PRIVATE KEY-----", "content", { portable: false }),
+    ).toEqual([expect.objectContaining({ code: "private-key-content" })]);
+    expect(
+      scanSensitiveText("C:\\Users\\alice\\report.md", "content", { portable: true }),
+    ).toEqual([expect.objectContaining({ code: "local-path-content" })]);
+  });
+
   it("allows local paths in local-only memory but rejects them in portable fields", () => {
     expect(
       scanSensitiveText("Read /Users/alice/report.md", "content", { portable: false }),

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   ApprovalResolution,
   BootstrapSummary,
@@ -10,6 +10,7 @@ import type {
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
+import { createSilentLogger, diagnosticFields, type OpenBotLogger } from "@openbot/logging";
 import {
   activateEmployeeImportInputSchema,
   approvalDecisionInputSchema,
@@ -19,29 +20,29 @@ import {
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
   createNodeEnrollmentTokenInputSchema,
+  type DsseEnvelope,
   deleteEmployeeMemoryInputSchema,
   dsseEnvelopeSchema,
-  exchangeNodeEnrollmentInputSchema,
+  type EmployeeTemplatePackage,
   employeeExportDownloadQuerySchema,
+  exchangeNodeEnrollmentInputSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeMemoryInputSchema,
   updateEmployeeProfileDetailsInputSchema,
   updateEmployeeSkillStateInputSchema,
-  type DsseEnvelope,
-  type EmployeeTemplatePackage,
 } from "@openbot/protocol";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import { ClientIdentityError, resolveClientIdentity } from "./client-identity.js";
 import {
   type ControlPlaneStore,
   StoreConflictError,
@@ -49,8 +50,8 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import {
-  employeeTemplatePackageDigest,
   type EmployeeTemplateEnvelopeVerification,
+  employeeTemplatePackageDigest,
   inspectEmployeeTemplate,
   prepareEmployeeTemplateExport,
 } from "./employee-package.js";
@@ -65,6 +66,7 @@ import {
   type OwnerAuthService,
 } from "./owner-auth.js";
 import { RealtimeEventBuffer } from "./realtime-event-buffer.js";
+import type { RequestThrottle } from "./request-throttle.js";
 import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
@@ -78,14 +80,18 @@ export interface AppDependencies {
     sign(document: EmployeeTemplatePackage): DsseEnvelope;
     verify(input: unknown): EmployeeTemplateEnvelopeVerification;
   };
+  getRemoteAddress: (context: Context) => string | undefined;
   listNodes: () => ExecutionNode[];
+  logger?: OpenBotLogger;
   nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "list" | "revoke">;
   disconnectNode?: (nodeId: string) => boolean;
   realtime?: ChannelRealtimeHub;
+  requestThrottle: RequestThrottle;
   resolveApproval?: (resolution: ApprovalResolution) => void | Promise<void>;
   runFrames?: Pick<RunFrameStore, "get">;
   secureCookies: boolean;
   store: ControlPlaneStore;
+  trustedProxyAddress?: string | undefined;
   workspaceRealtime?: WorkspaceRealtimeHub;
 }
 
@@ -95,12 +101,29 @@ export const secureOwnerSessionCookie = "__Host-openbot_session";
 const maximumPendingRealtimeEvents = 128;
 
 export function createApp(dependencies: AppDependencies) {
-  const app = new Hono();
+  const app = new Hono<{
+    Variables: { requestId: string; requestStartedAt: number };
+  }>();
   const realtime = dependencies.realtime ?? new ChannelRealtimeHub();
   const workspaceRealtime = dependencies.workspaceRealtime ?? new WorkspaceRealtimeHub();
   const sessionCookie = dependencies.secureCookies ? secureOwnerSessionCookie : ownerSessionCookie;
+  const applicationLogger = dependencies.logger ?? createSilentLogger();
 
-  app.use(logger());
+  app.use(async (context, next) => {
+    const requestId = randomUUID();
+    const requestStartedAt = performance.now();
+    context.set("requestId", requestId);
+    context.set("requestStartedAt", requestStartedAt);
+    context.header("X-Request-Id", requestId);
+    await next();
+    applicationLogger.info("http.request_completed", "HTTP request completed.", {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      status: context.res.status,
+      durationMs: Math.max(0, Math.round(performance.now() - requestStartedAt)),
+    });
+  });
   app.use(
     secureHeaders({
       crossOriginResourcePolicy: "same-site",
@@ -121,7 +144,7 @@ export function createApp(dependencies: AppDependencies) {
       origin: dependencies.allowedOrigins,
       allowHeaders: ["Content-Type", "If-Match"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      exposeHeaders: ["ETag"],
+      exposeHeaders: ["ETag", "X-Request-Id"],
       credentials: true,
     }),
   );
@@ -162,10 +185,8 @@ export function createApp(dependencies: AppDependencies) {
 
   app.post("/api/v1/auth/login", async (context) => {
     const input = await parseRequest(context.req.raw, loginInputSchema);
-    const result = await dependencies.auth.login(
-      input.password,
-      context.req.header("origin") ?? "unknown",
-    );
+    const clientIdentity = resolveRequestClientIdentity(context, dependencies);
+    const result = await dependencies.auth.login(input.password, clientIdentity.digest);
     const maxAge = Math.max(
       1,
       Math.floor((new Date(result.session.expiresAt).getTime() - Date.now()) / 1000),
@@ -197,7 +218,17 @@ export function createApp(dependencies: AppDependencies) {
       exchangeNodeEnrollmentInputSchema,
       maximumNodeIdentityRequestBytes,
     );
-    const result = await identity.enroll(input);
+    const clientIdentity = resolveRequestClientIdentity(context, dependencies);
+    const reservation = await dependencies.requestThrottle.reserve(
+      "node-enrollment",
+      clientIdentity.digest,
+    );
+    if (!reservation.allowed) {
+      context.header("Retry-After", String(reservation.retryAfterSeconds));
+      return context.json({ error: "Too many Node enrollment attempts. Try again later." }, 429);
+    }
+    const result = await identity.enroll(input, clientIdentity);
+    await dependencies.requestThrottle.clear("node-enrollment", clientIdentity.digest);
     // Re-enrollment rotates the durable credential. Terminate any session that authenticated with
     // the previous value so it cannot remain live until its next reconnect.
     dependencies.disconnectNode?.(result.nodeId);
@@ -770,14 +801,31 @@ export function createApp(dependencies: AppDependencies) {
       context.header("Retry-After", String(error.retryAfterSeconds));
       return context.json({ error: error.message }, 429);
     }
+    if (error instanceof ClientIdentityError) {
+      return context.json({ error: "Client network identity is unavailable." }, 400);
+    }
     if (error instanceof InvalidNodeEnrollmentError) {
       return context.json({ error: "Node enrollment token is invalid or expired." }, 401);
     }
     if (error instanceof NodeIdentityNotFoundError) {
       return context.json({ error: error.message }, 404);
     }
-    console.error(error);
-    return context.json({ error: "OpenBot Server could not complete the request." }, 500);
+    const requestId = context.get("requestId");
+    applicationLogger.error("http.request_failed", "HTTP request failed.", {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      code: "internal_error",
+      ...diagnosticFields(error),
+    });
+    return context.json(
+      {
+        error: "OpenBot Server could not complete the request.",
+        code: "internal_error",
+        requestId,
+      },
+      500,
+    );
   });
 
   return app;
@@ -785,6 +833,17 @@ export function createApp(dependencies: AppDependencies) {
   function isTrustedOrigin(origin: string | undefined): boolean {
     return origin !== undefined && dependencies.allowedOrigins.includes(origin);
   }
+}
+
+function resolveRequestClientIdentity(
+  context: Context,
+  dependencies: Pick<AppDependencies, "getRemoteAddress" | "trustedProxyAddress">,
+) {
+  return resolveClientIdentity({
+    remoteAddress: dependencies.getRemoteAddress(context),
+    forwarded: context.req.header("forwarded"),
+    trustedProxyAddress: dependencies.trustedProxyAddress,
+  });
 }
 
 const channelHeartbeatMs = 15_000;

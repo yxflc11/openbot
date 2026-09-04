@@ -3,10 +3,11 @@ import {
   activateEmployeeImportInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
-  createEmployeeSkillInputSchema,
   createEmployeeMemoryInputSchema,
+  createEmployeeSkillInputSchema,
   createMessageInputSchema,
   createNodeEnrollmentTokenInputSchema,
+  deleteEmployeeMemoryInputSchema,
   dsseEnvelopeSchema,
   employeeTemplateDssePayloadType,
   employeeTemplatePackageSchema,
@@ -19,10 +20,9 @@ import {
   runOfferSchema,
   serverMessageSchema,
   unsignedEmployeeTemplatePackageSchema,
-  updateEmployeeSkillStateInputSchema,
   updateEmployeeMemoryInputSchema,
   updateEmployeeProfileDetailsInputSchema,
-  deleteEmployeeMemoryInputSchema,
+  updateEmployeeSkillStateInputSchema,
 } from "./index.js";
 
 const nodeCredential = `obn_${"a".repeat(43)}`;
@@ -173,6 +173,22 @@ describe("node protocol", () => {
       }).success,
     ).toBe(false);
     expect(nodeMessageSchema.safeParse({ ...approval, ignored: true }).success).toBe(false);
+  });
+
+  it("bounds public Run failure classifications and defaults legacy messages safely", () => {
+    const failure = {
+      type: "run.failed",
+      protocolVersion,
+      nodeId: "node-1",
+      runId: "00000000-0000-4000-8000-000000000001",
+      error: "Provider execution failed.",
+      failedAt: new Date().toISOString(),
+    };
+
+    expect(nodeMessageSchema.parse(failure)).toMatchObject({
+      code: "provider_execution_failed",
+    });
+    expect(nodeMessageSchema.safeParse({ ...failure, code: "raw_exception" }).success).toBe(false);
   });
 
   it("validates the two-phase run assignment messages", () => {
@@ -639,15 +655,25 @@ describe("Provider conformance reports", () => {
         references: [],
         evidence: [],
       },
+      {
+        id: "provider.target-platform",
+        name: "Target platform declaration",
+        description: "The Provider declares the target platform.",
+        status: "success",
+        severity: "required",
+        timestamp: "2026-09-04T00:00:00.000Z",
+        references: [],
+        evidence: [],
+      },
     ],
     baseline: { expectedFailures: [], unexpectedFailures: [], staleEntries: [] },
     summary: {
-      success: 1,
+      success: 2,
       failure: 0,
       warning: 0,
       skipped: 0,
       info: 0,
-      total: 1,
+      total: 2,
       expectedFailureEntries: 0,
       conformant: true,
       baselineCurrent: true,
@@ -686,5 +712,15 @@ describe("Provider conformance reports", () => {
     expect(providerConformanceReportSchema.safeParse({ ...report, supported: true }).success).toBe(
       false,
     );
+  });
+
+  it("rejects real-device reports without reproducible target metadata and generated checks", () => {
+    expect(
+      providerConformanceReportSchema.safeParse({
+        ...report,
+        suite: { ...report.suite, stage: "real-device" },
+        target: { ...report.target, evidenceLevel: "real-device" },
+      }).success,
+    ).toBe(false);
   });
 });

@@ -33,8 +33,10 @@ No upstream source was copied or substantially adapted.
 
 1. Depend on `write-file-atomic` 8.0.0 instead of maintaining temporary-name, write, rename, fsync,
    and cleanup behavior locally.
-2. Keep random append-only storage keys and explicit `0600` file mode. A test verifies the final
-   permission bits as well as read and removal behavior.
+2. Keep random append-only storage keys and request an explicit `0600` file mode. A POSIX test
+   verifies the final permission bits as well as read and removal behavior. Node.js does not expose
+   owner/group/other ACL semantics through Windows mode bits, so Windows verifies the storage
+   lifecycle without treating `Stats.mode` as access-control evidence.
 3. Keep the existing byte, base64, media type, and PNG-signature checks as the current minimum. Do
    not claim that an eight-byte signature proves a well-formed or safe PNG.
 4. Defer full image decoding and normalization until the selected decoder has resource limits and
@@ -52,7 +54,8 @@ No upstream source was copied or substantially adapted.
 - A failed local artifact write no longer relies on OpenBot's incomplete temporary-file cleanup.
 - The direct dependency and transitive `signal-exit` dependency are recorded by the lockfile and
   normal dependency audit.
-- Result files remain private by mode and recoverable by their database storage key; accidental
-  replacement or corruption is detected at the authenticated read boundary.
+- Result files retain verified private POSIX modes and remain recoverable by their database storage
+  key; accidental replacement or corruption is detected at the authenticated read boundary.
+  Windows ACL protection remains a separate review and is not inferred from emulated mode bits.
 - A malformed file beginning with a PNG signature can still be accepted. This limitation remains
   explicit until bounded decode-and-normalize validation is implemented.

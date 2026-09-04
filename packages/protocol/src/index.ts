@@ -321,12 +321,34 @@ export const runCompletedSchema = z
   })
   .strict();
 
+export const runFailureCodeSchema = z.enum([
+  "provider_unavailable",
+  "provider_execution_failed",
+  "artifact_persistence_failed",
+  "execution_interrupted",
+  "node_disconnected",
+  "approval_policy_denied",
+  "dispatch_failed",
+]);
+export type RunFailureCode = z.infer<typeof runFailureCodeSchema>;
+
+export const runFailureMessages = {
+  provider_unavailable: "No executable Provider is available for this Run.",
+  provider_execution_failed: "Provider execution failed.",
+  artifact_persistence_failed: "The result artifact could not be persisted.",
+  execution_interrupted: "Execution was interrupted before the Server received a result.",
+  node_disconnected: "The execution Node disconnected before the operation completed.",
+  approval_policy_denied: "Server policy did not permit the requested action.",
+  dispatch_failed: "The Server could not dispatch this Run.",
+} as const satisfies Record<RunFailureCode, string>;
+
 export const runFailedSchema = z
   .object({
     type: z.literal("run.failed"),
     protocolVersion: z.literal(protocolVersion),
     nodeId: nodeIdSchema,
     runId: z.string().uuid(),
+    code: runFailureCodeSchema.default("provider_execution_failed"),
     error: z.string().trim().min(1).max(2000),
     failedAt: z.string().datetime(),
   })
@@ -468,6 +490,7 @@ export const runEventTypeSchema = z.enum([
   "RUN_BLOCKED",
   "RUN_COMPLETED",
   "RUN_FAILED",
+  "DISPATCH_FAILED",
 ]);
 
 export const runEventSchema = z.object({

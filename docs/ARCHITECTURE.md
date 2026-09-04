@@ -79,7 +79,9 @@ flowchart LR
 
 ### Local Owner Auth
 
-- M0 是单 Owner 工作区，密码由部署环境提供，Server 启动时强制要求至少 12 个字符；
+- M0 是单 Owner 工作区，密码由部署环境提供，Server 启动时强制要求至少 15 个字符；
+- 登录与公开 Node 兑换按经摘要化的直接对端网络身份由 PostgreSQL 原子限速；仅可显式信任一个
+  准确代理 IP 提供的单跳 `Forwarded`，原始地址不进入持久记录；
 - 登录成功签发随机 Session Token，浏览器只通过 `HttpOnly` Cookie 持有；
 - PostgreSQL 只保存 Token 摘要、过期时间和撤销时间；
 - `/api/v1` 默认拒绝匿名请求，写请求同时校验 Origin；
@@ -137,6 +139,12 @@ employee policy ∩ task requirements ∩ online node capabilities
 
 执行是第二段显式握手：Node 发 `run.start_request`，Server 把仍属于该 Node 的 `assigned` Run 条件更新为 `running`，随后才发 `run.start`。Node 可上报结构化 progress，并以 completed/failed 结束；Server 先持久化结果，再发 `run.settled` 释放容量。`running` 状态失联后直接失败而不自动重试，因为 Server 无法证明外部动作尚未发生。
 
+失败边界不信任 Node 的异常文本。协议只允许稳定的失败代码，Server 再映射通用公开说明后写入
+Run 与 `RUN_FAILED`；Provider 异常、stack 和本地路径只会被缩减为本地结构化日志中的安全错误
+名称。异步调度链中被捕获的异常会写一条 `DISPATCH_FAILED` 事实，关联 Run、权威 Node、阶段与
+公开代码；二次审计写入失败只记录一次，不能形成递归错误循环。HTTP 请求由 Server 生成
+request id，响应与不含 query 的结构化访问日志共享该关联值。
+
 ### Action Gateway
 
 延续 CopilotKit/OpenBot 的“决定和审计先于执行”，再增加跨 Node 的 capability lease：
@@ -187,7 +195,8 @@ latest-frame；小型最终 PNG 可在 completed 消息中有界传输并写入 
 绑定 Run、Bot、Node、动作、目标指纹和过期时间，但尚未签发独立的 capability lease。当前
 enrollment token 短时且只能兑换一次，Server 只保存摘要；Node 换取独立 bearer credential 后
 可被单独吊销。凭证仍可复制，不等于持有证明设备身份；证书轮换、系统密钥库、mTLS 和 sequence
-防重放仍是进入不受信任网络前的硬门槛。
+防重放仍是进入不受信任网络前的硬门槛。Linux 现在有明确选择、不会退回文件的登录会话
+Secret Service 适配器，但真实设备证据、Windows Credential Manager 与 macOS Keychain 仍待完成。
 
 ## 5. Provider contract
 

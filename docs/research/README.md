@@ -61,3 +61,40 @@ The [Artifact read integrity](artifact-read-integrity.md) audit applies OCI desc
 to the already-stored size and SHA-256 so changed screenshot bytes fail before delivery.
 The proposed [Cross-platform Node CI baseline](cross-platform-node-ci.md) records explicit hosted
 runner families and the evidence boundary before a Windows/macOS/Linux matrix is introduced.
+The accepted [Provider conformance scenario runner](provider-conformance-runner.md) then compares
+MCP, OCI, Sonobuoy, and the existing Vitest/Provider SDK boundary before adding bounded orchestration
+outside the authoritative Server process.
+The accepted [Linux Worker Host service and Secret Service](linux-worker-host-service-and-secret-service.md)
+review separates headless system service credentials from login-session Secret Service, selecting
+a bounded `secret-tool` adapter without a silent backend fallback.
+The accepted [Linux Worker Host verifiable archive](linux-worker-host-archive.md) review then fixes
+the application bundler, official Node runtime hashes, production SBOM, deterministic manifest,
+checksums, and authorized release-provenance boundary before installation scripts are added.
+The accepted [Linux Worker Host recoverable install transaction](linux-worker-host-install-transaction.md)
+review now fixes the versioned layout, provenance gate, atomic activation, health-bound rollback,
+credential separation, and crash-recovery evidence before a privileged installer is exposed.
+The accepted [Linux Worker Host privileged bootstrap boundary](linux-worker-host-privileged-bootstrap.md)
+then selects a private archive import and one fail-closed shared lease so user-writable path swaps
+cannot separate the bytes proved from the bytes extracted or activated.
+The accepted [Windows Worker Host service boundary](windows-worker-host-service.md) next selects the
+first-party .NET Service lifetime over generic WinSW and `node-windows` wrappers, while keeping
+LocalService identity, fixed-child supervision, and native x64 evidence as explicit fail-closed
+gates.
+The implemented-local [Windows Worker Host build lane](windows-worker-host-build-lane.md) pins the
+first-party setup action, exact .NET 10 SDK, locked NuGet restore, explicit Windows x64 runner, and
+non-uploading artifact-shape gate around the experimental host source. Hosted and native Windows
+execution remain required before any support claim.
+The accepted-platform [Windows Worker Host installer](windows-worker-host-installer.md) review then
+selects Windows Installer 5.0 standard transactions and prohibits credentials, downloads, custom
+actions, mutable paths, or pre-enrollment auto-start. WiX v7 is technically viable but remains
+unused until the Owner explicitly decides its OSMF EULA and any fee obligation.
+The accepted [macOS Worker Host launchd boundary](macos-worker-host-launchd.md) next selects a
+user-approved macOS 13+ `SMAppService` LaunchAgent for the dedicated standard account. A narrow
+app-relative native Host remains responsible for Keychain and child containment. The follow-on
+[macOS Worker Host configuration and Keychain](macos-worker-host-config-and-keychain.md) review
+selects direct Apple Security plus existing Node core/Zod, and replaces immediate `exec` with a
+private credential handoff and bounded fixed-child supervisor. The accepted
+[macOS registration and package](macos-worker-host-package-and-registration.md) review then keeps
+enrollment/registration user-scoped, binds each identity to its exact Server, and selects an
+app-only Apple package with fail-closed Developer ID and notarization gates. TCC and real-device
+evidence remain separate gates.

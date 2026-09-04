@@ -26,6 +26,9 @@ Worker Host independently verify the same requirements.
   internally inconsistent.
 - `buildProviderConformanceReport` emits a strict, bounded JSON artifact tied to the Provider,
   protocol, suite, platform, architecture, OS version, and evidence level.
+- `@openbot/provider-conformance-runner` executes stable scenarios in deterministic order with
+  setup/run deadlines, abort signals, bounded cleanup, allowlisted outcomes, and baseline-derived
+  process status.
 - A required prerequisite must fail; it cannot be hidden as skipped. A tracked expected failure
   stays failed and never grants a support label.
 
@@ -59,9 +62,11 @@ routing tests alone never grants one of those labels.
 
 ## Machine-readable report
 
-`@openbot/protocol` owns `openbot.provider-conformance/v1`, and `@openbot/provider-sdk` owns the
-builder and deterministic serializer. The report deliberately contains no `supported` or
-`certified` field: evidence is machine-readable, while release labels remain a maintainer review.
+`@openbot/protocol` owns `openbot.provider-conformance/v1`, `@openbot/provider-sdk` owns the builder
+and deterministic serializer, and `@openbot/provider-conformance-runner` owns scenario
+orchestration and exclusive evidence-file creation. The report deliberately contains no
+`supported` or `certified` field: evidence is machine-readable, while release labels remain a
+maintainer review.
 
 ```ts
 const report = buildProviderConformanceReport({
@@ -84,15 +89,60 @@ Raw logs are excluded because they can contain credentials or private content. S
 baseline findings, and conformance are recomputed by the strict schema so editing JSON cannot turn
 a failed check into a passing report.
 
+A `real-device` target must additionally name `workerHostVersion`, `hardwareModel`, and an opaque
+`hardwareEvidenceId`. The id references controlled inventory or evidence; it must not be a serial
+number, UDID, credential, or other raw device identifier.
+
 Expected failures require a tracking issue and expiry. A matching unexpired entry makes the CI
 baseline current, but the check remains failed and `summary.conformant` remains `false`. An
 unexpected failure, expired entry, missing check, or now-passing check makes the baseline stale.
 
-## Run the current suite
+## Run a scenario module
+
+A scenario module exports one typed `suite`. Scenario outcomes contain only an allowlisted status
+and stable code; arbitrary Provider output and thrown values are never copied into the public
+report.
+
+```ts
+export const suite = {
+  name: "openbot-provider",
+  version: "1.0.0",
+  stage: "integration",
+  provider,
+  providerVersion: "0.1.0",
+  target: {
+    platform: "linux",
+    architecture: "x64",
+    osVersion: "6.8.0",
+    evidenceLevel: "hermetic",
+  },
+  scenarios: [navigateAndCapture],
+} satisfies ProviderConformanceSuite;
+```
+
+Build the runner, then write a new report path. The command refuses to replace existing evidence.
+
+```bash
+npm run build --workspace @openbot/provider-conformance-runner
+node packages/provider-conformance-runner/dist/cli.js \
+  --module ./path/to/provider-suite.mjs \
+  --output ./provider-conformance-report.json
+```
+
+Exit `0` means the expected-failure baseline is current, not that every required check passed. Exit
+`1` means an unexpected or stale failure; exit `2` means the harness or evidence write failed.
+Inspect `summary.conformant` separately.
+
+Provider and scenario modules are executable, untrusted code. Run the command in a dedicated,
+disposable process and OS account with no Owner browser profile or unrelated credentials. Deadlines
+send abort signals and bound runner progress, but this package is not a native-code sandbox.
+
+## Run the repository tests
 
 ```bash
 npm run test --workspace @openbot/protocol
 npm run test --workspace @openbot/provider-sdk
+npm run test --workspace @openbot/provider-conformance-runner
 npm run test --workspace @openbot/node
 npm run test --workspace @openbot/server
 ```
@@ -114,11 +164,12 @@ npm run check
 4. Add positive and negative fixtures for platform, architecture where relevant, exact capability
    majors, capacity, reconnect, and fail-closed behavior.
 5. Add hermetic integration tests, then real-device evidence before requesting a support label.
-6. Convert scenario results with `buildProviderConformanceReport`, validate them with
-   `providerConformanceReportSchema`, and publish the deterministic JSON as CI evidence.
+6. Export a typed `ProviderConformanceSuite`, run it outside the Server process, validate the output
+   with `providerConformanceReportSchema`, and publish the deterministic JSON as CI evidence.
 7. Document optional licenses, privileged dependencies, and expected failures. An expected failure
    is visible debt, never silent success.
 
-The schema and builder exist today. The next gap is a standalone runner that executes Provider
-scenarios and publishes reports from hermetic and real Windows, macOS, and Linux workers. Until
-that runner exists, the Vitest scenario tables remain the executable source of truth.
+The schema, builder, and standalone runner exist today and have hermetic negative fixtures. The next
+gap is to author Provider-specific scenario modules and execute them on controlled real Windows,
+macOS, and Linux devices. No real-device support claim exists until those reports are observed and
+reviewed.

@@ -66,8 +66,11 @@ update channels remain planned. The handshake is an execution claim, not an auth
 The current channel bounds enrollment and messages, verifies ping/pong liveness, and keeps Run
 assignments Server-owned. A short-lived one-time token creates one individually revocable Node
 credential; the Server stores only digests. The credential is still a copyable bearer value, so
-proof of possession, native keyring storage, mTLS, rotation, and replay protection remain planned;
-see [ADR-0023](decisions/0023-one-time-node-enrollment.md).
+proof of possession, mTLS, rotation, and replay protection remain planned. A contract-tested Linux
+login-session Secret Service adapter now exists, but real keyring/systemd device evidence and the
+Windows/macOS stores remain pending; see
+[ADR-0023](decisions/0023-one-time-node-enrollment.md) and
+[ADR-0032](decisions/0032-linux-worker-host-service-profiles.md).
 
 Bot configuration should select a capability policy, not an OS enum. It may optionally pin an
 employee to a specific host, but the model cannot change that pin or select another host.
@@ -134,11 +137,18 @@ device tests.
 | Server | Multi-architecture OCI image and Docker Compose |
 | Linux Node | Signed archive, systemd unit, then deb/rpm packages |
 | Windows Node | Signed installer and Windows Service |
-| macOS Node | Signed/notarized package and launchd service |
+| macOS Node | Target: signed/notarized package and launchd service. Current: source-complete arm64 unsigned candidate; distribution and real-device evidence pending |
 | Android bridge | Signed companion/bridge package for managed devices |
 
 All releases publish checksums, dependency notices, SBOMs, protocol compatibility, and an explicit
 support tier. Production deployments consume immutable versions rather than `main`.
+
+The macOS candidate now contains a native dual-mode controller/Host, fixed app-bundled LaunchAgent,
+official pinned Node runtime, Server-bound data-protection Keychain transaction, strict runtime
+manifest, and fail-closed signing/notarization/package gates. Local compilation, Swift tests,
+candidate staging, architecture checks, and ad hoc code-sign mechanics pass. This does not grant
+macOS support: Developer ID profiles, notarization, install/upgrade/rollback/uninstall, locked
+Keychain behavior, background approval, reboot, and Intel still need controlled-device evidence.
 
 ## Acceptance journey
 

@@ -67,10 +67,12 @@ secret，不等于生产级持有证明身份。能力声明本身仍不授予�
 数据库只保存随机 Token 的 SHA-256 摘要，不保存 Token 或 Owner 密码；退出与过期会话均无法
 继续访问 API。
 
-所有非只读请求都必须携带与 `OPENBOT_ALLOWED_ORIGINS` 精确匹配的 `Origin`。登录连续失败五次后，
-该浏览器 Origin 桶会被临时限制五分钟。这只是单进程、部署级保护，不是可信的每 IP 或每设备身份；
-反向代理身份契约与共享限速存储落地前，Server 仍只能部署在可信私网。当前为单 Owner 模型，不
-提供注册、找回密码或多用户权限；修改部署密码后应重启 Server，并主动退出现有设备。
+所有非只读请求都必须携带与 `OPENBOT_ALLOWED_ORIGINS` 精确匹配的 `Origin`；部署密码至少 15 个字符。
+五分钟内第五次尝试后，同一客户端桶会阻止后续尝试五分钟；PostgreSQL 会在 Server 进程和重启之间
+原子保存该状态。桶键是直接对端 IP 的域分隔摘要；只有直接对端等于
+`OPENBOT_TRUSTED_PROXY_ADDRESS` 时才接受单个 `Forwarded: for=...` 跳。这是经摘要化的滥用防护，
+不是可信的每设备身份，Server 仍只能部署在可信私网。当前为单 Owner 模型，不提供注册、找回密码
+或多用户权限；修改部署密码后应重启 Server，并主动退出现有设备。
 
 频道与工作区 SSE 每个订阅最多保留 128 个待发送投影。慢客户端达到上限后连接会被关闭，Web
 客户端重连并重新读取数据库权威快照；Server 不会静默丢弃某个事件后继续伪装为连续流。
@@ -332,6 +334,13 @@ Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，
 
 尚未执行的 `assigned` Run 在节点断线或 Server 恢复时回到 `queued`；已经 `running` 的 Run 则明确失败，不会在外部副作用未知时自动重跑。当前 Docker provider 只接受任务正文中的一个明确 HTTP(S) URL，只执行 `/navigate` 与 `/screenshot`，不点击、不填写、不提交。截图正文保存在 Server 文件存储，数据库只保存引用、SHA-256、大小和元数据。
 
+`run.failed` 只携带白名单代码与通用说明。当前代码为 `provider_unavailable`、
+`provider_execution_failed`、`artifact_persistence_failed`、`execution_interrupted`、
+`node_disconnected`、`approval_policy_denied` 和 `dispatch_failed`。Server 会独立按代码映射
+说明，并在写入 Run 或事件前丢弃 Node 提供的失败文本；Provider 异常、stack、token 与本地路径
+都不属于公开错误契约。被捕获的后台调度失败会另写一条有界 `DISPATCH_FAILED` 审计，只包含
+Run、已权威分配的 Node、阶段和公开代码；若该二次写入本身失败，只记录一次日志，不递归审计。
+
 ## 订阅频道事件
 
 `GET /api/v1/channels/:channelId/events` 返回 `text/event-stream`，当前事件如下：
@@ -365,3 +374,8 @@ Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `p
 - `422`：输入字段或 roster 无效；
 - `404`：频道或 Bot 不存在；
 - `500`：未预期的 Server 错误，响应不会泄漏数据库细节。
+
+每个响应都带 Server 生成的 `X-Request-Id`，CORS 响应也会向浏览器暴露它。未预期的 `500`
+还返回 `code: "internal_error"` 与该 request id，但不返回异常原文。Server 和 Node 的运行日志为
+结构化 JSON，遵循 `OPENBOT_LOG_LEVEL`，且只接受白名单 request/Run/Node 关联字段。HTTP 日志只记
+不含 query 的路由路径，不记录 header、Cookie、正文、凭证、任意异常对象或 stack。

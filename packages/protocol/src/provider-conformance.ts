@@ -112,6 +112,9 @@ const providerConformanceReportCoreSchema = z
         architecture: nodeArchitectureSchema,
         osVersion: z.string().trim().min(1).max(160),
         evidenceLevel: providerConformanceEvidenceLevelSchema,
+        workerHostVersion: z.string().trim().min(1).max(160).optional(),
+        hardwareModel: z.string().trim().min(1).max(160).optional(),
+        hardwareEvidenceId: providerConformanceIdSchema.optional(),
       })
       .strict(),
     checks: z.array(providerConformanceCheckSchema).min(1).max(512),
@@ -159,6 +162,25 @@ function sameStrings(left: string[], right: string[]): boolean {
  */
 export const providerConformanceReportSchema = providerConformanceReportCoreSchema.superRefine(
   (report, context) => {
+    if (report.suite.stage === "real-device") {
+      const target = report.target;
+      if (
+        target.evidenceLevel !== "real-device" ||
+        target.architecture === "unknown" ||
+        target.osVersion.trim().toLowerCase() === "unknown" ||
+        target.workerHostVersion === undefined ||
+        target.hardwareModel === undefined ||
+        target.hardwareEvidenceId === undefined
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["target"],
+          message:
+            "Real-device reports require real-device evidence, known OS/architecture, Worker Host version, hardware model, and an opaque hardware evidence id.",
+        });
+      }
+    }
+
     const checksById = new Map(report.checks.map((check) => [check.id, check]));
     if (checksById.size !== report.checks.length) {
       context.addIssue({
@@ -166,6 +188,25 @@ export const providerConformanceReportSchema = providerConformanceReportCoreSche
         path: ["checks"],
         message: "Conformance check ids must be unique.",
       });
+    }
+    const requiredGeneratedCheckIds = ["provider.declaration", "provider.target-platform"];
+    if (report.suite.stage === "integration" || report.suite.stage === "real-device") {
+      requiredGeneratedCheckIds.push("provider.executable");
+    }
+    if (report.suite.stage === "integration") {
+      requiredGeneratedCheckIds.push("target.evidence-level");
+    }
+    if (report.suite.stage === "real-device") {
+      requiredGeneratedCheckIds.push("target.real-device-metadata");
+    }
+    for (const requiredCheckId of requiredGeneratedCheckIds) {
+      if (!checksById.has(requiredCheckId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["checks"],
+          message: `Conformance report is missing generated check ${requiredCheckId}.`,
+        });
+      }
     }
     for (const [index, check] of report.checks.entries()) {
       if (

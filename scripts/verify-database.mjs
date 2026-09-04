@@ -14,6 +14,10 @@ const { NodeIdentityService } = await import("../apps/server/dist/node-identity.
 const { PostgresNodeIdentityStore } = await import(
   "../apps/server/dist/postgres-node-identity-store.js"
 );
+const { PostgresRequestThrottleStore } = await import(
+  "../apps/server/dist/postgres-request-throttle-store.js"
+);
+const { RequestThrottle } = await import("../apps/server/dist/request-throttle.js");
 const { PostgresControlPlaneStore } = await import("../apps/server/dist/postgres-store.js");
 const { buildEmployeeTemplate, employeeTemplatePackageDigest } = await import(
   "../apps/server/dist/employee-package.js"
@@ -22,9 +26,13 @@ const first = createDatabase(databaseUrl);
 const second = createDatabase(databaseUrl);
 const verificationNodeId = `db-verification-${randomUUID()}`;
 const employeeVerificationId = randomUUID();
+const verificationClientIdentity = { digest: "a".repeat(64), source: "direct" };
+const verificationThrottleDigest = "b".repeat(64);
 let sourceEmployeeId;
 let importedEmployeeId;
 let verificationSkillId;
+let verificationChannelId;
+let verificationRunId;
 try {
   // Separate startup attempts must serialize migration ownership and converge on one complete plan.
   await Promise.all([first.migrate(), second.migrate()]);
@@ -45,10 +53,16 @@ try {
   ]);
   const exchanges = await Promise.allSettled([
     ...issuedTokens.map((issued) =>
-      identity.enroll({ nodeId: verificationNodeId, token: issued.token }),
+      identity.enroll(
+        { nodeId: verificationNodeId, token: issued.token },
+        verificationClientIdentity,
+      ),
     ),
     ...issuedTokens.map((issued) =>
-      identity.enroll({ nodeId: verificationNodeId, token: issued.token }),
+      identity.enroll(
+        { nodeId: verificationNodeId, token: issued.token },
+        verificationClientIdentity,
+      ),
     ),
   ]);
   const successful = exchanges.filter((item) => item.status === "fulfilled");
@@ -56,6 +70,19 @@ try {
     throw new Error("Concurrent Node enrollment did not consume its token exactly once.");
   }
   const enrolled = successful[0].value;
+  const [enrollmentAudit] = await first.client`
+    select details
+    from node_identity_events
+    where node_id = ${verificationNodeId} and type = 'enrolled'
+    order by created_at desc
+    limit 1
+  `;
+  if (
+    enrollmentAudit?.details?.clientIdentityDigest !== verificationClientIdentity.digest ||
+    enrollmentAudit?.details?.clientIdentitySource !== "direct"
+  ) {
+    throw new Error("Node enrollment did not persist its pseudonymous client audit fields.");
+  }
   if (!(await identity.authenticate(verificationNodeId, enrolled.credential))) {
     throw new Error("Issued Node credential did not authenticate.");
   }
@@ -72,6 +99,23 @@ try {
     throw new Error("Revoked Node metadata was not projected from PostgreSQL.");
   }
 
+  const requestThrottle = new RequestThrottle(new PostgresRequestThrottleStore(first.db));
+  const concurrentAttempts = await Promise.all(
+    Array.from({ length: 6 }, () =>
+      requestThrottle.reserve("owner-login", verificationThrottleDigest),
+    ),
+  );
+  if (
+    concurrentAttempts.filter((attempt) => attempt.allowed).length !== 5 ||
+    concurrentAttempts.filter((attempt) => !attempt.allowed).length !== 1
+  ) {
+    throw new Error("Concurrent durable login throttling did not admit exactly five attempts.");
+  }
+  await requestThrottle.clear("owner-login", verificationThrottleDigest);
+  if (!(await requestThrottle.reserve("owner-login", verificationThrottleDigest)).allowed) {
+    throw new Error("A cleared durable login throttle did not admit a fresh attempt.");
+  }
+
   const store = new PostgresControlPlaneStore(first.db);
   const source = await store.createBot({
     name: `Import source ${employeeVerificationId}`,
@@ -79,6 +123,39 @@ try {
     computerProfile: "none",
   });
   sourceEmployeeId = source.id;
+  const verificationChannel = await store.createChannel({
+    name: `Dispatch audit ${employeeVerificationId}`,
+    description: "Disposable channel for dispatch audit verification.",
+    botIds: [source.id],
+  });
+  verificationChannelId = verificationChannel.id;
+  const verificationTask = await store.submitTask(verificationChannel.id, {
+    content: "Verify a bounded background dispatch failure event.",
+    botId: source.id,
+  });
+  verificationRunId = verificationTask.run.id;
+  await store.recordDispatchFailure({
+    runId: verificationTask.run.id,
+    nodeId: "untrusted-node-id",
+    phase: "database-verification",
+    code: "dispatch_failed",
+  });
+  const [dispatchAudit] = await first.client`
+    select node_id, payload
+    from run_events
+    where run_id = ${verificationTask.run.id} and type = 'DISPATCH_FAILED'
+    order by created_at desc
+    limit 1
+  `;
+  if (
+    dispatchAudit === undefined ||
+    dispatchAudit.node_id !== null ||
+    dispatchAudit.payload?.code !== "dispatch_failed" ||
+    dispatchAudit.payload?.phase !== "database-verification" ||
+    JSON.stringify(Object.keys(dispatchAudit.payload).sort()) !== JSON.stringify(["code", "phase"])
+  ) {
+    throw new Error("Background dispatch failure did not persist a bounded authoritative audit.");
+  }
   const concurrentProfileUpdates = await Promise.allSettled([
     store.updateEmployeeProfileDetails(source.id, {
       role: "Database profile verification",
@@ -232,12 +309,23 @@ try {
   console.info(`Database verification passed with ${result.migrations} applied migrations.`);
 } finally {
   await Promise.allSettled([
+    first.client`delete from request_throttle_buckets where client_digest = ${verificationThrottleDigest}`,
     first.client`delete from node_identity_events where node_id = ${verificationNodeId}`,
     first.client`delete from node_credentials where node_id = ${verificationNodeId}`,
     first.client`delete from node_enrollment_tokens where node_id = ${verificationNodeId}`,
   ]);
   if (importedEmployeeId !== undefined) {
     await first.client`delete from employee_import_receipts where employee_id = ${importedEmployeeId}`;
+  }
+  if (verificationRunId !== undefined) {
+    await first.client`delete from run_events where run_id = ${verificationRunId}`;
+    await first.client`delete from messages where run_id = ${verificationRunId}`;
+    await first.client`delete from runs where id = ${verificationRunId}`;
+  }
+  if (verificationChannelId !== undefined) {
+    await first.client`delete from run_events where channel_id = ${verificationChannelId}`;
+    await first.client`delete from channel_bots where channel_id = ${verificationChannelId}`;
+    await first.client`delete from channels where id = ${verificationChannelId}`;
   }
   const employeeIds = [sourceEmployeeId, importedEmployeeId].filter((value) => value !== undefined);
   if (employeeIds.length > 0) {

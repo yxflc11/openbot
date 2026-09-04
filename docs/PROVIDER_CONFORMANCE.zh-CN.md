@@ -23,6 +23,8 @@ OpenBot 必须先有可执行证据，才会宣称某个平台或 Provider 已�
 - Provider id、平台或能力归属自相矛盾时，Node 会在启动前失败。
 - `buildProviderConformanceReport` 会生成严格、有界的 JSON 产物，绑定 Provider、协议、测试集、
   平台、架构、系统版本和证据等级。
+- `@openbot/provider-conformance-runner` 会按稳定顺序执行场景，并提供 setup/run 时限、取消信号、
+  有界 cleanup、允许列表结果和由预期失败基线决定的进程状态。
 - 必需前置条件缺失必须记为失败，不能藏成 skipped；登记过的预期失败仍是失败，也不能获得支持
   标签。
 
@@ -56,8 +58,8 @@ OpenBot 必须先有可执行证据，才会宣称某个平台或 Provider 已�
 ## 机器可读报告
 
 `@openbot/protocol` 定义 `openbot.provider-conformance/v1`，`@openbot/provider-sdk` 提供构建器和
-确定性序列化器。报告故意没有 `supported` 或 `certified` 字段：机器负责保存证据，发布标签仍需
-维护者审查。
+确定性序列化器，`@openbot/provider-conformance-runner` 负责编排场景并以独占方式创建证据文件。
+报告故意没有 `supported` 或 `certified` 字段：机器负责保存证据，发布标签仍需维护者审查。
 
 ```ts
 const report = buildProviderConformanceReport({
@@ -79,15 +81,58 @@ const report = buildProviderConformanceReport({
 凭证或私人内容进入公开产物。严格 schema 会重新核对统计、基线结果和一致性结论，手工修改
 JSON 不能把失败伪装为通过。
 
+`real-device` 目标还必须写明 `workerHostVersion`、`hardwareModel` 和不透明的
+`hardwareEvidenceId`。该 ID 只引用受控资产或证据记录，不能使用序列号、UDID、凭证或其他原始
+设备标识。
+
 预期失败必须带跟踪 Issue 和过期时间。未过期且与失败匹配时，CI 基线可以保持 current，但检查
 仍为失败，`summary.conformant` 仍为 `false`。新增失败、条目过期、检查消失或原失败已经修复，
 都会让基线变旧并要求人工处理。
 
-## 运行当前测试
+## 运行场景模块
+
+场景模块导出一个有类型的 `suite`。场景结果只能包含允许的状态和稳定代码；任意 Provider 输出和
+抛出的值都不会复制进公开报告。
+
+```ts
+export const suite = {
+  name: "openbot-provider",
+  version: "1.0.0",
+  stage: "integration",
+  provider,
+  providerVersion: "0.1.0",
+  target: {
+    platform: "linux",
+    architecture: "x64",
+    osVersion: "6.8.0",
+    evidenceLevel: "hermetic",
+  },
+  scenarios: [navigateAndCapture],
+} satisfies ProviderConformanceSuite;
+```
+
+先构建 runner，再指定一个全新的报告路径；命令拒绝覆盖已有证据。
+
+```bash
+npm run build --workspace @openbot/provider-conformance-runner
+node packages/provider-conformance-runner/dist/cli.js \
+  --module ./path/to/provider-suite.mjs \
+  --output ./provider-conformance-report.json
+```
+
+退出码 `0` 只表示预期失败基线仍然有效，不代表所有必需检查都通过；`1` 表示存在意外或过期
+失败，`2` 表示 runner 或证据写入失败。是否真正一致还要单独检查 `summary.conformant`。
+
+Provider 和场景模块都是可执行的不可信代码。必须在专用、可丢弃的进程与系统账号中运行，账号
+不能带 Owner 浏览器资料或无关凭证。时限会发送取消信号并限制 runner 继续等待，但该包不是
+原生代码沙箱。
+
+## 运行仓库测试
 
 ```bash
 npm run test --workspace @openbot/protocol
 npm run test --workspace @openbot/provider-sdk
+npm run test --workspace @openbot/provider-conformance-runner
 npm run test --workspace @openbot/node
 npm run test --workspace @openbot/server
 ```
@@ -105,9 +150,10 @@ npm run check
 3. 只声明适配器真正能执行的平台；未完成的包不提供 `execute`，保持 declaration-only。
 4. 为平台、必要架构、精确能力主版本、容量、重连和 fail-closed 行为增加正反场景。
 5. 先补隔离集成测试，再提供真实设备证据，最后才能申请支持标签。
-6. 使用 `buildProviderConformanceReport` 转换场景结果，用
-   `providerConformanceReportSchema` 校验，并把确定性 JSON 作为 CI 证据发布。
+6. 导出有类型的 `ProviderConformanceSuite`，在 Server 进程外运行，用
+   `providerConformanceReportSchema` 校验结果，并把确定性 JSON 作为 CI 证据发布。
 7. 记录可选组件许可、特权依赖和预期失败。预期失败只能是可见债务，不能伪装成功。
 
-schema 和构建器已经实现。下一步是独立 runner：在隔离环境以及真实 Windows、macOS、Linux
-Worker 上执行 Provider 场景并发布报告。在 runner 完成前，Vitest 场景表仍是可执行真相源。
+schema、构建器和独立 runner 已经实现，并有密闭负向 fixture。下一步是编写 Provider 专属场景
+模块，并在受控的真实 Windows、macOS、Linux 设备上执行。观察并审核这些报告前，不存在任何
+真实设备支持声明。

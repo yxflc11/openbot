@@ -47,3 +47,32 @@ Owner 刚刚检查过的同一份包实例。
 SHA-256 元数据，使被替换的截图字节在返回前失败。
 拟议的[跨平台 Node CI 基线](cross-platform-node-ci.md)记录明确的托管 runner 系列和证据边界，
 作为引入 Windows/macOS/Linux 测试矩阵前的依据。
+已接受的 [Provider 一致性场景 runner](provider-conformance-runner.md)随后比较 MCP、OCI、
+Sonobuoy 与现有 Vitest/Provider SDK 边界，确认只在权威 Server 进程之外补充有界编排。
+已接受的 [Linux Worker Host 服务与 Secret Service](linux-worker-host-service-and-secret-service.md)
+审查把无人值守系统服务凭证与登录会话 Secret Service 分开，并选择不会静默切换后端的有界
+`secret-tool` 适配器。
+已接受的 [Linux Worker Host 可验证压缩包](linux-worker-host-archive.md)审查随后在增加安装脚本前，
+固定应用打包器、官方 Node 运行时哈希、生产 SBOM、确定性清单、校验和与授权发布来源证明边界。
+已接受的 [Linux Worker Host 可恢复安装事务](linux-worker-host-install-transaction.md)审查现在会在
+开放高权限安装器前，固定版本化目录、来源证明门禁、原子启用、健康检查回滚、凭证隔离与崩溃恢复
+证据。
+已接受的 [Linux Worker Host 高权限引导边界](linux-worker-host-privileged-bootstrap.md)随后采用私有
+压缩包导入与一把失败关闭的共享 lease，防止用户可写路径替换把已证明字节与最终解压、启用的字节
+分离。
+已接受的 [Windows Worker Host 服务边界](windows-worker-host-service.md)接着选择第一方 .NET Service
+生命周期，而不是通用 WinSW 或 `node-windows` 包装器；LocalService 身份、固定子进程监管和原生
+x64 证据仍是必须通过的失败关闭门槛。
+本地已实现的 [Windows Worker Host 构建门槛](windows-worker-host-build-lane.md)会围绕实验性主机
+源码固定第一方 setup action、精确 .NET 10 SDK、锁定的 NuGet 恢复、明确的 Windows x64 runner，
+以及不上传产物的输出形态检查。任何支持声明前，仍必须完成托管与原生 Windows 执行。
+已接受平台契约的 [Windows Worker Host 安装器](windows-worker-host-installer.md)调研随后选择
+Windows Installer 5.0 标准事务，并禁止凭证、下载、自定义动作、可变路径或登记前自动启动。WiX v7
+在技术上可行，但 Owner 明确决定其 OSMF EULA 和可能的费用义务前不会使用。
+已接受的 [macOS Worker Host launchd 边界](macos-worker-host-launchd.md)选择 macOS 13+、由专用
+标准用户批准的 `SMAppService` LaunchAgent。后续
+[macOS Worker Host 配置与 Keychain](macos-worker-host-config-and-keychain.md)审查选择直接使用
+Apple Security 与现有 Node core/Zod，并用私有凭证管道和有界固定子进程监管取代立即 `exec`。
+随后接受的 [macOS 注册与安装包](macos-worker-host-package-and-registration.md)审查让登记保持在
+专用用户权限内，将身份绑定到精确 Server，并选择带失败关闭 Developer ID/公证门槛的纯应用 Apple
+安装包。TCC 与真实设备证据仍是独立门槛。

@@ -50,6 +50,266 @@ directly. Treat this as a secret-injection integration point, not a value to com
 Employee package. `OPENBOT_NODE_CREDENTIAL_PATH` can move the file to an operator-controlled
 secret volume.
 
+## Linux service profiles (experimental)
+
+Linux has two explicit profiles because Secret Service belongs to a user's D-Bus login session; a
+machine-wide daemon normally has no such session and must not borrow another user's keyring.
+
+| Profile | Credential boundary | Why use it | Benefit |
+| --- | --- | --- | --- |
+| Headless system service | `/var/lib/openbot-node/identity.json`, owned by the dedicated `openbot` account with `0600` mode | Servers, VMs, and unattended boot | Predictable boot lifecycle without depending on a desktop login |
+| Dedicated desktop user service | Secret Service selected with `OPENBOT_NODE_CREDENTIAL_STORE=secret-service` | A dedicated Linux user that has an active graphical login and unlocked keyring | The bearer identity is kept outside an ordinary configuration file |
+
+The reviewed units are [the system profile](../deploy/node/systemd/openbot-node.service) and
+[the user profile](../deploy/node/systemd/openbot-node-user.service). They are contract-tested
+deployment assets, not yet a signed installer or a Linux support claim.
+
+For the system profile, put only `OPENBOT_NODE_ID`, `OPENBOT_NODE_SERVER_URL`, and the first-run
+`OPENBOT_NODE_ENROLLMENT_TOKEN` in `/etc/openbot/node.env`; the unit enforces file storage and its
+state directory. For the user profile, install the distribution's `libsecret-tools` package. The
+reviewed Ubuntu 24.04 baseline is `0.21.4-1build3`; do not downgrade a later security update. Put
+the same first-run values in
+`~/.config/openbot/node.env`, and enable the unit through that dedicated user's `systemctl --user`
+manager. The unit enforces Secret Service and never falls back to a file.
+
+After either first start succeeds, remove the enrollment token and restart. A missing
+`secret-tool`, absent D-Bus session, locked or denied keyring, timeout, malformed identity, helper
+error, or oversized output stops identity setup. OpenBot does not create or automatically unlock a
+keyring. Do not run the desktop profile against the Owner's primary login or password collection.
+
+## macOS app registration (source-complete candidate)
+
+The macOS Worker Host is a user-scoped background item for one dedicated standard account. Its
+single app executable opens the controller normally and runs the native Host only when the bundled
+LaunchAgent supplies the fixed `--worker-host` argument. Both modes therefore use the same signed
+application identifier, provisioning profile, and Keychain access group.
+
+The repository can build an exact unsigned arm64 or x64 app from a clean commit. Supply the official
+Node `22.22.2` archive whose SHA-256 is pinned in the source, the exact npm `10.9.9` executable, and
+an existing real output directory:
+
+```bash
+npm run release:node-macos:candidate -- \
+  --arch arm64 \
+  --build-version 1 \
+  --node-archive /trusted-inputs/node-v22.22.2-darwin-arm64.tar.gz \
+  --npm-cli /trusted-tools/npm-10.9.9 \
+  --out-dir /safe-output \
+  --source-commit 0123456789abcdef0123456789abcdef01234567 \
+  --version 0.1.0
+```
+
+The candidate gate verifies the clean source commit, Node archive, npm version, ncc inventory,
+single Mach-O architecture, fixed app inventory, modes, property lists, and runtime SHA-256
+manifest. It creates `OpenBot Worker Host.app` with `signed: false`; this is not installable
+distribution evidence.
+
+A release operator must separately supply matching Developer ID Application and Installer
+identities, the Team-ID-prefixed access group, a Developer ID provisioning profile for
+`com.openbot.worker-host`, and a configured `notarytool` Keychain profile:
+
+```bash
+npm run release:node-macos:package -- \
+  --app "/safe-output/OpenBot Worker Host.app" \
+  --access-group A1B2C3D4E5.com.openbot.worker-host.shared \
+  --application-identity "Developer ID Application: OpenBot (A1B2C3D4E5)" \
+  --installer-identity "Developer ID Installer: OpenBot (A1B2C3D4E5)" \
+  --provisioning-profile /trusted-inputs/OpenBot-DeveloperID.provisionprofile \
+  --entitlements-template "$PWD/apps/worker-host-macos/Resources/OpenBotWorkerHost.entitlements.template.plist" \
+  --notary-profile openbot-notary \
+  --output /safe-output/OpenBotWorkerHost-0.1.0-arm64.pkg
+```
+
+Packaging fails unless identities, Team ID, application identifier, access-group authorization,
+profile type/expiry, nested signature, refreshed runtime manifest, outer signature, package
+signature, notarization, staple, Gatekeeper result, payload inventory, and absence of installer
+scripts all pass. There is no ad hoc distribution fallback.
+
+After a verified package places the app at `/Applications/OpenBot Worker Host.app`, the dedicated
+user opens it, enters the exact Node id, `wss:` Server URL, and one-time enrollment token, then
+selects **Enroll & Enable**. The token is cleared immediately; the returned identity is bound to the
+Server URL and stored as one non-synchronizing `WhenUnlockedThisDeviceOnly` data-protection Keychain
+item. If macOS reports **requires approval**, approve OpenBot under **System Settings > General >
+Login Items**. A locked/denied Keychain, missing entitlement, moved/tampered app, or incomplete
+approval leaves the Host stopped.
+
+Disable the background item before replacing the app and re-enable it afterward. To uninstall,
+first choose **Disable**, optionally choose **Remove Local Identity**, then have an administrator
+move the fixed app to Trash and forget its package receipt. The installer never chooses a user,
+handles an enrollment token, edits a home directory, or starts the service.
+
+This development Mac has no matching Developer ID identities, profiles, or notary credentials.
+Local arm64 build, Swift tests, candidate validation, and ad hoc signing mechanics pass, but
+distribution, Keychain authorization, registration, install/upgrade/rollback/uninstall, reboot,
+and Intel remain controlled-device evidence gates.
+
+## Verifiable Linux release candidate
+
+The repository can now build a bounded, unsigned x64 or arm64 candidate directory before an
+installer is allowed to consume it. This stage exists so an installation script never has to guess
+which runtime, dependency set, service file, or source revision it received.
+
+| Gate | Why it runs | Benefit |
+| --- | --- | --- |
+| Exact Node archive name, size, and SHA-256 | A host-wide or substituted runtime changes the code that executes | The candidate always carries the reviewed Node `22.22.2` Linux runtime for its declared architecture |
+| Exact ncc and output inventory | Silent externals or new companion assets can make the package incomplete | Every runtime JavaScript file is allowlisted and build drift stops before staging |
+| Production-only SPDX SBOM | A monorepo-wide inventory can include test Providers and hide the actual runtime closure | Operators see the packages that can reach the Node entry point, without test-only workspaces |
+| Clean source commit and deterministic source time | Dirty worktrees and wall-clock/random SBOM fields cannot be reproduced | The same reviewed inputs have a stable manifest, SBOM, and checksum set |
+| Symlink, path, count, mode, and size bounds | Packaging inputs are still untrusted filesystem data | Traversal and unbounded payloads fail without creating an installable-looking result |
+| Revalidate the manifest and every checksum before compression | A staged directory can change between construction and packaging | Changed, missing, duplicated, linked, or unlisted files stop before archive creation |
+| Ubuntu, GNU tar, XZ, and package-revision gates | Compression bytes can change across tools, versions, builds, and thread modes | Build metadata identifies the exact toolchain and version drift fails closed |
+| Two same-job single-thread builds | One successful archive does not prove reproducibility | Publication can require byte-identical archives and sidecars instead of trusting a claim |
+
+Build all workspaces and stage a candidate with the exact reviewed inputs:
+
+```bash
+npm run release:node-linux:candidate -- \
+  --arch x64 \
+  --node-archive /trusted-inputs/node-v22.22.2-linux-x64.tar.xz \
+  --npm-cli /trusted-tools/npm-10.9.9 \
+  --out-dir /safe-output \
+  --source-commit 0123456789abcdef0123456789abcdef01234567 \
+  --source-date-epoch 1788480000 \
+  --version 0.1.0
+```
+
+The source commit must equal `HEAD`, the worktree must be clean, the output candidate must not
+already exist, and the npm executable must report exactly `10.9.9`. The result includes the bundled
+app and its allowlisted worker assets, official Node executable and notice, both systemd profiles,
+English/Chinese enrollment guidance, SPDX SBOM, `manifest.json`, and `SHA256SUMS`.
+
+On Ubuntu 24.04, turn that verified directory into a deterministic transport archive:
+
+```bash
+npm run release:node-linux:archive -- \
+  --candidate /safe-output/openbot-node-0.1.0-linux-x64-unsigned \
+  --dpkg-query /usr/bin/dpkg-query \
+  --gnu-tar /usr/bin/tar \
+  --out-dir /safe-archives \
+  --xz /usr/bin/xz
+```
+
+The output directory must already exist and be a real directory. The packer requires Ubuntu
+`24.04`, GNU tar `1.35`, XZ Utils `5.4.5`, and the reviewed `/usr/bin` paths; records the installed
+`tar` and `xz-utils` package revisions; fixes ownership, modes, timestamps, ordering, PAX headers,
+compression preset, SHA-256 stream check, and one-thread encoding; then tests the compressed stream
+and archive member root. Existing outputs are never overwritten. A trusted release job must run the
+command twice into separate empty directories and byte-compare the `.tar.xz`, `.build.json`, and
+`.SHA256SUMS` files before publication.
+
+Both the directory and archive sidecar say `unsigned`. They are not a release, installer, Linux
+support claim, or substitute for signature verification. Tag-only GitHub provenance, a trusted
+privileged installer around the transaction core, and real x64/arm64 host evidence remain required
+by [ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md) and
+[ADR-0034](decisions/0034-linux-worker-host-recoverable-install.md).
+
+## Tag-only provenance workflow (implemented, not observed)
+
+The public repository has a dormant [Node Linux provenance workflow](../.github/workflows/node-linux-release.yml).
+It does nothing until an Owner explicitly pushes a `node-v<SemVer>` tag. The workflow then requires
+the tagged commit to be reachable from `main`, builds x64 and arm64 candidates independently on
+matching `ubuntu-24.04` and `ubuntu-24.04-arm` hosted CPUs, creates each archive twice, and stops
+unless the archive and both sidecars are byte-identical. It then starts the bundled application with
+the bundled Node binary, requires a schema-valid least-authority loopback handshake and clean
+shutdown, and only after that creates GitHub build-provenance and SBOM attestations and uploads the
+three exact files for 14-day review.
+
+This order matters: compare before attest, and attest before upload. Its benefit is that a consumer
+can bind downloaded bytes to the repository, workflow, event, and source commit instead of trusting
+only a filename. It still does not prove that the source is safe or that either architecture works
+on a real host.
+
+After an explicitly authorized first tag run, download each direct artifact, run its
+`SHA256SUMS`, and verify the archive against the exact repository, certificate identity, tag,
+source commit, issuer, and hosted-runner policy. Replace the example version and commit together:
+
+```bash
+gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
+  --repo yxflc11/openbot \
+  --cert-identity https://github.com/yxflc11/openbot/.github/workflows/node-linux-release.yml@refs/tags/node-v0.1.0 \
+  --source-ref refs/tags/node-v0.1.0 \
+  --source-digest 0000000000000000000000000000000000000000 \
+  --predicate-type https://slsa.dev/provenance/v1 \
+  --cert-oidc-issuer https://token.actions.githubusercontent.com \
+  --deny-self-hosted-runners
+```
+
+GitHub CLI `2.93.0` treats `--signer-workflow` as a prefix match internally, so it is deliberately
+not used here. The install verifier pins that CLI release and uses bounded JSON output in addition
+to the exact command policy.
+
+The workflow does not create or edit a GitHub Release, move a tag, publish a package, or change a
+support label. Pushing the branch, creating the tag, and durable release publication remain separate
+Owner-authorized actions. The first remote run must also prove artifact retrieval and both
+attestation verification modes. The x64 smoke path has passed under Ubuntu container emulation;
+native hosted x64/arm64 results remain unobserved, and local policy tests cannot provide them.
+
+## Recoverable install transaction core (implemented, not a public installer)
+
+The rootless transaction core models the high-risk part before a privileged entry point is exposed.
+Its provenance adapter first verifies a reviewed-size regular archive with the exact `gh 2.93.0`
+command policy above, bounded process output and time, one unambiguous JSON statement, and matching
+pre/post SHA-256. The transaction then accepts only a candidate placed directly under the private
+staging root and the resulting machine-readable provenance record. It moves immutable bytes into a
+version directory and atomically replaces the relative `current` symlink.
+
+If the Worker Host was active, the transaction restarts and rechecks it. A failure restores the
+previous pointer and rechecks the old service. If that recovery also fails, both versions and a
+bounded transaction journal remain for manual recovery. First install never silently enrolls,
+enables, or starts a service; configuration and credentials are outside the binary transaction and
+are never read or modified.
+
+The explicit rootless recovery operation now validates the journal as a canonical private regular
+file, revalidates both referenced release directories, and accepts only the recorded new or previous
+selection. It restores only the recorded previous target and rechecks the old service only when it
+was active before the upgrade. It never starts a previously inactive service. Unexpected state is
+left untouched; a failed retry retains both releases and marks the journal for manual handling.
+Standalone install and recovery operations now use the same fail-closed directory lease. A future
+bootstrap can hold its opaque lease across import, verification, extraction, and activation;
+activation revalidates but cannot release that outer lease. Existing locks are never reclaimed by
+age because a paused privileged writer must not overlap a second one.
+
+The rootless private-import adapter closes the user-writable archive path race before those stages
+are composed. It copies a bounded regular source through an opened handle into an exclusively
+created `0600` file below the lease-protected private state root, then rechecks source identity,
+synced destination identity, size, and SHA-256. Cleanup removes only that exact digest-bound private
+file. A changed source, symlink, existing target, forged lease, or digest mismatch is preserved or
+rejected without entering provenance or extraction.
+
+The dormant privileged wrapper can now create its missing fixed directories before validating the
+complete layout. It first checks every mutable ancestor, creates one child at a time without
+recursive path resolution, opens each new directory without following links, normalizes only that
+opened inode, and checks that the pathname still selects it. An existing directory is never changed:
+wrong ownership, mode, type, or a link fails closed. Linux effective uid/gid 0, exact private/public
+child modes, and the filesystem relationships needed for atomic version movement remain mandatory.
+There is no option to substitute a different destination or trusted owner.
+
+A dormant privileged wrapper now wires the fixed layout and systemd adapter into one ordered path:
+empty-workspace check, private import, provenance verification of only that imported path, safe
+extraction, candidate identity check, transactional activation, then digest-bound cleanup. A failure
+stops the sequence and retains the imported evidence. Privileged recovery uses the same fixed paths,
+service, and lease. This is locally contract-tested code, not a distributed or supported command.
+
+Its dormant operator entry point accepts only `install` with one absolute archive path, version, and
+40-hex source commit, or `recover` with no install options. It derives x64/arm64 from the running
+Linux process, generates all operation ids itself, rejects duplicate and unknown input, and never
+accepts a GitHub token in argv. Output contains only an allowlisted result; failures return one
+generic code so untrusted paths, credentials, and helper diagnostics are not reflected into logs.
+Do not run this file from an arbitrary checkout: the bootstrap itself still needs a separately
+authenticated distribution channel.
+
+This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
+unrelated rollback implementations. It is not yet publishable: a separately delivered trusted
+bootstrap distribution and native x64/arm64 proof of the command, directory, and systemd adapters
+are still required before an installation command can be published.
+The rootless safe-extraction adapter now rejects unsafe
+inventories, extracts into a private empty root, rechecks the archive digest, and rebuilds the
+candidate manifest; the existing x64 archive passed this path under Ubuntu container emulation. No
+live remote attestation has been accepted yet. The system-profile command adapter is also
+contract-tested: it pins `/usr/bin/systemctl` to the Ubuntu systemd 255 line, reads only loaded
+active/inactive machine state, and restarts only the fixed `openbot-node.service`. It has not run
+against a native systemd host, so it is not yet part of a published privileged installer.
+
 ## Revoke or replace a Node
 
 An authenticated Owner can call `POST /api/v1/nodes/:nodeId/revoke`. Revocation updates the
@@ -67,6 +327,9 @@ the previous credential, and leaves all old values invalid.
 - Treat a POSIX permission refusal as secret exposure to investigate, not only a startup error.
 - Back up the Server database securely; it contains credential digests and identity audit events,
   not recoverable plaintext credentials.
+- The public exchange is throttled by a domain-separated digest of the direct peer address. An
+  `enrolled` audit event stores only that digest and whether it came directly or through the one
+  explicitly trusted proxy; it never stores the raw address, token, or credential.
 - A lost Node credential is replaced through revocation and fresh enrollment, not recovered.
 - Do not infer OS isolation, host ownership, or Provider permission from successful enrollment.
 - Keep native desktop Providers disabled until their platform-specific permission review passes.
@@ -74,9 +337,13 @@ the previous credential, and leaves all old values invalid.
 ## Current security limit
 
 Protocol `0.9.0` proves possession of a Node-specific bearer value at connection time and supports
-single-Node revocation. It does not yet prove possession of a non-exportable private key, rotate a
-short-lived certificate, bind every message to a sequence, or store credentials through Windows
-DPAPI, macOS Keychain, or Linux Secret Service. Those controls remain required before exposing the
-Node channel to an untrusted network. See
+single-Node revocation. Linux now has a contract-tested, explicit Secret Service adapter for a
+dedicated login session, but real unlocked/locked keyring and systemd x64/arm64 evidence is still
+pending. The protocol does not yet prove possession of a non-exportable private key, rotate a
+short-lived certificate, bind every message to a sequence, or use Windows Credential Manager or
+macOS Keychain. Those controls remain required before exposing the Node channel to an untrusted
+network. See
 [ADR-0023](decisions/0023-one-time-node-enrollment.md), the
-[permission review](research/posix-node-credential-permissions.md), and [Security](SECURITY.md).
+[permission review](research/posix-node-credential-permissions.md),
+[Linux service decision](decisions/0032-linux-worker-host-service-profiles.md), and
+[Security](SECURITY.md).

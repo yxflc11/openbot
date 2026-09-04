@@ -10,6 +10,10 @@ a content-free lifecycle audit. Deleting a memory removes its title and content 
 retains only the Employee id, memory id, action, revision, changed field names, actor, and time.
 Backups therefore contain private memory text and must receive the same protection as credentials.
 
+Migration `0017_request_throttle_buckets.sql` adds short-lived pseudonymous login and Node
+enrollment abuse-control buckets. It stores a scope, a domain-separated client-address digest,
+bounded counters, and timestamps—not a raw IP, password, enrollment token, or Node credential.
+
 ## Migration contract
 
 - Never edit an applied migration. Add a new numbered SQL file and journal entry.

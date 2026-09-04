@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InvalidCredentialsError, LoginRateLimitedError, OwnerAuthService } from "./owner-auth.js";
+import { RequestThrottle, type RequestThrottleStore } from "./request-throttle.js";
 import type {
   CreateOwnerSessionInput,
   OwnerSessionStore,
@@ -37,7 +38,8 @@ describe("OwnerAuthService", () => {
   });
 
   it("blocks a client after five failed attempts", async () => {
-    const auth = createAuth(createMemorySessionStore());
+    const throttleStore = createMemoryThrottleStore();
+    const auth = createAuth(createMemorySessionStore(), 60_000, throttleStore);
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await expect(auth.login("wrong-password", "client-1")).rejects.toBeInstanceOf(
         InvalidCredentialsError,
@@ -47,14 +49,76 @@ describe("OwnerAuthService", () => {
       LoginRateLimitedError,
     );
   });
+
+  it("shares throttle state across service restarts and clears it after success", async () => {
+    const throttleStore = createMemoryThrottleStore();
+    const sessionStore = createMemorySessionStore();
+    const first = createAuth(sessionStore, 60_000, throttleStore);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await expect(first.login("wrong-password", "client-1")).rejects.toBeInstanceOf(
+        InvalidCredentialsError,
+      );
+    }
+
+    const restarted = createAuth(sessionStore, 60_000, throttleStore);
+    await expect(restarted.login("correct-owner-password", "client-1")).rejects.toBeInstanceOf(
+      LoginRateLimitedError,
+    );
+
+    await restarted.login("correct-owner-password", "client-2");
+    await expect(restarted.login("wrong-password", "client-2")).rejects.toBeInstanceOf(
+      InvalidCredentialsError,
+    );
+    expect(throttleStore.buckets.get("owner-login:client-2")?.attemptCount).toBe(1);
+  });
+
+  it("fails closed when durable throttle storage is unavailable", async () => {
+    const throttleStore = createMemoryThrottleStore();
+    throttleStore.reserveAttempt = async () => {
+      throw new Error("database unavailable");
+    };
+    const auth = createAuth(createMemorySessionStore(), 60_000, throttleStore);
+
+    await expect(auth.login("correct-owner-password", "client-1")).rejects.toThrow(
+      "database unavailable",
+    );
+  });
+
+  it("admits at most five concurrent attempts for one durable bucket", async () => {
+    const auth = createAuth(createMemorySessionStore());
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 6 }, () => auth.login("wrong-password", "client-1")),
+    );
+
+    expect(
+      attempts.filter(
+        (attempt) =>
+          attempt.status === "rejected" && attempt.reason instanceof InvalidCredentialsError,
+      ),
+    ).toHaveLength(5);
+    expect(
+      attempts.filter(
+        (attempt) =>
+          attempt.status === "rejected" && attempt.reason instanceof LoginRateLimitedError,
+      ),
+    ).toHaveLength(1);
+  });
 });
 
-function createAuth(store: MemorySessionStore, sessionTtlMs = 60_000) {
-  return new OwnerAuthService(store, {
-    ownerName: "Local Owner",
-    ownerPassword: "correct-owner-password",
-    sessionTtlMs,
-  });
+function createAuth(
+  store: MemorySessionStore,
+  sessionTtlMs = 60_000,
+  throttleStore = createMemoryThrottleStore(),
+) {
+  return new OwnerAuthService(
+    store,
+    {
+      ownerName: "Local Owner",
+      ownerPassword: "correct-owner-password",
+      sessionTtlMs,
+    },
+    new RequestThrottle(throttleStore),
+  );
 }
 
 interface MemorySessionStore extends OwnerSessionStore {
@@ -81,6 +145,45 @@ function createMemorySessionStore(): MemorySessionStore {
     async revokeSession(tokenDigest: string, now: Date) {
       const session = sessions.find((item) => item.tokenDigest === tokenDigest);
       if (session !== undefined) session.revokedAt = now;
+    },
+  };
+}
+
+function createMemoryThrottleStore(): RequestThrottleStore & {
+  buckets: Map<string, { attemptCount: number; windowStartedAt: Date; blockedUntil?: Date }>;
+} {
+  const buckets = new Map<
+    string,
+    { attemptCount: number; windowStartedAt: Date; blockedUntil?: Date }
+  >();
+  return {
+    buckets,
+    async reserveAttempt(input) {
+      const key = `${input.scope}:${input.clientDigest}`;
+      const current = buckets.get(key);
+      if (current?.blockedUntil !== undefined && current.blockedUntil > input.now) {
+        return {
+          allowed: false,
+          retryAfterSeconds: Math.ceil(
+            (current.blockedUntil.getTime() - input.now.getTime()) / 1000,
+          ),
+        };
+      }
+      const windowExpired =
+        current === undefined ||
+        input.now.getTime() - current.windowStartedAt.getTime() >= input.windowMs;
+      const attemptCount = windowExpired ? 1 : current.attemptCount + 1;
+      buckets.set(key, {
+        attemptCount,
+        windowStartedAt: windowExpired ? input.now : current.windowStartedAt,
+        ...(attemptCount >= input.maximumAttempts
+          ? { blockedUntil: new Date(input.now.getTime() + input.blockMs) }
+          : {}),
+      });
+      return { allowed: true };
+    },
+    async clearAttempts(scope, clientDigest) {
+      buckets.delete(`${scope}:${clientDigest}`);
     },
   };
 }

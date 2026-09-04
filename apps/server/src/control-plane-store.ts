@@ -12,12 +12,12 @@ import type {
   CreateEmployeeSkillInput,
   CreateMessageInput,
   DeleteEmployeeMemoryInput,
-  EmployeeProfile,
   EmployeeImportActivationResult,
   EmployeeMemoryDeletionResult,
   EmployeeMemoryMutationResult,
-  EmployeeSkillMutationResult,
+  EmployeeProfile,
   EmployeeProfileDetailsMutationResult,
+  EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
   Run,
@@ -27,7 +27,7 @@ import type {
   UpdateEmployeeProfileDetailsInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
-import type { EmployeeTemplatePackage } from "@openbot/protocol";
+import type { EmployeeTemplatePackage, RunFailureCode } from "@openbot/protocol";
 
 export interface RequestApprovalInput {
   requestId: string;
@@ -54,6 +54,13 @@ export interface PersistedCounts {
   channels: number;
   bots: number;
   activeRuns: number;
+}
+
+export interface DispatchFailureInput {
+  runId: string;
+  nodeId?: string | undefined;
+  phase: string;
+  code: "dispatch_failed";
 }
 
 export interface ActivateEmployeeImportCommand {
@@ -137,8 +144,14 @@ export interface ControlPlaneStore {
     summary: string,
     artifacts: ArtifactRecord[],
   ): Promise<RunCompletion | undefined>;
-  failRun(runId: string, nodeId: string, error: string): Promise<Run | undefined>;
+  failRun(
+    runId: string,
+    nodeId: string,
+    error: string,
+    code?: RunFailureCode,
+  ): Promise<Run | undefined>;
   failRunningRuns(nodeId?: string): Promise<Run[]>;
+  recordDispatchFailure?(input: DispatchFailureInput): Promise<void>;
   requeueAssignedRuns(nodeId?: string): Promise<Run[]>;
   upsertNode(node: ExecutionNode): Promise<void>;
   markNodeOffline(nodeId: string): Promise<void>;

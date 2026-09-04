@@ -9,6 +9,9 @@ Migration `0015_employee_memory_lifecycle.sql` 为员工记忆增加乐观 revis
 审计。删除记忆会移除标题和正文所在记录，审计只保留员工 ID、记忆 ID、动作、revision、变化
 字段、操作者和时间。备份仍包含其他未删除私人记忆，保护等级必须与凭据相同。
 
+Migration `0017_request_throttle_buckets.sql` 增加短时、经摘要化的登录与 Node 登记滥用控制桶。
+它只保存范围、域分隔客户端地址摘要、有界计数和时间，不保存原始 IP、密码、登记令牌或 Node 凭证。
+
 ## Migration 契约
 
 - 不得修改已经应用的 migration；只能新增带序号的 SQL 文件和 journal 条目。

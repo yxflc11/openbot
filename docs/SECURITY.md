@@ -79,10 +79,17 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 
 - PostgreSQL、频道、线程、策略、凭证和审计只存在于 Server 控制域。
 - 默认只经 Tailscale/私网 HTTPS 访问；禁止公开数据库和内部 API。
-- M0 使用单 Owner 本地认证：Owner 密码来自 Server 环境变量，不写入数据库；随机 Session Token 只进入 `HttpOnly`、`SameSite=Strict` Cookie，数据库只保存 SHA-256 摘要。
-- 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录连续失败会在单 Server、浏览器 Origin 桶内临时限速；这不是可信的每 IP/每设备边界，不能代替私网部署。
+- M0 使用单 Owner 本地认证：至少 15 个字符的 Owner 密码来自 Server 环境变量，不写入数据库；随机 Session Token 只进入 `HttpOnly`、`SameSite=Strict` Cookie，数据库只保存 SHA-256 摘要。
+- 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录尝试由 PostgreSQL 原子限速，状态跨进程与重启保留；桶键只保存直接对端 IP 的域分隔 SHA-256 摘要。仅当直接对端等于唯一配置的 `OPENBOT_TRUSTED_PROXY_ADDRESS` 时才接受单跳 `Forwarded`，歧义或缺失会 fail closed。这不是可信的每设备边界，不能代替私网部署。
 - Session 默认 12 小时过期，支持主动撤销。非 loopback Origin 必须使用 HTTPS 并启用 Secure Cookie，否则 Server 启动失败；HTTPS 会话使用 `__Host-` 前缀 Cookie 和 HSTS。审批等高风险操作仍需要后续增加重新验证或设备绑定。
 - 控制面复用 Hono 的维护中安全响应头中间件。每个 SSE 订阅的待发送事件固定为最多 128 项；溢出会终止连接，客户端必须从数据库权威快照恢复，不能静默跳过控制事件。
+- 每个 HTTP 响应带 Server 生成的 `X-Request-Id`。Server 与 Node 使用遵循
+  `OPENBOT_LOG_LEVEL` 的结构化 JSON 日志，只允许有界关联字段；HTTP 日志不含 query，任何日志
+  都不得写入 header、Cookie、正文、凭证、任意异常原文或 stack。未预期的 `500` 只返回稳定的
+  `internal_error`、通用说明与 request id。
+- Node 的 `run.failed` 文本不可信：Server 只接受白名单代码并重新映射通用说明。Run 失败事件
+  不保存 Provider 异常、token 或本地路径。后台调度异常另写有界 `DISPATCH_FAILED` 审计事实；
+  该审计若失败只记一次安全日志，不能递归。
 - Server 签发的 view/control/upload token 都绑定用户、run、node、用途和 TTL。
 - 收到停机信号后，Server 先停止新调度并排空已接受的 Node 消息和 HTTP 请求，再关闭 PostgreSQL；
   空闲 HTTP 连接立即关闭，其余连接最多等待 10 秒。WebSocket 等升级连接由各自 registry 显式关闭。
@@ -95,14 +102,17 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 - 每个 Node 通过短时、单次 enrollment token 换取独立可吊销凭证；Server 只保存令牌和凭证的
   域分隔 SHA-256 摘要。Owner 吊销后会断开对应在线 Node。
 - `run.accept` 只表示能力与容量校验通过，不授予执行权；只有 Server 持久化条件认领并返回 `run.assigned` 后才能占用任务槽位。
-- 当前 Node credential 仍是 bearer secret，默认保存在专用账户可读的本地文件。它能区分和吊销
-  Node，但不能证明不可导出私钥的持有，也不能阻止凭证被复制后重放。完成系统密钥库、持有证明、
-  轮换、mTLS 和消息序号前，只允许通过 WSS 与可信私网使用。
+- 当前 Node credential 仍是 bearer secret，默认保存在专用账户可读的本地文件；Linux 专用登录
+  用户也可以明确选择 Secret Service，且后端失败不会退回文件。它能区分和吊销 Node，但不能
+  证明不可导出私钥的持有，也不能阻止凭证被复制后重放。Linux 真实密钥库证据、其余平台密钥库、
+  持有证明、轮换、mTLS 和消息序号完成前，只允许通过 WSS 与可信私网使用。
 - POSIX 文件适配器使用 `0600` 原子写入，并在同一个已打开句柄上检查普通文件、大小和权限后才
-  读取；一旦出现 group/other 权限位就拒绝认证。Windows ACL 与系统密钥库仍未实现，不能由这条
-  POSIX 保证外推。
+  读取；一旦出现 group/other 权限位就拒绝认证。Windows ACL、Windows Credential Manager 与
+  macOS Keychain 仍未实现，不能由这条 POSIX 保证或 Linux Secret Service 契约外推。
 - enrollment token 默认十分钟过期、只能兑换一次、只在创建时返回；Node credential 也只在兑换
   时返回。任何一种明文都不能进入日志、Git、员工包或频道消息。
+- 公开兑换接口按相同经摘要化的客户端网络身份限速；成功兑换会清除桶。`enrolled` 审计事件只保存
+  客户端摘要与 `direct`/`forwarded` 来源，不保存原始地址、token 或 credential。
 - 当前 Node 消息体限制为 32 MiB、未登记 socket 最多保留 10 秒，且每条连接只能登记一次。Server
   每 30 秒发送 ping；未回应的连接会被清退并进入断线恢复。Node 心跳只报告存活，不能增加、释放或
   结算 Server 权威任务槽位。协议 `0.9.0` 会拒绝未知消息字段、无效或超长 Node 身份信息、重复
@@ -191,6 +201,9 @@ Node 上报的临时画面必须绑定已在该连接上运行的 Run，协议�
 
 - `SECURITY.md` 提供私密漏洞报告渠道后再公开真实账号支持。
 - 发布前生成 SBOM、依赖许可证报告和二进制校验和。
+- Linux Worker 发布候选必须来自干净源码提交，使用固定 ncc/npm 和哈希校验的官方 Node 运行时；
+  本地候选明确标为未签名。只有授权 tag workflow 完成来源证明后才能成为发布资产，校验和与 SBOM
+  本身不代表安全或平台支持。
 - 示例配置永远使用占位符；CI 扫描 secret。
 - threat model、默认策略和已知限制随版本发布。
 - 不把 Tailscale、Docker socket、Cua daemon 或数据库端口暴露到公网。

@@ -57,8 +57,10 @@ Server 能在某个系统上运行，不等于 OpenBot 已经能控制该系统�
 
 当前通道已经限制登记时间和消息体、用 ping/pong 判断存活，并由 Server 独占 Run 分配权。短时、
 单次令牌会换取一台 Node 独有且可单独吊销的凭证，Server 只保存摘要。当前凭证仍是可复制的
-bearer 值；持有证明、系统密钥库、mTLS、轮换和防重放仍待完成，详见
-[ADR-0023](decisions/0023-one-time-node-enrollment.md)。
+bearer 值；持有证明、mTLS、轮换和防重放仍待完成。面向 Linux 登录会话、经过契约测试的
+Secret Service 适配器已经存在，但真实密钥库/systemd 设备证据以及 Windows/macOS 密钥库存储
+仍待完成，详见 [ADR-0023](decisions/0023-one-time-node-enrollment.md)和
+[ADR-0032](decisions/0032-linux-worker-host-service-profiles.md)。
 
 Bot 配置应选择能力策略，而不是操作系统枚举。用户可以将员工固定到某台工作主机，但模型不能
 自行解除绑定或换机。
@@ -116,11 +118,17 @@ providers/
 | Server | 多架构 OCI 镜像与 Docker Compose |
 | Linux Node | 签名压缩包、systemd，随后提供 deb/rpm |
 | Windows Node | 签名安装器与 Windows Service |
-| macOS Node | 签名、公证安装包与 launchd |
+| macOS Node | 目标：签名、公证安装包与 launchd；当前：arm64 未签名候选源码已完成，等待分发与真实设备证据 |
 | Android bridge | 面向受管理设备的签名伴侣/桥接包 |
 
 所有发布必须附带校验和、第三方声明、SBOM、协议兼容性和明确支持等级。生产环境只使用固定版本，
 不直接拉取 `main`。
+
+macOS 候选现已包含原生双模式控制器/Host、固定应用内 LaunchAgent、官方固定 Node 运行时、
+绑定 Server 的数据保护 Keychain 事务、严格运行时清单，以及失败关闭的签名、公证和打包门槛。
+本机编译、Swift 测试、候选 staging、架构检查与 ad hoc 签名机制均已通过。这仍不代表 macOS
+支持：Developer ID profile、公证、安装/升级/回滚/卸载、Keychain 锁定、后台项批准、重启与
+Intel 仍需受控真实设备证据。
 
 ## 最终验收
 

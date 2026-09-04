@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import { join } from "node:path";
 import type { NodeEnv } from "@openbot/config";
+import { createLogger, diagnosticFields, type OpenBotLogger } from "@openbot/logging";
 import {
   approvalRequestSchema,
   firstCapabilityRequirementMismatch,
@@ -10,7 +10,9 @@ import {
   type NodeMessage,
   nodeEnrollmentResultSchema,
   protocolVersion,
+  type RunFailureCode,
   type RunOffer,
+  runFailureMessages,
   runFrameSchema,
   serverMessageSchema,
 } from "@openbot/protocol";
@@ -21,7 +23,7 @@ import {
   type PreparedAction,
 } from "@openbot/provider-sdk";
 import WebSocket from "ws";
-import { FileNodeCredentialStore, type NodeCredentialStore } from "./credential-store.js";
+import { createNodeCredentialStore, type NodeCredentialStore } from "./credential-store.js";
 import { detectWorkerHost } from "./host.js";
 import {
   availableCapabilities,
@@ -38,6 +40,7 @@ export class OpenBotNodeClient {
   readonly #env: NodeEnv;
   readonly #providers: ComputerProvider[];
   readonly #credentialStore: NodeCredentialStore;
+  readonly #logger: OpenBotLogger;
   #credential?: string;
   #socket?: WebSocket;
   #heartbeat?: NodeJS.Timeout;
@@ -45,6 +48,7 @@ export class OpenBotNodeClient {
   readonly #assignedRunIds = new Set<string>();
   readonly #acceptedOffers = new Map<string, RunOffer>();
   readonly #executions = new Map<string, AbortController>();
+  readonly #executionTasks = new Map<string, Promise<void>>();
   readonly #approvalWaiters = new Map<
     string,
     {
@@ -55,41 +59,62 @@ export class OpenBotNodeClient {
     }
   >();
   #stopped = false;
+  #identityController?: AbortController;
+  #startPromise?: Promise<void>;
+  #stopPromise?: Promise<void>;
 
   constructor(
     env: NodeEnv,
     providers = configuredProviders(env),
-    credentialStore: NodeCredentialStore = new FileNodeCredentialStore(
-      env.OPENBOT_NODE_CREDENTIAL_PATH ?? join(env.OPENBOT_NODE_WORK_DIRECTORY, "identity.json"),
-    ),
+    credentialStore: NodeCredentialStore = createNodeCredentialStore(env),
+    logger: OpenBotLogger = createLogger({ level: env.OPENBOT_LOG_LEVEL }),
   ) {
     this.#env = env;
     assertProviderDeclarations(providers);
     this.#providers = providers;
     this.#credentialStore = credentialStore;
+    this.#logger = logger;
   }
 
-  start(): void {
+  start(): Promise<void> {
+    if (this.#startPromise !== undefined) return this.#startPromise;
     this.#stopped = false;
-    void this.#prepareIdentity()
+    this.#identityController = new AbortController();
+    this.#startPromise = this.#prepareIdentity(this.#identityController.signal)
       .then((credential) => {
         if (this.#stopped) return;
         this.#credential = credential;
         this.#connect();
       })
       .catch((error: unknown) => {
-        console.error(error instanceof Error ? error.message : "Node identity setup failed.");
+        if (this.#stopped) return;
+        this.#logger.error("node.identity_setup_failed", "Node identity setup failed.", {
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          phase: "identity",
+          ...diagnosticFields(error),
+        });
+        throw new Error("Node identity setup failed.", { cause: error });
       });
+    return this.#startPromise;
   }
 
-  stop(): void {
+  stop(): Promise<void> {
+    if (this.#stopPromise !== undefined) return this.#stopPromise;
+    this.#stopPromise = this.#stopOnce();
+    return this.#stopPromise;
+  }
+
+  async #stopOnce(): Promise<void> {
     this.#stopped = true;
+    this.#identityController?.abort();
     clearInterval(this.#heartbeat);
     clearTimeout(this.#reconnect);
     this.#abortExecutions();
     this.#assignedRunIds.clear();
     this.#acceptedOffers.clear();
-    this.#socket?.close(1000, "node-shutdown");
+    const executions = Array.from(this.#executionTasks.values());
+    const startup = this.#startPromise?.catch(() => undefined) ?? Promise.resolve();
+    await Promise.all([startup, this.#closeSocket(), ...executions]);
   }
 
   #connect(): void {
@@ -125,7 +150,10 @@ export class OpenBotNodeClient {
     socket.on("message", (raw) => {
       const parsed = serverMessageSchema.safeParse(parseJson(raw.toString()));
       if (!parsed.success) {
-        console.error("Invalid server protocol message.");
+        this.#logger.error("node.protocol_invalid", "Invalid Server protocol message.", {
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          phase: "receive",
+        });
         return;
       }
 
@@ -133,7 +161,10 @@ export class OpenBotNodeClient {
       if (message.type === "server.ack") {
         if (!message.accepted) {
           if (!authenticated) authenticationRejected = true;
-          console.error(message.reason ?? "Server rejected the node message.");
+          this.#logger.error("node.message_rejected", "Server rejected the Node message.", {
+            nodeId: this.#env.OPENBOT_NODE_ID,
+            phase: authenticated ? "protocol" : "authentication",
+          });
           return;
         }
         if (!authenticated) {
@@ -204,7 +235,7 @@ export class OpenBotNodeClient {
       }
 
       if (message.type === "run.start") {
-        if (message.nodeId === this.#env.OPENBOT_NODE_ID) void this.#executeRun(message.runId);
+        if (message.nodeId === this.#env.OPENBOT_NODE_ID) this.#startExecution(message.runId);
         return;
       }
 
@@ -232,11 +263,15 @@ export class OpenBotNodeClient {
     });
 
     socket.on("error", (error) => {
-      console.warn(`Node connection failed: ${error.message || error.name || "connection error"}`);
+      this.#logger.warn("node.connection_failed", "Node connection failed.", {
+        nodeId: this.#env.OPENBOT_NODE_ID,
+        phase: "connect",
+        ...diagnosticFields(error),
+      });
     });
   }
 
-  async #prepareIdentity(): Promise<string> {
+  async #prepareIdentity(signal: AbortSignal): Promise<string> {
     if (this.#env.OPENBOT_NODE_CREDENTIAL !== undefined) {
       return this.#env.OPENBOT_NODE_CREDENTIAL;
     }
@@ -253,7 +288,7 @@ export class OpenBotNodeClient {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ nodeId: this.#env.OPENBOT_NODE_ID, token }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
     });
     const body = await readBoundedResponse(response, 8 * 1024);
     if (!response.ok) throw new Error("Server rejected the one-time Node enrollment token.");
@@ -271,10 +306,7 @@ export class OpenBotNodeClient {
     if (offer === undefined) return;
     const provider = providerForProfile(this.#providers, offer.executionProfile);
     if (provider?.execute === undefined) {
-      this.#sendFailure(
-        runId,
-        `No executable provider is configured for ${offer.executionProfile}.`,
-      );
+      this.#sendFailure(runId, "provider_unavailable");
       return;
     }
 
@@ -321,14 +353,23 @@ export class OpenBotNodeClient {
           if (message.success) {
             this.#send(message.data);
           } else {
-            console.warn("Provider emitted an invalid or oversized live frame; frame skipped.");
+            this.#logger.warn(
+              "provider.frame_rejected",
+              "Provider emitted an invalid or oversized live frame; frame skipped.",
+              { runId, nodeId: this.#env.OPENBOT_NODE_ID, providerId: provider.id },
+            );
           }
         },
         (action) => this.#requestApproval(runId, action, controller.signal),
       );
       if (controller.signal.aborted) return;
       if (!result.ok) {
-        this.#sendFailure(runId, result.summary);
+        this.#logger.warn("provider.reported_failure", "Provider reported a failed result.", {
+          runId,
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          providerId: provider.id,
+        });
+        this.#sendFailure(runId, "provider_execution_failed");
         return;
       }
       this.#send({
@@ -342,23 +383,38 @@ export class OpenBotNodeClient {
       });
     } catch (error) {
       if (!controller.signal.aborted) {
-        this.#sendFailure(
+        this.#logger.error("provider.execution_failed", "Provider execution failed.", {
           runId,
-          error instanceof Error ? error.message : "Provider execution failed.",
-        );
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          providerId: provider.id,
+          phase: "execute",
+          ...diagnosticFields(error),
+        });
+        this.#sendFailure(runId, "provider_execution_failed");
       }
     } finally {
       this.#executions.delete(runId);
     }
   }
 
-  #sendFailure(runId: string, error: string): void {
+  #startExecution(runId: string): void {
+    if (this.#executionTasks.has(runId)) return;
+    const task = this.#executeRun(runId);
+    this.#executionTasks.set(runId, task);
+    const remove = () => {
+      if (this.#executionTasks.get(runId) === task) this.#executionTasks.delete(runId);
+    };
+    void task.then(remove, remove);
+  }
+
+  #sendFailure(runId: string, code: RunFailureCode): void {
     this.#send({
       type: "run.failed",
       protocolVersion,
       nodeId: this.#env.OPENBOT_NODE_ID,
       runId,
-      error: error.slice(0, 2000) || "Provider execution failed.",
+      code,
+      error: runFailureMessages[code],
       failedAt: new Date().toISOString(),
     });
   }
@@ -436,6 +492,20 @@ export class OpenBotNodeClient {
       waiter.reject(new Error("Node connection closed while approval was pending."));
       this.#approvalWaiters.delete(requestId);
     }
+  }
+
+  #closeSocket(): Promise<void> {
+    const socket = this.#socket;
+    if (socket === undefined || socket.readyState === WebSocket.CLOSED) return Promise.resolve();
+    return new Promise((resolve) => {
+      socket.once("close", resolve);
+      try {
+        if (socket.readyState === WebSocket.OPEN) socket.close(1000, "node-shutdown");
+        else if (socket.readyState === WebSocket.CONNECTING) socket.close();
+      } catch {
+        socket.terminate();
+      }
+    });
   }
 }
 

@@ -9,6 +9,46 @@ permissions:
   contents: read
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - name: Select the reviewed npm CLI
+        run: |
+          npm install --global npm@10.9.9 --ignore-scripts --no-audit --no-fund
+          test "$(npm --version)" = "10.9.9"
+      - name: Validate the dependency tree from the lockfile
+        run: npm ci --ignore-scripts --audit=false
+      - name: Audit production dependency advisories
+        run: npm audit --omit=dev --audit-level=high
+      - name: Scan Git history for credential patterns without verification or uploads
+        shell: bash
+        run: |
+          set +e
+          docker run --rm --volume "${{ github.workspace }}:/repo:ro" \
+            ghcr.io/trufflesecurity/trufflehog@sha256:deb2af10659a488a14d262a323addcde099d99827a1cf1dc4e93c17915c39f08 \
+            --no-verification --results=unverified --filter-unverified --no-update \
+            --fail --fail-on-scan-errors git file:///repo \
+            >"${RUNNER_TEMP}/trufflehog-results.jsonl" 2>&1
+          status=$?
+          set -e
+          if [ "$status" -eq 183 ]; then
+            echo "::error::Credential-like content was detected. Inspect it locally; raw candidates are suppressed from CI logs."
+            exit 1
+          fi
+          if [ "$status" -ne 0 ]; then
+            echo "::error::The credential scanner failed closed with exit status $status."
+            exit "$status"
+          fi
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -22,6 +62,73 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+
+  portable:
+    name: Portable (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-24.04
+          - name: Windows x64
+            runner: windows-2025
+          - name: macOS arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.2
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+      - name: Validate macOS LaunchAgent contract with native plist parser
+        if: runner.os == 'macOS'
+        run: |
+          npm run worker-host:macos:check
+          npm run worker-host:macos:native-check
+          /usr/bin/plutil -lint apps/worker-host-macos/Resources/com.openbot.worker-host.node.plist
+          /usr/bin/plutil -lint apps/worker-host-macos/Resources/Info.plist.template
+          /usr/bin/plutil -lint apps/worker-host-macos/Resources/OpenBotWorkerHost.entitlements.template.plist
+
+  windows-worker-host:
+    name: Windows Worker Host (build only)
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/worker-host-windows
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: true
+      NUGET_XMLDOC_MODE: skip
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5.3.0
+        with:
+          global-json-file: apps/worker-host-windows/global.json
+      - name: Record selected .NET SDK and runner information
+        run: dotnet --info
+      - name: Restore the reviewed package graph
+        run: dotnet restore OpenBot.WorkerHost.Windows.ContractTests/OpenBot.WorkerHost.Windows.ContractTests.csproj --locked-mode
+      - name: Build with warnings treated as errors
+        run: dotnet build OpenBot.WorkerHost.Windows.ContractTests/OpenBot.WorkerHost.Windows.ContractTests.csproj --configuration Release --no-restore
+      - name: Run host contract tests
+        run: dotnet run --project OpenBot.WorkerHost.Windows.ContractTests/OpenBot.WorkerHost.Windows.ContractTests.csproj --configuration Release --no-build --no-restore
+      - name: Publish the self-contained Windows x64 host
+        run: dotnet publish OpenBot.WorkerHost.Windows/OpenBot.WorkerHost.Windows.csproj --configuration Release --runtime win-x64 --self-contained true --no-restore --output "$env:RUNNER_TEMP\openbot-windows-host"
+      - name: Inspect bounded publish inventory
+        shell: pwsh
+        run: ../../scripts/check-windows-worker-host-artifact.ps1 -PublishDirectory "$env:RUNNER_TEMP\openbot-windows-host"
 
   database:
     runs-on: ubuntu-latest
