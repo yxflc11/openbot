@@ -23,7 +23,7 @@ export function validateWindowsWorkerHostBuildLane({
     "timeout-minutes: 20",
     "defaults:\n      run:\n        working-directory: apps/worker-host-windows",
     "DOTNET_CLI_TELEMETRY_OPTOUT: 1",
-    "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+    "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
     "persist-credentials: false",
     SETUP_DOTNET_PIN,
     "global-json-file: apps/worker-host-windows/global.json",

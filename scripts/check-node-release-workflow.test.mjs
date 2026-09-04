@@ -46,6 +46,16 @@ test("rejects moving action references and omitted attestations", () => {
     () =>
       validateNodeReleaseWorkflow(
         workflow.replace(
+          "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+          "actions/checkout@v7",
+        ),
+      ),
+    /missing required fragment|broadens/,
+  );
+  assert.throws(
+    () =>
+      validateNodeReleaseWorkflow(
+        workflow.replace(
           "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
           "actions/attest@v4",
         ),
