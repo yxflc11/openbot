@@ -49,3 +49,6 @@ SHA-256 元数据，使被替换的截图字节在返回前失败。
 作为引入 Windows/macOS/Linux 测试矩阵前的依据。
 已接受的 [Provider 一致性场景 runner](provider-conformance-runner.md)随后比较 MCP、OCI、
 Sonobuoy 与现有 Vitest/Provider SDK 边界，确认只在权威 Server 进程之外补充有界编排。
+已接受的 [Linux Worker Host 服务与 Secret Service](linux-worker-host-service-and-secret-service.md)
+审查把无人值守系统服务凭证与登录会话 Secret Service 分开，并选择不会静默切换后端的有界
+`secret-tool` 适配器。

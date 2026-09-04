@@ -64,3 +64,6 @@ runner families and the evidence boundary before a Windows/macOS/Linux matrix is
 The accepted [Provider conformance scenario runner](provider-conformance-runner.md) then compares
 MCP, OCI, Sonobuoy, and the existing Vitest/Provider SDK boundary before adding bounded orchestration
 outside the authoritative Server process.
+The accepted [Linux Worker Host service and Secret Service](linux-worker-host-service-and-secret-service.md)
+review separates headless system service credentials from login-session Secret Service, selecting
+a bounded `secret-tool` adapter without a silent backend fallback.
