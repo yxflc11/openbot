@@ -136,9 +136,10 @@
 - Desktop and shared Web suites pass with 120 and 54 tests, including authentication, preflight,
   private token delivery, fixed path/argv/environment, concurrency, output bounds, restart state,
   and the approval journey.
-- The unsigned macOS arm64 Desktop package completes its fuse and inventory gates without a
-  companion and launches successfully after the browser V8-snapshot fuse regression fix. This is
-  launch evidence only, not distribution evidence.
+- The unsigned macOS arm64 Desktop package completes its fuse and inventory gates both without a
+  companion and with the fixed locally built companion nested under `Contents/Resources`. The
+  integrated package launches successfully after the browser V8-snapshot fuse regression fix.
+  This is local layout and launch evidence only, not distribution evidence.
 - The extended Swift product compiles and links against the compatible macOS SDK available on this
   development machine. The installed beta Command Line Tools cannot load a matching
   `TestingMacros` plugin for the native tests, so hosted native test execution remains required.

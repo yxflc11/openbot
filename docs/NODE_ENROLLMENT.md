@@ -152,7 +152,8 @@ until `SMAppService` itself reports enabled. Restarting Desktop rereads native s
 saved success flag. The standalone app remains the advanced self-hosting and recovery path.
 
 This path is source-complete locally and the macOS CI definition now requires the fixed companion
-candidate before packaging Desktop. It is not yet a supported installation: the hosted nested
+candidate before packaging Desktop. A local unsigned Desktop package has passed the nested
+companion inventory gate and launched. It is not yet a supported installation: the hosted nested
 package has not been observed, and an unsigned build cannot prove the Keychain access group,
 registration, login/reboot behavior, replacement, rollback, or uninstall. Those claims require the
 signed/notarized controlled-device gates below.

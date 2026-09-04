@@ -129,9 +129,10 @@ Every non-trivial slice follows the same sequence:
   slice now adds Desktop-guided macOS Worker setup: only the authenticated main process can issue a
   short-lived enrollment token, the renderer sends only a bounded Node id, and the fixed Swift
   companion reports actual Keychain and `SMAppService` state. Local Desktop and Web suites pass
-  with 120 and 54 tests. The unsigned Desktop package launches after the V8-snapshot regression
-  fix, but hosted nested packaging, signed distribution, and controlled-device service evidence
-  remain pending; no macOS support claim is permitted yet.
+  with 120 and 54 tests. The unsigned Desktop package, including a locally built fixed companion,
+  passes its nested inventory gate and launches after the V8-snapshot regression fix. Hosted nested
+  packaging, signed distribution, and controlled-device service evidence remain pending; no macOS
+  support claim is permitted yet.
 - G1's explicit Linux x64, Windows x64, and macOS arm64 jobs have all been observed successfully,
   including the unsigned Desktop development-package matrix. This proves only compatibility with
   those hosted runner images, not installation or operation on user devices.

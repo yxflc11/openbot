@@ -117,9 +117,9 @@ Server 始终是员工身份、授权、路由、审批和审计的唯一权威�
 - 当前 Desktop 引导工作已实现四种既定组合、有界的 Worker 电脑清单、严格公开意图存储和重启
   恢复。下一段本地切片又加入 Desktop 引导的 macOS Worker 配置：只有已鉴权 main process 可以
   签发短期登记 token，renderer 只发送有界 Node id，固定 Swift companion 返回真实 Keychain 与
-  `SMAppService` 状态。本地 Desktop 与 Web 套件分别以 120 项和 54 项测试通过。未签名 Desktop
-  包在 V8 snapshot 回归修复后可以启动，但托管内嵌打包、签名分发和受控真实设备服务证据仍待完成；
-  当前不能声明 macOS 支持。
+  `SMAppService` 状态。本地 Desktop 与 Web 套件分别以 120 项和 54 项测试通过。包含本机所构建固定
+  companion 的未签名 Desktop 包已通过内嵌清单门槛，并在 V8 snapshot 回归修复后成功启动；但托管
+  内嵌打包、签名分发和受控真实设备服务证据仍待完成，当前不能声明 macOS 支持。
 - G1 的 Linux x64、Windows x64 与 macOS arm64 任务均已成功观察，包括未签名 Desktop 开发包
   矩阵。这只证明与这些托管 runner 镜像兼容，不证明在用户真实设备上可安装或运行。
 - G2 的严格场景 runner 和真实设备报告契约已经在本地实现。测试覆盖确定性生命周期顺序、取消
