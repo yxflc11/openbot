@@ -39,7 +39,7 @@ Desktop 首次引导提供同一产品的四种组合：
 | 共享领域、协议、Server、Worker、适配器和工具 | TypeScript `7.0.2` | 一个有类型的语言已经覆盖仓库主体，也是后来者最容易参与的路径。 |
 | 独立开发运行时 | Node.js `24.20.0` LTS | 这是 2026-09-04 审查时的当前 LTS；Current 版本不作为生产默认值。 |
 | Desktop 外壳 | Electron `44.2.0` | 可以复用现有 Web 技术栈，并在不同桌面系统上交付同一套经过测试的 Chromium/Node 基线。 |
-| Desktop 打包 | Electron Forge `7.11.2` | 这是本次审查时 Electron 官方工具链的当前稳定版本，可处理签名和发布。 |
+| Desktop 打包与加固 | `@electron/packager` `20.3.0` 与 `@electron/fuses` `2.1.3` | 这两个当前稳定 Electron 软件包提供 OpenBot 所需的窄打包/ASAR 和严格 fuse API，同时避开 Forge 7 不兼容且含已知漏洞的开发依赖图。安装器、签名和发布仍使用后续单独审查的发布适配器。 |
 | 共享 UI | React `19.2.8` 与 Vite `8.2.2` | 这些精确版本已经在当前仓库中锁定、构建并通过测试。 |
 | Server HTTP 运行时 | Node.js 上的 Hono | 当前 Server、安全中间件、SSE 和停机流程已经使用并测试这个边界。 |
 | 权威数据 | PostgreSQL 17 | 已有 migration、条件状态变更、调度、审批和审计需要唯一事务真相源。 |

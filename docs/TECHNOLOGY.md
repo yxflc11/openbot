@@ -41,7 +41,7 @@ still be used as a normal OpenBot Client.
 | Shared domain, protocol, Server, Worker, adapters, and tooling | TypeScript `7.0.2` | One typed language already covers the repository and is the lowest-friction contribution path. |
 | Standalone development runtime | Node.js `24.20.0` LTS | It is the current LTS reviewed on 2026-09-04; Current releases are not the production default. |
 | Desktop shell | Electron `44.2.0` | It reuses the existing web stack and ships one tested Chromium/Node baseline across desktop systems. |
-| Desktop packaging | Electron Forge `7.11.2` | It is the current stable official Electron packaging toolkit reviewed for signing and publishing. |
+| Desktop packaging and hardening | `@electron/packager` `20.3.0` and `@electron/fuses` `2.1.3` | Current stable Electron packages provide the narrow package/ASAR and strict fuse APIs OpenBot needs without Forge 7's incompatible and vulnerable development graph. Installers, signing, and publishing remain separately reviewed release adapters. |
 | Shared UI | React `19.2.8` and Vite `8.2.2` | These exact versions are already locked, built, and tested in this repository. |
 | Server HTTP runtime | Hono on Node.js | The current Server, security middleware, SSE, and shutdown behavior already use and test this boundary. |
 | Authoritative persistence | PostgreSQL 17 | Existing migrations, conditional transitions, scheduling, approvals, and audit require one transactional source of truth. |

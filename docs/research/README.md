@@ -100,6 +100,8 @@ app-only Apple package with fail-closed Developer ID and notarization gates. TCC
 evidence remain separate gates.
 
 The accepted [Desktop application foundation](desktop-application-foundation.md) review selects
-Electron and stable Electron Forge for one installable TypeScript/React/Vite Client, retains Web as
-a full Client, keeps Server as the only authority, and limits Swift and C# to narrow platform
-adapters. Dependency incorporation, signing, updates, and real-device support remain later gates.
+Electron with direct stable Packager/Fuses adapters for one installable TypeScript/React/Vite
+Client, retains Web as a full Client, keeps Server as the only authority, and limits Swift and C#
+to narrow platform adapters. Stable Forge 7 is rejected after implementation validation exposed its
+Fuses incompatibility and unresolved development advisories; signing, updates, and real-device
+support remain later gates.

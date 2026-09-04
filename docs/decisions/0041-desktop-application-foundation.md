@@ -21,10 +21,11 @@ Full evidence is recorded in the
 
 ## Upstream review
 
-Electron `44.2.0` (MIT), Electron Forge `7.11.2` (MIT), Tauri `2.11.5` (Apache-2.0/MIT), Wails
-`2.14.0` (MIT), Node.js `24.20.0` LTS, Playwright `1.62.1`, the existing browser-only PWA, and
-separate native UIs were reviewed. Their exact releases, maintenance, tests, issues, platform
-requirements, security behavior, and licenses are in the research record.
+Electron `44.2.0` (MIT), `@electron/packager` `20.3.0` (BSD-2-Clause), `@electron/fuses` `2.1.3`
+(MIT), rejected Electron Forge `7.11.2` (MIT), Tauri `2.11.5` (Apache-2.0/MIT), Wails `2.14.0`
+(MIT), Node.js `24.20.0` LTS, Playwright `1.62.1`, the existing browser-only PWA, and separate
+native UIs were reviewed. Their exact releases, maintenance, tests, issues, platform requirements,
+security behavior, and licenses are in the research record.
 
 Electron is maintained on an eight-week major cadence and supports only the latest three stable
 majors. Its official security guidance requires current releases, isolated and sandboxed renderers,
@@ -34,20 +35,24 @@ optional hardening.
 
 ## Reuse decision
 
-Use the released Electron runtime and official Forge packaging tools behind a narrow local adapter.
-No open standard provides a desktop shell. Tauri and Wails are viable released alternatives, but
-both introduce a new core language and different OS WebViews. Separate native UIs duplicate the
-product surface. Electron is therefore the first viable option for the current TypeScript/React/Vite
-system.
+Use the released Electron runtime, Electron Packager, and Electron Fuses behind a narrow local
+adapter. No open standard provides a desktop shell. Forge 7.11.2 is not viable with Electron 44:
+its fuse plugin requires the older Fuses 1.x API, which cannot name every Electron 44 fuse, while
+its resolved development graph has unresolved high and critical advisories. Forge 8 contains the
+upstream compatibility work but remains a prerelease. Tauri and Wails are viable released
+alternatives, but both introduce a new core language and different OS WebViews. Separate native UIs
+duplicate the product surface. Direct Packager/Fuses is therefore the first stable viable option
+for the current TypeScript/React/Vite system.
 
 OpenBot adds only its missing typed bridge, role-aware onboarding, service control, Server
 connection, and security/release gates. It does not fork Electron or build another shell.
 
 ## Source incorporation
 
-No Electron, Forge, Tauri, Wails, or Playwright source, tests, templates, or configuration are copied
-or substantially adapted in this decision. Published dependencies will be incorporated only in the
-implementation pull request, with exact lockfile entries and required notices.
+No Electron, Packager, Fuses, Forge, Tauri, Wails, or Playwright source, tests, templates, or
+configuration are copied or substantially adapted in this decision. Published dependencies will be
+incorporated only in the implementation pull request, with exact lockfile entries and required
+notices.
 
 ## Verification plan
 
@@ -61,8 +66,9 @@ from Declared or Integrated to Supported.
 ## Decision
 
 - Add one `apps/desktop` Electron application written in TypeScript.
-- Pin Electron `44.2.0` and stable Electron Forge `7.11.2` when implementation begins; prerelease
-  Forge 8 is not allowed in a release path.
+- Pin Electron `44.2.0`, `@electron/packager` `20.3.0`, and `@electron/fuses` `2.1.3` when
+  implementation begins. Do not add Forge 7.11.2 or substitute prerelease Forge 8 in the release
+  path.
 - Use the existing React/Vite interface as packaged local renderer content. Web and Desktop share
   product components and Server APIs but remain independently deployable Clients.
 - Desktop is always a Client. Guided setup may additionally install or configure Server and Worker
