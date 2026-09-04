@@ -178,11 +178,12 @@ Every non-trivial slice follows the same sequence:
   self-contained x64 host and rejects WinSW plus `node-windows` at the privileged boundary. The
   first prototype must run as LocalService, launch only a fixed verified release, drain then bound
   the child process tree, and fail closed on identity, ACL, release, or credential uncertainty.
-  Redirected child standard input is now the exact bounded graceful-stop channel, and a pinned
-  maintained Job Object package supplies forced process-tree containment. The portable Node half is
-  implemented: four parser tests cover exact, malformed, oversized, and EOF input, while two client
-  lifecycle tests prove that repeated stop waits for Provider cleanup and identity loading. The
-  Node/config suites pass with 30/10 tests plus typecheck and lint. The current macOS host still
+  Redirected child standard input is the exact bounded lifecycle channel, and a pinned maintained
+  Job Object package supplies forced process-tree containment. Implementation review found that
+  post-start Job assignment otherwise leaves a scheduling window, so `stdio-v2` must keep the Node
+  inert until the service assigns it and sends `START`, then accept only `SHUTDOWN`. The existing v1
+  tests prove the shutdown parser and two client lifecycle tests prove that repeated stop waits for
+  Provider cleanup and identity loading; v2 replacement tests are next. The current macOS host still
   lacks a Windows/.NET toolchain, so no Windows service build, native lifecycle evidence, or support
   claim exists.
 - G4 build-lane research now pins `actions/setup-dotnet` `v5.3.0` by full commit, .NET SDK

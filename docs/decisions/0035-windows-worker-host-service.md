@@ -28,14 +28,21 @@ evidence gates are recorded in the
   generated service configuration unconditionally.
 - Direct Win32 service callbacks remain a fallback only. They would make OpenBot own more SCM
   interop, timeout, and error behavior than the released first-party adapter.
-- Redirected standard input is the selected private graceful-stop channel. It is an inherited
-  parent-child pipe with no named endpoint, network listener, credential, or general command API;
-  Windows process signals are rejected because Node documents them as abrupt termination.
+- Redirected standard input is the selected private lifecycle channel. It is an inherited
+  parent-child pipe with no named endpoint, network listener, credential, or general command API.
+  An ordered startup frame prevents the trusted Node entry point from constructing or starting its
+  client until Job assignment succeeds; the later frame requests graceful stop. Windows process
+  signals are rejected because Node documents them as abrupt termination.
 - `Meziantou.Framework.Win32.Jobs` `4.0.0` at
   `111934ad792cefd946e99bfd1bba71c39e45f163` is the selected process-tree adapter. Its released
   `net10.0` package has no runtime package dependencies and has Windows tests for assignment,
   termination, and kill-on-close. A local P/Invoke copy and .NET `Process.Kill(true)` are rejected;
   Microsoft documents that the latter's completion does not prove descendant exit.
+- Starting with .NET `Process.Start()` and assigning the returned process leaves a scheduling window
+  before Job membership. Native `CREATE_SUSPENDED` and `PROC_THREAD_ATTRIBUTE_JOB_LIST` can remove
+  that window, but require OpenBot to own the complete Win32 process-creation, environment, inherited
+  handle, memory, resume, and cleanup boundary. The first prototype instead keeps the verified Node
+  entry point inert on its inherited pipe, assigns the process, and only then sends `START`.
 - Microsoft defines LocalService as a minimal local identity with anonymous network credentials.
   A virtual service account provides a service SID but reaches networks as the machine account, so
   it remains part of the later native credential-store comparison.
@@ -78,14 +85,18 @@ notices, and SBOM entries are checked in with the implementation.
 3. The host may launch only the packaged OpenBot Node at a fixed path derived from the verified
    active release. It accepts no operator-supplied executable, shell, working directory, environment
    map, or passthrough arguments.
-4. In Windows service mode, the child reserves inherited standard input for lifecycle control. SCM
-   Stop writes exactly `OPENBOT_NODE_CONTROL/1 SHUTDOWN\n`; the Node accepts at most 64 total bytes,
-   treats malformed input or parent EOF before the command as failure, aborts active Providers,
-   waits for cooperative cleanup, closes its Server channel, and exits zero only after completion.
-   The service applies the outer deadline, so a Provider cannot block SCM indefinitely.
-5. The host assigns the child to one unnamed Windows Job Object with `KillOnJobClose` and no
-   breakaway flags. If graceful stop exceeds the deadline—or the host itself exits—the complete job
-   is terminated. A kill-only wrapper and `Process.Kill(true)` do not satisfy this decision.
+4. In Windows service mode, the child reserves inherited standard input for lifecycle control. The
+   selected `OPENBOT_NODE_SERVICE_CONTROL=stdio-v2` parser accepts exactly
+   `OPENBOT_NODE_CONTROL/2 START\n` and then `OPENBOT_NODE_CONTROL/2 SHUTDOWN\n`, in that order,
+   within 96 total lifetime bytes. Invalid, extra, excessive, repeated, or out-of-order input, and
+   EOF before shutdown, fail closed with a non-zero Node exit.
+5. The host creates one unnamed Windows Job Object with `KillOnJobClose` and no breakaway flags,
+   starts the verified child in its inert gate, assigns it, and only then writes `START`. An
+   assignment or start-write failure terminates the Job. On stop, the later `SHUTDOWN` frame makes
+   the Node abort active Providers, wait for cooperative cleanup, close its Server channel, and exit
+   zero only after completion. The service applies the outer deadline and then terminates the
+   complete Job, so a Provider cannot block SCM indefinitely. A kill-only wrapper and
+   `Process.Kill(true)` do not satisfy this decision.
 6. The service host is not an authority. Enrollment, Node state, capability routing, approvals, and
    audit remain Server-owned. Starting a service cannot enroll a Node or increase its capabilities.
 7. Missing dependencies, unsafe ACLs, an unverifiable release, wrong identity, credential-store
@@ -93,9 +104,9 @@ notices, and SBOM entries are checked in with the implementation.
    credentials, another release, or interactive execution.
 8. Both selected NuGet packages and all shipped dependencies must be pinned, restored
    deterministically, recorded in the SBOM and notices, and scanned before packaging.
-9. This decision authorizes the portable Node-side shutdown parser and cooperative drain first, then
-   hosted Windows service source and build work. It does not authorize an MSI technology, signing
-   identity, release, support claim, or credential-store implementation.
+9. This decision authorizes the portable Node-side ordered startup/shutdown parser and cooperative
+   drain first, then hosted Windows service source and build work. It does not authorize an MSI
+   technology, signing identity, release, support claim, or credential-store implementation.
 
 ## Consequences
 
