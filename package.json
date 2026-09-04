@@ -32,7 +32,7 @@
     "migrations:check": "node --test scripts/check-migrations.test.mjs && node scripts/check-migrations.mjs",
     "node:enrollment-token": "node --env-file-if-exists=.env scripts/issue-node-enrollment.mjs",
     "research:check": "node --test scripts/check-pr-research.test.mjs && node scripts/check-pr-research.mjs",
-    "security:config-check": "node scripts/check-security-workflow.mjs",
+    "security:config-check": "node --test scripts/check-security-workflow.test.mjs && node scripts/check-security-workflow.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },
