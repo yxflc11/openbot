@@ -116,8 +116,9 @@ npm run release:node-linux:archive -- \
 `.build.json` 与 `.SHA256SUMS` 后才能发布。
 
 目录和压缩包伴随元数据都明确标为 `unsigned`。它们不是发布、安装器或 Linux 支持声明，也不能
-代替签名验证。[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md)仍要求仅限 tag 的
-GitHub 来源证明、安装/升级/回滚事务，以及真实 x64/arm64 主机证据。
+代替签名验证。[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md)与
+[ADR-0034](decisions/0034-linux-worker-host-recoverable-install.md)仍要求仅限 tag 的 GitHub 来源
+证明、包住事务内核的可信高权限安装器，以及真实 x64/arm64 主机证据。
 
 ## 仅 tag 来源证明工作流（已实现，未远程观察）
 
@@ -145,6 +146,21 @@ gh attestation verify openbot-node-0.1.0-linux-x64-unsigned.tar.xz \
 和长期发布仍是各自独立的 Owner 授权动作。第一次远程执行还必须验证制品确实可下载，并分别验证
 两类 attestation。x64 烟雾路径已在 Ubuntu 容器模拟下通过；原生托管 x64/arm64 结果仍未观察，
 本地策略测试不能代替这些证据。
+
+## 可恢复安装事务内核（已实现，不是公开安装器）
+
+无 root 事务内核会先验证最危险的状态变化，再开放高权限入口。它只接受位于私有暂存目录直接
+子级的候选版本，以及与精确仓库、发布工作流、tag、源码提交、SLSA predicate、GitHub Actions
+签发者、托管 runner、压缩包 SHA-256 和已审查 `gh` 版本绑定的机器可读来源证明结果。随后，它
+把不可变字节移入版本目录，并原子替换相对 `current` 符号链接。
+
+如果 Worker Host 原来正在运行，事务会重启并再次检查它。失败时先恢复旧指针，再检查旧服务；
+如果恢复也失败，两个版本和有界事务日志都会保留，等待人工恢复。首次安装不会静默登记、启用或
+启动服务；配置和凭证位于二进制事务之外，整个过程都不会读取或修改它们。
+
+这样，后续 `.deb`、`.rpm`、Windows 和 macOS 安装器可以共用一套已测试生命周期，而不是各写
+一套回滚逻辑。它现在还不能以 root 运行：发布安装命令前，仍需实现可信 `gh` 验证器、安全解压、
+root 所有权检查、systemd 命令适配器、明确恢复命令，以及原生 x64/arm64 证据。
 
 ## 吊销或重新登记
 

@@ -508,18 +508,40 @@ export function deterministicXzArguments(tarPath) {
   return ["--threads=1", "--check=sha256", "--no-adjust", "-6", "--compress", "--stdout", tarPath];
 }
 
+export function linuxInstalledReleaseName(manifest) {
+  if (!isRecord(manifest) || manifest.platform !== "linux") {
+    throw new Error("Installed release manifest must declare Linux.");
+  }
+  const architecture = manifest.architecture;
+  if (NODE_RUNTIME_TARGETS[architecture] === undefined) {
+    throw new Error("Installed release architecture must be x64 or arm64.");
+  }
+  return `openbot-node-${assertReleaseVersion(manifest.version)}-linux-${architecture}-${assertSourceCommit(manifest.sourceCommit)}`;
+}
+
 export async function verifyCandidateDirectory(candidate) {
-  const rootMetadata = await lstat(candidate);
+  return verifyLinuxReleaseDirectory(
+    candidate,
+    (manifest) => `openbot-node-${manifest.version}-linux-${manifest.architecture}-unsigned`,
+  );
+}
+
+export async function verifyInstalledLinuxReleaseDirectory(directory) {
+  return verifyLinuxReleaseDirectory(directory, linuxInstalledReleaseName);
+}
+
+async function verifyLinuxReleaseDirectory(directory, expectedNameForManifest) {
+  const rootMetadata = await lstat(directory);
   if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
-    throw new Error("Release candidate must be a real directory.");
+    throw new Error("Linux release must be a real directory.");
   }
   for (const metadataName of ["manifest.json", "SHA256SUMS"]) {
-    const metadata = await lstat(path.join(candidate, metadataName));
+    const metadata = await lstat(path.join(directory, metadataName));
     if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > 128 * 1024) {
-      throw new Error(`Release candidate ${metadataName} must be a bounded regular file.`);
+      throw new Error(`Linux release ${metadataName} must be a bounded regular file.`);
     }
   }
-  const manifestText = await readFile(path.join(candidate, "manifest.json"), "utf8");
+  const manifestText = await readFile(path.join(directory, "manifest.json"), "utf8");
   const manifest = JSON.parse(manifestText);
   if (!isRecord(manifest) || manifest.schemaVersion !== 1 || manifest.signed !== false) {
     throw new Error("Release candidate manifest must be schema 1 and explicitly unsigned.");
@@ -532,12 +554,12 @@ export async function verifyCandidateDirectory(candidate) {
   ) {
     throw new Error("Release candidate source date is not canonical.");
   }
-  const expectedName = `openbot-node-${manifest.version}-linux-${manifest.architecture}-unsigned`;
-  if (path.basename(path.resolve(candidate)) !== expectedName) {
-    throw new Error("Release candidate directory name does not match its manifest.");
+  const expectedName = expectedNameForManifest(manifest);
+  if (path.basename(path.resolve(directory)) !== expectedName) {
+    throw new Error("Linux release directory name does not match its manifest.");
   }
   const rebuilt = await createFileManifest(
-    candidate,
+    directory,
     {
       architecture: manifest.architecture,
       version: manifest.version,
@@ -549,8 +571,8 @@ export async function verifyCandidateDirectory(candidate) {
   if (`${JSON.stringify(rebuilt, null, 2)}\n` !== manifestText) {
     throw new Error("Release candidate manifest does not match staged bytes.");
   }
-  const checksumText = await readFile(path.join(candidate, "SHA256SUMS"), "utf8");
-  await verifyChecksums(candidate, checksumText);
+  const checksumText = await readFile(path.join(directory, "SHA256SUMS"), "utf8");
+  await verifyChecksums(directory, checksumText);
   const expectedChecksumPaths = [
     ...rebuilt.files.map((entry) => entry.path),
     "manifest.json",

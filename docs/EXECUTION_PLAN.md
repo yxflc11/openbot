@@ -145,8 +145,12 @@ Every non-trivial slice follows the same sequence:
   The matrix now assigns x64 and arm64 to matching hosted CPU runners and requires the packaged Node
   plus application to complete a schema-valid least-authority loopback handshake before attestation.
   The x64 path passed under local Ubuntu container emulation; both native hosted jobs remain
-  unobserved. Authorized provenance observation, installer transactions, and real x64/arm64 systemd
-  plus locked/unlocked keyring evidence remain in progress under ADR-0033.
+  unobserved. A rootless install transaction core now binds the accepted provenance result, stages
+  immutable versions, atomically switches `current`, restores the prior active version on failure,
+  and retains a recovery journal if rollback also fails. Its eight tests pass on real temporary
+  filesystem state; it is not a privileged installer. Authorized provenance observation, trusted
+  bootstrap/extraction/ownership/systemd adapters, explicit recovery, and real x64/arm64 systemd plus
+  locked/unlocked keyring evidence remain in progress under ADR-0033 and ADR-0034.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

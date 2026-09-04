@@ -32,7 +32,7 @@
     "migrations:check": "node --test scripts/check-migrations.test.mjs && node scripts/check-migrations.mjs",
     "node:enrollment-token": "node --env-file-if-exists=.env scripts/issue-node-enrollment.mjs",
     "research:check": "node --test scripts/check-pr-research.test.mjs && node scripts/check-pr-research.mjs",
-    "release:check": "node --test scripts/node-linux-release.test.mjs",
+    "release:check": "node --test scripts/node-linux-release.test.mjs scripts/node-linux-install-transaction.test.mjs",
     "release:node-linux:archive": "node scripts/pack-node-linux-candidate.mjs",
     "release:node-linux:candidate": "npm run build && node scripts/build-node-linux-candidate.mjs",
     "release:node-linux:smoke": "node scripts/smoke-node-linux-candidate.mjs",

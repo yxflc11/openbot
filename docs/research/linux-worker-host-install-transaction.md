@@ -97,6 +97,19 @@
   support, or production provenance claim exists until implementation, remote attestation, and both
   native architectures pass the stated evidence.
 
+## Implementation verification
+
+- The first rootless coordinator now validates the exact provenance policy, stages immutable
+  version directories, replaces only a relative in-root `current` symlink, and keeps credentials and
+  configuration outside its API.
+- Eight transaction tests exercise first install without implicit service start, active upgrade,
+  byte-identical no-op reinstall, source-policy rejection, escaping-current rejection, unfinished
+  journal/stale-lock rejection, architecture mismatch, successful old-version restoration, and
+  failed recovery with both versions and a bounded journal retained.
+- These tests use real temporary directories, manifests, checksums, renames, symlinks, durable state
+  writes, and injected bounded service outcomes. They do not exercise root ownership, `gh`, archive
+  extraction, systemd, reboot recovery, or a native Linux host.
+
 ## Unresolved questions
 
 - The trusted bootstrap cannot be distributed only inside the archive it is supposed to verify.

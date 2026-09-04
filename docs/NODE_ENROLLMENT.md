@@ -132,9 +132,10 @@ command twice into separate empty directories and byte-compare the `.tar.xz`, `.
 `.SHA256SUMS` files before publication.
 
 Both the directory and archive sidecar say `unsigned`. They are not a release, installer, Linux
-support claim, or substitute for signature verification. Tag-only GitHub provenance,
-install/upgrade/rollback transactions, and real x64/arm64 host evidence remain required by
-[ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md).
+support claim, or substitute for signature verification. Tag-only GitHub provenance, a trusted
+privileged installer around the transaction core, and real x64/arm64 host evidence remain required
+by [ADR-0033](decisions/0033-linux-worker-host-verifiable-archive.md) and
+[ADR-0034](decisions/0034-linux-worker-host-recoverable-install.md).
 
 ## Tag-only provenance workflow (implemented, not observed)
 
@@ -166,6 +167,26 @@ support label. Pushing the branch, creating the tag, and durable release publica
 Owner-authorized actions. The first remote run must also prove artifact retrieval and both
 attestation verification modes. The x64 smoke path has passed under Ubuntu container emulation;
 native hosted x64/arm64 results remain unobserved, and local policy tests cannot provide them.
+
+## Recoverable install transaction core (implemented, not a public installer)
+
+The rootless transaction core models the high-risk part before a privileged entry point is exposed.
+It accepts only a candidate already placed directly under the private staging root and a
+machine-readable provenance result bound to the exact repository, release workflow, tag, source
+commit, SLSA predicate, GitHub Actions issuer, hosted runner, archive SHA-256, and reviewed `gh`
+version. It then moves immutable bytes into a version directory and atomically replaces the relative
+`current` symlink.
+
+If the Worker Host was active, the transaction restarts and rechecks it. A failure restores the
+previous pointer and rechecks the old service. If that recovery also fails, both versions and a
+bounded transaction journal remain for manual recovery. First install never silently enrolls,
+enables, or starts a service; configuration and credentials are outside the binary transaction and
+are never read or modified.
+
+This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
+unrelated rollback implementations. It is not yet runnable as root: the trusted `gh` verifier,
+safe archive extraction, root ownership checks, systemd command adapter, explicit recovery command,
+and native x64/arm64 evidence are still required before an installation command can be published.
 
 ## Revoke or replace a Node
 
