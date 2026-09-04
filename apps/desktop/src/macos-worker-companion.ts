@@ -46,6 +46,15 @@ interface CompanionProcess {
   once(event: "exit", listener: (code: number | null, signal: NodeJS.Signals | null) => void): this;
 }
 
+interface CompanionFileMetadata {
+  isDirectory(): boolean;
+  isFile(): boolean;
+  isSymbolicLink(): boolean;
+  mode: number;
+  nlink: number;
+  size: number;
+}
+
 type CompanionSpawner = (
   executable: string,
   arguments_: readonly string[],
@@ -58,6 +67,8 @@ type CompanionSpawner = (
     windowsHide: true;
   }>,
 ) => CompanionProcess;
+
+type CompanionLstat = (path: string) => Promise<CompanionFileMetadata>;
 
 export function macOSWorkerCompanionExecutable(resourcesPath: string): string {
   return join(resourcesPath, MACOS_WORKER_COMPANION_RELATIVE_EXECUTABLE);
@@ -92,15 +103,18 @@ export function macOSWorkerEnrollRequest(input: {
 export class MacOSWorkerCompanion implements MacOSWorkerCompanionInvoker {
   readonly #resourcesPath: string;
   readonly #spawn: CompanionSpawner;
+  readonly #lstat: CompanionLstat;
   readonly #timeoutMilliseconds: number;
 
   constructor(
     resourcesPath: string,
     spawnProcess: CompanionSpawner = spawn as CompanionSpawner,
     timeoutMilliseconds = MACOS_WORKER_COMPANION_TIMEOUT_MS,
+    statPath: CompanionLstat = lstat,
   ) {
     this.#resourcesPath = resourcesPath;
     this.#spawn = spawnProcess;
+    this.#lstat = statPath;
     this.#timeoutMilliseconds =
       Number.isSafeInteger(timeoutMilliseconds) &&
       timeoutMilliseconds >= 1 &&
@@ -113,10 +127,12 @@ export class MacOSWorkerCompanion implements MacOSWorkerCompanionInvoker {
     const executable = macOSWorkerCompanionExecutable(this.#resourcesPath);
     try {
       const [application, contents, executableDirectory, binary] = await Promise.all([
-        lstat(join(this.#resourcesPath, MACOS_WORKER_COMPANION_APP_NAME)),
-        lstat(join(this.#resourcesPath, MACOS_WORKER_COMPANION_APP_NAME, "Contents")),
-        lstat(join(this.#resourcesPath, MACOS_WORKER_COMPANION_APP_NAME, "Contents", "MacOS")),
-        lstat(executable),
+        this.#lstat(join(this.#resourcesPath, MACOS_WORKER_COMPANION_APP_NAME)),
+        this.#lstat(join(this.#resourcesPath, MACOS_WORKER_COMPANION_APP_NAME, "Contents")),
+        this.#lstat(
+          join(this.#resourcesPath, MACOS_WORKER_COMPANION_APP_NAME, "Contents", "MacOS"),
+        ),
+        this.#lstat(executable),
       ]);
       if (
         !application.isDirectory() ||

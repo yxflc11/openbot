@@ -1,9 +1,6 @@
 import { EventEmitter } from "node:events";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { PassThrough, Writable } from "node:stream";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MAXIMUM_MACOS_WORKER_COMPANION_BYTES,
   MacOSWorkerCompanion,
@@ -13,17 +10,16 @@ import {
 } from "./macos-worker-companion.js";
 
 describe("macOS Worker companion protocol", () => {
-  const directories: string[] = [];
-
-  afterEach(async () => {
-    await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true })));
-  });
-
   it("uses only the fixed nested executable, argv, empty environment, and private stdin", async () => {
-    const resources = await stagedResources();
+    const resources = "/fixed/resources";
     const child = new FakeCompanionProcess();
     const spawnProcess = vi.fn(() => child);
-    const companion = new MacOSWorkerCompanion(resources, spawnProcess);
+    const companion = new MacOSWorkerCompanion(
+      resources,
+      spawnProcess,
+      undefined,
+      validCompanionLstat,
+    );
     const result = companion.invoke(macOSWorkerStatusRequest());
     await vi.waitFor(() => expect(spawnProcess).toHaveBeenCalledOnce());
 
@@ -48,11 +44,16 @@ describe("macOS Worker companion protocol", () => {
   });
 
   it("reports an absent or linked companion as unavailable without spawning", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-companion-test-"));
-    directories.push(root);
     const spawnProcess = vi.fn();
     await expect(
-      new MacOSWorkerCompanion(root, spawnProcess).invoke(macOSWorkerStatusRequest()),
+      new MacOSWorkerCompanion("/missing", spawnProcess, undefined, async () => {
+        throw new Error("missing");
+      }).invoke(macOSWorkerStatusRequest()),
+    ).resolves.toEqual({ status: "unavailable" });
+    await expect(
+      new MacOSWorkerCompanion("/linked", spawnProcess, undefined, async (path) =>
+        companionMetadata({ directory: !path.endsWith("OpenBotWorkerHostControl"), linked: true }),
+      ).invoke(macOSWorkerStatusRequest()),
     ).resolves.toEqual({ status: "unavailable" });
     expect(spawnProcess).not.toHaveBeenCalled();
   });
@@ -74,12 +75,15 @@ describe("macOS Worker companion protocol", () => {
   });
 
   it("kills and rejects a companion that overflows output or exits unsuccessfully", async () => {
-    const resources = await stagedResources();
+    const resources = "/fixed/resources";
     const overflowChild = new FakeCompanionProcess();
     const overflowSpawner = vi.fn(() => overflowChild);
-    const overflowResult = new MacOSWorkerCompanion(resources, overflowSpawner).invoke(
-      macOSWorkerStatusRequest(),
-    );
+    const overflowResult = new MacOSWorkerCompanion(
+      resources,
+      overflowSpawner,
+      undefined,
+      validCompanionLstat,
+    ).invoke(macOSWorkerStatusRequest());
     await vi.waitFor(() => expect(overflowSpawner).toHaveBeenCalledOnce());
     overflowChild.stdout.write(Buffer.alloc(MAXIMUM_MACOS_WORKER_COMPANION_BYTES + 2));
     await expect(overflowResult).resolves.toEqual({ status: "invalid" });
@@ -87,34 +91,50 @@ describe("macOS Worker companion protocol", () => {
 
     const failedChild = new FakeCompanionProcess();
     const failedSpawner = vi.fn(() => failedChild);
-    const failedResult = new MacOSWorkerCompanion(resources, failedSpawner).invoke(
-      macOSWorkerStatusRequest(),
-    );
+    const failedResult = new MacOSWorkerCompanion(
+      resources,
+      failedSpawner,
+      undefined,
+      validCompanionLstat,
+    ).invoke(macOSWorkerStatusRequest());
     await vi.waitFor(() => expect(failedSpawner).toHaveBeenCalledOnce());
     failedChild.emit("exit", 1, null);
     await expect(failedResult).resolves.toEqual({ status: "invalid" });
   });
 
   it("kills and rejects a companion that exceeds the fixed deadline", async () => {
-    const resources = await stagedResources();
     const child = new FakeCompanionProcess();
-    const result = new MacOSWorkerCompanion(resources, () => child, 1).invoke(
-      macOSWorkerStatusRequest(),
-    );
+    const result = new MacOSWorkerCompanion(
+      "/fixed/resources",
+      () => child,
+      1,
+      validCompanionLstat,
+    ).invoke(macOSWorkerStatusRequest());
     await expect(result).resolves.toEqual({ status: "invalid" });
     expect(child.kill).toHaveBeenCalledWith("SIGKILL");
   });
-
-  async function stagedResources(): Promise<string> {
-    const root = await mkdtemp(join(tmpdir(), "openbot-companion-test-"));
-    directories.push(root);
-    const executable = macOSWorkerCompanionExecutable(root);
-    await mkdir(join(executable, ".."), { recursive: true });
-    await writeFile(executable, Buffer.alloc(16 * 1024, 0x61));
-    await chmod(executable, 0o755);
-    return root;
-  }
 });
+
+async function validCompanionLstat(path: string) {
+  return companionMetadata({ directory: !path.endsWith("OpenBotWorkerHostControl") });
+}
+
+function companionMetadata({
+  directory,
+  linked = false,
+}: {
+  directory: boolean;
+  linked?: boolean;
+}) {
+  return {
+    isDirectory: () => directory,
+    isFile: () => !directory,
+    isSymbolicLink: () => linked,
+    mode: directory ? 0o755 : 0o755,
+    nlink: 1,
+    size: directory ? 0 : 16 * 1024,
+  };
+}
 
 class FakeCompanionProcess extends EventEmitter {
   readonly stdout = new PassThrough();
