@@ -3,6 +3,7 @@ import {
   chmod,
   lstat,
   mkdir,
+  open,
   readFile,
   readlink,
   rename,
@@ -214,6 +215,100 @@ export async function installStagedLinuxRelease(options) {
   }
 }
 
+/**
+ * Resume only the rollback described by a previously validated transaction journal. Recovery never
+ * chooses a release by recency and never deletes either side of the interrupted upgrade.
+ */
+export async function recoverLinuxInstallTransaction(options) {
+  const installRoot = assertAbsoluteRoot(options.installRoot, "install");
+  const stateRoot = assertAbsoluteRoot(options.stateRoot, "state");
+  if (pathsOverlap(installRoot, stateRoot)) {
+    throw new Error("Linux install and transaction-state roots must be separate.");
+  }
+  const recoveryId = assertTransactionId(options.recoveryId ?? randomUUID());
+  const now = options.now ?? (() => new Date());
+  const serviceDeadlineMs = assertServiceDeadline(options.serviceDeadlineMs ?? 15_000);
+  const service = validateServiceAdapter(options.service);
+  const versionsRoot = path.join(installRoot, "versions");
+
+  await assertExistingDirectory(installRoot, false);
+  await assertExistingDirectory(versionsRoot, false);
+  await assertExistingDirectory(stateRoot, true);
+
+  const lock = path.join(stateRoot, "transaction.lock");
+  await acquireLock(lock);
+  const journalPath = path.join(stateRoot, "transaction.json");
+  const receiptPath = path.join(stateRoot, "last-success.json");
+  let journal;
+  let recoveryStarted = false;
+
+  try {
+    if (!(await pathExists(journalPath))) {
+      throw new Error("No Linux install recovery journal exists.");
+    }
+    journal = await readRecoveryJournal(journalPath);
+    await validateRecoveryReleaseSet(installRoot, journal);
+
+    const currentTarget = await readCurrentTarget(installRoot);
+    const active = await serviceIsActive(service, serviceDeadlineMs);
+    if (journal.phase === "staged") {
+      if (currentTarget !== journal.previousTarget || active !== journal.serviceWasActive) {
+        throw new Error("Linux install state changed after the recovery journal was written.");
+      }
+      const outcome = "recovered-before-switch";
+      await writeState(receiptPath, completionReceipt(journal, outcome, canonicalNow(now)));
+      await unlink(journalPath);
+      return {
+        outcome,
+        releaseName: journal.releaseName,
+        restarted: false,
+        restoredTarget: journal.previousTarget,
+      };
+    }
+
+    if (currentTarget !== journal.target && currentTarget !== journal.previousTarget) {
+      throw new Error("Linux current release does not match either recovery journal target.");
+    }
+    if (!journal.serviceWasActive && active) {
+      throw new Error("Linux Worker Host became active outside the recorded transaction.");
+    }
+
+    journal = { ...journal, phase: "restoring-selection" };
+    await writeState(journalPath, journal);
+    recoveryStarted = true;
+    if (currentTarget !== journal.previousTarget) {
+      await selectCurrentTarget(installRoot, journal.previousTarget, recoveryId);
+    }
+
+    let restarted = false;
+    if (journal.serviceWasActive) {
+      journal = { ...journal, phase: "restarting-previous" };
+      await writeState(journalPath, journal);
+      await serviceRestart(service, serviceDeadlineMs);
+      if (!(await serviceIsActive(service, serviceDeadlineMs))) {
+        throw new Error("Previous Linux Worker Host service is not active.");
+      }
+      restarted = true;
+    }
+
+    const outcome = "recovered-previous";
+    await writeState(receiptPath, completionReceipt(journal, outcome, canonicalNow(now)));
+    await unlink(journalPath);
+    return {
+      outcome,
+      releaseName: journal.releaseName,
+      restarted,
+      restoredTarget: journal.previousTarget,
+    };
+  } catch (error) {
+    if (!recoveryStarted || journal === undefined) throw error;
+    await writeState(journalPath, { ...journal, phase: "recovery-failed" });
+    throw new Error("Linux Worker Host recovery failed; manual recovery is required.");
+  } finally {
+    await rmdir(lock);
+  }
+}
+
 export async function readCurrentTarget(installRoot) {
   const current = path.join(path.resolve(installRoot), "current");
   let metadata;
@@ -227,9 +322,7 @@ export async function readCurrentTarget(installRoot) {
     throw new Error("Linux current release pointer must be a symbolic link.");
   }
   const target = await readlink(current);
-  if (
-    !/^versions\/openbot-node-[0-9A-Za-z.+-]{1,64}-linux-(?:x64|arm64)-[0-9a-f]{40}$/.test(target)
-  ) {
+  if (!isLinuxReleaseTarget(target)) {
     throw new Error("Linux current release pointer is malformed or escapes the install root.");
   }
   await verifyInstalledLinuxReleaseDirectory(path.join(path.dirname(current), target));
@@ -246,9 +339,7 @@ async function selectCurrentTarget(installRoot, target, transactionId) {
     await unlink(current);
     return;
   }
-  if (
-    !/^versions\/openbot-node-[0-9A-Za-z.+-]{1,64}-linux-(?:x64|arm64)-[0-9a-f]{40}$/.test(target)
-  ) {
+  if (!isLinuxReleaseTarget(target)) {
     throw new Error("Linux current release target is malformed.");
   }
   const temporary = path.join(installRoot, `.current-${transactionId}`);
@@ -293,6 +384,130 @@ async function writeState(destination, value) {
   await writeFileAtomic(destination, source, { mode: 0o600 });
 }
 
+const recoveryJournalKeys = Object.freeze([
+  "schemaVersion",
+  "transactionId",
+  "phase",
+  "releaseName",
+  "target",
+  "previousTarget",
+  "serviceWasActive",
+  "archiveSha256",
+  "sourceCommit",
+  "sourceRef",
+  "createdAt",
+]);
+
+const recoverablePhases = new Set([
+  "staged",
+  "switched",
+  "restoring-selection",
+  "restarting-previous",
+  "recovery-failed",
+]);
+
+async function readRecoveryJournal(journalPath) {
+  const before = await lstat(journalPath);
+  if (
+    !before.isFile() ||
+    before.isSymbolicLink() ||
+    before.size < 1 ||
+    before.size > 16 * 1024 ||
+    (before.mode & 0o777) !== 0o600
+  ) {
+    throw new Error("Linux install recovery journal is not a private bounded regular file.");
+  }
+
+  const handle = await open(journalPath, "r");
+  let source;
+  try {
+    const opened = await handle.stat();
+    if (!sameFile(before, opened)) {
+      throw new Error("Linux install recovery journal changed while it was opened.");
+    }
+    source = await handle.readFile("utf8");
+    const afterRead = await handle.stat();
+    if (!sameFile(opened, afterRead) || Buffer.byteLength(source) !== opened.size) {
+      throw new Error("Linux install recovery journal changed while it was read.");
+    }
+  } finally {
+    await handle.close();
+  }
+  const after = await lstat(journalPath);
+  if (!sameFile(before, after)) {
+    throw new Error("Linux install recovery journal was replaced while it was read.");
+  }
+
+  let value;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    throw new Error("Linux install recovery journal is not valid JSON.");
+  }
+  if (
+    !isRecord(value) ||
+    JSON.stringify(Object.keys(value)) !== JSON.stringify(recoveryJournalKeys) ||
+    source !== `${JSON.stringify(value, null, 2)}\n`
+  ) {
+    throw new Error("Linux install recovery journal is not canonical or has unknown fields.");
+  }
+  validateRecoveryJournal(value);
+  return value;
+}
+
+function validateRecoveryJournal(journal) {
+  if (journal.schemaVersion !== 1) {
+    throw new Error("Linux install recovery journal schema is unsupported.");
+  }
+  assertTransactionId(journal.transactionId);
+  if (!recoverablePhases.has(journal.phase)) {
+    throw new Error("Linux install recovery journal phase is invalid.");
+  }
+  if (!isLinuxReleaseTarget(journal.target)) {
+    throw new Error("Linux install recovery journal target is invalid.");
+  }
+  const releaseName = journal.target.slice("versions/".length);
+  if (journal.releaseName !== releaseName) {
+    throw new Error("Linux install recovery journal release identity is inconsistent.");
+  }
+  if (journal.previousTarget !== null && !isLinuxReleaseTarget(journal.previousTarget)) {
+    throw new Error("Linux install recovery journal previous target is invalid.");
+  }
+  if (typeof journal.serviceWasActive !== "boolean") {
+    throw new Error("Linux install recovery journal service state is invalid.");
+  }
+  if (journal.serviceWasActive && journal.previousTarget === null) {
+    throw new Error("Linux install recovery journal lacks the previous active release.");
+  }
+  if (journal.phase !== "staged" && journal.previousTarget === journal.target) {
+    throw new Error("Linux install recovery journal has no distinct rollback target.");
+  }
+  if (!/^[0-9a-f]{64}$/.test(journal.archiveSha256)) {
+    throw new Error("Linux install recovery journal archive digest is invalid.");
+  }
+  if (!/^[0-9a-f]{40}$/.test(journal.sourceCommit)) {
+    throw new Error("Linux install recovery journal source commit is invalid.");
+  }
+  if (typeof journal.sourceRef !== "string" || journal.sourceRef.length > 128) {
+    throw new Error("Linux install recovery journal source ref is invalid.");
+  }
+  assertCanonicalTimestamp(journal.createdAt, "journal creation");
+}
+
+async function validateRecoveryReleaseSet(installRoot, journal) {
+  const manifest = await verifyInstalledLinuxReleaseDirectory(path.join(installRoot, journal.target));
+  if (
+    linuxInstalledReleaseName(manifest) !== journal.releaseName ||
+    manifest.sourceCommit !== journal.sourceCommit ||
+    journal.sourceRef !== `refs/tags/node-v${manifest.version}`
+  ) {
+    throw new Error("Linux install recovery journal does not match the staged release.");
+  }
+  if (journal.previousTarget !== null) {
+    await verifyInstalledLinuxReleaseDirectory(path.join(installRoot, journal.previousTarget));
+  }
+}
+
 async function acquireLock(lock) {
   try {
     await mkdir(lock, { mode: 0o700 });
@@ -311,6 +526,16 @@ async function ensureDirectory(directory, mode) {
     throw new Error("Linux install layout contains a non-directory or symbolic link.");
   }
   await chmod(directory, mode);
+}
+
+async function assertExistingDirectory(directory, privateDirectory) {
+  const metadata = await lstat(directory);
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+    throw new Error("Linux recovery layout contains a non-directory or symbolic link.");
+  }
+  if (privateDirectory && (metadata.mode & 0o077) !== 0) {
+    throw new Error("Linux recovery state root must not grant group or other permissions.");
+  }
 }
 
 async function serviceIsActive(service, deadlineMs) {
@@ -394,6 +619,31 @@ function canonicalNow(now) {
     throw new Error("Linux install transaction clock returned an invalid time.");
   }
   return value.toISOString();
+}
+
+function assertCanonicalTimestamp(value, name) {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value) {
+    throw new Error(`Linux install ${name} time is not canonical.`);
+  }
+}
+
+function isLinuxReleaseTarget(value) {
+  return (
+    typeof value === "string" &&
+    /^versions\/openbot-node-[0-9A-Za-z.+-]{1,64}-linux-(?:x64|arm64)-[0-9a-f]{40}$/.test(value)
+  );
+}
+
+function sameFile(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mode === right.mode &&
+    left.mtimeMs === right.mtimeMs &&
+    left.ctimeMs === right.ctimeMs
+  );
 }
 
 async function pathExists(filePath) {

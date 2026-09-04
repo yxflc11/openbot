@@ -1,5 +1,15 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, mkdtemp, readFile, readlink, symlink, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readlink,
+  rename,
+  symlink,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +18,7 @@ import {
   LINUX_INSTALL_PROVENANCE_POLICY,
   linuxProvenanceCertificateIdentity,
   readCurrentTarget,
+  recoverLinuxInstallTransaction,
   validateLinuxInstallProvenance,
 } from "./node-linux-install-transaction.mjs";
 import {
@@ -23,6 +34,7 @@ const transactionIds = [
   "00000000-0000-4000-8000-000000000002",
   "00000000-0000-4000-8000-000000000003",
   "00000000-0000-4000-8000-000000000004",
+  "00000000-0000-4000-8000-000000000005",
 ];
 
 test("binds installation identity and provenance to the exact release", () => {
@@ -147,6 +159,120 @@ test("failed recovery keeps both releases and a bounded recovery journal", async
   assert.equal((await lstat(path.join(fixture.installRoot, previousTarget))).isDirectory(), true);
   assert.equal(
     (await lstat(path.join(fixture.installRoot, `versions/${journal.releaseName}`))).isDirectory(),
+    true,
+  );
+});
+
+test("explicit recovery clears a staged journal only when selection and service still match", async () => {
+  const fixture = await installedFixture("1.0.0", "8".repeat(40));
+  const interrupted = await interruptUpgrade(fixture, {
+    phase: "staged",
+    selectNew: false,
+    serviceWasActive: true,
+    sourceCommit: "9".repeat(40),
+    version: "1.1.0",
+  });
+  const service = scriptedService({ activeResults: [true] });
+
+  const result = await recover(fixture, service);
+
+  assert.equal(result.outcome, "recovered-before-switch");
+  assert.equal(result.restarted, false);
+  assert.equal(await readCurrentTarget(fixture.installRoot), interrupted.previousTarget);
+  assert.deepEqual(service.calls, ["is-active"]);
+  assert.equal(await pathType(path.join(fixture.stateRoot, "transaction.json")), "missing");
+  assert.equal(
+    JSON.parse(await readFile(path.join(fixture.stateRoot, "last-success.json"))).outcome,
+    "recovered-before-switch",
+  );
+});
+
+test("explicit recovery restores and rechecks the recorded previous active release", async () => {
+  const fixture = await installedFixture("1.0.0", "a".repeat(40));
+  const interrupted = await interruptUpgrade(fixture, {
+    phase: "switched",
+    selectNew: true,
+    serviceWasActive: true,
+    sourceCommit: "b".repeat(40),
+    version: "1.1.0",
+  });
+  const service = scriptedService({ activeResults: [false, true] });
+
+  const result = await recover(fixture, service);
+
+  assert.equal(result.outcome, "recovered-previous");
+  assert.equal(result.restarted, true);
+  assert.equal(await readCurrentTarget(fixture.installRoot), interrupted.previousTarget);
+  assert.deepEqual(service.calls, ["is-active", "restart", "is-active"]);
+  assert.equal(
+    (await lstat(path.join(fixture.installRoot, interrupted.target))).isDirectory(),
+    true,
+  );
+});
+
+test("explicit recovery never starts a service that was previously inactive", async () => {
+  const fixture = await installedFixture("1.0.0", "c".repeat(40));
+  const interrupted = await interruptUpgrade(fixture, {
+    phase: "switched",
+    selectNew: true,
+    serviceWasActive: false,
+    sourceCommit: "d".repeat(40),
+    version: "1.1.0",
+  });
+  const service = scriptedService({ activeResults: [false] });
+
+  const result = await recover(fixture, service);
+
+  assert.equal(result.restarted, false);
+  assert.equal(await readCurrentTarget(fixture.installRoot), interrupted.previousTarget);
+  assert.deepEqual(service.calls, ["is-active"]);
+});
+
+test("explicit recovery preserves an untrusted journal byte-for-byte without side effects", async () => {
+  const fixture = await installedFixture("1.0.0", "e".repeat(40));
+  const interrupted = await interruptUpgrade(fixture, {
+    phase: "staged",
+    selectNew: false,
+    serviceWasActive: false,
+    sourceCommit: "f".repeat(40),
+    version: "1.1.0",
+  });
+  const journalPath = path.join(fixture.stateRoot, "transaction.json");
+  const hostile = `${JSON.stringify({ ...interrupted.journal, authority: "attacker" }, null, 2)}\n`;
+  await writeFile(journalPath, hostile, { mode: 0o600 });
+  const service = scriptedService({ activeResults: [] });
+
+  await assert.rejects(recover(fixture, service), /unknown fields/);
+
+  assert.equal(await readFile(journalPath, "utf8"), hostile);
+  assert.equal(await readCurrentTarget(fixture.installRoot), interrupted.previousTarget);
+  assert.deepEqual(service.calls, []);
+});
+
+test("explicit recovery retains both releases and marks a failed retry for manual handling", async () => {
+  const fixture = await installedFixture("1.0.0", "1".repeat(40));
+  const interrupted = await interruptUpgrade(fixture, {
+    phase: "recovery-failed",
+    selectNew: true,
+    serviceWasActive: true,
+    sourceCommit: "2".repeat(40),
+    version: "1.1.0",
+  });
+  const service = scriptedService({ activeResults: [true], restartFailures: [1] });
+
+  await assert.rejects(recover(fixture, service), /manual recovery is required/);
+
+  assert.equal(await readCurrentTarget(fixture.installRoot), interrupted.previousTarget);
+  assert.equal(
+    JSON.parse(await readFile(path.join(fixture.stateRoot, "transaction.json"))).phase,
+    "recovery-failed",
+  );
+  assert.equal(
+    (await lstat(path.join(fixture.installRoot, interrupted.previousTarget))).isDirectory(),
+    true,
+  );
+  assert.equal(
+    (await lstat(path.join(fixture.installRoot, interrupted.target))).isDirectory(),
     true,
   );
 });
@@ -307,6 +433,41 @@ async function createCandidate(installRoot, version, sourceCommit) {
   return candidate;
 }
 
+async function interruptUpgrade(
+  fixture,
+  { phase, selectNew, serviceWasActive, sourceCommit, version },
+) {
+  const previousTarget = await readCurrentTarget(fixture.installRoot);
+  const candidate = await createCandidate(fixture.installRoot, version, sourceCommit);
+  const manifest = manifestFor(version, sourceCommit);
+  const releaseName = linuxInstalledReleaseName(manifest);
+  const target = `versions/${releaseName}`;
+  await rename(candidate, path.join(fixture.installRoot, target));
+  if (selectNew) {
+    await unlink(path.join(fixture.installRoot, "current"));
+    await symlink(target, path.join(fixture.installRoot, "current"));
+  }
+  const journal = {
+    schemaVersion: 1,
+    transactionId: transactionIds[3],
+    phase,
+    releaseName,
+    target,
+    previousTarget,
+    serviceWasActive,
+    archiveSha256: "9".repeat(64),
+    sourceCommit,
+    sourceRef: `refs/tags/node-v${version}`,
+    createdAt: fixedTime.toISOString(),
+  };
+  await writeFile(
+    path.join(fixture.stateRoot, "transaction.json"),
+    `${JSON.stringify(journal, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  return { journal, previousTarget, target };
+}
+
 function manifestFor(version, sourceCommit) {
   return {
     architecture: "x64",
@@ -357,6 +518,16 @@ function install(fixture, candidate, manifest, service, transactionId) {
     stateRoot: fixture.stateRoot,
     transactionId,
     verifiedProvenance: provenanceFor(manifest),
+  });
+}
+
+function recover(fixture, service) {
+  return recoverLinuxInstallTransaction({
+    installRoot: fixture.installRoot,
+    now: () => fixedTime,
+    recoveryId: transactionIds[4],
+    service,
+    stateRoot: fixture.stateRoot,
   });
 }
 

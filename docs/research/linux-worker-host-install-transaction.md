@@ -136,10 +136,14 @@
 - The first rootless coordinator now validates the exact provenance policy, stages immutable
   version directories, replaces only a relative in-root `current` symlink, and keeps credentials and
   configuration outside its API.
-- Eight transaction tests exercise first install without implicit service start, active upgrade,
+- Thirteen transaction tests exercise first install without implicit service start, active upgrade,
   byte-identical no-op reinstall, source-policy rejection, escaping-current rejection, unfinished
   journal/stale-lock rejection, architecture mismatch, successful old-version restoration, and
-  failed recovery with both versions and a bounded journal retained.
+  failed recovery with both versions and a bounded journal retained. The explicit rootless recovery
+  operation also accepts only a canonical private journal, revalidates both release directories,
+  compares the recorded pointer and service state, restores only the recorded previous target,
+  rechecks a previously active service, never starts a previously inactive service, and preserves
+  untrusted or failed-retry evidence.
 - A separate provenance adapter now invokes only an absolute executable without a shell, requires
   the reviewed `gh 2.93.0` version line, supplies the exact repository/certificate/ref/commit/
   predicate/issuer/runner/host policy, bounds execution to 30 seconds and 2 MiB per output stream,
@@ -170,7 +174,7 @@
 - These tests use real temporary directories, manifests, checksums, renames, symlinks, durable state
   writes, real bounded child processes, and injected verifier/service outcomes. They do not accept a
   live remote attestation or exercise root ownership, serialized privileged extraction, a native
-  systemd manager, reboot recovery, or a native Linux host.
+  systemd manager, reboot recovery through a privileged command, or a native Linux host.
 
 ## Unresolved questions
 
