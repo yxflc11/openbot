@@ -4,6 +4,10 @@ import { isAbsolute, join, relative, sep } from "node:path";
 const ALLOWED_PACKAGE_ROOTS = new Set(["dist"]);
 const ALLOWED_PACKAGE_FILES = new Set(["package.json"]);
 
+export const DESKTOP_WINDOWS_METADATA = Object.freeze({
+  CompanyName: "OpenBot contributors",
+});
+
 export function shouldIgnoreDesktopSource(appRoot, candidatePath) {
   const platformCandidate =
     candidatePath === appRoot

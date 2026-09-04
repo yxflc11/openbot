@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createDesktopFuseConfig,
+  DESKTOP_WINDOWS_METADATA,
   packagedElectronTarget,
   shouldIgnoreDesktopSource,
 } from "./package-policy.mjs";
@@ -29,6 +30,7 @@ const packagePaths = await packager({
   overwrite: true,
   platform: process.platform,
   prune: false,
+  win32metadata: DESKTOP_WINDOWS_METADATA,
 });
 
 if (packagePaths.length !== 1) {

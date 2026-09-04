@@ -3,6 +3,7 @@ import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { join, resolve } from "node:path";
 import {
   createDesktopFuseConfig,
+  DESKTOP_WINDOWS_METADATA,
   packagedElectronTarget,
   shouldIgnoreDesktopSource,
 } from "./package-policy.mjs";
@@ -45,6 +46,11 @@ describe("Desktop package source policy", () => {
     expect(packagedElectronTarget("/tmp/OpenBot-win32-x64", "win32")).toMatch(/openbot\.exe$/u);
     expect(packagedElectronTarget("/tmp/OpenBot-linux-x64", "linux")).toMatch(/openbot$/u);
     expect(() => packagedElectronTarget("/tmp/OpenBot", "freebsd")).toThrow(/Unsupported/u);
+  });
+
+  it("declares neutral Windows executable metadata without inventing a company", () => {
+    expect(DESKTOP_WINDOWS_METADATA).toEqual({ CompanyName: "OpenBot contributors" });
+    expect(Object.isFrozen(DESKTOP_WINDOWS_METADATA)).toBe(true);
   });
 
   it("requires every known fuse and does not request a missing custom V8 snapshot", () => {
