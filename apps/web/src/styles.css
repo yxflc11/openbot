@@ -1809,6 +1809,178 @@ select:focus-visible {
 .desktop-connection-card {
   width: min(100%, 470px);
 }
+.desktop-setup-screen {
+  place-items: start center;
+  overflow-y: auto;
+}
+.desktop-setup-card {
+  width: min(100%, 760px);
+  margin: 24px 0;
+}
+.desktop-setup-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.desktop-setup-form legend,
+.setup-worker-fields > label:first-child {
+  margin-bottom: 9px;
+  color: #464c53;
+  font-size: 11px;
+  font-weight: 680;
+}
+.setup-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.login-card .setup-mode {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-height: 94px;
+  padding: 14px;
+  border: 1px solid #d9dee3;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+.login-card .setup-mode:hover {
+  border-color: #adb6bf;
+}
+.login-card .setup-mode.selected {
+  border-color: #3974c4;
+  background: #f5f9ff;
+  box-shadow: 0 0 0 2px rgba(57, 116, 196, 0.12);
+}
+.login-card .setup-mode input,
+.login-card .setup-local-worker input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  padding: 0;
+  accent-color: #3974c4;
+}
+.setup-mode span,
+.setup-local-worker span {
+  display: grid;
+  gap: 5px;
+}
+.setup-mode strong {
+  color: #202429;
+  font-size: 13px;
+}
+.setup-mode small {
+  color: #737b84;
+  font-size: 10px;
+  font-weight: 450;
+  line-height: 1.5;
+}
+.setup-worker-fields {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid #e1e5e9;
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.setup-worker-fields > label:first-child {
+  margin: 0;
+}
+.setup-worker-fields > input {
+  max-width: 150px;
+}
+.login-card .setup-local-worker {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 5px;
+  color: #454c54;
+  font-weight: 520;
+  line-height: 1.45;
+}
+.setup-checklist {
+  margin-top: 10px;
+  padding: 15px;
+  border: 1px solid #e0e4e8;
+  border-radius: 10px;
+}
+.setup-checklist h2 {
+  margin: 0 0 10px;
+  color: #292e34;
+  font-size: 12px;
+}
+.setup-checklist ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-checklist li {
+  display: grid;
+  grid-template-columns: 43px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+}
+.setup-checklist li > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+.setup-checklist li strong {
+  color: #30353b;
+  font-size: 11px;
+}
+.setup-checklist li small {
+  color: #818890;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.setup-step-state {
+  padding: 3px 5px;
+  border-radius: 999px;
+  color: #52606d;
+  background: #edf1f4;
+  font-size: 8px;
+  font-weight: 720;
+  text-align: center;
+}
+.connection-plan-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -10px 0 18px;
+  padding: 11px 12px;
+  border: 1px solid #e0e4e8;
+  border-radius: 9px;
+  background: #fafbfc;
+}
+.connection-plan-summary > span {
+  display: grid;
+  gap: 2px;
+}
+.connection-plan-summary strong {
+  color: #30353b;
+  font-size: 11px;
+}
+.connection-plan-summary small {
+  color: #818890;
+  font-size: 9px;
+}
+.connection-plan-summary .secondary-button {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 9px;
+}
 .connection-mark {
   display: grid;
   width: 64px;
@@ -3282,6 +3454,12 @@ select:focus-visible {
   .login-card {
     padding: 30px 24px 27px;
     box-shadow: none;
+  }
+  .desktop-setup-card {
+    margin: 0;
+  }
+  .setup-mode-grid {
+    grid-template-columns: 1fr;
   }
   .mobile-sheet-header {
     display: flex;

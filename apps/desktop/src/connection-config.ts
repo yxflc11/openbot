@@ -1,7 +1,4 @@
-import { constants } from "node:fs";
-import { lstat, mkdir, open } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
-import writeFileAtomic from "write-file-atomic";
+import { RestrictedJsonFile } from "./restricted-json-file.js";
 
 export const DESKTOP_CONNECTION_CONFIG_FORMAT = "openbot.desktop-connection/v1" as const;
 export const MAXIMUM_DESKTOP_CONNECTION_CONFIG_BYTES = 4 * 1024;
@@ -69,68 +66,22 @@ export function parseDesktopConnectionConfig(input: string): DesktopConnectionCo
 }
 
 export class FileDesktopConnectionStore implements DesktopConnectionStore {
-  readonly #path: string;
+  readonly #file: RestrictedJsonFile<DesktopConnectionConfig>;
 
   constructor(path: string) {
-    this.#path = resolve(path);
+    this.#file = new RestrictedJsonFile(path, {
+      label: "Desktop connection configuration",
+      maximumBytes: MAXIMUM_DESKTOP_CONNECTION_CONFIG_BYTES,
+      parse: parseDesktopConnectionConfig,
+    });
   }
 
   async load(): Promise<DesktopConnectionConfig | undefined> {
-    let pathEntry: Awaited<ReturnType<typeof lstat>>;
-    try {
-      pathEntry = await lstat(this.#path);
-    } catch (error) {
-      if (isMissingFile(error)) return undefined;
-      throw error;
-    }
-    if (!pathEntry.isFile() || pathEntry.isSymbolicLink()) {
-      throw new Error("Desktop connection configuration path must be a regular file.");
-    }
-    if (process.platform !== "win32" && (pathEntry.mode & 0o077) !== 0) {
-      throw new Error("Desktop connection configuration has unsafe permissions.");
-    }
-    if (pathEntry.size > MAXIMUM_DESKTOP_CONNECTION_CONFIG_BYTES) {
-      throw new Error("Desktop connection configuration exceeds the 4 KiB limit.");
-    }
-
-    const flags =
-      process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
-    const handle = await open(this.#path, flags);
-    try {
-      const opened = await handle.stat();
-      if (
-        !opened.isFile() ||
-        opened.dev !== pathEntry.dev ||
-        opened.ino !== pathEntry.ino ||
-        opened.size > MAXIMUM_DESKTOP_CONNECTION_CONFIG_BYTES
-      ) {
-        throw new Error("Desktop connection configuration changed while opening.");
-      }
-      if (process.platform !== "win32" && (opened.mode & 0o077) !== 0) {
-        throw new Error("Desktop connection configuration has unsafe permissions.");
-      }
-      return parseDesktopConnectionConfig(await handle.readFile("utf8"));
-    } finally {
-      await handle.close();
-    }
+    return this.#file.load();
   }
 
   async save(config: DesktopConnectionConfig): Promise<void> {
-    const parsed = parseDesktopConnectionConfig(JSON.stringify(config));
-    try {
-      const existing = await lstat(this.#path);
-      if (!existing.isFile() || existing.isSymbolicLink()) {
-        throw new Error("Desktop connection configuration path must be a regular file.");
-      }
-    } catch (error) {
-      if (!isMissingFile(error)) throw error;
-    }
-    await mkdir(dirname(this.#path), { recursive: true, mode: 0o700 });
-    await writeFileAtomic(this.#path, `${JSON.stringify(parsed)}\n`, { mode: 0o600 });
-    const retained = await this.load();
-    if (retained?.serverUrl !== parsed.serverUrl) {
-      throw new Error("Desktop connection configuration was not retained.");
-    }
+    await this.#file.save(config);
   }
 }
 
@@ -153,10 +104,4 @@ function isLoopbackHostname(hostname: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isMissingFile(error: unknown): boolean {
-  return (
-    error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT"
-  );
 }

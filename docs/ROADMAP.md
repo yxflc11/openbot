@@ -36,7 +36,9 @@ Desktop 可以组合 Client、Server 与 Worker Host。技术选择已经完成�
 策略，并在 Windows、macOS 与 Linux CI 中构建未签名开发包。第二个 Desktop 切片已实现连接已有
 Server 的初次引导：严格 origin 配置、健康证明、原生确认、专用 Session Cookie、受限 REST/SSE
 代理、更换 Server 时清除会话，以及打包后运行时依赖清单校验；macOS arm64 本地开发包已完成从
-首次连接到登录工作区的实际验证。Server/Worker 服务安装、签名、更新和真实设备矩阵仍未完成，
+首次连接到登录工作区的实际验证。第三个切片已经实现四种安装模式、最多 100 台 Worker 电脑的
+配置清单、本地严格持久化与重启恢复；“5 台电脑”会明确列出当前电脑和其余工作电脑，但保存计划
+不会安装服务、登记设备或授予权限。Server/Worker 服务安装、签名、更新和真实设备矩阵仍未完成，
 因此还不能宣称任何桌面平台已经 Supported。精确语言、版本和安全边界见
 [技术基线](TECHNOLOGY.zh-CN.md)。
 
@@ -47,8 +49,9 @@ Server 的初次引导：严格 origin 配置、健康证明、原生确认、�
 
 1. **文档与技术基线：**同步双语 README，确定语言、Desktop 外壳、角色组合和安全边界。
 2. **Desktop Client：**交付只加载本地资源的 Electron 壳，共享现有频道 UI，并连接已有 Server。
-3. **多设备与自部署：**加入 Client/Server/Worker 引导、配对清单、服务状态和独立安装路径；“五台
-   电脑”只是进度清单，不是授权限制。
+3. **多设备与自部署（进行中）：**安装模式、持久化配置清单与“五台电脑”规划已经实现；下一步加入
+   真实 Server/Worker 安装、逐台配对、服务状态、恢复事务和独立安装路径。电脑数量只是进度清单，
+   不是授权限制。
 4. **多 Agent：**先以 Server 控制的有界委派适配 OpenBot、Hermes、Pi 和 OpenClaw，再评估哪些
    Agent 可以成为频道中的直接成员。
 5. **插件平台：**定义签名、来源、权限、UI 槽位、主题、频道、Agent、工具和 Provider 扩展；插件

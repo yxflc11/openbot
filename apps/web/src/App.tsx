@@ -31,6 +31,7 @@ import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
 import { DesktopConnectionScreen } from "./components/DesktopConnectionScreen";
+import { DesktopSetupScreen } from "./components/DesktopSetupScreen";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
@@ -40,7 +41,11 @@ import { MobileNavigation, type MobilePanel } from "./components/MobileNavigatio
 import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
-import { type DesktopConnectionState, getOpenBotDesktopBridge } from "./desktop-runtime";
+import {
+  type DesktopConnectionState,
+  type DesktopSetupPlanState,
+  getOpenBotDesktopBridge,
+} from "./desktop-runtime";
 import {
   isActiveRun,
   mergeArtifacts,
@@ -57,7 +62,11 @@ export function App() {
   const [desktopConnection, setDesktopConnection] = useState<
     DesktopConnectionState | null | undefined
   >(() => (desktopBridge === undefined ? null : undefined));
+  const [desktopSetupPlan, setDesktopSetupPlan] = useState<
+    DesktopSetupPlanState | null | undefined
+  >(() => (desktopBridge === undefined ? null : undefined));
   const [showConnectionSetup, setShowConnectionSetup] = useState(false);
+  const [showSetupPlan, setShowSetupPlan] = useState(false);
   const [session, setSession] = useState<AuthSessionSnapshot>();
   const [sessionError, setSessionError] = useState<string>();
 
@@ -89,7 +98,25 @@ export function App() {
     };
   }, [desktopBridge]);
 
-  const connectionReady = desktopConnection === null || desktopConnection?.status === "configured";
+  useEffect(() => {
+    if (desktopBridge === undefined) return;
+    let active = true;
+    void desktopBridge
+      .getSetupPlanState()
+      .then((plan) => {
+        if (active) setDesktopSetupPlan(plan);
+      })
+      .catch(() => {
+        if (active) setDesktopSetupPlan({ status: "invalid" });
+      });
+    return () => {
+      active = false;
+    };
+  }, [desktopBridge]);
+
+  const setupPlanReady = desktopSetupPlan === null || desktopSetupPlan?.status === "configured";
+  const connectionReady =
+    setupPlanReady && (desktopConnection === null || desktopConnection?.status === "configured");
 
   useEffect(() => {
     if (!connectionReady) return;
@@ -114,13 +141,37 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [session]);
 
-  if (desktopBridge !== undefined && desktopConnection === undefined) {
+  if (
+    desktopBridge !== undefined &&
+    (desktopConnection === undefined || desktopSetupPlan === undefined)
+  ) {
     return (
       <main className="loading-screen">
         <span className="loading-mark">O</span>
         <h1>正在读取 Desktop 配置</h1>
-        <p>正在打开你的本地连接设置…</p>
+        <p>正在打开你的本地安装计划和连接设置…</p>
       </main>
+    );
+  }
+
+  if (
+    desktopBridge !== undefined &&
+    desktopSetupPlan !== undefined &&
+    desktopSetupPlan !== null &&
+    (showSetupPlan || desktopSetupPlan.status !== "configured")
+  ) {
+    return (
+      <DesktopSetupScreen
+        state={desktopSetupPlan}
+        onSave={async (plan) => {
+          const result = await desktopBridge.saveSetupPlan(plan);
+          if (result.status === "configured") {
+            setDesktopSetupPlan(result);
+            setShowSetupPlan(false);
+          }
+          return result;
+        }}
+      />
     );
   }
 
@@ -145,6 +196,8 @@ export function App() {
           }
           return result;
         }}
+        onChangePlan={() => setShowSetupPlan(true)}
+        setupPlan={desktopSetupPlan?.status === "configured" ? desktopSetupPlan.plan : undefined}
       />
     );
   }
