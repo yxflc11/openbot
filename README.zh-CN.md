@@ -246,6 +246,7 @@ packages/
   db/                  PostgreSQL schema 与 migration
   policy/              确定性的 fail-closed 策略计算
   provider-sdk/        Provider 契约
+  provider-conformance-runner/ 有界 Provider 场景证据
   office-plugin/       延后开发的可选可视化
 providers/
   docker/              当前只读浏览器适配器

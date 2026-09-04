@@ -23,6 +23,9 @@ export interface ProviderConformanceTargetInput {
   architecture: NodeArchitecture;
   osVersion: string;
   evidenceLevel: ProviderConformanceEvidenceLevel;
+  workerHostVersion?: string;
+  hardwareModel?: string;
+  hardwareEvidenceId?: string;
 }
 
 export interface BuildProviderConformanceReportInput {
@@ -135,7 +138,10 @@ function requiredGeneratedChecks(
     const metadataComplete =
       input.target.evidenceLevel === "real-device" &&
       input.target.architecture !== "unknown" &&
-      input.target.osVersion.trim().toLowerCase() !== "unknown";
+      input.target.osVersion.trim().toLowerCase() !== "unknown" &&
+      input.target.workerHostVersion !== undefined &&
+      input.target.hardwareModel !== undefined &&
+      input.target.hardwareEvidenceId !== undefined;
     checks.push(
       check(
         {
@@ -148,6 +154,9 @@ function requiredGeneratedChecks(
             `evidenceLevel=${input.target.evidenceLevel}`,
             `architecture=${input.target.architecture}`,
             `osVersion=${input.target.osVersion}`,
+            `workerHostVersion=${input.target.workerHostVersion ?? "missing"}`,
+            `hardwareModel=${input.target.hardwareModel ?? "missing"}`,
+            `hardwareEvidenceId=${input.target.hardwareEvidenceId ?? "missing"}`,
           ],
         },
         generatedAt,

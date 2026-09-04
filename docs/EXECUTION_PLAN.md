@@ -58,7 +58,7 @@ simulated fixtures, or capability declarations as substitutes for the evidence g
 | --- | --- | --- | --- | --- | --- |
 | G0 | Active; authorization pending | Publish and observe the hardened baseline | Local success does not prove a clean GitHub runner can install, build, test, and scan the branch. | A remote, reviewable security baseline. Later failures can be attributed to new work instead of an unknown starting state. | Local checks stay green; after explicit push authorization, the branch is pushed and every existing CI job is observed. No PR, merge, or release is implied. |
 | G1 | Active locally; remote evidence pending | Windows/macOS/Linux hosted CI matrix | Cross-platform implementation without cross-platform feedback accumulates path, shell, permission, and runtime regressions. | Every portable protocol, Node, Provider SDK, config, and Web change is checked on explicit runner families. | Pinned runner families and Node version; deterministic portable tests on all three OSes; honest docs that hosted CI is not real-device support. |
-| G2 | Planned | Provider conformance runner and real-device evidence contract | Hosted VMs cannot prove service recovery, keyring access, GUI permissions, hardware isolation, or desktop behavior. | One repeatable scenario runner and bounded evidence format that makes platform claims reproducible instead of anecdotal. | Hermetic negative fixtures; expiring target-bound reports; no secrets in artifacts; named OS/version/architecture/hardware for real-device reports; no self-certification. |
+| G2 | Active locally; real-device suites and evidence pending | Provider conformance runner and real-device evidence contract | Hosted VMs cannot prove service recovery, keyring access, GUI permissions, hardware isolation, or desktop behavior. | One repeatable scenario runner and bounded evidence format that makes platform claims reproducible instead of anecdotal. | Hermetic negative fixtures; expiring target-bound reports; no secrets in artifacts; named OS/version/architecture/hardware for real-device reports; no self-certification. |
 
 ### Wave B — make Worker Hosts installable and trustworthy
 
@@ -127,6 +127,10 @@ Every non-trivial slice follows the same sequence:
 - G1's explicit Linux x64, Windows x64, and macOS arm64 matrix is implemented locally with a
   fail-closed repository policy check. It remains unverified remote configuration, not platform
   support, until all three hosted jobs are observed.
+- G2's strict scenario runner and real-device report contract are implemented locally. Tests cover
+  deterministic lifecycle order, abort deadlines, cleanup failures, untrusted-result rejection,
+  secret suppression, expected-failure expiry, required device metadata, and non-overwriting private
+  evidence files. Provider-specific suites and controlled real-device reports remain outstanding.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

@@ -255,20 +255,41 @@ describe("machine-readable Provider conformance", () => {
       }),
     ).toThrow("Conformance check ids must be unique");
 
+    expect(() =>
+      buildProviderConformanceReport({
+        provider: executableProvider(),
+        providerVersion: "0.1.0",
+        target: {
+          platform: "linux",
+          architecture: "unknown",
+          osVersion: "unknown",
+          evidenceLevel: "hermetic",
+        },
+        stage: "real-device",
+        suiteVersion: "1.0.0",
+        generatedAt,
+      }),
+    ).toThrow("Real-device reports require real-device evidence");
+
     const realDevice = buildProviderConformanceReport({
       provider: executableProvider(),
       providerVersion: "0.1.0",
       target: {
         platform: "linux",
-        architecture: "unknown",
-        osVersion: "unknown",
-        evidenceLevel: "hermetic",
+        architecture: "x64",
+        osVersion: "6.8.0",
+        evidenceLevel: "real-device",
+        workerHostVersion: "0.1.0",
+        hardwareModel: "Dedicated test workstation",
+        hardwareEvidenceId: "inventory.linux-lab-01",
       },
       stage: "real-device",
       suiteVersion: "1.0.0",
       generatedAt,
     });
-    expect(realDevice.baseline.unexpectedFailures).toContain("target.real-device-metadata");
-    expect(realDevice.summary.conformant).toBe(false);
+    expect(realDevice.summary.conformant).toBe(true);
+    expect(
+      realDevice.checks.find((check) => check.id === "target.real-device-metadata"),
+    ).toMatchObject({ status: "success" });
   });
 });

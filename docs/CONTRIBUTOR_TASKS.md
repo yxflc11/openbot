@@ -28,19 +28,20 @@ claim at the lowest level proven by tests.
   translation; prints the exact file and missing contract.
 - **Out of scope:** judging prose quality or modifying translations automatically.
 
-## Intermediate: Provider conformance runner
+## Delivered foundation: Provider conformance runner
 
-- **Available foundation:** `openbot.provider-conformance/v1`, its strict schema, expected-failure
-  semantics, deterministic builder, and unit fixtures are implemented.
-- **Outcome:** a standalone runner executes a Provider scenario set and publishes the bounded JSON
-  report with reproducible hermetic or real-device evidence.
-- **Start in:** a new runner package, `packages/provider-sdk`, Provider integration tests, and
-  `.github/workflows`.
-- **Research first:** the pinned MCP, Kubernetes, and OCI entries in
-  [Open-source reuse](OPEN_SOURCE_REUSE.md), plus current maintained runner libraries.
-- **Acceptance:** consumes the shared builder; no raw secrets in artifacts; explicit expected
-  failures; expired/stale baselines fail; deterministic fixture; no self-certification.
-- **Out of scope:** a hosted certification authority or real-device CI fleet.
+- **Delivered:** `@openbot/provider-conformance-runner` executes bounded, deterministic scenario
+  lifecycles, suppresses raw thrown values, always attempts cleanup, applies explicit
+  expected-failure baselines, and creates a new private JSON evidence file without overwrite.
+- **Start in:** `packages/provider-conformance-runner`, `packages/provider-sdk`, Provider integration
+  tests, and `.github/workflows`.
+- **Research baseline:** pinned MCP Conformance, OCI runtime-tools, Sonobuoy, and Vitest reviews; see
+  [the runner research record](research/provider-conformance-runner.md).
+- **Remaining contribution:** author Provider-specific hermetic suites, connect report artifacts to
+  the hosted matrix, and run named suites on controlled Windows, macOS, and Linux devices.
+- **Preserve:** no raw secrets in artifacts; expected failures stay non-conformant and expire;
+  real-device metadata is mandatory; the runner never self-certifies a platform.
+- **Still out of scope:** a hosted certification authority or provisioning a real-device CI fleet.
 
 ## Intermediate: Agent Skills quarantine worker
 

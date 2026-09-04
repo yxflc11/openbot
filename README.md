@@ -266,6 +266,7 @@ packages/
   db/                  PostgreSQL schema and migrations
   policy/              deterministic fail-closed policy evaluator
   provider-sdk/        provider contracts
+  provider-conformance-runner/ bounded Provider scenario evidence
   office-plugin/       deferred optional visualization
 providers/
   docker/              current read-only browser adapter

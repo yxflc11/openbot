@@ -655,15 +655,25 @@ describe("Provider conformance reports", () => {
         references: [],
         evidence: [],
       },
+      {
+        id: "provider.target-platform",
+        name: "Target platform declaration",
+        description: "The Provider declares the target platform.",
+        status: "success",
+        severity: "required",
+        timestamp: "2026-09-04T00:00:00.000Z",
+        references: [],
+        evidence: [],
+      },
     ],
     baseline: { expectedFailures: [], unexpectedFailures: [], staleEntries: [] },
     summary: {
-      success: 1,
+      success: 2,
       failure: 0,
       warning: 0,
       skipped: 0,
       info: 0,
-      total: 1,
+      total: 2,
       expectedFailureEntries: 0,
       conformant: true,
       baselineCurrent: true,
@@ -702,5 +712,15 @@ describe("Provider conformance reports", () => {
     expect(providerConformanceReportSchema.safeParse({ ...report, supported: true }).success).toBe(
       false,
     );
+  });
+
+  it("rejects real-device reports without reproducible target metadata and generated checks", () => {
+    expect(
+      providerConformanceReportSchema.safeParse({
+        ...report,
+        suite: { ...report.suite, stage: "real-device" },
+        target: { ...report.target, evidenceLevel: "real-device" },
+      }).success,
+    ).toBe(false);
   });
 });
