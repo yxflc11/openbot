@@ -65,8 +65,11 @@ the token or deployment password.
 
 Every mutating request must send an `Origin` that exactly matches `OPENBOT_ALLOWED_ORIGINS`.
 Non-loopback origins require HTTPS and `OPENBOT_SECURE_COOKIES=true`; an unsafe configuration
-stops the Server before it listens. Five consecutive login failures temporarily limit that
-single-process browser-Origin bucket for five minutes. This is not distributed per-device
+stops the Server before it listens. The deployment password must contain at least 15 characters.
+Five attempts in five minutes block the same client bucket for five minutes; PostgreSQL serializes
+and preserves the bucket across Server processes and restarts. The bucket uses a domain-separated
+digest of the direct peer IP. One `Forwarded: for=...` hop is accepted only when that direct peer
+equals `OPENBOT_TRUSTED_PROXY_ADDRESS`. This is pseudonymous abuse resistance, not per-device
 identity, so the Server still belongs on a trusted private network.
 
 Channel and workspace SSE subscribers each have a 128-event pending bound. The Server terminates

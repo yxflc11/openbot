@@ -4,10 +4,13 @@ import {
   NodeIdentityNotFoundError,
   NodeIdentityService,
   type NodeIdentityStore,
+  type ExchangeNodeEnrollmentRecord,
   type StoredNodeEnrollmentToken,
 } from "./node-identity.js";
 
 describe("Node identity service", () => {
+  const clientIdentity = { digest: "a".repeat(64), source: "direct" as const };
+
   it("exchanges a short-lived token once and stores only secret digests", async () => {
     const now = new Date("2026-09-04T00:00:00.000Z");
     const store = memoryNodeIdentityStore();
@@ -21,16 +24,23 @@ describe("Node identity service", () => {
     expect(store.enrollments[0]?.tokenDigest).toMatch(/^[a-f0-9]{64}$/);
     expect(store.enrollments[0]?.tokenDigest).not.toContain(issued.token);
 
-    const enrolled = await identity.enroll({ nodeId: "linux-node", token: issued.token });
+    const enrolled = await identity.enroll(
+      { nodeId: "linux-node", token: issued.token },
+      clientIdentity,
+    );
     expect(enrolled).toMatchObject({
       format: "openbot.node-identity/v1",
       nodeId: "linux-node",
     });
     expect(enrolled.credential).toMatch(/^obn_/);
+    expect(store.exchanges[0]).toMatchObject({
+      clientIdentityDigest: "a".repeat(64),
+      clientIdentitySource: "direct",
+    });
     expect(await identity.authenticate("linux-node", enrolled.credential)).toBe(true);
-    await expect(identity.enroll({ nodeId: "linux-node", token: issued.token })).rejects.toThrow(
-      InvalidNodeEnrollmentError,
-    );
+    await expect(
+      identity.enroll({ nodeId: "linux-node", token: issued.token }, clientIdentity),
+    ).rejects.toThrow(InvalidNodeEnrollmentError);
   });
 
   it("replaces unused tokens and rejects expired or wrong-node exchanges", async () => {
@@ -46,15 +56,15 @@ describe("Node identity service", () => {
       expiresInSeconds: 60,
     });
 
-    await expect(identity.enroll({ nodeId: "windows-node", token: first.token })).rejects.toThrow(
-      InvalidNodeEnrollmentError,
-    );
     await expect(
-      identity.enroll({ nodeId: "other-node", token: replacement.token }),
+      identity.enroll({ nodeId: "windows-node", token: first.token }, clientIdentity),
+    ).rejects.toThrow(InvalidNodeEnrollmentError);
+    await expect(
+      identity.enroll({ nodeId: "other-node", token: replacement.token }, clientIdentity),
     ).rejects.toThrow(InvalidNodeEnrollmentError);
     now = new Date("2026-09-04T00:01:01.000Z");
     await expect(
-      identity.enroll({ nodeId: "windows-node", token: replacement.token }),
+      identity.enroll({ nodeId: "windows-node", token: replacement.token }, clientIdentity),
     ).rejects.toThrow(InvalidNodeEnrollmentError);
   });
 
@@ -69,8 +79,14 @@ describe("Node identity service", () => {
       nodeId: "second",
       expiresInSeconds: 60,
     });
-    const first = await identity.enroll({ nodeId: "first", token: firstToken.token });
-    const second = await identity.enroll({ nodeId: "second", token: secondToken.token });
+    const first = await identity.enroll(
+      { nodeId: "first", token: firstToken.token },
+      clientIdentity,
+    );
+    const second = await identity.enroll(
+      { nodeId: "second", token: secondToken.token },
+      clientIdentity,
+    );
 
     await identity.revoke("first");
     expect(await identity.authenticate("first", first.credential)).toBe(false);
@@ -87,14 +103,17 @@ describe("Node identity service", () => {
 
 function memoryNodeIdentityStore(): NodeIdentityStore & {
   enrollments: Array<StoredNodeEnrollmentToken & { consumedAt?: Date }>;
+  exchanges: ExchangeNodeEnrollmentRecord[];
 } {
   const enrollments: Array<StoredNodeEnrollmentToken & { consumedAt?: Date }> = [];
+  const exchanges: ExchangeNodeEnrollmentRecord[] = [];
   const credentials = new Map<
     string,
     { credentialDigest: string; revokedAt?: Date; lastAuthenticatedAt?: Date }
   >();
   return {
     enrollments,
+    exchanges,
     async replaceEnrollmentToken(record) {
       for (const enrollment of enrollments) {
         if (enrollment.nodeId === record.nodeId && enrollment.consumedAt === undefined) {
@@ -104,6 +123,7 @@ function memoryNodeIdentityStore(): NodeIdentityStore & {
       enrollments.push({ ...record });
     },
     async exchangeEnrollmentToken(record) {
+      exchanges.push(record);
       const enrollment = enrollments.find(
         (item) =>
           item.nodeId === record.nodeId &&

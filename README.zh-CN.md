@@ -96,8 +96,12 @@ cp .env.example .env
 编辑 `.env`，替换 Owner 密码占位值：
 
 ```dotenv
-OPENBOT_OWNER_PASSWORD=<至少-12-个字符的随机密码>
+OPENBOT_OWNER_PASSWORD=<至少-15-个字符的随机密码>
 ```
+
+Server 只把直接对端 IP 用作经摘要化的登录/登记限速键。如果前面恰好有一层反向代理，请把
+`OPENBOT_TRUSTED_PROXY_ADDRESS` 设置为该代理的准确 IP；只有此时才接受单个 RFC 7239
+`Forwarded: for=...` 值。不要把它配置为代理网段或多跳代理链。
 
 安装依赖、启动 PostgreSQL，然后分别启动 Server 与 Web：
 

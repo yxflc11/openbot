@@ -120,6 +120,13 @@
       "when": 1789795200000,
       "tag": "0016_employee_profile_details",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789881600000,
+      "tag": "0017_request_throttle_buckets",
+      "breakpoints": true
     }
   ]
 }

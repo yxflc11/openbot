@@ -4,6 +4,7 @@ import type {
   ExchangeNodeEnrollmentInput,
   NodeEnrollmentResult,
 } from "@openbot/protocol";
+import type { ClientIdentity } from "./client-identity.js";
 
 export interface StoredNodeEnrollmentToken {
   id: string;
@@ -18,6 +19,8 @@ export interface ExchangeNodeEnrollmentRecord {
   tokenDigest: string;
   credentialDigest: string;
   enrolledAt: Date;
+  clientIdentityDigest: string;
+  clientIdentitySource: ClientIdentity["source"];
 }
 
 export interface StoredNodeIdentity {
@@ -70,7 +73,10 @@ export class NodeIdentityService {
     return { nodeId: input.nodeId, token, expiresAt: expiresAt.toISOString() };
   }
 
-  async enroll(input: ExchangeNodeEnrollmentInput): Promise<NodeEnrollmentResult> {
+  async enroll(
+    input: ExchangeNodeEnrollmentInput,
+    clientIdentity: ClientIdentity,
+  ): Promise<NodeEnrollmentResult> {
     const enrolledAt = this.#now();
     const credential = `obn_${randomBytes(32).toString("base64url")}`;
     const exchanged = await this.#store.exchangeEnrollmentToken({
@@ -78,6 +84,8 @@ export class NodeIdentityService {
       tokenDigest: digestNodeSecret("enrollment", input.token),
       credentialDigest: digestNodeSecret("credential", credential),
       enrolledAt,
+      clientIdentityDigest: clientIdentity.digest,
+      clientIdentitySource: clientIdentity.source,
     });
     if (!exchanged) {
       throw new InvalidNodeEnrollmentError("Node enrollment token is invalid or expired.");

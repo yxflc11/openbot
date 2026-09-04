@@ -67,6 +67,9 @@ the previous credential, and leaves all old values invalid.
 - Treat a POSIX permission refusal as secret exposure to investigate, not only a startup error.
 - Back up the Server database securely; it contains credential digests and identity audit events,
   not recoverable plaintext credentials.
+- The public exchange is throttled by a domain-separated digest of the direct peer address. An
+  `enrolled` audit event stores only that digest and whether it came directly or through the one
+  explicitly trusted proxy; it never stores the raw address, token, or credential.
 - A lost Node credential is replaced through revocation and fresh enrollment, not recovered.
 - Do not infer OS isolation, host ownership, or Provider permission from successful enrollment.
 - Keep native desktop Providers disabled until their platform-specific permission review passes.

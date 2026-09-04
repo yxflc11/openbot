@@ -22,6 +22,7 @@ describe("server environment", () => {
     expect(environment.OPENBOT_HOST).toBe("127.0.0.1");
     expect(environment.OPENBOT_SECURE_COOKIES).toBe(false);
     expect(environment.OPENBOT_SESSION_TTL_HOURS).toBe(24);
+    expect(environment.OPENBOT_TRUSTED_PROXY_ADDRESS).toBeUndefined();
   });
 
   it("requires HTTPS and Secure cookies for every remote browser origin", () => {
@@ -60,6 +61,9 @@ describe("server environment", () => {
     expect(
       serverEnvSchema.safeParse({ ...required, OPENBOT_OWNER_PASSWORD: "too-short" }).success,
     ).toBe(false);
+    expect(
+      serverEnvSchema.safeParse({ ...required, OPENBOT_OWNER_PASSWORD: "fourteen-char!" }).success,
+    ).toBe(false);
     expect(serverEnvSchema.safeParse({ ...required, OPENBOT_ALLOWED_ORIGINS: "" }).success).toBe(
       false,
     );
@@ -69,6 +73,25 @@ describe("server environment", () => {
         OPENBOT_OWNER_PASSWORD: "replace-with-a-long-random-owner-password",
       }).success,
     ).toBe(false);
+  });
+
+  it("accepts only one exact trusted proxy IP address", () => {
+    expect(
+      serverEnvSchema.parse({ ...required, OPENBOT_TRUSTED_PROXY_ADDRESS: "2001:db8::1" })
+        .OPENBOT_TRUSTED_PROXY_ADDRESS,
+    ).toBe("2001:db8::1");
+    expect(
+      serverEnvSchema.safeParse({ ...required, OPENBOT_TRUSTED_PROXY_ADDRESS: "proxy.example" })
+        .success,
+    ).toBe(false);
+    expect(
+      serverEnvSchema.safeParse({ ...required, OPENBOT_TRUSTED_PROXY_ADDRESS: "10.0.0.1,10.0.0.2" })
+        .success,
+    ).toBe(false);
+    expect(
+      serverEnvSchema.parse({ ...required, OPENBOT_TRUSTED_PROXY_ADDRESS: "" })
+        .OPENBOT_TRUSTED_PROXY_ADDRESS,
+    ).toBeUndefined();
   });
 
   it("requires publisher keyring and passphrase paths together", () => {

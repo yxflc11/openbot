@@ -82,7 +82,10 @@ export class PostgresNodeIdentityStore implements NodeIdentityStore {
         id: randomUUID(),
         nodeId: record.nodeId,
         type: "enrolled",
-        details: {},
+        details: {
+          clientIdentityDigest: record.clientIdentityDigest,
+          clientIdentitySource: record.clientIdentitySource,
+        },
         createdAt: record.enrolledAt,
       });
       return true;

@@ -1,5 +1,6 @@
 import type { Server as HttpServer } from "node:http";
 import { serve } from "@hono/node-server";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { serverEnvSchema } from "@openbot/config";
 import { createDatabase } from "@openbot/db";
 import { createApp } from "./app.js";
@@ -12,6 +13,8 @@ import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { PostgresNodeIdentityStore } from "./postgres-node-identity-store.js";
 import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
+import { PostgresRequestThrottleStore } from "./postgres-request-throttle-store.js";
+import { RequestThrottle } from "./request-throttle.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
 import { RunDispatcher } from "./run-dispatcher.js";
 import { RunFrameStore } from "./run-frame-store.js";
@@ -55,11 +58,16 @@ const dispatcher = new RunDispatcher(
   workspaceRealtime,
 );
 await dispatcher.start();
-const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
-  ownerName: env.OPENBOT_OWNER_NAME,
-  ownerPassword: env.OPENBOT_OWNER_PASSWORD,
-  sessionTtlMs: env.OPENBOT_SESSION_TTL_HOURS * 60 * 60 * 1000,
-});
+const requestThrottle = new RequestThrottle(new PostgresRequestThrottleStore(database.db));
+const auth = new OwnerAuthService(
+  new PostgresOwnerSessionStore(database.db),
+  {
+    ownerName: env.OPENBOT_OWNER_NAME,
+    ownerPassword: env.OPENBOT_OWNER_PASSWORD,
+    sessionTtlMs: env.OPENBOT_SESSION_TTL_HOURS * 60 * 60 * 1000,
+  },
+  requestThrottle,
+);
 const app = createApp({
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,
   artifactStorage,
@@ -67,13 +75,16 @@ const app = createApp({
   dispatchRun: (run) => dispatcher.enqueue(run),
   ...(employeePublisher === undefined ? {} : { employeePublisher }),
   disconnectNode: (nodeId) => nodeRegistry.disconnect(nodeId),
+  getRemoteAddress: (context) => getConnInfo(context).remote.address,
   listNodes: () => nodeRegistry.list(),
   nodeIdentity,
   realtime,
+  requestThrottle,
   resolveApproval: (resolution) => dispatcher.resolveApproval(resolution),
   runFrames,
   secureCookies: env.OPENBOT_SECURE_COOKIES,
   store,
+  trustedProxyAddress: env.OPENBOT_TRUSTED_PROXY_ADDRESS,
   workspaceRealtime,
 });
 

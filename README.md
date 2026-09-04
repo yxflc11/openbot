@@ -107,8 +107,12 @@ cp .env.example .env
 Edit `.env` and replace the Owner password placeholder:
 
 ```dotenv
-OPENBOT_OWNER_PASSWORD=<a-random-password-with-at-least-12-characters>
+OPENBOT_OWNER_PASSWORD=<a-random-password-with-at-least-15-characters>
 ```
+
+The Server uses the direct peer IP only as a pseudonymous login/enrollment throttle key. With one
+single-hop reverse proxy, set `OPENBOT_TRUSTED_PROXY_ADDRESS` to that proxy's exact IP; only then is
+one RFC 7239 `Forwarded: for=...` value accepted. Do not set it for a range or multi-hop chain.
 
 Install dependencies, start PostgreSQL, then run the Server and Web app:
 

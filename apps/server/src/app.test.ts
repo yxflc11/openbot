@@ -44,6 +44,7 @@ import {
 } from "./employee-package.js";
 import { NodeIdentityService, type NodeIdentityStore } from "./node-identity.js";
 import { OwnerAuthService } from "./owner-auth.js";
+import { RequestThrottle, type RequestThrottleStore } from "./request-throttle.js";
 import { RunFrameStore } from "./run-frame-store.js";
 import type {
   CreateOwnerSessionInput,
@@ -133,6 +134,22 @@ describe("server app", () => {
       headers: { Cookie: cookie?.split(";", 1)[0] ?? "" },
     });
     expect(await active.json()).toMatchObject({ authenticated: true });
+  });
+
+  it("fails closed when the trusted proxy omits its single-hop client identity", async () => {
+    const app = createTestApp({
+      store: createTestStore(),
+      remoteAddress: "192.0.2.11",
+      trustedProxyAddress: "192.0.2.11",
+    });
+    const response = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: testOrigin },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Client network identity is unavailable." });
   });
 
   it("issues, exchanges, and revokes a per-Node credential", async () => {
@@ -226,6 +243,26 @@ describe("server app", () => {
         }),
       ],
     });
+  });
+
+  it("rate limits repeated invalid enrollment exchanges by client identity", async () => {
+    const app = createTestApp({
+      nodeIdentity: new NodeIdentityService(createMemoryNodeIdentityStore()),
+      store: createTestStore(),
+    });
+    const request = () =>
+      app.request("/api/v1/nodes/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodeId: "linux-node", token: `obenr_${"x".repeat(43)}` }),
+      });
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      expect((await request()).status).toBe(401);
+    }
+    const limited = await request();
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBe("300");
   });
 
   it("rejects mutations without a trusted Origin", async () => {
@@ -1740,6 +1777,8 @@ function createTestApp({
   runFrames,
   workspaceRealtime,
   secureCookies = false,
+  remoteAddress = "127.0.0.1",
+  trustedProxyAddress,
 }: {
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
@@ -1753,12 +1792,19 @@ function createTestApp({
   runFrames?: Pick<RunFrameStore, "get">;
   workspaceRealtime?: WorkspaceRealtimeHub;
   secureCookies?: boolean;
+  remoteAddress?: string | undefined;
+  trustedProxyAddress?: string | undefined;
 }) {
-  const auth = new OwnerAuthService(createMemorySessionStore(), {
-    ownerName: "Test Owner",
-    ownerPassword: "correct-owner-password",
-    sessionTtlMs: 60_000,
-  });
+  const requestThrottle = new RequestThrottle(createMemoryThrottleStore());
+  const auth = new OwnerAuthService(
+    createMemorySessionStore(),
+    {
+      ownerName: "Test Owner",
+      ownerPassword: "correct-owner-password",
+      sessionTtlMs: 60_000,
+    },
+    requestThrottle,
+  );
   return createApp({
     allowedOrigins: [testOrigin],
     auth,
@@ -1767,13 +1813,16 @@ function createTestApp({
     ...(resolveApproval === undefined ? {} : { resolveApproval }),
     ...(artifactStorage === undefined ? {} : { artifactStorage }),
     ...(employeePublisher === undefined ? {} : { employeePublisher }),
+    getRemoteAddress: () => remoteAddress,
     listNodes,
     ...(nodeIdentity === undefined ? {} : { nodeIdentity }),
     ...(realtime === undefined ? {} : { realtime }),
+    requestThrottle,
     ...(runFrames === undefined ? {} : { runFrames }),
     ...(workspaceRealtime === undefined ? {} : { workspaceRealtime }),
     secureCookies,
     store,
+    ...(trustedProxyAddress === undefined ? {} : { trustedProxyAddress }),
   });
 }
 
@@ -1907,6 +1956,42 @@ function createMemorySessionStore(): OwnerSessionStore {
     async revokeSession(tokenDigest: string, now: Date) {
       const session = sessions.find((item) => item.tokenDigest === tokenDigest);
       if (session !== undefined) session.revokedAt = now;
+    },
+  };
+}
+
+function createMemoryThrottleStore(): RequestThrottleStore {
+  const buckets = new Map<
+    string,
+    { attemptCount: number; windowStartedAt: Date; blockedUntil?: Date }
+  >();
+  return {
+    async reserveAttempt(input) {
+      const key = `${input.scope}:${input.clientDigest}`;
+      const current = buckets.get(key);
+      if (current?.blockedUntil !== undefined && current.blockedUntil > input.now) {
+        return {
+          allowed: false,
+          retryAfterSeconds: Math.ceil(
+            (current.blockedUntil.getTime() - input.now.getTime()) / 1000,
+          ),
+        };
+      }
+      const expired =
+        current === undefined ||
+        input.now.getTime() - current.windowStartedAt.getTime() >= input.windowMs;
+      const attemptCount = expired ? 1 : current.attemptCount + 1;
+      buckets.set(key, {
+        attemptCount,
+        windowStartedAt: expired ? input.now : current.windowStartedAt,
+        ...(attemptCount >= input.maximumAttempts
+          ? { blockedUntil: new Date(input.now.getTime() + input.blockMs) }
+          : {}),
+      });
+      return { allowed: true };
+    },
+    async clearAttempts(scope, clientDigest) {
+      buckets.delete(`${scope}:${clientDigest}`);
     },
   };
 }

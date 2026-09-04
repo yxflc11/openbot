@@ -79,7 +79,9 @@ flowchart LR
 
 ### Local Owner Auth
 
-- M0 是单 Owner 工作区，密码由部署环境提供，Server 启动时强制要求至少 12 个字符；
+- M0 是单 Owner 工作区，密码由部署环境提供，Server 启动时强制要求至少 15 个字符；
+- 登录与公开 Node 兑换按经摘要化的直接对端网络身份由 PostgreSQL 原子限速；仅可显式信任一个
+  准确代理 IP 提供的单跳 `Forwarded`，原始地址不进入持久记录；
 - 登录成功签发随机 Session Token，浏览器只通过 `HttpOnly` Cookie 持有；
 - PostgreSQL 只保存 Token 摘要、过期时间和撤销时间；
 - `/api/v1` 默认拒绝匿名请求，写请求同时校验 Origin；

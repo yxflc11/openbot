@@ -473,6 +473,28 @@ export const authSessions = pgTable(
   ],
 );
 
+export const requestThrottleBuckets = pgTable(
+  "request_throttle_buckets",
+  {
+    scope: text("scope").notNull(),
+    clientDigest: text("client_digest").notNull(),
+    attemptCount: integer("attempt_count").notNull(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true }).notNull(),
+    blockedUntil: timestamp("blocked_until", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scope, table.clientDigest] }),
+    index("request_throttle_expiry_idx").on(table.updatedAt),
+    check(
+      "request_throttle_scope_valid",
+      sql`${table.scope} IN ('owner-login', 'node-enrollment')`,
+    ),
+    check("request_throttle_client_digest_valid", sql`length(${table.clientDigest}) = 64`),
+    check("request_throttle_attempt_count_valid", sql`${table.attemptCount} >= 1`),
+  ],
+);
+
 export const approvals = pgTable(
   "approvals",
   {

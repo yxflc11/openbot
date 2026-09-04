@@ -32,7 +32,7 @@ import {
   type DsseEnvelope,
   type EmployeeTemplatePackage,
 } from "@openbot/protocol";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
@@ -42,6 +42,7 @@ import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import { ClientIdentityError, resolveClientIdentity } from "./client-identity.js";
 import {
   type ControlPlaneStore,
   StoreConflictError,
@@ -65,6 +66,7 @@ import {
   type OwnerAuthService,
 } from "./owner-auth.js";
 import { RealtimeEventBuffer } from "./realtime-event-buffer.js";
+import type { RequestThrottle } from "./request-throttle.js";
 import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
@@ -78,14 +80,17 @@ export interface AppDependencies {
     sign(document: EmployeeTemplatePackage): DsseEnvelope;
     verify(input: unknown): EmployeeTemplateEnvelopeVerification;
   };
+  getRemoteAddress: (context: Context) => string | undefined;
   listNodes: () => ExecutionNode[];
   nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "list" | "revoke">;
   disconnectNode?: (nodeId: string) => boolean;
   realtime?: ChannelRealtimeHub;
+  requestThrottle: RequestThrottle;
   resolveApproval?: (resolution: ApprovalResolution) => void | Promise<void>;
   runFrames?: Pick<RunFrameStore, "get">;
   secureCookies: boolean;
   store: ControlPlaneStore;
+  trustedProxyAddress?: string | undefined;
   workspaceRealtime?: WorkspaceRealtimeHub;
 }
 
@@ -162,10 +167,8 @@ export function createApp(dependencies: AppDependencies) {
 
   app.post("/api/v1/auth/login", async (context) => {
     const input = await parseRequest(context.req.raw, loginInputSchema);
-    const result = await dependencies.auth.login(
-      input.password,
-      context.req.header("origin") ?? "unknown",
-    );
+    const clientIdentity = resolveRequestClientIdentity(context, dependencies);
+    const result = await dependencies.auth.login(input.password, clientIdentity.digest);
     const maxAge = Math.max(
       1,
       Math.floor((new Date(result.session.expiresAt).getTime() - Date.now()) / 1000),
@@ -197,7 +200,17 @@ export function createApp(dependencies: AppDependencies) {
       exchangeNodeEnrollmentInputSchema,
       maximumNodeIdentityRequestBytes,
     );
-    const result = await identity.enroll(input);
+    const clientIdentity = resolveRequestClientIdentity(context, dependencies);
+    const reservation = await dependencies.requestThrottle.reserve(
+      "node-enrollment",
+      clientIdentity.digest,
+    );
+    if (!reservation.allowed) {
+      context.header("Retry-After", String(reservation.retryAfterSeconds));
+      return context.json({ error: "Too many Node enrollment attempts. Try again later." }, 429);
+    }
+    const result = await identity.enroll(input, clientIdentity);
+    await dependencies.requestThrottle.clear("node-enrollment", clientIdentity.digest);
     // Re-enrollment rotates the durable credential. Terminate any session that authenticated with
     // the previous value so it cannot remain live until its next reconnect.
     dependencies.disconnectNode?.(result.nodeId);
@@ -770,6 +783,9 @@ export function createApp(dependencies: AppDependencies) {
       context.header("Retry-After", String(error.retryAfterSeconds));
       return context.json({ error: error.message }, 429);
     }
+    if (error instanceof ClientIdentityError) {
+      return context.json({ error: "Client network identity is unavailable." }, 400);
+    }
     if (error instanceof InvalidNodeEnrollmentError) {
       return context.json({ error: "Node enrollment token is invalid or expired." }, 401);
     }
@@ -785,6 +801,17 @@ export function createApp(dependencies: AppDependencies) {
   function isTrustedOrigin(origin: string | undefined): boolean {
     return origin !== undefined && dependencies.allowedOrigins.includes(origin);
   }
+}
+
+function resolveRequestClientIdentity(
+  context: Context,
+  dependencies: Pick<AppDependencies, "getRemoteAddress" | "trustedProxyAddress">,
+) {
+  return resolveClientIdentity({
+    remoteAddress: dependencies.getRemoteAddress(context),
+    forwarded: context.req.header("forwarded"),
+    trustedProxyAddress: dependencies.trustedProxyAddress,
+  });
 }
 
 const channelHeartbeatMs = 15_000;

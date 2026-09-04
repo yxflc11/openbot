@@ -1,4 +1,5 @@
 import { URL } from "node:url";
+import { isIP } from "node:net";
 import { z } from "zod";
 
 const portSchema = z.coerce.number().int().positive().max(65_535);
@@ -47,7 +48,7 @@ export const serverEnvSchema = z
     OPENBOT_OWNER_NAME: z.string().trim().min(1).max(80).default("Owner"),
     OPENBOT_OWNER_PASSWORD: z
       .string()
-      .min(12)
+      .min(15)
       .refine(
         (value) => value !== "replace-with-a-long-random-owner-password",
         "Replace the example owner password before starting OpenBot.",
@@ -68,6 +69,14 @@ export const serverEnvSchema = z
     OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: z.string().trim().min(1).optional(),
     OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: z.string().trim().min(1).optional(),
     OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+    OPENBOT_TRUSTED_PROXY_ADDRESS: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .trim()
+        .refine((value) => isIP(value) !== 0, "Trusted proxy address must be one exact IP address.")
+        .optional(),
+    ),
   })
   .superRefine((value, context) => {
     let hasRemoteOrigin = false;

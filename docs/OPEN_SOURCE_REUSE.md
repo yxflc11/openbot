@@ -105,7 +105,7 @@ named boundary until the missing review is completed.
 | Existing code boundary | Coverage | Audit result |
 | --- | --- | --- |
 | Employee domain, profile, evolution, skills, memory, and package primitives | Reviewed | Hermes, Letta, Mem0, LangMem, Agent Skills, OpenClaw, DSSE, Sigstore, in-toto, WAI-ARIA, and React Spectrum decisions are recorded. Evolution and memory lineage is explicit in the root README, Employee specification, ADR-0026, and the memory research record. |
-| Server browser sessions, Origin policy, realtime projection, file artifacts, and process shutdown | Reviewed | Hono/OWASP, Hono streaming, Node/Hono shutdown, `write-file-atomic`, and PNG decoder candidates are recorded. Accepted dispatcher work now drains before PostgreSQL closes; distributed login identity and full PNG normalization remain documented gaps. |
+| Server browser sessions, Origin policy, realtime projection, file artifacts, and process shutdown | Reviewed | Hono/OWASP, RFC 7239, PostgreSQL throttling, Hono streaming, Node/Hono shutdown, `write-file-atomic`, and PNG decoder candidates are recorded. Login throttles now survive restart and share state; they remain pseudonymous network abuse controls rather than device identity. Full PNG normalization remains a documented gap. |
 | Node protocol, capability routing, liveness, configuration, and bootstrap identity | Reviewed | MCP/OCI conformance, `ws`, Kubernetes/Nomad liveness, SPIFFE/SPIRE, Tailscale/Headscale, Kubernetes/Smallstep bootstrap, Hono limits, atomic storage, and strict Zod input decisions are recorded. Per-Node enrollment and revocation are implemented; proof of possession remains planned. |
 | Provider SDK and current Docker browser adapter | Reviewed | CopilotKit/OpenBot `agent-computer`, Cua, MCP conformance, OCI evidence, and platform claim levels are recorded. Native Provider claims remain limited to their evidence. |
 | GitHub contribution and CI surface | Reviewed | Issue forms and RFC/KEP evidence are adapted locally. Existing checkout/setup actions are pinned to reviewed commits with credentials persistence disabled. |
@@ -200,8 +200,9 @@ named boundary until the missing review is completed.
   a compatible patched upstream release must be reviewed before upgrading the pinned toolchain.
 - Accessibility still needs real screen-reader, forced-colors, zoom/reflow, and custom-overlay
   evidence before OpenBot can make a conformance claim.
-- Login throttling is not yet a trusted per-device or distributed boundary. Proxy identity,
-  IPv4/IPv6 normalization, shared storage, and lockout-notification semantics remain open.
+- Login throttling now normalizes IPv4/IPv6, trusts one exact single-hop proxy, and shares atomic
+  PostgreSQL state across Server processes and restarts. It remains a pseudonymous network bucket,
+  not trusted per-device identity; proxy ranges/chains and lockout notifications remain open.
 - Node bootstrap uses a copyable bearer credential stored in an Owner-only file. Non-exportable
   proof-of-possession keys, native OS keyrings, rotation, mTLS, replay protection, and persisted
   reconciliation remain open.

@@ -87,7 +87,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | 现有代码边界 | 覆盖状态 | 审查结果 |
 | --- | --- | --- |
 | 员工领域、个人页、进化、技能、记忆和员工包原语 | 已审查 | 已记录 Hermes、Letta、Mem0、LangMem、Agent Skills、OpenClaw、DSSE、Sigstore、in-toto、WAI-ARIA 与 React Spectrum；README、员工规范、ADR-0026 和记忆调研记录明确标注来源。 |
-| Server 浏览器会话、Origin、实时投影、文件产物和进程停机 | 已审查 | 已记录 Hono/OWASP、Hono streaming、Node/Hono 停机、`write-file-atomic` 与 PNG 解码候选。已接受的调度工作会在 PostgreSQL 关闭前排空；分布式登录身份和完整 PNG 归一化仍是公开缺口。 |
+| Server 浏览器会话、Origin、实时投影、文件产物和进程停机 | 已审查 | 已记录 Hono/OWASP、RFC 7239、PostgreSQL 限速、Hono streaming、Node/Hono 停机、`write-file-atomic` 与 PNG 解码候选。登录限速现已跨重启共享状态，但仍只是经摘要化的网络滥用控制而非设备身份；完整 PNG 归一化仍是公开缺口。 |
 | Node 协议、能力路由、存活、配置和启动身份 | 已审查 | 已记录 MCP/OCI conformance、`ws`、Kubernetes/Nomad、SPIFFE/SPIRE、Tailscale/Headscale、Kubernetes/Smallstep、Hono 限制、原子存储和严格 Zod 输入。单 Node 登记与吊销已完成；持有证明仍待实现。 |
 | Provider SDK 与当前 Docker 浏览器适配器 | 已审查 | 已记录 CopilotKit/OpenBot `agent-computer`、Cua、MCP conformance、OCI 和平台声明等级；原生 Provider 只能按证据宣称。 |
 | GitHub 贡献与 CI | 已审查 | 复用 Issue Form 和 RFC/KEP 证据结构；现有 checkout/setup Action 已固定到审查过的 commit，并关闭 checkout 凭证持久化。 |
@@ -157,8 +157,8 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
   Drizzle Studio，也不会采用 npm 建议的破坏性强制降级；只有兼容的上游修复版本通过审查后才升级。
 - OpenBot 在宣称无障碍合规前，仍需真实屏幕阅读器、强制颜色、缩放/回流和自定义 Overlay
   证据。
-- 登录限速尚不是可信的每设备或分布式边界；代理身份、IPv4/IPv6 规范化、共享存储和锁定通知
-  语义仍未完成。
+- 登录限速现已规范化 IPv4/IPv6，只信任一个准确的单跳代理，并在 Server 进程与重启间共享原子
+  PostgreSQL 状态。它仍是经摘要化的网络桶而非可信设备身份；代理网段/链和锁定通知仍未完成。
 - Node 启动仍使用保存在 Owner-only 文件中的可复制 bearer credential。不可导出的持有证明密钥、
   系统密钥库、轮换、mTLS、防重放和持久化对账仍待完成。
 - PNG Artifact 已限制大小并检查签名，但还没有解码归一化；未来解码器必须限制像素/通道并通过
