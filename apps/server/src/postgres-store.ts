@@ -1,4 +1,22 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  approvals as approvalsTable,
+  artifacts as artifactsTable,
+  bots,
+  channelBots,
+  channels,
+  employeeEvolutionEvents,
+  employeeImportReceipts,
+  employeeMemories,
+  employeeMemoryEvents,
+  employeeSkills,
+  messages,
+  nodes,
+  runEvents,
+  runs,
+  skillDependencies,
+  skills,
+} from "@openbot/db";
 import type {
   Approval,
   ApprovalDecision,
@@ -35,29 +53,13 @@ import type {
   UpdateEmployeeProfileDetailsInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
-import {
-  artifacts as artifactsTable,
-  approvals as approvalsTable,
-  bots,
-  channelBots,
-  channels,
-  employeeEvolutionEvents,
-  employeeImportReceipts,
-  employeeMemoryEvents,
-  employeeMemories,
-  employeeSkills,
-  messages,
-  nodes,
-  runEvents,
-  runs,
-  skillDependencies,
-  skills,
-} from "@openbot/db";
+import type { RunFailureCode } from "@openbot/protocol";
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type {
-  ArtifactRecord,
   ActivateEmployeeImportCommand,
+  ArtifactRecord,
   ControlPlaneStore,
+  DispatchFailureInput,
   PersistedCounts,
   RequestApprovalInput,
   RunCompletion,
@@ -67,8 +69,8 @@ import {
   StoreNotFoundError,
   StoreValidationError,
 } from "./control-plane-store.js";
-import { selectChannelAssignee } from "./task-routing.js";
 import { scanSensitiveText } from "./sensitive-content.js";
+import { selectChannelAssignee } from "./task-routing.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
 
@@ -1611,7 +1613,12 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     });
   }
 
-  async failRun(runId: string, nodeId: string, error: string): Promise<Run | undefined> {
+  async failRun(
+    runId: string,
+    nodeId: string,
+    error: string,
+    code: RunFailureCode = "provider_execution_failed",
+  ): Promise<Run | undefined> {
     const now = new Date();
     return this.#db.transaction(async (transaction) => {
       const [updated] = await transaction
@@ -1627,7 +1634,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         botId: updated.botId,
         nodeId,
         type: "RUN_FAILED",
-        payload: { error },
+        payload: { code, error },
       });
       return toRun(updated);
     });
@@ -1658,10 +1665,27 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           botId: run.botId,
           nodeId: nodeId ?? run.nodeId,
           type: "RUN_FAILED",
-          payload: { reason: nodeId === undefined ? "server-recovery" : "node-unavailable" },
+          payload: {
+            code: "execution_interrupted",
+            reason: nodeId === undefined ? "server-recovery" : "node-unavailable",
+          },
         })),
       );
       return updated.map(toRun);
+    });
+  }
+
+  async recordDispatchFailure(input: DispatchFailureInput): Promise<void> {
+    const [run] = await this.#db.select().from(runs).where(eq(runs.id, input.runId)).limit(1);
+    if (run === undefined) return;
+    await this.#db.insert(runEvents).values({
+      id: randomUUID(),
+      runId: run.id,
+      channelId: run.channelId,
+      botId: run.botId,
+      nodeId: run.nodeId,
+      type: "DISPATCH_FAILED",
+      payload: { code: input.code, phase: input.phase.slice(0, 80) },
     });
   }
 

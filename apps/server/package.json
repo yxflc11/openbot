@@ -16,6 +16,7 @@
     "@openbot/config": "0.0.0",
     "@openbot/db": "0.0.0",
     "@openbot/domain": "0.0.0",
+    "@openbot/logging": "0.0.0",
     "@openbot/policy": "0.0.0",
     "@openbot/protocol": "0.0.0",
     "@sigstore/core": "4.0.1",

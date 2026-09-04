@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@openbot/config": "0.0.0",
+    "@openbot/logging": "0.0.0",
     "@openbot/protocol": "0.0.0",
     "@openbot/provider-docker": "0.0.0",
     "@openbot/provider-sdk": "0.0.0",

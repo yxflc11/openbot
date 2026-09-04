@@ -139,6 +139,12 @@ employee policy ∩ task requirements ∩ online node capabilities
 
 执行是第二段显式握手：Node 发 `run.start_request`，Server 把仍属于该 Node 的 `assigned` Run 条件更新为 `running`，随后才发 `run.start`。Node 可上报结构化 progress，并以 completed/failed 结束；Server 先持久化结果，再发 `run.settled` 释放容量。`running` 状态失联后直接失败而不自动重试，因为 Server 无法证明外部动作尚未发生。
 
+失败边界不信任 Node 的异常文本。协议只允许稳定的失败代码，Server 再映射通用公开说明后写入
+Run 与 `RUN_FAILED`；Provider 异常、stack 和本地路径只会被缩减为本地结构化日志中的安全错误
+名称。异步调度链中被捕获的异常会写一条 `DISPATCH_FAILED` 事实，关联 Run、权威 Node、阶段与
+公开代码；二次审计写入失败只记录一次，不能形成递归错误循环。HTTP 请求由 Server 生成
+request id，响应与不含 query 的结构化访问日志共享该关联值。
+
 ### Action Gateway
 
 延续 CopilotKit/OpenBot 的“决定和审计先于执行”，再增加跨 Node 的 capability lease：

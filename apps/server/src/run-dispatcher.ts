@@ -4,8 +4,9 @@ import type {
   Run,
   WorkspaceRealtimeEvent,
 } from "@openbot/domain";
-import type { CompletedArtifact } from "@openbot/protocol";
+import { createSilentLogger, diagnosticFields, type OpenBotLogger } from "@openbot/logging";
 import { evaluatePolicy, type PolicyRule } from "@openbot/policy";
+import type { CompletedArtifact } from "@openbot/protocol";
 import { approvalPolicyRules, isRiskDowngrade } from "./approval-policy.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import type { ChannelRealtimeHub } from "./channel-realtime-hub.js";
@@ -17,6 +18,7 @@ import type {
   RunOfferInput,
   RunOfferResult,
 } from "./node-registry.js";
+import { publicRunFailure } from "./run-failure.js";
 import type { RunFrameStore } from "./run-frame-store.js";
 
 type DispatchStore = Pick<
@@ -33,7 +35,7 @@ type DispatchStore = Pick<
   | "startRun"
   | "upsertNode"
 > &
-  Partial<Pick<ControlPlaneStore, "requestApproval">>;
+  Partial<Pick<ControlPlaneStore, "recordDispatchFailure" | "requestApproval">>;
 
 export interface NodeGateway {
   list(): ExecutionNode[];
@@ -69,6 +71,7 @@ export class RunDispatcher {
   readonly #frames: FramePublisher | undefined;
   readonly #workspace: WorkspacePublisher | undefined;
   readonly #approvalPolicyRules: readonly PolicyRule[];
+  readonly #logger: OpenBotLogger;
   // Preserve protocol order per Run without serializing independent Runs or Nodes.
   readonly #runMessageTails = new Map<string, Promise<void>>();
   // Node lifecycle listeners are not part of a Run tail but still write authoritative state.
@@ -89,6 +92,7 @@ export class RunDispatcher {
     frames?: FramePublisher,
     workspace?: WorkspacePublisher,
     policyRules: readonly PolicyRule[] = approvalPolicyRules,
+    logger: OpenBotLogger = createSilentLogger(),
   ) {
     this.#store = store;
     this.#nodes = nodes;
@@ -97,6 +101,7 @@ export class RunDispatcher {
     this.#frames = frames;
     this.#workspace = workspace;
     this.#approvalPolicyRules = policyRules;
+    this.#logger = logger;
   }
 
   async start(): Promise<void> {
@@ -105,10 +110,10 @@ export class RunDispatcher {
     }
     this.#stopped = false;
     this.#unsubscribeAvailable = this.#nodes.onAvailable((node) => {
-      this.#trackListener(this.#handleNodeAvailable(node));
+      this.#trackListener(this.#handleNodeAvailable(node), "node-available", node.id);
     });
     this.#unsubscribeUnavailable = this.#nodes.onUnavailable((node) => {
-      this.#trackListener(this.#handleNodeUnavailable(node));
+      this.#trackListener(this.#handleNodeUnavailable(node), "node-unavailable", node.id);
     });
     this.#unsubscribeRunMessage = this.#nodes.onRunMessage((node, message) => {
       this.#enqueueRunMessage(node, message);
@@ -137,7 +142,9 @@ export class RunDispatcher {
 
   enqueue(run: Run): void {
     if (run.status !== "queued" || run.executionProfile === "none") return;
-    void this.dispatchQueued().catch(reportDispatchError);
+    void this.dispatchQueued().catch((error) =>
+      this.#reportDispatchError(error, { phase: "enqueue", runId: run.id, nodeId: run.nodeId }),
+    );
   }
 
   async resolveApproval(resolution: ApprovalResolution): Promise<void> {
@@ -149,10 +156,12 @@ export class RunDispatcher {
 
     if (decision === "approved") {
       if (delivered) return;
+      const failure = publicRunFailure("node_disconnected");
       const failed = await this.#store.failRun(
         run.id,
         approval.nodeId,
-        "Approval was granted, but the execution Node was no longer connected.",
+        failure.message,
+        failure.code,
       );
       if (failed !== undefined) {
         this.#nodes.settleRun(approval.nodeId, run.id, "failed");
@@ -254,7 +263,13 @@ export class RunDispatcher {
     const previous = this.#runMessageTails.get(message.runId) ?? Promise.resolve();
     const next = previous
       .then(() => this.#handleRunMessage(node, message))
-      .catch(reportDispatchError);
+      .catch((error) =>
+        this.#reportDispatchError(error, {
+          phase: "node-message",
+          runId: message.runId,
+          nodeId: node.id,
+        }),
+      );
     this.#runMessageTails.set(message.runId, next);
     void next.finally(() => {
       if (this.#runMessageTails.get(message.runId) === next) {
@@ -263,8 +278,10 @@ export class RunDispatcher {
     });
   }
 
-  #trackListener(work: Promise<void>): void {
-    const handled = work.catch(reportDispatchError);
+  #trackListener(work: Promise<void>, phase: string, nodeId: string): void {
+    const handled = work.catch((error) =>
+      this.#reportDispatchError(error, { phase, runId: "node-lifecycle", nodeId }),
+    );
     this.#listenerTasks.add(handled);
     void handled.finally(() => this.#listenerTasks.delete(handled));
   }
@@ -288,10 +305,12 @@ export class RunDispatcher {
           return;
         }
         if (!this.#nodes.startRun(node.id, message.runId)) {
+          const failure = publicRunFailure("node_disconnected");
           const failed = await this.#store.failRun(
             message.runId,
             node.id,
-            "Node disconnected before execution could start.",
+            failure.message,
+            failure.code,
           );
           if (failed !== undefined) {
             this.#nodes.settleRun(node.id, message.runId, "failed");
@@ -339,12 +358,18 @@ export class RunDispatcher {
           policy.minimumRisk === undefined ||
           isRiskDowngrade(message.risk, policy.minimumRisk)
         ) {
-          const reason =
+          const nodeReason =
             policy.effect !== "require_approval"
               ? "Execution requested an action that Server policy does not permit."
               : "Execution reported a risk below the Server policy minimum.";
-          this.#nodes.cancelRun(node.id, message.runId, reason);
-          const failed = await this.#store.failRun(message.runId, node.id, reason);
+          const failure = publicRunFailure("approval_policy_denied");
+          this.#nodes.cancelRun(node.id, message.runId, nodeReason);
+          const failed = await this.#store.failRun(
+            message.runId,
+            node.id,
+            failure.message,
+            failure.code,
+          );
           if (failed !== undefined) {
             this.#nodes.settleRun(node.id, message.runId, "failed");
             this.#publishUpdates([failed]);
@@ -377,7 +402,13 @@ export class RunDispatcher {
         await this.#completeRun(node.id, message.runId, message.summary, message.artifacts);
         return;
       case "run.failed": {
-        const failed = await this.#store.failRun(message.runId, node.id, message.error);
+        const failure = publicRunFailure(message.code);
+        const failed = await this.#store.failRun(
+          message.runId,
+          node.id,
+          failure.message,
+          failure.code,
+        );
         if (failed !== undefined) {
           this.#nodes.settleRun(node.id, message.runId, "failed");
           this.#publishUpdates([failed]);
@@ -402,7 +433,7 @@ export class RunDispatcher {
       }));
       const completion = await this.#store.completeRun(runId, nodeId, summary, persisted);
       if (completion === undefined) {
-        await this.#artifacts.remove(persisted.map((artifact) => artifact.storageKey));
+        await this.#removeArtifacts(persisted, runId, nodeId);
         this.#nodes.cancelRun(nodeId, runId, "Run is no longer running on this Node.");
         return;
       }
@@ -425,17 +456,64 @@ export class RunDispatcher {
       });
       await this.dispatchQueued();
     } catch (error) {
-      await this.#artifacts.remove(persisted.map((artifact) => artifact.storageKey));
-      const failed = await this.#store.failRun(
+      await this.#removeArtifacts(persisted, runId, nodeId);
+      this.#logger.error("run.artifact_persistence_failed", "Run artifact persistence failed.", {
         runId,
         nodeId,
-        error instanceof Error ? error.message : "The result artifact could not be persisted.",
-      );
+        phase: "artifact-persist",
+        ...diagnosticFields(error),
+      });
+      const failure = publicRunFailure("artifact_persistence_failed");
+      const failed = await this.#store.failRun(runId, nodeId, failure.message, failure.code);
       if (failed !== undefined) {
         this.#nodes.settleRun(nodeId, runId, "failed");
         this.#publishUpdates([failed]);
         await this.dispatchQueued();
       }
+    }
+  }
+
+  async #removeArtifacts(
+    artifacts: ArtifactRecord[],
+    runId: string,
+    nodeId: string,
+  ): Promise<void> {
+    try {
+      await this.#artifacts.remove(artifacts.map((artifact) => artifact.storageKey));
+    } catch (error) {
+      this.#logger.error("run.artifact_cleanup_failed", "Run artifact cleanup failed.", {
+        runId,
+        nodeId,
+        phase: "artifact-cleanup",
+        ...diagnosticFields(error),
+      });
+    }
+  }
+
+  async #reportDispatchError(
+    error: unknown,
+    context: { phase: string; runId: string; nodeId?: string | undefined },
+  ): Promise<void> {
+    this.#logger.error("run.dispatch_failed", "Run dispatcher background work failed.", {
+      ...context,
+      code: "dispatch_failed",
+      ...diagnosticFields(error),
+    });
+    try {
+      await this.#store.recordDispatchFailure?.({
+        ...context,
+        code: "dispatch_failed",
+      });
+    } catch (auditError) {
+      this.#logger.error(
+        "run.dispatch_audit_failed",
+        "Run dispatch failure audit could not be persisted.",
+        {
+          ...context,
+          code: "dispatch_failed",
+          ...diagnosticFields(auditError),
+        },
+      );
     }
   }
 
@@ -445,8 +523,4 @@ export class RunDispatcher {
       this.#workspace?.publish({ type: "run.updated", run });
     }
   }
-}
-
-function reportDispatchError(error: unknown): void {
-  console.error("Run dispatcher failed.", error);
 }

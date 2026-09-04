@@ -1,6 +1,7 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { nodeEnvSchema } from "@openbot/config";
+import { createSilentLogger } from "@openbot/logging";
 import {
   nodeMessageSchema,
   protocolVersion,
@@ -119,6 +120,8 @@ describe("node run offers", () => {
         OPENBOT_NODE_CREDENTIAL: nodeCredential,
       }),
       [provider],
+      undefined,
+      createSilentLogger(),
     );
 
     gateway.on("connection", (socket) => {
@@ -269,12 +272,111 @@ describe("node run offers", () => {
       }),
       [],
       credentialStore,
+      createSilentLogger(),
     );
 
     try {
       client.start();
       await withTimeout(helloReceived);
       expect(enrollmentBody).toEqual({ nodeId: "fresh-node", token: enrollmentToken });
+    } finally {
+      client.stop();
+      for (const socket of gateway.clients) socket.terminate();
+      await new Promise<void>((resolve) => gateway.close(() => resolve()));
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("reports stable failure codes without forwarding Provider diagnostics", async () => {
+    const server = createServer();
+    const gateway = new WebSocketServer({ server });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Missing test port.");
+
+    const sensitiveDiagnostic = "token=provider-secret at /Users/alice/private.txt";
+    let serializedFailure = "";
+    let reportedFailure: Extract<
+      ReturnType<typeof nodeMessageSchema.parse>,
+      { type: "run.failed" }
+    >;
+    let resolveFailure: (() => void) | undefined;
+    const failureReceived = new Promise<void>((resolve) => {
+      resolveFailure = resolve;
+    });
+    const provider: ComputerProvider = {
+      id: "docker",
+      displayName: "Failing test computer",
+      platforms: ["linux"],
+      capabilities: ["browser", "screenshot"],
+      capabilityManifest,
+      async execute() {
+        throw new Error(sensitiveDiagnostic);
+      },
+    };
+    const client = new OpenBotNodeClient(
+      nodeEnvSchema.parse({
+        OPENBOT_NODE_ID: "test-node",
+        OPENBOT_NODE_SERVER_URL: `ws://127.0.0.1:${address.port}`,
+        OPENBOT_NODE_CREDENTIAL: nodeCredential,
+      }),
+      [provider],
+      undefined,
+      createSilentLogger(),
+    );
+
+    gateway.on("connection", (socket) => {
+      socket.on("message", (raw) => {
+        const serialized = raw.toString();
+        const message = nodeMessageSchema.parse(JSON.parse(serialized));
+        if (message.type === "node.hello") {
+          send(socket, {
+            type: "server.ack",
+            protocolVersion,
+            accepted: true,
+            receivedAt: new Date().toISOString(),
+          });
+          send(socket, offer);
+        }
+        if (message.type === "run.accept") {
+          send(socket, {
+            type: "run.assigned",
+            protocolVersion,
+            runId: message.runId,
+            nodeId: message.nodeId,
+            assignedAt: new Date().toISOString(),
+          });
+        }
+        if (message.type === "run.start_request") {
+          send(socket, {
+            type: "run.start",
+            protocolVersion,
+            runId: message.runId,
+            nodeId: message.nodeId,
+            startedAt: new Date().toISOString(),
+          });
+        }
+        if (message.type === "run.failed") {
+          serializedFailure = serialized;
+          reportedFailure = message;
+          resolveFailure?.();
+        }
+      });
+    });
+
+    try {
+      client.start();
+      await withTimeout(failureReceived);
+
+      expect(reportedFailure).toMatchObject({
+        type: "run.failed",
+        code: "provider_execution_failed",
+        error: "Provider execution failed.",
+      });
+      expect(serializedFailure).not.toContain("provider-secret");
+      expect(serializedFailure).not.toContain("/Users/alice");
     } finally {
       client.stop();
       for (const socket of gateway.clients) socket.terminate();

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import type { NodeEnv } from "@openbot/config";
+import { createLogger, diagnosticFields, type OpenBotLogger } from "@openbot/logging";
 import {
   approvalRequestSchema,
   firstCapabilityRequirementMismatch,
@@ -10,7 +11,9 @@ import {
   type NodeMessage,
   nodeEnrollmentResultSchema,
   protocolVersion,
+  type RunFailureCode,
   type RunOffer,
+  runFailureMessages,
   runFrameSchema,
   serverMessageSchema,
 } from "@openbot/protocol";
@@ -38,6 +41,7 @@ export class OpenBotNodeClient {
   readonly #env: NodeEnv;
   readonly #providers: ComputerProvider[];
   readonly #credentialStore: NodeCredentialStore;
+  readonly #logger: OpenBotLogger;
   #credential?: string;
   #socket?: WebSocket;
   #heartbeat?: NodeJS.Timeout;
@@ -62,11 +66,13 @@ export class OpenBotNodeClient {
     credentialStore: NodeCredentialStore = new FileNodeCredentialStore(
       env.OPENBOT_NODE_CREDENTIAL_PATH ?? join(env.OPENBOT_NODE_WORK_DIRECTORY, "identity.json"),
     ),
+    logger: OpenBotLogger = createLogger({ level: env.OPENBOT_LOG_LEVEL }),
   ) {
     this.#env = env;
     assertProviderDeclarations(providers);
     this.#providers = providers;
     this.#credentialStore = credentialStore;
+    this.#logger = logger;
   }
 
   start(): void {
@@ -78,7 +84,11 @@ export class OpenBotNodeClient {
         this.#connect();
       })
       .catch((error: unknown) => {
-        console.error(error instanceof Error ? error.message : "Node identity setup failed.");
+        this.#logger.error("node.identity_setup_failed", "Node identity setup failed.", {
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          phase: "identity",
+          ...diagnosticFields(error),
+        });
       });
   }
 
@@ -125,7 +135,10 @@ export class OpenBotNodeClient {
     socket.on("message", (raw) => {
       const parsed = serverMessageSchema.safeParse(parseJson(raw.toString()));
       if (!parsed.success) {
-        console.error("Invalid server protocol message.");
+        this.#logger.error("node.protocol_invalid", "Invalid Server protocol message.", {
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          phase: "receive",
+        });
         return;
       }
 
@@ -133,7 +146,10 @@ export class OpenBotNodeClient {
       if (message.type === "server.ack") {
         if (!message.accepted) {
           if (!authenticated) authenticationRejected = true;
-          console.error(message.reason ?? "Server rejected the node message.");
+          this.#logger.error("node.message_rejected", "Server rejected the Node message.", {
+            nodeId: this.#env.OPENBOT_NODE_ID,
+            phase: authenticated ? "protocol" : "authentication",
+          });
           return;
         }
         if (!authenticated) {
@@ -232,7 +248,11 @@ export class OpenBotNodeClient {
     });
 
     socket.on("error", (error) => {
-      console.warn(`Node connection failed: ${error.message || error.name || "connection error"}`);
+      this.#logger.warn("node.connection_failed", "Node connection failed.", {
+        nodeId: this.#env.OPENBOT_NODE_ID,
+        phase: "connect",
+        ...diagnosticFields(error),
+      });
     });
   }
 
@@ -271,10 +291,7 @@ export class OpenBotNodeClient {
     if (offer === undefined) return;
     const provider = providerForProfile(this.#providers, offer.executionProfile);
     if (provider?.execute === undefined) {
-      this.#sendFailure(
-        runId,
-        `No executable provider is configured for ${offer.executionProfile}.`,
-      );
+      this.#sendFailure(runId, "provider_unavailable");
       return;
     }
 
@@ -321,14 +338,23 @@ export class OpenBotNodeClient {
           if (message.success) {
             this.#send(message.data);
           } else {
-            console.warn("Provider emitted an invalid or oversized live frame; frame skipped.");
+            this.#logger.warn(
+              "provider.frame_rejected",
+              "Provider emitted an invalid or oversized live frame; frame skipped.",
+              { runId, nodeId: this.#env.OPENBOT_NODE_ID, providerId: provider.id },
+            );
           }
         },
         (action) => this.#requestApproval(runId, action, controller.signal),
       );
       if (controller.signal.aborted) return;
       if (!result.ok) {
-        this.#sendFailure(runId, result.summary);
+        this.#logger.warn("provider.reported_failure", "Provider reported a failed result.", {
+          runId,
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          providerId: provider.id,
+        });
+        this.#sendFailure(runId, "provider_execution_failed");
         return;
       }
       this.#send({
@@ -342,23 +368,28 @@ export class OpenBotNodeClient {
       });
     } catch (error) {
       if (!controller.signal.aborted) {
-        this.#sendFailure(
+        this.#logger.error("provider.execution_failed", "Provider execution failed.", {
           runId,
-          error instanceof Error ? error.message : "Provider execution failed.",
-        );
+          nodeId: this.#env.OPENBOT_NODE_ID,
+          providerId: provider.id,
+          phase: "execute",
+          ...diagnosticFields(error),
+        });
+        this.#sendFailure(runId, "provider_execution_failed");
       }
     } finally {
       this.#executions.delete(runId);
     }
   }
 
-  #sendFailure(runId: string, error: string): void {
+  #sendFailure(runId: string, code: RunFailureCode): void {
     this.#send({
       type: "run.failed",
       protocolVersion,
       nodeId: this.#env.OPENBOT_NODE_ID,
       runId,
-      error: error.slice(0, 2000) || "Provider execution failed.",
+      code,
+      error: runFailureMessages[code],
       failedAt: new Date().toISOString(),
     });
   }

@@ -83,6 +83,13 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
 - 所有控制面接口默认要求有效 Session；非只读请求还必须通过精确 Origin 白名单。登录尝试由 PostgreSQL 原子限速，状态跨进程与重启保留；桶键只保存直接对端 IP 的域分隔 SHA-256 摘要。仅当直接对端等于唯一配置的 `OPENBOT_TRUSTED_PROXY_ADDRESS` 时才接受单跳 `Forwarded`，歧义或缺失会 fail closed。这不是可信的每设备边界，不能代替私网部署。
 - Session 默认 12 小时过期，支持主动撤销。非 loopback Origin 必须使用 HTTPS 并启用 Secure Cookie，否则 Server 启动失败；HTTPS 会话使用 `__Host-` 前缀 Cookie 和 HSTS。审批等高风险操作仍需要后续增加重新验证或设备绑定。
 - 控制面复用 Hono 的维护中安全响应头中间件。每个 SSE 订阅的待发送事件固定为最多 128 项；溢出会终止连接，客户端必须从数据库权威快照恢复，不能静默跳过控制事件。
+- 每个 HTTP 响应带 Server 生成的 `X-Request-Id`。Server 与 Node 使用遵循
+  `OPENBOT_LOG_LEVEL` 的结构化 JSON 日志，只允许有界关联字段；HTTP 日志不含 query，任何日志
+  都不得写入 header、Cookie、正文、凭证、任意异常原文或 stack。未预期的 `500` 只返回稳定的
+  `internal_error`、通用说明与 request id。
+- Node 的 `run.failed` 文本不可信：Server 只接受白名单代码并重新映射通用说明。Run 失败事件
+  不保存 Provider 异常、token 或本地路径。后台调度异常另写有界 `DISPATCH_FAILED` 审计事实；
+  该审计若失败只记一次安全日志，不能递归。
 - Server 签发的 view/control/upload token 都绑定用户、run、node、用途和 TTL。
 - 收到停机信号后，Server 先停止新调度并排空已接受的 Node 消息和 HTTP 请求，再关闭 PostgreSQL；
   空闲 HTTP 连接立即关闭，其余连接最多等待 10 秒。WebSocket 等升级连接由各自 registry 显式关闭。

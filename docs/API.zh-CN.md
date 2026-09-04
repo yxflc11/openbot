@@ -334,6 +334,13 @@ Run 会把接单 Bot 当时的 `computerProfile` 固化为 `executionProfile`，
 
 尚未执行的 `assigned` Run 在节点断线或 Server 恢复时回到 `queued`；已经 `running` 的 Run 则明确失败，不会在外部副作用未知时自动重跑。当前 Docker provider 只接受任务正文中的一个明确 HTTP(S) URL，只执行 `/navigate` 与 `/screenshot`，不点击、不填写、不提交。截图正文保存在 Server 文件存储，数据库只保存引用、SHA-256、大小和元数据。
 
+`run.failed` 只携带白名单代码与通用说明。当前代码为 `provider_unavailable`、
+`provider_execution_failed`、`artifact_persistence_failed`、`execution_interrupted`、
+`node_disconnected`、`approval_policy_denied` 和 `dispatch_failed`。Server 会独立按代码映射
+说明，并在写入 Run 或事件前丢弃 Node 提供的失败文本；Provider 异常、stack、token 与本地路径
+都不属于公开错误契约。被捕获的后台调度失败会另写一条有界 `DISPATCH_FAILED` 审计，只包含
+Run、已权威分配的 Node、阶段和公开代码；若该二次写入本身失败，只记录一次日志，不递归审计。
+
 ## 订阅频道事件
 
 `GET /api/v1/channels/:channelId/events` 返回 `text/event-stream`，当前事件如下：
@@ -367,3 +374,8 @@ Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `p
 - `422`：输入字段或 roster 无效；
 - `404`：频道或 Bot 不存在；
 - `500`：未预期的 Server 错误，响应不会泄漏数据库细节。
+
+每个响应都带 Server 生成的 `X-Request-Id`，CORS 响应也会向浏览器暴露它。未预期的 `500`
+还返回 `code: "internal_error"` 与该 request id，但不返回异常原文。Server 和 Node 的运行日志为
+结构化 JSON，遵循 `OPENBOT_LOG_LEVEL`，且只接受白名单 request/Run/Node 关联字段。HTTP 日志只记
+不含 query 的路由路径，不记录 header、Cookie、正文、凭证、任意异常对象或 stack。

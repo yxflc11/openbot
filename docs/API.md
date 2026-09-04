@@ -336,6 +336,15 @@ then persist explicit start before execution. An assigned Run can return to `que
 disconnect; a running Run fails because its external side effects are unknown and are not retried
 automatically.
 
+`run.failed` carries one allowlisted code and a generic message. The current codes are
+`provider_unavailable`, `provider_execution_failed`, `artifact_persistence_failed`,
+`execution_interrupted`, `node_disconnected`, `approval_policy_denied`, and `dispatch_failed`.
+The Server maps the code to its own message and discards Node-supplied failure text before writing
+Run state or events. Provider exception messages, stack traces, tokens, and local paths are never
+part of the public failure contract. A swallowed background dispatcher failure instead writes one
+bounded `DISPATCH_FAILED` audit fact with the Run, authoritative Node if assigned, phase, and public
+code; failure to write that secondary fact is logged once and is not recursively audited.
+
 Approval decisions use `{ "decision": "approve" }` or `{ "decision": "reject" }`. Only a pending,
 unexpired approval may be decided, and only once. Approval resumes a Run; rejection or expiry
 blocks it. The current handshake does not yet issue a separately verifiable single-use capability
@@ -389,3 +398,10 @@ network. See [Node enrollment](NODE_ENROLLMENT.md).
 Error bodies include an `error` string. Schema failures may also include a bounded `fields` map.
 Clients must not retry `409` or `422` blindly: reload the authoritative state, show the change to
 the Owner, and ask for a new decision.
+
+Every response carries a Server-generated `X-Request-Id`; browser CORS responses expose it. An
+unexpected `500` also returns `code: "internal_error"` and that request id, while omitting the
+exception message. Server and Node operational logs are structured JSON, honor
+`OPENBOT_LOG_LEVEL`, and use allowlisted request/Run/Node fields. HTTP logs record the route path
+without its query and never record headers, cookies, bodies, credentials, arbitrary error objects,
+or stacks.

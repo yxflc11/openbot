@@ -119,13 +119,13 @@ describe("server environment", () => {
 
 describe("node environment", () => {
   it("bounds the advertised concurrency", () => {
-    expect(
-      nodeEnvSchema.parse({
-        OPENBOT_NODE_ID: "linux-node",
-        OPENBOT_NODE_CREDENTIAL: nodeCredential,
-        OPENBOT_NODE_MAX_CONCURRENT_RUNS: "2",
-      }).OPENBOT_NODE_MAX_CONCURRENT_RUNS,
-    ).toBe(2);
+    const environment = nodeEnvSchema.parse({
+      OPENBOT_NODE_ID: "linux-node",
+      OPENBOT_NODE_CREDENTIAL: nodeCredential,
+      OPENBOT_NODE_MAX_CONCURRENT_RUNS: "2",
+    });
+    expect(environment.OPENBOT_NODE_MAX_CONCURRENT_RUNS).toBe(2);
+    expect(environment.OPENBOT_LOG_LEVEL).toBe("info");
     expect(
       nodeEnvSchema.safeParse({
         OPENBOT_NODE_ID: "linux-node",

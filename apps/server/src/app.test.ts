@@ -20,6 +20,7 @@ import type {
   RunProgress,
   WorkspaceRealtimeEvent,
 } from "@openbot/domain";
+import type { OpenBotLogger } from "@openbot/logging";
 import {
   dsseEnvelopeSchema,
   employeeTemplatePackageSchema,
@@ -67,6 +68,56 @@ describe("server app", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("x-frame-options")).toBe("DENY");
     expect(response.headers.get("strict-transport-security")).toBeNull();
+  });
+
+  it("emits a Server-generated request id and logs the path without its query", async () => {
+    const logs: CapturedLog[] = [];
+    const app = createTestApp({ logger: createCaptureLogger(logs), store: createTestStore() });
+    const response = await app.request("/health?token=request-secret");
+
+    expect(response.headers.get("x-request-id")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(logs).toMatchObject([
+      {
+        event: "http.request_completed",
+        fields: { method: "GET", path: "/health", status: 200 },
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("request-secret");
+  });
+
+  it("returns and logs a stable internal error without exception diagnostics", async () => {
+    const logs: CapturedLog[] = [];
+    const store = createTestStore();
+    store.getCounts = async () => {
+      throw new TypeError("token=database-secret at /Users/alice/private.txt");
+    };
+    const app = createTestApp({ logger: createCaptureLogger(logs), store });
+    const cookie = await login(app);
+    logs.length = 0;
+
+    const response = await app.request("/api/v1/bootstrap", { headers: { Cookie: cookie } });
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(500);
+    expect(body).toMatchObject({
+      error: "OpenBot Server could not complete the request.",
+      code: "internal_error",
+      requestId: response.headers.get("x-request-id"),
+    });
+    expect(logs).toMatchObject([
+      {
+        event: "http.request_failed",
+        fields: { code: "internal_error", errorName: "TypeError" },
+      },
+      {
+        event: "http.request_completed",
+        fields: { path: "/api/v1/bootstrap", status: 500 },
+      },
+    ]);
+    expect(JSON.stringify({ body, logs })).not.toContain("database-secret");
+    expect(JSON.stringify({ body, logs })).not.toContain("/Users/alice");
   });
 
   it("reports an anonymous session and protects control-plane data", async () => {
@@ -1776,6 +1827,7 @@ function createTestApp({
   employeePublisher,
   runFrames,
   workspaceRealtime,
+  logger,
   secureCookies = false,
   remoteAddress = "127.0.0.1",
   trustedProxyAddress,
@@ -1791,6 +1843,7 @@ function createTestApp({
   employeePublisher?: Parameters<typeof createApp>[0]["employeePublisher"];
   runFrames?: Pick<RunFrameStore, "get">;
   workspaceRealtime?: WorkspaceRealtimeHub;
+  logger?: OpenBotLogger;
   secureCookies?: boolean;
   remoteAddress?: string | undefined;
   trustedProxyAddress?: string | undefined;
@@ -1815,6 +1868,7 @@ function createTestApp({
     ...(employeePublisher === undefined ? {} : { employeePublisher }),
     getRemoteAddress: () => remoteAddress,
     listNodes,
+    ...(logger === undefined ? {} : { logger }),
     ...(nodeIdentity === undefined ? {} : { nodeIdentity }),
     ...(realtime === undefined ? {} : { realtime }),
     requestThrottle,
@@ -1824,6 +1878,23 @@ function createTestApp({
     store,
     ...(trustedProxyAddress === undefined ? {} : { trustedProxyAddress }),
   });
+}
+
+interface CapturedLog {
+  event: string;
+  message: string;
+  fields?: object | undefined;
+}
+
+function createCaptureLogger(records: CapturedLog[]): OpenBotLogger {
+  const logger: OpenBotLogger = {
+    debug: (event, message, fields) => records.push({ event, message, fields }),
+    info: (event, message, fields) => records.push({ event, message, fields }),
+    warn: (event, message, fields) => records.push({ event, message, fields }),
+    error: (event, message, fields) => records.push({ event, message, fields }),
+    child: () => logger,
+  };
+  return logger;
 }
 
 function createMemoryNodeIdentityStore(): NodeIdentityStore {

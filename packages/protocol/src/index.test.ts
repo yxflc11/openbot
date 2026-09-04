@@ -3,10 +3,11 @@ import {
   activateEmployeeImportInputSchema,
   createBotInputSchema,
   createChannelInputSchema,
-  createEmployeeSkillInputSchema,
   createEmployeeMemoryInputSchema,
+  createEmployeeSkillInputSchema,
   createMessageInputSchema,
   createNodeEnrollmentTokenInputSchema,
+  deleteEmployeeMemoryInputSchema,
   dsseEnvelopeSchema,
   employeeTemplateDssePayloadType,
   employeeTemplatePackageSchema,
@@ -19,10 +20,9 @@ import {
   runOfferSchema,
   serverMessageSchema,
   unsignedEmployeeTemplatePackageSchema,
-  updateEmployeeSkillStateInputSchema,
   updateEmployeeMemoryInputSchema,
   updateEmployeeProfileDetailsInputSchema,
-  deleteEmployeeMemoryInputSchema,
+  updateEmployeeSkillStateInputSchema,
 } from "./index.js";
 
 const nodeCredential = `obn_${"a".repeat(43)}`;
@@ -173,6 +173,22 @@ describe("node protocol", () => {
       }).success,
     ).toBe(false);
     expect(nodeMessageSchema.safeParse({ ...approval, ignored: true }).success).toBe(false);
+  });
+
+  it("bounds public Run failure classifications and defaults legacy messages safely", () => {
+    const failure = {
+      type: "run.failed",
+      protocolVersion,
+      nodeId: "node-1",
+      runId: "00000000-0000-4000-8000-000000000001",
+      error: "Provider execution failed.",
+      failedAt: new Date().toISOString(),
+    };
+
+    expect(nodeMessageSchema.parse(failure)).toMatchObject({
+      code: "provider_execution_failed",
+    });
+    expect(nodeMessageSchema.safeParse({ ...failure, code: "raw_exception" }).success).toBe(false);
   });
 
   it("validates the two-phase run assignment messages", () => {

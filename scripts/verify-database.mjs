@@ -31,6 +31,8 @@ const verificationThrottleDigest = "b".repeat(64);
 let sourceEmployeeId;
 let importedEmployeeId;
 let verificationSkillId;
+let verificationChannelId;
+let verificationRunId;
 try {
   // Separate startup attempts must serialize migration ownership and converge on one complete plan.
   await Promise.all([first.migrate(), second.migrate()]);
@@ -121,6 +123,39 @@ try {
     computerProfile: "none",
   });
   sourceEmployeeId = source.id;
+  const verificationChannel = await store.createChannel({
+    name: `Dispatch audit ${employeeVerificationId}`,
+    description: "Disposable channel for dispatch audit verification.",
+    botIds: [source.id],
+  });
+  verificationChannelId = verificationChannel.id;
+  const verificationTask = await store.submitTask(verificationChannel.id, {
+    content: "Verify a bounded background dispatch failure event.",
+    botId: source.id,
+  });
+  verificationRunId = verificationTask.run.id;
+  await store.recordDispatchFailure({
+    runId: verificationTask.run.id,
+    nodeId: "untrusted-node-id",
+    phase: "database-verification",
+    code: "dispatch_failed",
+  });
+  const [dispatchAudit] = await first.client`
+    select node_id, payload
+    from run_events
+    where run_id = ${verificationTask.run.id} and type = 'DISPATCH_FAILED'
+    order by created_at desc
+    limit 1
+  `;
+  if (
+    dispatchAudit === undefined ||
+    dispatchAudit.node_id !== null ||
+    dispatchAudit.payload?.code !== "dispatch_failed" ||
+    dispatchAudit.payload?.phase !== "database-verification" ||
+    JSON.stringify(Object.keys(dispatchAudit.payload).sort()) !== JSON.stringify(["code", "phase"])
+  ) {
+    throw new Error("Background dispatch failure did not persist a bounded authoritative audit.");
+  }
   const concurrentProfileUpdates = await Promise.allSettled([
     store.updateEmployeeProfileDetails(source.id, {
       role: "Database profile verification",
@@ -281,6 +316,16 @@ try {
   ]);
   if (importedEmployeeId !== undefined) {
     await first.client`delete from employee_import_receipts where employee_id = ${importedEmployeeId}`;
+  }
+  if (verificationRunId !== undefined) {
+    await first.client`delete from run_events where run_id = ${verificationRunId}`;
+    await first.client`delete from messages where run_id = ${verificationRunId}`;
+    await first.client`delete from runs where id = ${verificationRunId}`;
+  }
+  if (verificationChannelId !== undefined) {
+    await first.client`delete from run_events where channel_id = ${verificationChannelId}`;
+    await first.client`delete from channel_bots where channel_id = ${verificationChannelId}`;
+    await first.client`delete from channels where id = ${verificationChannelId}`;
   }
   const employeeIds = [sourceEmployeeId, importedEmployeeId].filter((value) => value !== undefined);
   if (employeeIds.length > 0) {

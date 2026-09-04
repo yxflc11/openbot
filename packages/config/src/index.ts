@@ -1,5 +1,5 @@
-import { URL } from "node:url";
 import { isIP } from "node:net";
+import { URL } from "node:url";
 import { z } from "zod";
 
 const portSchema = z.coerce.number().int().positive().max(65_535);
@@ -129,6 +129,7 @@ export const nodeEnvSchema = z
     OPENBOT_NODE_CREDENTIAL_PATH: z.string().trim().min(1).optional(),
     OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
     OPENBOT_NODE_WORK_DIRECTORY: z.string().default("./data/node"),
+    OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     OPENBOT_DOCKER_COMPUTER_URL: z.string().url().optional(),
     OPENBOT_DOCKER_COMPUTER_TOKEN: z.string().min(16).optional(),
     OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS: booleanSchema,

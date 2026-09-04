@@ -36,7 +36,7 @@ again at the Server boundary because Node input is untrusted.
 ## Source incorporation
 
 No upstream source or documentation is copied or substantially adapted. Pino is used through its
-released API and recorded in the package lock, notice file, and reuse ledger.
+released API and recorded in the package lock and reuse ledger.
 
 ## Verification plan
 

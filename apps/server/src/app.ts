@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   ApprovalResolution,
   BootstrapSummary,
@@ -10,6 +10,7 @@ import type {
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
+import { createSilentLogger, diagnosticFields, type OpenBotLogger } from "@openbot/logging";
 import {
   activateEmployeeImportInputSchema,
   approvalDecisionInputSchema,
@@ -19,24 +20,23 @@ import {
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
   createNodeEnrollmentTokenInputSchema,
+  type DsseEnvelope,
   deleteEmployeeMemoryInputSchema,
   dsseEnvelopeSchema,
-  exchangeNodeEnrollmentInputSchema,
+  type EmployeeTemplatePackage,
   employeeExportDownloadQuerySchema,
+  exchangeNodeEnrollmentInputSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeMemoryInputSchema,
   updateEmployeeProfileDetailsInputSchema,
   updateEmployeeSkillStateInputSchema,
-  type DsseEnvelope,
-  type EmployeeTemplatePackage,
 } from "@openbot/protocol";
-import { Hono, type Context } from "hono";
+import { type Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
@@ -50,8 +50,8 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import {
-  employeeTemplatePackageDigest,
   type EmployeeTemplateEnvelopeVerification,
+  employeeTemplatePackageDigest,
   inspectEmployeeTemplate,
   prepareEmployeeTemplateExport,
 } from "./employee-package.js";
@@ -82,6 +82,7 @@ export interface AppDependencies {
   };
   getRemoteAddress: (context: Context) => string | undefined;
   listNodes: () => ExecutionNode[];
+  logger?: OpenBotLogger;
   nodeIdentity?: Pick<NodeIdentityService, "enroll" | "issueEnrollmentToken" | "list" | "revoke">;
   disconnectNode?: (nodeId: string) => boolean;
   realtime?: ChannelRealtimeHub;
@@ -100,12 +101,29 @@ export const secureOwnerSessionCookie = "__Host-openbot_session";
 const maximumPendingRealtimeEvents = 128;
 
 export function createApp(dependencies: AppDependencies) {
-  const app = new Hono();
+  const app = new Hono<{
+    Variables: { requestId: string; requestStartedAt: number };
+  }>();
   const realtime = dependencies.realtime ?? new ChannelRealtimeHub();
   const workspaceRealtime = dependencies.workspaceRealtime ?? new WorkspaceRealtimeHub();
   const sessionCookie = dependencies.secureCookies ? secureOwnerSessionCookie : ownerSessionCookie;
+  const applicationLogger = dependencies.logger ?? createSilentLogger();
 
-  app.use(logger());
+  app.use(async (context, next) => {
+    const requestId = randomUUID();
+    const requestStartedAt = performance.now();
+    context.set("requestId", requestId);
+    context.set("requestStartedAt", requestStartedAt);
+    context.header("X-Request-Id", requestId);
+    await next();
+    applicationLogger.info("http.request_completed", "HTTP request completed.", {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      status: context.res.status,
+      durationMs: Math.max(0, Math.round(performance.now() - requestStartedAt)),
+    });
+  });
   app.use(
     secureHeaders({
       crossOriginResourcePolicy: "same-site",
@@ -126,7 +144,7 @@ export function createApp(dependencies: AppDependencies) {
       origin: dependencies.allowedOrigins,
       allowHeaders: ["Content-Type", "If-Match"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      exposeHeaders: ["ETag"],
+      exposeHeaders: ["ETag", "X-Request-Id"],
       credentials: true,
     }),
   );
@@ -792,8 +810,22 @@ export function createApp(dependencies: AppDependencies) {
     if (error instanceof NodeIdentityNotFoundError) {
       return context.json({ error: error.message }, 404);
     }
-    console.error(error);
-    return context.json({ error: "OpenBot Server could not complete the request." }, 500);
+    const requestId = context.get("requestId");
+    applicationLogger.error("http.request_failed", "HTTP request failed.", {
+      requestId,
+      method: context.req.method,
+      path: context.req.path,
+      code: "internal_error",
+      ...diagnosticFields(error),
+    });
+    return context.json(
+      {
+        error: "OpenBot Server could not complete the request.",
+        code: "internal_error",
+        requestId,
+      },
+      500,
+    );
   });
 
   return app;

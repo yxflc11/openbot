@@ -1,5 +1,6 @@
 import type { ExecutionNode, Message, Run } from "@openbot/domain";
-import { protocolVersion } from "@openbot/protocol";
+import type { OpenBotLogger } from "@openbot/logging";
+import { protocolVersion, type RunFailureCode } from "@openbot/protocol";
 import { describe, expect, it } from "vitest";
 import type { NodeRunMessage } from "./node-registry.js";
 import type { NodeGateway } from "./run-dispatcher.js";
@@ -501,6 +502,151 @@ describe("run dispatcher", () => {
     await harness.dispatcher.stop();
   });
 
+  it("normalizes untrusted Node failure details before persistence", async () => {
+    const failures: Array<{ error: string; code: RunFailureCode | undefined }> = [];
+    const harness = createMessageFailureHarness({
+      async failRun(_runId, _nodeId, error, code) {
+        failures.push({ error, code });
+        return undefined;
+      },
+    });
+    await harness.dispatcher.start();
+
+    harness.send({
+      type: "run.failed",
+      protocolVersion,
+      nodeId: linuxNode.id,
+      runId: queuedRun().id,
+      code: "provider_execution_failed",
+      error: "token=provider-secret at /Users/alice/private.txt",
+      failedAt: new Date().toISOString(),
+    });
+    await waitFor(() => failures.length === 1);
+
+    expect(failures).toEqual([
+      { error: "Provider execution failed.", code: "provider_execution_failed" },
+    ]);
+    expect(JSON.stringify(failures)).not.toContain("provider-secret");
+    expect(JSON.stringify(failures)).not.toContain("/Users/alice");
+    await harness.dispatcher.stop();
+  });
+
+  it("normalizes local artifact exceptions before persistence", async () => {
+    const failures: Array<{ error: string; code: RunFailureCode | undefined }> = [];
+    const logs: CapturedLog[] = [];
+    const harness = createMessageFailureHarness({
+      artifactStorage: {
+        async persist() {
+          throw new TypeError("token=storage-secret at /Users/alice/private.txt");
+        },
+        async read() {
+          return Buffer.alloc(0);
+        },
+        async remove() {},
+      },
+      async failRun(_runId, _nodeId, error, code) {
+        failures.push({ error, code });
+        return undefined;
+      },
+      logger: createCaptureLogger(logs),
+    });
+    await harness.dispatcher.start();
+
+    harness.send({
+      type: "run.completed",
+      protocolVersion,
+      nodeId: linuxNode.id,
+      runId: queuedRun().id,
+      summary: "Result",
+      artifacts: [],
+      completedAt: new Date().toISOString(),
+    });
+    await waitFor(() => failures.length === 1);
+
+    expect(failures).toEqual([
+      {
+        error: "The result artifact could not be persisted.",
+        code: "artifact_persistence_failed",
+      },
+    ]);
+    expect(logs).toMatchObject([
+      {
+        event: "run.artifact_persistence_failed",
+        fields: { errorName: "TypeError", phase: "artifact-persist" },
+      },
+    ]);
+    expect(JSON.stringify({ failures, logs })).not.toContain("storage-secret");
+    expect(JSON.stringify({ failures, logs })).not.toContain("/Users/alice");
+    await harness.dispatcher.stop();
+  });
+
+  it("persists a bounded audit event when background Run handling fails", async () => {
+    const auditEvents: Array<{
+      runId: string;
+      nodeId?: string | undefined;
+      phase: string;
+      code: "dispatch_failed";
+    }> = [];
+    const logs: CapturedLog[] = [];
+    const harness = createMessageFailureHarness({
+      async appendRunProgress() {
+        throw new TypeError("token=database-secret at /Users/alice/private.txt");
+      },
+      async recordDispatchFailure(input) {
+        auditEvents.push(input);
+      },
+      logger: createCaptureLogger(logs),
+    });
+    await harness.dispatcher.start();
+
+    harness.send(progressMessage());
+    await waitFor(() => auditEvents.length === 1);
+
+    expect(auditEvents).toEqual([
+      {
+        runId: queuedRun().id,
+        nodeId: linuxNode.id,
+        phase: "node-message",
+        code: "dispatch_failed",
+      },
+    ]);
+    expect(logs).toMatchObject([
+      {
+        event: "run.dispatch_failed",
+        fields: { code: "dispatch_failed", errorName: "TypeError" },
+      },
+    ]);
+    expect(JSON.stringify(logs)).not.toContain("database-secret");
+    expect(JSON.stringify(logs)).not.toContain("/Users/alice");
+    await harness.dispatcher.stop();
+  });
+
+  it("logs one audit-write failure without recursively auditing it", async () => {
+    const logs: CapturedLog[] = [];
+    let auditAttempts = 0;
+    const harness = createMessageFailureHarness({
+      async appendRunProgress() {
+        throw new Error("background failure");
+      },
+      async recordDispatchFailure() {
+        auditAttempts += 1;
+        throw new Error("audit failure");
+      },
+      logger: createCaptureLogger(logs),
+    });
+    await harness.dispatcher.start();
+
+    harness.send(progressMessage());
+    await waitFor(() => logs.length === 2);
+    await harness.dispatcher.stop();
+
+    expect(auditAttempts).toBe(1);
+    expect(logs.map((record) => record.event)).toEqual([
+      "run.dispatch_failed",
+      "run.dispatch_audit_failed",
+    ]);
+  });
+
   it("drains accepted Node messages and ignores new ones after stop", async () => {
     let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
     let releaseProgress: (() => void) | undefined;
@@ -688,6 +834,116 @@ function createApprovalHarness(policyRules?: ConstructorParameters<typeof RunDis
       });
     },
   };
+}
+
+interface MessageFailureHarnessOptions {
+  artifactStorage?: ConstructorParameters<typeof RunDispatcher>[3];
+  appendRunProgress?: () => Promise<undefined>;
+  failRun?: (
+    runId: string,
+    nodeId: string,
+    error: string,
+    code?: RunFailureCode,
+  ) => Promise<Run | undefined>;
+  recordDispatchFailure?: (input: {
+    runId: string;
+    nodeId?: string | undefined;
+    phase: string;
+    code: "dispatch_failed";
+  }) => Promise<void>;
+  logger?: OpenBotLogger;
+}
+
+function createMessageFailureHarness(options: MessageFailureHarnessOptions) {
+  let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
+  const store = {
+    async listDispatchableRuns() {
+      return [];
+    },
+    async getRunningRunForNode() {
+      return undefined;
+    },
+    appendRunProgress: options.appendRunProgress ?? (async () => undefined),
+    async completeRun() {
+      return undefined;
+    },
+    failRun: options.failRun ?? (async () => undefined),
+    async failRunningRuns() {
+      return [];
+    },
+    async assignRun() {
+      return undefined;
+    },
+    async requeueAssignedRuns() {
+      return [];
+    },
+    async startRun() {
+      return undefined;
+    },
+    async upsertNode() {},
+    async markNodeOffline() {},
+    ...(options.recordDispatchFailure === undefined
+      ? {}
+      : { recordDispatchFailure: options.recordDispatchFailure }),
+  };
+  const dispatcher = new RunDispatcher(
+    store,
+    {
+      list: () => [],
+      onAvailable: () => () => undefined,
+      onUnavailable: () => () => undefined,
+      onRunMessage: (handler) => {
+        runHandler = handler;
+        return () => undefined;
+      },
+      offerRun: async () => ({ status: "unavailable" }),
+      confirmRun: () => false,
+      startRun: () => false,
+      settleRun: () => undefined,
+      cancelRun: () => undefined,
+    },
+    { publish: () => undefined },
+    options.artifactStorage ?? artifactStorage,
+    undefined,
+    undefined,
+    undefined,
+    options.logger,
+  );
+  return {
+    dispatcher,
+    send(message: NodeRunMessage) {
+      runHandler?.(linuxNode, message);
+    },
+  };
+}
+
+function progressMessage(): NodeRunMessage {
+  return {
+    type: "run.progress",
+    protocolVersion,
+    nodeId: linuxNode.id,
+    runId: queuedRun().id,
+    stage: "persist",
+    message: "Persisting result",
+    occurredAt: new Date().toISOString(),
+  };
+}
+
+interface CapturedLog {
+  event: string;
+  message: string;
+  fields?: Record<string, unknown> | undefined;
+}
+
+function createCaptureLogger(records: CapturedLog[]): OpenBotLogger {
+  const logger: OpenBotLogger = {
+    debug: (event, message, fields) => records.push({ event, message, fields }),
+    info: (event, message, fields) => records.push({ event, message, fields }),
+    warn: (event, message, fields) => records.push({ event, message, fields }),
+    error: (event, message, fields) => records.push({ event, message, fields }),
+    child: () => logger,
+  };
+  return logger;
 }
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1000): Promise<void> {
