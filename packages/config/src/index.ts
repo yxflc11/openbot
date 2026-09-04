@@ -128,6 +128,7 @@ export const nodeEnvSchema = z
     OPENBOT_NODE_CREDENTIAL: nodeCredentialSchema.optional(),
     OPENBOT_NODE_CREDENTIAL_STORE: z.enum(["file", "secret-service"]).default("file"),
     OPENBOT_NODE_CREDENTIAL_PATH: z.string().trim().min(1).optional(),
+    OPENBOT_NODE_SERVICE_CONTROL: z.literal("stdio-v1").optional(),
     OPENBOT_NODE_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(16).default(1),
     OPENBOT_NODE_WORK_DIRECTORY: z.string().default("./data/node"),
     OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),

@@ -69,7 +69,7 @@ interface must also be able to hold a future proof-of-possession private key.
 | ID | Status | Slice | Why this order | Deliverable and benefit | Exit gate |
 | --- | --- | --- | --- | --- | --- |
 | G3 | Active locally; archive, dormant provenance workflow, native smoke, and install-transaction design implemented | Linux Worker Host, installer, systemd, Secret Service | Linux has the simplest daemon and packaging path, so it establishes the shared lifecycle with the least platform-specific surface. | Signed archive first, then deb/rpm; dedicated service account; predictable install/start/stop/upgrade/rollback; protected credentials. This becomes the reference host implementation. | Tested systemd lifecycle and recovery; x64/arm64 evidence; permissions and keyring failure close safely; no inbound public control port. |
-| G4 | Research accepted; build and native evidence pending | Windows Worker Host, installer, Service, Credential Manager | Windows service identity, ACLs, installers, and session isolation differ substantially; the shared lifecycle should exist before solving those differences. | A signed installer and recoverable Windows Service with credentials outside plain files. Enterprise deployment and uninstall become auditable. | Real Windows x64 evidence first; ARM64 remains unclaimed until tested; service-account ACL tests; install/upgrade/uninstall/rollback; Credential Manager denial fails closed. |
+| G4 | Portable Node control implemented; Windows build and native evidence pending | Windows Worker Host, installer, Service, Credential Manager | Windows service identity, ACLs, installers, and session isolation differ substantially; the shared lifecycle should exist before solving those differences. | A signed installer and recoverable Windows Service with credentials outside plain files. Enterprise deployment and uninstall become auditable. | Real Windows x64 evidence first; ARM64 remains unclaimed until tested; service-account ACL tests; install/upgrade/uninstall/rollback; Credential Manager denial fails closed. |
 | G5 | Planned | macOS Worker Host, installer, launchd, Keychain | macOS can reuse the host protocol but adds signing, notarization, Keychain access groups, launchd, and privacy permissions. | A signed/notarized package and launchd service with Keychain-backed credentials and truthful permission diagnostics. | Real declared Mac architecture evidence; install/upgrade/uninstall/rollback; locked-Keychain and missing-entitlement negatives; no desktop-control claim yet. |
 | G6 | Planned | Node proof of possession, mTLS, rotation, revocation, and replay defense | Native services increase the value of a stolen bearer token. Real input must not be enabled while a copied credential can impersonate a Worker Host. | A Node proves possession of its device key, connections authenticate both directions, credentials rotate, compromised Nodes can be revoked, and captured messages cannot be replayed. | Preserve one-time enrollment; non-exportable-key adapter where the OS permits; bounded challenge/response; short-lived credentials; rotation and overlap rules; replay tests; Server-owned audit; fail-closed clock/storage/network behavior. |
 
@@ -179,9 +179,12 @@ Every non-trivial slice follows the same sequence:
   first prototype must run as LocalService, launch only a fixed verified release, drain then bound
   the child process tree, and fail closed on identity, ACL, release, or credential uncertainty.
   Redirected child standard input is now the exact bounded graceful-stop channel, and a pinned
-  maintained Job Object package supplies forced process-tree containment. The portable Node half
-  can be tested locally, but the current macOS host lacks a Windows/.NET toolchain and no native
-  Windows lifecycle evidence or support claim exists.
+  maintained Job Object package supplies forced process-tree containment. The portable Node half is
+  implemented: four parser tests cover exact, malformed, oversized, and EOF input, while two client
+  lifecycle tests prove that repeated stop waits for Provider cleanup and identity loading. The
+  Node/config suites pass with 30/10 tests plus typecheck and lint. The current macOS host still
+  lacks a Windows/.NET toolchain, so no Windows service build, native lifecycle evidence, or support
+  claim exists.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

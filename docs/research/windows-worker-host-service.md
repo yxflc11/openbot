@@ -95,10 +95,21 @@
 - User-visible documentation and translations: Keep the English execution plan, reuse ledger,
   installer/operator guide, and their Simplified Chinese counterparts aligned. Do not change the
   support matrix before reviewed native evidence exists.
-- Support level that the evidence permits: Research accepted only. This macOS development host has
-  no .NET, PowerShell, Windows SDK, or Windows SCM, so it cannot produce Windows build or lifecycle
-  evidence. Source implementation must begin with a pinned Windows build lane and remain
-  experimental until a controlled native x64 report passes.
+- Support level that the evidence permits: The portable Node-side control parser and cooperative
+  drain are implemented and locally tested only. This macOS development host has no .NET,
+  PowerShell, Windows SDK, or Windows SCM, so it cannot produce Windows service build or lifecycle
+  evidence. Service-host source must begin with a pinned Windows build lane and remain experimental
+  until a controlled native x64 report passes.
+
+## Implementation checkpoint
+
+- `OPENBOT_NODE_SERVICE_CONTROL=stdio-v1` is the only accepted service mode. Four stream tests cover
+  fragmented exact input, malformed/extra/excessive input, premature parent EOF, and detach.
+- `OpenBotNodeClient.stop()` is asynchronous and idempotent. It aborts active executions, rejects
+  pending approvals, closes the Server socket, and waits for cooperative Provider cleanup plus
+  in-flight identity loading. Two focused lifecycle tests prove both waits.
+- The Node and config suites pass locally with 30 and 10 tests respectively, plus typecheck and
+  repository lint. This is portable contract evidence, not a Windows service or Job Object result.
 
 ## Unresolved questions
 
