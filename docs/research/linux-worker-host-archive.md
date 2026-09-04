@@ -1,0 +1,101 @@
+# Research: Linux Worker Host verifiable archive
+
+- Status: Accepted
+- Date: 2026-09-04
+- Owner: OpenBot maintainers
+- Related issue: G3 in `docs/EXECUTION_PLAN.md`
+- Acceptance journey: a release builder produces Linux x64 and arm64 Worker Host archives whose
+  application, bundled runtime, service units, dependency inventory, file manifest, and checksums
+  can be inspected before installation and tied back to the exact source revision.
+- Security boundary: the archive is transport, not authority. The Server remains authoritative for
+  enrollment, Node identity, revocation, routing, approvals, and audit. Build inputs are pinned and
+  verified before extraction; archive creation is offline after inputs exist; provenance is emitted
+  only by a trusted release workflow and must be verified by the consumer to add value.
+
+## Search evidence
+
+- Search date: 2026-09-04.
+- GitHub queries:
+  - `vercel ncc release tests Node 22 Windows Linux license`
+  - `vercel pkg archived latest release`
+  - `CycloneDX npm SBOM release security tests`
+  - `actions attest v4 release provenance SBOM`
+- Standards and primary documentation queries:
+  - `Node.js single executable application stability Linux arm64 caveat`
+  - `Node.js v22.22.2 signed SHASUMS linux x64 arm64`
+  - `npm 10 sbom SPDX package lock only omit dev`
+  - `GitHub artifact attestations permissions verification public private repository`
+- Existing OpenBot issue, ADR, and reuse-ledger entries checked: ADR-0014, ADR-0020, ADR-0032,
+  the cross-platform execution plan, the Linux service/keyring review, and the `GitHub contribution
+  and CI surface` / `Node bootstrap identity` ledger coverage.
+
+## Candidate comparison
+
+| Candidate | Exact release or commit | License | Maintenance and tests | Platform/API/security fit | Decision |
+| --- | --- | --- | --- | --- | --- |
+| Node.js release archive | `v22.22.2` annotated tag target `2645dc73720b1b4f27c49f395d3c66025ce126cc`; official Linux x64 `.tar.xz` SHA-256 `88fd1ce767091fd8d4a99fdb2356e98c819f93f3b1f8663853a2dee9b438068a`; arm64 `e9e1930fd321a470e29bb68f30318bf58e3ecb4acb4f1533fb19c58328a091fe` | Node.js license plus bundled notices | Official release artifacts, signed checksum manifest, and Node release CI | Supplies a reviewed runtime without relying on a host-wide Node installation. Only the required executable and its upstream license/notices should enter the OpenBot archive | Select and verify the exact artifact hash before listing or extraction |
+| `@vercel/ncc` | `0.45.0` / `cb1f1f058bfa7de4cb63f2411e14a724e714e260`; npm integrity `sha512-8zPi1yO2mHpoKTD+e+Bf0ZT3e+sWHSOyGapm9s7b5R0gxJi3CiFTqmeQiMEyu6ejrz2s09M8JkEoUaTWjBJPQQ==` | MIT | Released 2026-08-13; release commit has successful Node 22 Linux, Node 24 Windows, Node 26 Linux, Dependabot, and Socket checks. Open issues include ESM/export and multi-output edge cases | Produces one deployable JS entry plus an upstream-generated license file and webpack stats. OpenBot must run a bundle smoke test and reject unexpected assets or externals | Select as an exact build-only dependency |
+| Node.js Single Executable Applications | Node `v22.22.2` behavior reviewed; current documentation still marks SEA `Stability: 1.1` | Node.js license | Tested upstream on a bounded platform set | Creation remains subject to change, supports one embedded script, and documents a Linux arm64 container ELF hash-table caveat. It adds binary injection complexity without improving OpenBot's current service boundary | Reject for the first stable archive format; reconsider after the API stabilizes and both architectures pass native evidence |
+| `vercel/pkg` | `5.8.1` / `5dc987b90ffd191263eb0202833dc382cea0d47d` | MIT | Repository archived; last push 2024-01-03 | A frozen runtime packager is not a viable new security-sensitive release dependency | Reject |
+| npm native SBOM | npm CLI `10.9.8` / `dd3c80e9965d240957684e9951603cf22eaae74c`; npm integrity `sha512-fYwb6ODSmHkqrJQQaCxY3M2lPf/mpgC7ik0HSzzIwG5CGtabRp4bNqikatvCoT42b5INQSqudVH0R7yVmC9hVg==` | Artistic-2.0 | Released CLI with native SPDX 2.3 and CycloneDX support | Avoids another generator dependency. The monorepo workspace view currently includes Node test-only workspace links, so release code must create and validate a production-only lock projection before calling it | Select the existing pinned package-manager capability behind a tested projection adapter |
+| CycloneDX npm CLI | `6.0.0` / `e16960691fc8e09f8df3bd2e0b3e3828f859ab94`; npm integrity `sha512-kpWjjV0j5y0mMHUB5dSx1hxweH8K2blSqkgdQ6eHgU7aClB4CcXGhbHtGY6WVHSo3A01Rt7WOLas/wQ1E+tBDg==` | Apache-2.0 | Active OWASP project; the release fixes workspace shell injection and adds regression tests | Strong npm-specific generator, but it adds another executable dependency and does not remove OpenBot's need to project the exact bundled production graph | Keep as fallback if native npm output proves insufficient |
+| GitHub artifact attestation | `actions/attest` `v4.2.2` / `1e69f48acb82d1966a394da916b4c1698aa569d6` | MIT | Maintained GitHub action with signed immutable release | Binds archive/checksum subjects and SBOMs to workflow, repository, commit, and event through Sigstore. It requires OIDC and write permissions and is unavailable for private repositories outside Enterprise Cloud | Select for a tag-only trusted release workflow after repository eligibility and Owner publication authorization are confirmed |
+
+## Reuse decision
+
+- Selected option: released dependencies and platform artifacts plus narrow validation/projection
+  adapters.
+- Selected upstream or standard: Node.js `v22.22.2` archives, `@vercel/ncc` `0.45.0`, npm SBOM
+  `10.9.8`, SPDX 2.3 output, and `actions/attest` `v4.2.2` for authorized releases.
+- Why this is the first viable option: it keeps an ordinary upstream Node executable, isolates the
+  application into one auditable bundle, reuses an already-selected package-manager SBOM command,
+  and defers networked signing to the release boundary. No experimental executable injection or
+  archived packager is required.
+- Exact OpenBot-specific gap: validate runtime filenames and hashes, reject unsafe archive entries,
+  project only the Node production dependency closure, check bundle stats/externals, stage fixed
+  paths and modes, emit a canonical file manifest and checksums, and make archive creation
+  reproducible from explicit local inputs.
+- Upgrade, replacement, or exit plan: each Node, ncc, npm, or attestation update repeats source,
+  release, test, issue, platform, integrity, and license review. ncc can be replaced by another
+  bundler because the archive contract is bundle/runtime/manifest based rather than ncc-specific.
+- Failure behavior when the upstream is missing, incompatible, or compromised: missing tools,
+  wrong versions or hashes, unexpected archive entries, bundle externals/assets, dependency-graph
+  drift, non-canonical manifests, or non-reproducible output stop the build. They never download a
+  fallback, reuse a stale artifact, or produce a release-looking unsigned archive.
+
+## Source incorporation
+
+- Source copied or substantially adapted: no.
+- Files and upstream locations: OpenBot invokes published command contracts and extracts the
+  reviewed official Node artifact. No ncc, npm, Node, pkg, CycloneDX, or attest source is copied.
+- Required copyright or license notice location: the archive carries the OpenBot license, ncc's
+  generated dependency license report, the Node distribution's license/notices, and a generated
+  dependency inventory. Repository pins and licenses are recorded here and in
+  `docs/OPEN_SOURCE_REUSE.md`.
+
+## Verification plan
+
+- Automated tests: exact platform/hash table, safe runtime archive listing, production dependency
+  closure, stable SPDX semantics, allowed ncc output, canonical manifest order, fixed modes,
+  checksum verification, and byte-identical repeat builds on the release image.
+- Negative and fail-closed tests: wrong hash or architecture, path traversal, absolute paths,
+  symlink escapes, duplicate entries, oversized files/counts, unexpected ncc assets/externals,
+  test-only dependency leakage, tool-version drift, changed staged bytes, and unavailable signer.
+- Platforms and devices: build both archives on the pinned Ubuntu 24.04 release image; execute and
+  install the x64 archive on real Ubuntu 24.04 x64 and the arm64 archive on real Ubuntu 24.04 arm64.
+  Cross-arch construction alone is not runtime evidence.
+- User-visible documentation and translations: document verification, contents, unsigned local
+  candidate naming, install/upgrade/rollback boundaries, and the difference between checksums and
+  signed provenance in English and Simplified Chinese.
+- Support level that the evidence permits: locally verified archive candidate only until an
+  authorized tag workflow publishes attested outputs and both architectures pass real-host
+  lifecycle evidence.
+
+## Unresolved questions
+
+- Repository visibility and GitHub plan must be checked before the attestation job is enabled; no
+  workflow should silently skip provenance and still publish release assets.
+- deb/rpm ownership, post-install transactions, and rollback remain a later G3 review after the
+  archive contract is implemented and exercised.
+- Signing checksums proves origin and integrity, not safety. Vulnerability scanning and real-device
+  tests remain independent release gates.

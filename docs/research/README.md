@@ -67,3 +67,6 @@ outside the authoritative Server process.
 The accepted [Linux Worker Host service and Secret Service](linux-worker-host-service-and-secret-service.md)
 review separates headless system service credentials from login-session Secret Service, selecting
 a bounded `secret-tool` adapter without a silent backend fallback.
+The accepted [Linux Worker Host verifiable archive](linux-worker-host-archive.md) review then fixes
+the application bundler, official Node runtime hashes, production SBOM, deterministic manifest,
+checksums, and authorized release-provenance boundary before installation scripts are added.

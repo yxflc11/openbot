@@ -134,7 +134,9 @@ Every non-trivial slice follows the same sequence:
 - G3 now implements the two explicit systemd profiles and the bounded Linux Secret Service adapter.
   Tests cover exact non-fallback selection, helper stdin, timeout/output limits, missing/error
   outcomes, wrong identities, write verification, and unit hardening. Signed archive/installer work
-  and real x64/arm64 systemd plus locked/unlocked keyring evidence remain in progress.
+  and real x64/arm64 systemd plus locked/unlocked keyring evidence remain in progress. ADR-0033 now
+  fixes the archive's bundler, official runtime hashes, SBOM, deterministic manifest/checksum, and
+  tag-only provenance contract so implementation cannot silently change the release boundary.
 - G0 is externally gated: pushing requires explicit Owner authorization. PR creation, merge,
   release, and repository-setting changes are separate actions and are not authorized.
 - While G0 awaits that decision, repository-local planning, research, and verification may continue;

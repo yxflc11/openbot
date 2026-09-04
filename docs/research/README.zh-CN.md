@@ -52,3 +52,5 @@ Sonobuoy 与现有 Vitest/Provider SDK 边界，确认只在权威 Server 进程
 已接受的 [Linux Worker Host 服务与 Secret Service](linux-worker-host-service-and-secret-service.md)
 审查把无人值守系统服务凭证与登录会话 Secret Service 分开，并选择不会静默切换后端的有界
 `secret-tool` 适配器。
+已接受的 [Linux Worker Host 可验证压缩包](linux-worker-host-archive.md)审查随后在增加安装脚本前，
+固定应用打包器、官方 Node 运行时哈希、生产 SBOM、确定性清单、校验和与授权发布来源证明边界。
