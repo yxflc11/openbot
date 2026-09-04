@@ -114,8 +114,17 @@
 - Four snapshot tests cover the only accepted runtime/layout and reject non-root/non-Linux execution,
   links, owner/group drift, writable ancestors, child-mode drift, unknown paths, and cross-filesystem
   layouts. These are policy tests, not a successful native root execution.
-- These are temporary-filesystem concurrency, byte-import, and layout-policy tests. Directory
-  creation, full bootstrap composition, process-kill recovery, and native systemd remain pending.
+- A dormant privileged wrapper now composes the fixed layout and systemd adapter under one lease:
+  workspace preflight, private import, provenance verification of only the imported path, safe
+  extraction, candidate identity validation, transactional activation, and digest-bound cleanup.
+  Explicit privileged recovery uses the same fixed layout, service adapter, and lease. The rootless
+  composition surface exists only for deterministic adapter-contract tests and grants no authority.
+- Four composition tests prove exact stage order and one shared lease, prevent verification of the
+  user-writable source path, prevent activation/cleanup of an invalid candidate, and require explicit
+  recovery plus empty work roots before import. Failed stages preserve the private import for review.
+- These are temporary-filesystem concurrency, byte-import, layout-policy, and injected-composition
+  tests. Directory creation, trusted bootstrap distribution, process-kill recovery, and native
+  systemd remain pending; the privileged wrapper has not been run successfully as root.
 
 ## Unresolved questions
 

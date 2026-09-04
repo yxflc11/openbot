@@ -215,10 +215,16 @@ destination and requires Linux effective uid/gid 0, root-owned non-symlinked anc
 users cannot write, exact private/public child modes, and the filesystem relationships needed for
 atomic version movement. There is no option to substitute a different destination or trusted owner.
 
+A dormant privileged wrapper now wires the fixed layout and systemd adapter into one ordered path:
+empty-workspace check, private import, provenance verification of only that imported path, safe
+extraction, candidate identity check, transactional activation, then digest-bound cleanup. A failure
+stops the sequence and retains the imported evidence. Privileged recovery uses the same fixed paths,
+service, and lease. This is locally contract-tested code, not a distributed or supported command.
+
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
 unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted
-bootstrap, root-owned directory creation and privileged stage composition, a wired privileged
-recovery command, and native x64/arm64 proof of the systemd adapter are still required before an
+bootstrap distribution, root-owned directory creation, a reviewed operator command surface, and
+native x64/arm64 proof of the systemd adapter are still required before an
 installation command can be published. The rootless safe-extraction adapter now rejects unsafe
 inventories, extracts into a private empty root, rechecks the archive digest, and rebuilds the
 candidate manifest; the existing x64 archive passed this path under Ubuntu container emulation. No
