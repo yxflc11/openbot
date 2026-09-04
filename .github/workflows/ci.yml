@@ -89,6 +89,8 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+      - name: Package the unsigned Desktop development artifact
+        run: npm run package --workspace @openbot/desktop
       - name: Validate macOS LaunchAgent contract with native plist parser
         if: runner.os == 'macOS'
         run: |

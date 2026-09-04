@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "build:desktop": "tsc --noEmit -p tsconfig.json && vite build --mode desktop",
     "dev": "vite",
     "preview": "vite preview",
     "test": "vitest run src --passWithNoTests",

@@ -105,3 +105,6 @@ Client, retains Web as a full Client, keeps Server as the only authority, and li
 to narrow platform adapters. Stable Forge 7 is rejected after implementation validation exposed its
 Fuses incompatibility and unresolved development advisories; signing, updates, and real-device
 support remain later gates.
+The accepted [Desktop local content protocol](desktop-local-content-protocol.md) follow-on applies
+Electron's custom-protocol guidance to a dedicated session and an exact packaged-resource
+allowlist, keeping `file://` extra privileges disabled and rejecting traversal before file access.

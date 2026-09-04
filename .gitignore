@@ -5,6 +5,7 @@
 node_modules/
 dist/
 build/
+apps/desktop/out/
 coverage/
 .turbo/
 .vite/
