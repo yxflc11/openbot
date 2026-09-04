@@ -73,3 +73,6 @@ checksums, and authorized release-provenance boundary before installation script
 The accepted [Linux Worker Host recoverable install transaction](linux-worker-host-install-transaction.md)
 review now fixes the versioned layout, provenance gate, atomic activation, health-bound rollback,
 credential separation, and crash-recovery evidence before a privileged installer is exposed.
+The accepted [Linux Worker Host privileged bootstrap boundary](linux-worker-host-privileged-bootstrap.md)
+then selects a private archive import and one fail-closed shared lease so user-writable path swaps
+cannot separate the bytes proved from the bytes extracted or activated.
