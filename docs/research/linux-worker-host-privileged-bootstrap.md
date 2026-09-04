@@ -123,6 +123,13 @@
 - Four snapshot tests cover the only accepted runtime/layout and reject non-root/non-Linux execution,
   links, owner/group drift, writable ancestors, child-mode drift, unknown paths, and cross-filesystem
   layouts. These are policy tests, not a successful native root execution.
+- A fail-closed initializer now checks all four ancestors before writing, creates each fixed child
+  non-recursively in parent-first order, and normalizes a newly created directory only through an
+  `O_DIRECTORY|O_NOFOLLOW` handle. It compares the opened device/inode with the final pathname and
+  validates the complete layout after creation. Existing children are validated but never changed.
+- Four provisioning tests cover fresh parent-first creation with umask normalization, an idempotent
+  exact layout with no mutation, rejection of unsafe existing children before mutation, and path
+  replacement detection before a deeper child is created.
 - A dormant privileged wrapper now composes the fixed layout and systemd adapter under one lease:
   workspace preflight, private import, provenance verification of only the imported path, safe
   extraction, candidate identity validation, transactional activation, and digest-bound cleanup.
@@ -131,10 +138,10 @@
 - Four composition tests prove exact stage order and one shared lease, prevent verification of the
   user-writable source path, prevent activation/cleanup of an invalid candidate, and require explicit
   recovery plus empty work roots before import. Failed stages preserve the private import for review.
-- These are temporary-filesystem concurrency, byte-import, layout-policy, and injected-composition
-  tests. Fail-closed directory creation is the next accepted slice; trusted bootstrap distribution,
-  process-kill recovery, and native systemd remain pending. The privileged wrapper has not been run
-  successfully as root.
+- These are temporary-filesystem concurrency, byte-import, layout-policy/provisioning, and injected-
+  composition tests. Trusted bootstrap distribution, process-kill recovery, and native privileged
+  directory/systemd execution remain pending. The privileged wrapper has not been run successfully
+  as root.
 
 ## Unresolved questions
 

@@ -11,7 +11,7 @@ import {
   installStagedLinuxRelease,
   recoverLinuxInstallTransaction,
 } from "./node-linux-install-transaction.mjs";
-import { assertLinuxPrivilegedInstallerLayout } from "./node-linux-privileged-layout.mjs";
+import { prepareLinuxPrivilegedInstallerLayout } from "./node-linux-privileged-layout.mjs";
 import { verifyLinuxReleaseProvenance } from "./node-linux-provenance.mjs";
 import { assertReleaseVersion, assertSourceCommit } from "./node-linux-release.mjs";
 import { createLinuxSystemdServiceAdapter } from "./node-linux-systemd.mjs";
@@ -30,7 +30,7 @@ const layoutKeys = Object.freeze([
  */
 export async function installPrivilegedLinuxRelease(options) {
   if (!isRecord(options)) throw new Error("Linux privileged install options are malformed.");
-  const layout = await assertLinuxPrivilegedInstallerLayout();
+  const layout = await prepareLinuxPrivilegedInstallerLayout();
   return await composeLinuxReleaseInstall(
     { ...options, layout },
     {
@@ -47,7 +47,7 @@ export async function installPrivilegedLinuxRelease(options) {
 
 export async function recoverPrivilegedLinuxInstall(options = {}) {
   if (!isRecord(options)) throw new Error("Linux privileged recovery options are malformed.");
-  const layout = await assertLinuxPrivilegedInstallerLayout();
+  const layout = await prepareLinuxPrivilegedInstallerLayout();
   const service = createLinuxSystemdServiceAdapter();
   return await withLinuxInstallLease({ stateRoot: layout.stateRoot }, async (installLease) =>
     recoverLinuxInstallTransaction({

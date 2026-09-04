@@ -210,10 +210,13 @@ synced destination identity, size, and SHA-256. Cleanup removes only that exact 
 file. A changed source, symlink, existing target, forged lease, or digest mismatch is preserved or
 rejected without entering provenance or extraction.
 
-The privileged layout policy is now executable but not yet wired to a command. It fixes every
-destination and requires Linux effective uid/gid 0, root-owned non-symlinked ancestors that ordinary
-users cannot write, exact private/public child modes, and the filesystem relationships needed for
-atomic version movement. There is no option to substitute a different destination or trusted owner.
+The dormant privileged wrapper can now create its missing fixed directories before validating the
+complete layout. It first checks every mutable ancestor, creates one child at a time without
+recursive path resolution, opens each new directory without following links, normalizes only that
+opened inode, and checks that the pathname still selects it. An existing directory is never changed:
+wrong ownership, mode, type, or a link fails closed. Linux effective uid/gid 0, exact private/public
+child modes, and the filesystem relationships needed for atomic version movement remain mandatory.
+There is no option to substitute a different destination or trusted owner.
 
 A dormant privileged wrapper now wires the fixed layout and systemd adapter into one ordered path:
 empty-workspace check, private import, provenance verification of only that imported path, safe
@@ -222,10 +225,10 @@ stops the sequence and retains the imported evidence. Privileged recovery uses t
 service, and lease. This is locally contract-tested code, not a distributed or supported command.
 
 This gives later `.deb`, `.rpm`, Windows, and macOS installers one tested lifecycle instead of four
-unrelated rollback implementations. It is not yet runnable as root: a separately delivered trusted
-bootstrap distribution, root-owned directory creation, a reviewed operator command surface, and
-native x64/arm64 proof of the systemd adapter are still required before an
-installation command can be published. The rootless safe-extraction adapter now rejects unsafe
+unrelated rollback implementations. It is not yet publishable: a separately delivered trusted
+bootstrap distribution, a reviewed operator command surface, and native x64/arm64 proof of the
+directory and systemd adapters are still required before an installation command can be published.
+The rootless safe-extraction adapter now rejects unsafe
 inventories, extracts into a private empty root, rechecks the archive digest, and rebuilds the
 candidate manifest; the existing x64 archive passed this path under Ubuntu container emulation. No
 live remote attestation has been accepted yet. The system-profile command adapter is also
