@@ -1,15 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   assertMacOSAccessGroup,
+  assertMacOSDeveloperIdentities,
   assertMacOSExtendedAttributes,
   distributionSigningPlan,
   expandEntitlementsTemplate,
   sealMacOSWorkerHostApplicationMetadata,
   validateMacOSWorkerHostApplication,
+  validateMacOSProvisioningProfile,
 } from "./macos-worker-host-release.mjs";
 
 if (process.platform !== "darwin") {
@@ -17,6 +19,18 @@ if (process.platform !== "darwin") {
 }
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const options = parseArguments(process.argv.slice(2));
+assertMacOSDeveloperIdentities(
+  {
+    applicationIdentity: options.applicationIdentity,
+    installerIdentity: options.installerIdentity,
+  },
+  options.accessGroup,
+);
+await assertDistributionInput(options.provisioningProfile, {
+  minimum: 1_024,
+  maximum: 512 * 1_024,
+});
+await assertDistributionInput(options.entitlementsTemplate, { minimum: 256, maximum: 16 * 1_024 });
 await validateMacOSWorkerHostApplication(options.application, {
   expectedOwner: process.getuid?.(),
 });
@@ -31,13 +45,21 @@ const plan = distributionSigningPlan({
 });
 if (
   plan.map((step) => step.role).join(",") !==
-  "node,launcher,seal-metadata,application,verify-application,package,verify-package,notarize,staple,gatekeeper"
+  "node,seal-metadata,application,verify-application,package,verify-package,notarize,staple,gatekeeper"
 ) {
   throw new Error("macOS distribution signing order is invalid.");
 }
 
 const scratch = await mkdtemp(path.join(tmpdir(), "openbot-macos-distribution-"));
 try {
+  const decodedProfile = path.join(scratch, "provisioning-profile.plist");
+  const decodedProfileJson = path.join(scratch, "provisioning-profile.json");
+  run("/usr/bin/security", ["cms", "-D", "-i", options.provisioningProfile, "-o", decodedProfile]);
+  run("/usr/bin/plutil", ["-convert", "json", "-o", decodedProfileJson, decodedProfile]);
+  validateMacOSProvisioningProfile(JSON.parse(await readFile(decodedProfileJson, "utf8")), {
+    accessGroup: options.accessGroup,
+  });
+
   const application = path.join(scratch, "OpenBot Worker Host.app");
   run("/usr/bin/ditto", ["--noextattr", "--noqtn", "--norsrc", options.application, application]);
   run("/usr/bin/ditto", [
@@ -62,7 +84,6 @@ try {
   run("/usr/bin/plutil", ["-lint", entitlements]);
 
   const node = path.join(application, "Contents/Resources/node/bin/node");
-  const launcher = path.join(application, "Contents/Resources/OpenBotWorkerHostLauncher");
   run("/usr/bin/codesign", [
     "--force",
     "--sign",
@@ -71,17 +92,6 @@ try {
     "runtime",
     "--timestamp",
     node,
-  ]);
-  run("/usr/bin/codesign", [
-    "--force",
-    "--sign",
-    options.applicationIdentity,
-    "--options",
-    "runtime",
-    "--timestamp",
-    "--entitlements",
-    entitlements,
-    launcher,
   ]);
   await sealMacOSWorkerHostApplicationMetadata(application);
   run("/usr/bin/codesign", [
@@ -216,4 +226,17 @@ function parseArguments(arguments_) {
     outputPackage: absolute("--output"),
     provisioningProfile: absolute("--provisioning-profile"),
   };
+}
+
+async function assertDistributionInput(filePath, { minimum, maximum }) {
+  const metadata = await lstat(filePath);
+  if (
+    !metadata.isFile() ||
+    metadata.isSymbolicLink() ||
+    metadata.nlink !== 1 ||
+    metadata.size < minimum ||
+    metadata.size > maximum
+  ) {
+    throw new Error("A macOS distribution input is outside the reviewed file boundary.");
+  }
 }

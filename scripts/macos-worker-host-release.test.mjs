@@ -7,12 +7,14 @@ import { fileURLToPath } from "node:url";
 import {
   MACOS_NCC_OUTPUTS,
   assertMacOSAccessGroup,
+  assertMacOSDeveloperIdentities,
   assertMacOSExtendedAttributes,
   distributionSigningPlan,
   expandEntitlementsTemplate,
   sealMacOSWorkerHostApplicationMetadata,
   stageMacOSWorkerHostApplication,
   validateMacOSWorkerHostApplication,
+  validateMacOSProvisioningProfile,
 } from "./macos-worker-host-release.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -68,11 +70,61 @@ test("expands only the exact shared access group", async () => {
   const group = "A1B2C3D4E5.com.openbot.worker-host.shared";
   const expanded = expandEntitlementsTemplate(template, group);
   assert.match(expanded, new RegExp(group.replaceAll(".", "\\.")));
+  assert.match(expanded, /A1B2C3D4E5\.com\.openbot\.worker-host/);
+  assert.match(expanded, /<string>A1B2C3D4E5<\/string>/);
   assert.doesNotMatch(expanded, /OPENBOT_|get-task-allow|app-sandbox/);
   assert.throws(() => assertMacOSAccessGroup("com.openbot.worker-host.shared"), /Team ID/);
   assert.throws(
     () => expandEntitlementsTemplate(`${template}OPENBOT_ACCESS_GROUP`, group),
     /placeholder/,
+  );
+});
+
+test("binds Developer ID identities and provisioning to one exact application", () => {
+  const accessGroup = "A1B2C3D4E5.com.openbot.worker-host.shared";
+  const identities = {
+    applicationIdentity: "Developer ID Application: OpenBot (A1B2C3D4E5)",
+    installerIdentity: "Developer ID Installer: OpenBot (A1B2C3D4E5)",
+  };
+  assert.equal(assertMacOSDeveloperIdentities(identities, accessGroup), "A1B2C3D4E5");
+  assert.throws(
+    () =>
+      assertMacOSDeveloperIdentities(
+        { ...identities, installerIdentity: "Developer ID Installer: Other (Z9Y8X7W6V5)" },
+        accessGroup,
+      ),
+    /identity/,
+  );
+
+  const profile = {
+    ProvisionsAllDevices: true,
+    Platform: ["OSX"],
+    TeamIdentifier: ["A1B2C3D4E5"],
+    ApplicationIdentifierPrefix: ["A1B2C3D4E5"],
+    ExpirationDate: "2027-09-04T00:00:00.000Z",
+    Entitlements: {
+      "com.apple.application-identifier": "A1B2C3D4E5.com.openbot.worker-host",
+      "com.apple.developer.team-identifier": "A1B2C3D4E5",
+      "keychain-access-groups": ["A1B2C3D4E5.*"],
+      "get-task-allow": false,
+    },
+  };
+  assert.doesNotThrow(() =>
+    validateMacOSProvisioningProfile(profile, {
+      accessGroup,
+      now: new Date("2026-09-04T00:00:00.000Z"),
+    }),
+  );
+  assert.throws(
+    () =>
+      validateMacOSProvisioningProfile(
+        {
+          ...profile,
+          Entitlements: { ...profile.Entitlements, "keychain-access-groups": ["Z9Y8X7W6V5.*"] },
+        },
+        { accessGroup, now: new Date("2026-09-04T00:00:00.000Z") },
+      ),
+    /does not authorize/,
   );
 });
 
@@ -132,7 +184,6 @@ test("locks distribution to inside-out signing and notarization", () => {
     plan.map((step) => step.role),
     [
       "node",
-      "launcher",
       "seal-metadata",
       "application",
       "verify-application",
@@ -161,13 +212,11 @@ async function createFixture(context) {
   const fixture = {
     root,
     controlBinary: path.join(root, "OpenBotWorkerHostControl"),
-    launcherBinary: path.join(root, "OpenBotWorkerHostLauncher"),
     nodeBinary: path.join(root, "node"),
     nodeLicense: path.join(root, "NODE_LICENSE"),
     nodeBundleDirectory: path.join(root, "bundle"),
   };
   await writeSized(fixture.controlBinary, 16 * 1024);
-  await writeSized(fixture.launcherBinary, 16 * 1024);
   await writeSized(fixture.nodeBinary, 20 * 1024 * 1024);
   await writeSized(fixture.nodeLicense, 1_024);
   await mkdir(fixture.nodeBundleDirectory);
@@ -195,7 +244,6 @@ function stage(fixture, destination) {
       repositoryRoot,
       "apps/worker-host-macos/Resources/com.openbot.worker-host.node.plist",
     ),
-    launcherBinary: fixture.launcherBinary,
     nodeBinary: fixture.nodeBinary,
     nodeBundleDirectory: fixture.nodeBundleDirectory,
     nodeLicense: fixture.nodeLicense,

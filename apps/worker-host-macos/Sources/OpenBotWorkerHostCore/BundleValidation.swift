@@ -4,26 +4,29 @@ import Security
 
 public struct InstalledWorkerHostApplication: Sendable {
     public static let fixedRoot = URL(fileURLWithPath: "/Applications/OpenBot Worker Host.app")
-    public static let launcherRelativePath = "Contents/Resources/OpenBotWorkerHostLauncher"
+    public static let hostRelativePath = "Contents/MacOS/OpenBotWorkerHostControl"
 
     public let root: URL
+    public let hostExecutable: URL
     public let nodeExecutable: URL
     public let nodeEntry: URL
 
-    public init(launcherURL: URL) throws {
-        let resolvedLauncher = launcherURL.resolvingSymlinksInPath().standardizedFileURL
-        let expectedLauncher = Self.fixedRoot
-            .appendingPathComponent(Self.launcherRelativePath)
+    public init(hostURL: URL) throws {
+        let resolvedHost = hostURL.resolvingSymlinksInPath().standardizedFileURL
+        let expectedHost = Self.fixedRoot
+            .appendingPathComponent(Self.hostRelativePath)
             .standardizedFileURL
-        guard resolvedLauncher.path == expectedLauncher.path else {
+        guard resolvedHost.path == expectedHost.path else {
             throw OpenBotMacOSError.invalidBundle
         }
         root = Self.fixedRoot
+        hostExecutable = expectedHost
         nodeExecutable = root.appendingPathComponent("Contents/Resources/node/bin/node")
         nodeEntry = root.appendingPathComponent("Contents/Resources/node/app/index.js")
     }
 
     public func validate() throws {
+        try validateRegularFile(hostExecutable, executable: true)
         try validateRegularFile(nodeExecutable, executable: true)
         try validateRegularFile(nodeEntry, executable: false)
         try validateCode(at: root)

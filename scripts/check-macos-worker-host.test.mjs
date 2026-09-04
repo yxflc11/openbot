@@ -19,6 +19,7 @@ test("accepts the fixed app-bundled LaunchAgent contract", async () => {
   assert.deepEqual(keys, [
     "Label",
     "BundleProgram",
+    "ProgramArguments",
     "KeepAlive",
     "SuccessfulExit",
     "ThrottleInterval",
@@ -28,7 +29,7 @@ test("accepts the fixed app-bundled LaunchAgent contract", async () => {
   ]);
   assert.doesNotMatch(
     expectedMacOSLaunchAgentPlist,
-    /ProgramArguments|EnvironmentVariables|StandardInPath|UserName|GroupName|RootDirectory|EnablePressuredExit|AbandonProcessGroup|credential|token|secret/i,
+    /EnvironmentVariables|StandardInPath|UserName|GroupName|RootDirectory|EnablePressuredExit|AbandonProcessGroup|credential|token|secret/i,
   );
 });
 
@@ -40,7 +41,7 @@ test("rejects lifecycle or executable drift", async (context) => {
   for (const changed of [
     expectedMacOSLaunchAgentPlist.replace("<integer>30</integer>", "<integer>1</integer>"),
     expectedMacOSLaunchAgentPlist.replace(
-      "Contents/Resources/OpenBotWorkerHostLauncher",
+      "Contents/MacOS/OpenBotWorkerHostControl",
       "/usr/local/bin/node",
     ),
     `${expectedMacOSLaunchAgentPlist}<key>EnvironmentVariables</key>`,

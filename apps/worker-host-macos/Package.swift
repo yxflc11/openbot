@@ -7,7 +7,6 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .library(name: "OpenBotWorkerHostCore", targets: ["OpenBotWorkerHostCore"]),
-        .executable(name: "OpenBotWorkerHostLauncher", targets: ["OpenBotWorkerHostLauncher"]),
         .executable(name: "OpenBotWorkerHostControl", targets: ["OpenBotWorkerHostControl"]),
     ],
     targets: [
@@ -18,10 +17,6 @@ let package = Package(
         .target(
             name: "OpenBotWorkerHostCore",
             dependencies: ["OpenBotWorkerHostPOSIX"]
-        ),
-        .executableTarget(
-            name: "OpenBotWorkerHostLauncher",
-            dependencies: ["OpenBotWorkerHostCore"]
         ),
         .executableTarget(
             name: "OpenBotWorkerHostControl",

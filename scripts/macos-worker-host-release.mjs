@@ -47,7 +47,6 @@ export const MACOS_APP_FILES = Object.freeze(
     "Contents/Library/LaunchAgents/com.openbot.worker-host.node.plist",
     "Contents/MacOS/OpenBotWorkerHostControl",
     "Contents/Resources/LICENSE",
-    "Contents/Resources/OpenBotWorkerHostLauncher",
     "Contents/Resources/build.json",
     "Contents/Resources/docs/NODE_ENROLLMENT.md",
     "Contents/Resources/docs/NODE_ENROLLMENT.zh-CN.md",
@@ -80,6 +79,48 @@ export function assertMacOSAccessGroup(value) {
     throw new Error("macOS access group must contain one Team ID and the fixed OpenBot suffix.");
   }
   return value;
+}
+
+export function assertMacOSDeveloperIdentities(identities, accessGroup) {
+  const teamId = assertMacOSAccessGroup(accessGroup).slice(0, 10);
+  const patterns = {
+    applicationIdentity: /^Developer ID Application: .+ \(([A-Z0-9]{10})\)$/,
+    installerIdentity: /^Developer ID Installer: .+ \(([A-Z0-9]{10})\)$/,
+  };
+  for (const [name, pattern] of Object.entries(patterns)) {
+    const value = identities?.[name];
+    const match = typeof value === "string" ? value.match(pattern) : null;
+    if (match?.[1] !== teamId || value.length > 256 || /[\0\r\n]/.test(value)) {
+      throw new Error(`macOS Developer ID identity is invalid: ${name}.`);
+    }
+  }
+  return teamId;
+}
+
+export function validateMacOSProvisioningProfile(profile, { accessGroup, now = new Date() }) {
+  const teamId = assertMacOSAccessGroup(accessGroup).slice(0, 10);
+  const applicationIdentifier = `${teamId}.com.openbot.worker-host`;
+  const expiration = new Date(profile?.ExpirationDate);
+  const entitlements = profile?.Entitlements;
+  if (
+    profile?.ProvisionsAllDevices !== true ||
+    !Array.isArray(profile?.Platform) ||
+    !profile.Platform.includes("OSX") ||
+    !Array.isArray(profile?.TeamIdentifier) ||
+    !profile.TeamIdentifier.includes(teamId) ||
+    !Array.isArray(profile?.ApplicationIdentifierPrefix) ||
+    !profile.ApplicationIdentifierPrefix.includes(teamId) ||
+    !(expiration.getTime() > now.getTime() + 24 * 60 * 60 * 1_000) ||
+    entitlements?.["com.apple.application-identifier"] !== applicationIdentifier ||
+    entitlements?.["com.apple.developer.team-identifier"] !== teamId ||
+    !Array.isArray(entitlements?.["keychain-access-groups"]) ||
+    !entitlements["keychain-access-groups"].some(
+      (group) => group === accessGroup || group === `${teamId}.*`,
+    ) ||
+    entitlements?.["get-task-allow"] === true
+  ) {
+    throw new Error("The macOS provisioning profile does not authorize the reviewed application.");
+  }
 }
 
 export function assertMacOSExtendedAttributes(output, { allowProvenance = false } = {}) {
@@ -116,7 +157,6 @@ export async function stageMacOSWorkerHostApplication(options) {
   const destination = path.resolve(options.destination);
   await assertAbsent(destination);
   await assertInputFile(options.controlBinary, { minimum: 16 * 1024, maximum: 32 * 1024 * 1024 });
-  await assertInputFile(options.launcherBinary, { minimum: 16 * 1024, maximum: 32 * 1024 * 1024 });
   await assertInputFile(options.nodeBinary, {
     minimum: 20 * 1024 * 1024,
     maximum: 128 * 1024 * 1024,
@@ -150,12 +190,6 @@ export async function stageMacOSWorkerHostApplication(options) {
     options.controlBinary,
     destination,
     "Contents/MacOS/OpenBotWorkerHostControl",
-    0o755,
-  );
-  await copyChecked(
-    options.launcherBinary,
-    destination,
-    "Contents/Resources/OpenBotWorkerHostLauncher",
     0o755,
   );
   await copyChecked(options.nodeBinary, destination, "Contents/Resources/node/bin/node", 0o755);
@@ -251,7 +285,6 @@ export async function validateMacOSWorkerHostApplication(
     }
     const executable = [
       "Contents/MacOS/OpenBotWorkerHostControl",
-      "Contents/Resources/OpenBotWorkerHostLauncher",
       "Contents/Resources/node/bin/node",
     ].includes(relativePath);
     if ((metadata.mode & 0o777) !== (executable ? 0o755 : 0o644)) {
@@ -324,11 +357,19 @@ export async function sealMacOSWorkerHostApplicationMetadata(applicationPath) {
 }
 
 export function expandEntitlementsTemplate(source, accessGroup) {
-  assertMacOSAccessGroup(accessGroup);
-  if (count(source, "OPENBOT_ACCESS_GROUP") !== 1) {
+  const teamId = assertMacOSAccessGroup(accessGroup).slice(0, 10);
+  const applicationIdentifier = `${teamId}.com.openbot.worker-host`;
+  if (
+    count(source, "OPENBOT_ACCESS_GROUP") !== 1 ||
+    count(source, "OPENBOT_APPLICATION_IDENTIFIER") !== 1 ||
+    count(source, "OPENBOT_TEAM_ID") !== 1
+  ) {
     throw new Error("macOS entitlement template placeholder is invalid.");
   }
-  const expanded = source.replace("OPENBOT_ACCESS_GROUP", accessGroup);
+  const expanded = source
+    .replace("OPENBOT_ACCESS_GROUP", accessGroup)
+    .replace("OPENBOT_APPLICATION_IDENTIFIER", applicationIdentifier)
+    .replace("OPENBOT_TEAM_ID", teamId);
   if (/OPENBOT_|get-task-allow|app-sandbox|automation|accessibility/i.test(expanded)) {
     throw new Error("macOS entitlements broaden authority or contain placeholders.");
   }
@@ -356,11 +397,6 @@ export function distributionSigningPlan({
   }
   return [
     { tool: "/usr/bin/codesign", target: `${app}/Contents/Resources/node/bin/node`, role: "node" },
-    {
-      tool: "/usr/bin/codesign",
-      target: `${app}/Contents/Resources/OpenBotWorkerHostLauncher`,
-      role: "launcher",
-    },
     {
       tool: "internal",
       target: `${app}/Contents/Resources/manifest.json`,

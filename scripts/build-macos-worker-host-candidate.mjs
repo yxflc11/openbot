@@ -92,8 +92,7 @@ try {
   binArguments.push("--show-bin-path");
   const binaryDirectory = run("/usr/bin/xcrun", binArguments).trim();
   const controlBinary = path.join(binaryDirectory, "OpenBotWorkerHostControl");
-  const launcherBinary = path.join(binaryDirectory, "OpenBotWorkerHostLauncher");
-  for (const binary of [controlBinary, launcherBinary]) {
+  for (const binary of [controlBinary]) {
     if (inspectMachOArchitecture(binary) !== options.architecture) {
       throw new Error("A macOS native binary has an unexpected architecture.");
     }
@@ -112,7 +111,6 @@ try {
       repositoryRoot,
       "apps/worker-host-macos/Resources/com.openbot.worker-host.node.plist",
     ),
-    launcherBinary,
     nodeBinary,
     nodeBundleDirectory: path.join(scratch, "node-bundle"),
     nodeLicense: path.join(runtimeRoot, runtime.directory, "LICENSE"),

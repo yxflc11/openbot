@@ -13,7 +13,12 @@ export const expectedMacOSLaunchAgentPlist = `<?xml version="1.0" encoding="UTF-
   <key>Label</key>
   <string>com.openbot.worker-host.node</string>
   <key>BundleProgram</key>
-  <string>Contents/Resources/OpenBotWorkerHostLauncher</string>
+  <string>Contents/MacOS/OpenBotWorkerHostControl</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>OpenBotWorkerHostControl</string>
+    <string>--worker-host</string>
+  </array>
   <key>KeepAlive</key>
   <dict>
     <key>SuccessfulExit</key>
