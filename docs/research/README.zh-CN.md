@@ -88,3 +88,6 @@ Fuses 不兼容和未解决的开发依赖漏洞，因此不采用；签名、�
 并通过有界主进程适配器使用 Electron 专用 Session 连接唯一已验证 Server。它只保存经确认的公开
 origin，让 HttpOnly Cookie 留在 preload 之外，拒绝不透明 origin、重定向、过大请求体和远程可执行
 UI，并在 ASAR 打包后校验精确运行时依赖闭包。
+已接受的 [Desktop 安装意图](desktop-setup-plan.md)审查接着使用现有 React、原生表单语义、类型化
+Electron IPC 和受限原子 JSON 持久化表达四种产品组合及有上限的计划 Worker 数量。它不增加状态机
+或表单依赖，并把计划与安装、登记、授权、服务状态和支持声明严格区分。

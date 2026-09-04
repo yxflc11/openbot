@@ -113,3 +113,7 @@ local Client same-origin while a bounded main-process adapter uses Electron's de
 reach one verified Server. It persists only the confirmed public origin, retains HttpOnly cookies
 outside preload, rejects opaque origins, redirects, excess bodies, and remote executable UI, and
 validates the exact runtime dependency closure after ASAR packaging.
+The accepted [Desktop setup intent](desktop-setup-plan.md) review next uses existing React, native
+form semantics, typed Electron IPC, and restricted atomic JSON persistence for the four documented
+compositions and a bounded planned Worker count. It rejects additional state/form dependencies and
+keeps the plan distinct from installation, enrollment, authorization, service status, and support.
