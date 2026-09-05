@@ -4,15 +4,18 @@ import { OpenBotMark } from "./OpenBotMark";
 
 export function ModelSettingsScreen({
   onboarding = false,
+  embedded = false,
   onDone,
 }: {
   onboarding?: boolean;
+  embedded?: boolean;
   onDone(): void;
 }) {
   const [snapshot, setSnapshot] = useState<ModelSettingsSummary>();
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const load = useCallback(async () => {
@@ -36,6 +39,7 @@ export function ModelSettingsScreen({
     event.preventDefault();
     if (busy || !snapshot || snapshot.status === "unavailable") return;
     setBusy(true);
+    setSaved(false);
     setError(undefined);
     try {
       const next = await saveModelSettings({
@@ -46,18 +50,26 @@ export function ModelSettingsScreen({
       });
       setSnapshot(next);
       setApiKey("");
-      onDone();
+      setSaved(true);
+      if (!embedded) onDone();
     } catch (cause) {
       setError(modelError(cause instanceof Error ? cause.message : ""));
     } finally {
       setBusy(false);
     }
   }
+  const Container = embedded ? "div" : "main";
   return (
-    <main className="login-screen model-settings-screen">
-      <section className="login-card" aria-labelledby="model-title">
-        <OpenBotMark className="onboarding-mark" />
-        <h1 id="model-title">{onboarding ? "为 Bot 配置模型" : "模型 API"}</h1>
+    <Container
+      className={embedded ? "model-settings-embedded" : "login-screen model-settings-screen"}
+    >
+      <section
+        className="login-card"
+        aria-label={embedded ? "模型 API 配置" : undefined}
+        aria-labelledby={embedded ? undefined : "model-title"}
+      >
+        {!embedded && <OpenBotMark className="onboarding-mark" />}
+        {!embedded && <h1 id="model-title">{onboarding ? "为 Bot 配置模型" : "模型 API"}</h1>}
         <p className="login-copy">选择模型服务，设置 Bot 的默认模型。以后可以在设置中更改。</p>
         {snapshot?.status === "unavailable" ? (
           <p className="connection-warning" role="status">
@@ -140,12 +152,19 @@ export function ModelSettingsScreen({
             </button>
           </>
         ) : null}
-        <button className="setup-skip" type="button" disabled={busy} onClick={onDone}>
-          {onboarding ? "稍后在设置中配置" : "返回设置"}
-        </button>
+        {saved && (
+          <p className="settings-success" role="status">
+            模型配置已验证并保存。
+          </p>
+        )}
+        {!embedded && (
+          <button className="setup-skip" type="button" disabled={busy} onClick={onDone}>
+            {onboarding ? "稍后在设置中配置" : "返回设置"}
+          </button>
+        )}
         <p className="login-note">验证只检查模型访问权限，不发送对话或生成内容。</p>
       </section>
-    </main>
+    </Container>
   );
 }
 function modelError(code: string): string {

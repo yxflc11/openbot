@@ -5,6 +5,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  nativeTheme,
   net,
   protocol,
   type Session,
@@ -37,8 +38,11 @@ import {
   DESKTOP_LOCAL_WORKER_STATE_CHANNEL,
   DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL,
   DESKTOP_SAVE_SETUP_PLAN_CHANNEL,
+  DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL,
   DESKTOP_SETUP_LOCAL_WORKER_CHANNEL,
   DESKTOP_SETUP_PLAN_STATE_CHANNEL,
+  DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL,
+  DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL,
 } from "./runtime-contract.js";
 import {
   createDesktopWebPreferences,
@@ -48,11 +52,13 @@ import {
 import { proxyDesktopServerRequest } from "./server-proxy.js";
 import { FileDesktopSetupPlanStore } from "./setup-plan.js";
 import { DesktopSetupPlanController } from "./setup-plan-controller.js";
+import { SidebarMaterialController } from "./sidebar-material.js";
 
 let nativeServer: NativeServerController | undefined;
 let quitting = false;
 let mainWindow: BrowserWindow | undefined;
 let desktopSession: Session | undefined;
+let sidebarMaterial: SidebarMaterialController | undefined;
 
 // Every renderer is sandboxed globally before Electron creates a process.
 app.enableSandbox();
@@ -96,6 +102,20 @@ function registerDesktopIpc(
   setupPlanController: DesktopSetupPlanController,
   localWorkerController: DesktopLocalWorkerController,
 ): void {
+  ipcMain.removeHandler(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL);
+  ipcMain.handle(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL, (event, enabled: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return sidebarMaterial?.setEnabled(enabled) ?? { status: "unavailable" };
+  });
+  ipcMain.handle(DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL, (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return sidebarMaterial?.refresh() ?? { status: "unavailable" };
+  });
   ipcMain.removeHandler(DESKTOP_CONNECTION_STATE_CHANNEL);
   ipcMain.removeHandler(DESKTOP_CONFIGURE_SERVER_CHANNEL);
   ipcMain.removeHandler(DESKTOP_SETUP_PLAN_STATE_CHANNEL);
@@ -157,6 +177,8 @@ function registerDesktopIpc(
 }
 
 async function createMainWindow(activeSession: Session): Promise<void> {
+  // Match the renderer's light palette; this is app-local and leaves macOS settings intact.
+  nativeTheme.themeSource = "light";
   const preloadPath = join(app.getAppPath(), "dist", "preload.cjs");
   const window = new BrowserWindow({
     // Preserve native macOS controls while letting the sidebar extend into window chrome.
@@ -183,8 +205,27 @@ async function createMainWindow(activeSession: Session): Promise<void> {
   });
 
   mainWindow = window;
+  const material = new SidebarMaterialController({
+    platform: process.platform,
+    window,
+    accessibility: () => ({
+      reducedTransparency: nativeTheme.prefersReducedTransparency,
+      highContrast: nativeTheme.shouldUseHighContrastColors,
+    }),
+    changed: (state) => {
+      if (!window.isDestroyed()) {
+        window.webContents.send(DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL, state);
+      }
+    },
+  });
+  sidebarMaterial = material;
+  const refreshMaterial = () => material.refresh();
+  nativeTheme.on("updated", refreshMaterial);
+  window.on("focus", refreshMaterial);
   window.once("ready-to-show", () => window.show());
   window.once("closed", () => {
+    nativeTheme.removeListener("updated", refreshMaterial);
+    if (sidebarMaterial === material) sidebarMaterial = undefined;
     if (mainWindow === window) mainWindow = undefined;
   });
   await window.loadURL(DESKTOP_ENTRY_URL);

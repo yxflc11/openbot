@@ -1,5 +1,13 @@
 import type { Artifact, Bot, Channel, Message, Run, RunFrame, RunProgress } from "@openbot/domain";
-import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   createMessage,
   listMessages,
@@ -8,12 +16,14 @@ import {
   subscribeToChannelEvents,
 } from "../api";
 import { indexActiveRunsByBot, isActiveRun, mergeRuns, runStatusLabel } from "../run-state";
+import { useWorkspacePreferences } from "../workspace-preferences";
 import { HashIcon, PlusIcon, SendIcon } from "./Icons";
 import { OpenBotMark } from "./OpenBotMark";
 import { RichMessage } from "./RichMessage";
 import { RobotAvatar } from "./RobotAvatar";
 
 export function ChannelWorkspace({
+  headerAction,
   channel,
   bots,
   artifacts,
@@ -25,6 +35,7 @@ export function ChannelWorkspace({
   onProgress,
   onRun,
 }: {
+  headerAction?: ReactNode;
   channel: Channel;
   bots: Bot[];
   artifacts: Artifact[];
@@ -36,6 +47,7 @@ export function ChannelWorkspace({
   onProgress(progress: RunProgress): void;
   onRun(run: Run, artifacts?: Artifact[]): void;
 }) {
+  const { values: preferences } = useWorkspacePreferences();
   const members = bots.filter((bot) => channel.botIds.includes(bot.id));
   const available = bots.filter((bot) => !channel.botIds.includes(bot.id));
   const botsById = useMemo(() => new Map(bots.map((bot) => [bot.id, bot])), [bots]);
@@ -132,12 +144,14 @@ export function ChannelWorkspace({
     if (messages.length > 0 && stickToBottom.current) {
       messageList.current?.scrollTo({
         top: messageList.current.scrollHeight,
-        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
+        behavior:
+          preferences.reduceMotion ||
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth",
       });
     }
-  }, [messages.length]);
+  }, [messages.length, preferences.reduceMotion]);
 
   async function joinSelectedBot() {
     if (joinBotId.length === 0 || joining) return;
@@ -176,6 +190,8 @@ export function ChannelWorkspace({
 
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (preferences.sendShortcut === "modifier" && !event.metaKey && !event.ctrlKey) return;
+    if (event.altKey) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
   }
@@ -239,6 +255,7 @@ export function ChannelWorkspace({
             <i />
             {realtimeLabel(realtimeState)}
           </span>
+          {headerAction}
         </div>
       </header>
 
@@ -374,7 +391,11 @@ export function ChannelWorkspace({
             </button>
           </div>
           <div className="composer-footnote">
-            <span>Enter 发送 · Shift + Enter 换行</span>
+            <span>
+              {preferences.sendShortcut === "modifier"
+                ? "⌘ / Ctrl + Enter 发送 · Enter 换行"
+                : "Enter 发送 · Shift + Enter 换行"}
+            </span>
             <span>频道消息将保存到工作空间</span>
           </div>
           {messageError ? (
@@ -409,6 +430,7 @@ function MessageRow({
   onInspectRun(runId: string): void;
   onOpenBot(botId: string): void;
 }) {
+  const { values: preferences } = useWorkspacePreferences();
   const name = message.authorType === "human" ? "你" : (author?.name ?? "OpenBot");
   return (
     <article className={`message-row ${message.authorType}`}>
@@ -430,7 +452,9 @@ function MessageRow({
       <div className="message-content">
         <header>
           <strong>{name}</strong>
-          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+          <time dateTime={message.createdAt}>
+            {formatMessageTime(message.createdAt, preferences.hour12)}
+          </time>
         </header>
         {replyTarget ? (
           <blockquote>
@@ -479,8 +503,8 @@ function messageAuthorName(message: Message, botsById: Map<string, Bot> = new Ma
   );
 }
 
-function formatMessageTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(
+function formatMessageTime(value: string, hour12: boolean) {
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12 }).format(
     new Date(value),
   );
 }

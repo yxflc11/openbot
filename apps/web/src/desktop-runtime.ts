@@ -60,7 +60,14 @@ export type DesktopLocalWorkerOperationResult =
         | "native_failed";
     }>;
 
+export type DesktopSidebarMaterialState = Readonly<{
+  status: "enabled" | "disabled" | "reduced" | "unsupported" | "unavailable";
+}>;
+
 export interface OpenBotDesktopBridge {
+  setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;
+  getSidebarMaterialState?(): Promise<DesktopSidebarMaterialState>;
+  onSidebarMaterialChanged?(listener: (state: DesktopSidebarMaterialState) => void): () => void;
   getNativeServerState?(): Promise<NativeServerState>;
   installNativeServer?(): Promise<NativeServerState>;
   getRuntimeInfo?(): Readonly<{ kind: "desktop"; platform: string; shellVersion: string }>;

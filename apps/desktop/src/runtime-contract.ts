@@ -69,7 +69,18 @@ export const DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL = "openbot:desktop-enable-local
 export const DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL =
   "openbot:desktop-open-local-worker-settings";
 
+export type DesktopSidebarMaterialState = Readonly<{
+  status: "enabled" | "disabled" | "reduced" | "unsupported" | "unavailable";
+}>;
+
+export const DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL = "openbot:set-sidebar-translucency";
+export const DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL = "openbot:sidebar-material-state";
+export const DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL = "openbot:sidebar-material-changed";
+
 export interface OpenBotDesktopBridge {
+  setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;
+  getSidebarMaterialState?(): Promise<DesktopSidebarMaterialState>;
+  onSidebarMaterialChanged?(listener: (state: DesktopSidebarMaterialState) => void): () => void;
   getNativeServerState?(): Promise<NativeServerState>;
   installNativeServer?(): Promise<NativeServerState>;
   getRuntimeInfo(): DesktopRuntimeInfo;

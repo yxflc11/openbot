@@ -1,5 +1,5 @@
 import type { CreateEmployeeMemoryInput, EmployeeMemory, EmployeeProfile } from "@openbot/domain";
-import { type FormEvent, useId, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import {
   createEmployeeMemory,
   deleteEmployeeMemory,
@@ -9,6 +9,7 @@ import {
 import { runStatusLabel } from "../run-state";
 import { EmployeeEvolutionArchive } from "./EmployeeEvolutionArchive";
 import { EmployeeSkillReview } from "./EmployeeSkillReview";
+import { OpenBotMark } from "./OpenBotMark";
 import { RobotAvatar } from "./RobotAvatar";
 
 export type ProfileTab =
@@ -43,6 +44,8 @@ export function profileTabForNavigationKey(
 }
 
 export function EmployeeProfileView({
+  headerAction,
+  initialTab = "overview",
   profile,
   loading,
   error,
@@ -51,6 +54,8 @@ export function EmployeeProfileView({
   onExport,
   onProfileChanged,
 }: {
+  headerAction?: ReactNode;
+  initialTab?: ProfileTab;
   profile: EmployeeProfile | undefined;
   loading: boolean;
   error: string | undefined;
@@ -59,14 +64,15 @@ export function EmployeeProfileView({
   onExport(): void;
   onProfileChanged(): Promise<void>;
 }) {
-  const [tab, setTab] = useState<ProfileTab>("overview");
+  const [tab, setTab] = useState<ProfileTab>(initialTab);
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   const tabSetId = useId();
 
   if (loading || profile === undefined) {
     return (
       <main className="workspace-main employee-profile-loading">
-        <span className="loading-mark">O</span>
+        <div className="loading-header-action">{headerAction}</div>
+        <OpenBotMark className="onboarding-mark" />
         <h1>{error ? "无法读取员工档案" : "正在读取员工档案"}</h1>
         <p>{error ?? "正在汇总进化、技能、记忆和工作记录…"}</p>
         {error ? (
@@ -98,6 +104,7 @@ export function EmployeeProfileView({
           <button className="secondary-button" type="button" onClick={onExport}>
             导出模板
           </button>
+          {headerAction}
         </div>
       </header>
 

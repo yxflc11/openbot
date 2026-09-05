@@ -23,6 +23,46 @@ describe("Desktop Server proxy routing", () => {
     }
   });
 
+  it.each([
+    ["/api/v1/automations", "GET"],
+    ["/api/v1/automations", "POST"],
+    ["/api/v1/automations/scheduled-review", "PATCH"],
+    ["/api/v1/automations/scheduled-review", "DELETE"],
+  ])("keeps automation route %s %s on the configured Server", async (path, method) => {
+    const fetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+    const response = await proxyDesktopServerRequest(
+      new Request(`openbot://app${path}`, {
+        method,
+        headers: { "Content-Type": "application/json", "If-Match": '"revision-one"' },
+        ...(method === "POST" || method === "PATCH" ? { body: "{}" } : {}),
+      }),
+      configured,
+      fetcher,
+    );
+    expect(response?.status).toBe(200);
+    const [target, init] = fetcher.mock.calls[0] ?? [];
+    expect(target).toBe(`https://openbot.example${path}`);
+    expect(init).toMatchObject({ method, credentials: "include", redirect: "manual" });
+    const headers = new Headers(init?.headers);
+    expect(headers.get("if-match")).toBe('"revision-one"');
+    expect(headers.get("origin")).toBe(method === "GET" ? null : "https://openbot.example");
+  });
+
+  it("rejects renderer credentials on automation requests before network access", async () => {
+    const fetcher = vi.fn();
+    const response = await proxyDesktopServerRequest(
+      new Request("openbot://app/api/v1/automations", {
+        method: "POST",
+        body: "{}",
+        headers: { Authorization: "Bearer renderer-credential" },
+      }),
+      configured,
+      fetcher,
+    );
+    expect(response?.status).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("leaves immutable renderer assets to the asset handler", async () => {
     await expect(
       proxyDesktopServerRequest(new Request("openbot://app/index.html"), configured, vi.fn()),

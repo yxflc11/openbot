@@ -113,3 +113,28 @@ export function SendIcon() {
     </Icon>
   );
 }
+
+export function PanelRightIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="4" width="18" height="16" rx="3" {...strokeProps} />
+      <path d="M16 4v16" {...strokeProps} />
+    </Icon>
+  );
+}
+export function AutomationIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="13" r="8" {...strokeProps} />
+      <path d="M12 9v4l3 2M5 3 2 6M19 3l3 3M8 2h8" {...strokeProps} />
+    </Icon>
+  );
+}
+export function SkillIcon() {
+  return (
+    <Icon>
+      <path d="m14 3 7 7-7 7-7-7 7-7ZM6 12l-3 3 6 6 3-3" {...strokeProps} />
+      <path d="m14 8 2 2-2 2-2-2 2-2Z" {...strokeProps} />
+    </Icon>
+  );
+}

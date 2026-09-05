@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import "./styles.css";
 import "./workspace-shell.css";
+import "./workspace-preferences.css";
 
 const runtime = window.openbotDesktop?.getRuntimeInfo?.();
 if (runtime?.kind === "desktop") {

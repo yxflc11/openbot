@@ -2,6 +2,7 @@ import type { Bot, Channel, Run } from "@openbot/domain";
 import { useState } from "react";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import {
+  AutomationIcon,
   BotIcon,
   ComposeIcon,
   HashIcon,
@@ -9,11 +10,15 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  SkillIcon,
 } from "./Icons";
 import { OpenBotMark } from "./OpenBotMark";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
+  destination?: "chat" | "automations" | "skills";
+  onAutomations?: (() => void) | undefined;
+  onSkills?: (() => void) | undefined;
   bots: Bot[];
   channels: Channel[];
   runs: Run[];
@@ -30,6 +35,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  destination,
+  onAutomations,
+  onSkills,
   bots,
   channels,
   runs,
@@ -89,6 +97,26 @@ export function Sidebar({
           <span>新建对话</span>
           <PlusIcon />
         </button>
+        {onAutomations && (
+          <button
+            type="button"
+            onClick={onAutomations}
+            aria-current={destination === "automations" ? "page" : undefined}
+          >
+            <AutomationIcon />
+            <span>自动任务</span>
+          </button>
+        )}
+        {onSkills && (
+          <button
+            type="button"
+            onClick={onSkills}
+            aria-current={destination === "skills" ? "page" : undefined}
+          >
+            <SkillIcon />
+            <span>技能广场</span>
+          </button>
+        )}
         <button type="button" onClick={onManageNodes}>
           <NodeIcon />
           <span>工作电脑</span>

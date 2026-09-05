@@ -11,7 +11,7 @@ import type {
   RunProgress,
   WorkspaceSnapshot,
 } from "@openbot/domain";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   createBot,
   createChannel,
@@ -27,6 +27,7 @@ import {
   subscribeToUnauthorized,
   subscribeToWorkspaceEvents,
 } from "./api";
+import { AutomationsScreen } from "./components/AutomationsScreen";
 import { ChannelWorkspace } from "./components/ChannelWorkspace";
 import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
@@ -37,8 +38,9 @@ import { DesktopLocalWorkerScreen } from "./components/DesktopLocalWorkerScreen"
 import { DesktopSettingsScreen } from "./components/DesktopSettingsScreen";
 import { DesktopSetupScreen } from "./components/DesktopSetupScreen";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
-import { EmployeeProfileView } from "./components/EmployeeProfileView";
+import { EmployeeProfileView, type ProfileTab } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
+import { PanelRightIcon } from "./components/Icons";
 import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
@@ -47,6 +49,7 @@ import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { OpenBotMark } from "./components/OpenBotMark";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
+import { SkillLibraryScreen } from "./components/SkillLibraryScreen";
 import {
   type DesktopConnectionState,
   type DesktopLocalWorkerState,
@@ -61,10 +64,13 @@ import {
   mergeRuns,
   projectRunOnNodes,
 } from "./run-state";
+import { useWorkspaceAppearance } from "./use-workspace-appearance";
+import { updatePreferences, useWorkspacePreferences } from "./workspace-preferences";
 
 type Dialog = "bot" | "channel" | "node" | undefined;
 
 export function App() {
+  const material = useWorkspaceAppearance();
   const desktopBridge = getOpenBotDesktopBridge();
   const [desktopConnection, setDesktopConnection] = useState<
     DesktopConnectionState | null | undefined
@@ -362,7 +368,9 @@ export function App() {
         <DesktopSettingsScreen
           error={settingsError}
           plan={desktopSetupPlan.plan}
-          onModel={() => setShowModelSetup(true)}
+          material={material}
+          connection={desktopConnection}
+          localWorker={desktopLocalWorker}
           onConnection={() => setShowConnectionSetup(true)}
           onRole={() => setShowSetupPlan(true)}
           onBack={() => setShowSettings(false)}
@@ -452,7 +460,9 @@ function AuthenticatedWorkspace({
   onSettings?: (() => void) | undefined;
   onLogout(): Promise<void>;
 }) {
-  const showDetails = true;
+  const { values: preferences } = useWorkspacePreferences();
+  const showDetails = preferences.rightPanelOpen;
+  const [destination, setDestination] = useState<"chat" | "automations" | "skills">("chat");
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
   const [selectedChannelId, setSelectedChannelId] = useState<string>();
   const [dialog, setDialog] = useState<Dialog>();
@@ -461,6 +471,7 @@ function AuthenticatedWorkspace({
   const [notice, setNotice] = useState<string>();
   const [selectedRunId, setSelectedRunId] = useState<string>();
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>();
+  const [employeeInitialTab, setEmployeeInitialTab] = useState<ProfileTab>("overview");
   const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile>();
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
   const [employeeProfileError, setEmployeeProfileError] = useState<string>();
@@ -693,6 +704,7 @@ function AuthenticatedWorkspace({
   }
 
   function selectChannel(channelId: string) {
+    setDestination("chat");
     setEmployeeExportOpen(false);
     setEmployeeImportOpen(false);
     setSelectedChannelId(channelId);
@@ -701,7 +713,9 @@ function AuthenticatedWorkspace({
     setMobilePanel(undefined);
   }
 
-  function openEmployee(botId: string) {
+  function openEmployee(botId: string, initialTab: ProfileTab = "overview") {
+    setEmployeeInitialTab(initialTab);
+    setDestination("chat");
     setEmployeeExportOpen(false);
     setEmployeeImportOpen(false);
     setSelectedEmployeeId(botId);
@@ -735,6 +749,19 @@ function AuthenticatedWorkspace({
 
   const selectedChannel = workspace.channels.find((channel) => channel.id === selectedChannelId);
   const selectedRun = workspace.runs.find((run) => run.id === selectedRunId);
+  const panelToggle = (
+    <button
+      className="icon-button panel-toggle"
+      type="button"
+      aria-label={showDetails ? "收起信息栏" : "打开信息栏"}
+      title={showDetails ? "收起信息栏" : "打开信息栏"}
+      aria-expanded={showDetails}
+      aria-controls="workspace-details"
+      onClick={() => updatePreferences({ rightPanelOpen: !showDetails })}
+    >
+      <PanelRightIcon />
+    </button>
+  );
 
   return (
     <div className={`app-shell ${showDetails ? "" : "without-context"}`}>
@@ -743,8 +770,11 @@ function AuthenticatedWorkspace({
         channels={workspace.channels}
         runs={workspace.runs}
         ownerName={ownerName}
-        selectedChannelId={selectedChannel?.id}
-        selectedBotId={selectedEmployeeId}
+        destination={destination}
+        onAutomations={() => setDestination("automations")}
+        onSkills={() => setDestination("skills")}
+        selectedChannelId={destination === "chat" ? selectedChannel?.id : undefined}
+        selectedBotId={destination === "chat" ? selectedEmployeeId : undefined}
         onSelectChannel={selectChannel}
         onSelectBot={openEmployee}
         onCreateBot={() => setDialog("bot")}
@@ -754,8 +784,23 @@ function AuthenticatedWorkspace({
         onSettings={onSettings}
       />
 
-      {selectedEmployeeId ? (
+      {destination === "automations" ? (
+        <AutomationsScreen
+          bots={workspace.bots}
+          channels={workspace.channels}
+          headerAction={panelToggle}
+        />
+      ) : destination === "skills" ? (
+        <SkillLibraryScreen
+          bots={workspace.bots}
+          onOpenBot={(botId) => openEmployee(botId, "skills")}
+          headerAction={panelToggle}
+        />
+      ) : selectedEmployeeId ? (
         <EmployeeProfileView
+          key={`${selectedEmployeeId}:${employeeInitialTab}`}
+          initialTab={employeeInitialTab}
+          headerAction={panelToggle}
           profile={employeeProfile}
           loading={employeeProfileLoading}
           error={employeeProfileError}
@@ -766,6 +811,7 @@ function AuthenticatedWorkspace({
         />
       ) : selectedChannel ? (
         <ChannelWorkspace
+          headerAction={panelToggle}
           channel={selectedChannel}
           bots={workspace.bots}
           artifacts={workspace.artifacts}
@@ -779,24 +825,26 @@ function AuthenticatedWorkspace({
         />
       ) : (
         <ChannelEmptyState
+          headerAction={panelToggle}
           hasBots={workspace.bots.length > 0}
           onCreateBot={() => setDialog("bot")}
           onCreateChannel={() => setDialog("channel")}
         />
       )}
 
-      {showDetails ? (
-        selectedEmployeeId ? (
-          <EmployeeProfileRail profile={employeeProfile} nodes={workspace.nodes} />
-        ) : (
-          <ContextRail
-            realtimeState={workspaceRealtimeState}
-            workspace={workspace}
-            onDecideApproval={handleDecideApproval}
-            onInspectRun={setSelectedRunId}
-          />
-        )
-      ) : null}
+      <div id="workspace-details" className="workspace-details" hidden={!showDetails}>
+        {showDetails &&
+          (destination === "chat" && selectedEmployeeId ? (
+            <EmployeeProfileRail profile={employeeProfile} nodes={workspace.nodes} />
+          ) : (
+            <ContextRail
+              realtimeState={workspaceRealtimeState}
+              workspace={workspace}
+              onDecideApproval={handleDecideApproval}
+              onInspectRun={setSelectedRunId}
+            />
+          ))}
+      </div>
 
       <MobileNavigation
         panel={mobilePanel}
@@ -890,10 +938,12 @@ function AuthenticatedWorkspace({
 }
 
 function ChannelEmptyState({
+  headerAction,
   hasBots,
   onCreateBot,
   onCreateChannel,
 }: {
+  headerAction?: ReactNode;
   hasBots: boolean;
   onCreateBot(): void;
   onCreateChannel(): void;
@@ -902,7 +952,10 @@ function ChannelEmptyState({
     <main className="workspace-main channel-first-empty">
       <header className="empty-workspace-header">
         <span>频道聊天</span>
-        <span>OpenBot 工作空间</span>
+        <div className="workspace-header-actions">
+          <span>OpenBot 工作空间</span>
+          {headerAction}
+        </div>
       </header>
       <section className="workspace-welcome" aria-labelledby="workspace-welcome-title">
         <OpenBotMark className="welcome-mark" />

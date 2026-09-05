@@ -1,9 +1,55 @@
-import type { DesktopSetupPlanInput } from "../desktop-runtime";
+import { type ReactNode, useState } from "react";
+import {
+  type DesktopConnectionState,
+  type DesktopLocalWorkerState,
+  type DesktopSetupPlanInput,
+  type DesktopSidebarMaterialState,
+  getOpenBotDesktopBridge,
+} from "../desktop-runtime";
+import {
+  defaultPreferences,
+  updatePreferences,
+  useWorkspacePreferences,
+} from "../workspace-preferences";
+import { ApprovalIcon, BotIcon, CloseIcon, NodeIcon, SettingsIcon } from "./Icons";
+import { ModelSettingsScreen } from "./ModelSettingsScreen";
 import { OpenBotMark } from "./OpenBotMark";
+
+type Section = "general" | "models" | "connection" | "privacy" | "about";
+const sections: Array<{ id: Section; label: string; icon: ReactNode; description: string }> = [
+  {
+    id: "general",
+    label: "通用与外观",
+    icon: <SettingsIcon />,
+    description: "让 OpenBot 按照你的习惯工作。",
+  },
+  {
+    id: "models",
+    label: "模型与 API",
+    icon: <BotIcon />,
+    description: "管理 Bot 使用的默认模型服务。",
+  },
+  {
+    id: "connection",
+    label: "服务与工作电脑",
+    icon: <NodeIcon />,
+    description: "管理这台电脑的角色、连接与工作设备。",
+  },
+  {
+    id: "privacy",
+    label: "隐私与数据",
+    icon: <ApprovalIcon />,
+    description: "了解数据保存在哪里，以及操作由谁授权。",
+  },
+  { id: "about", label: "关于 OpenBot", icon: <OpenBotMark />, description: "你的 Bot 工作空间。" },
+];
+
 export function DesktopSettingsScreen({
   error,
   plan,
-  onModel,
+  connection,
+  localWorker,
+  material,
   onConnection,
   onRole,
   onWorker,
@@ -11,59 +57,361 @@ export function DesktopSettingsScreen({
 }: {
   error?: string | undefined;
   plan: DesktopSetupPlanInput;
-  onModel(): void;
+  connection?: DesktopConnectionState | null | undefined;
+  localWorker?: DesktopLocalWorkerState | null | undefined;
+  material: DesktopSidebarMaterialState;
   onConnection(): void;
   onRole(): void;
   onWorker(): void;
   onBack(): void;
 }) {
+  const [section, setSection] = useState<Section>("general");
+  const { values, saved } = useWorkspacePreferences();
+  const [resetNotice, setResetNotice] = useState(false);
+  const runtime = getOpenBotDesktopBridge()?.getRuntimeInfo?.();
+  const selected = sections.find((item) => item.id === section) ?? sections[0];
   return (
-    <main className="login-screen">
-      <section className="login-card desktop-settings-card" aria-labelledby="settings-title">
-        <OpenBotMark className="onboarding-mark" />
-        <h1 id="settings-title">设置</h1>
-        <p className="login-copy">
-          {plan.mode === "host"
-            ? "服务仅供本机使用，退出 OpenBot 后停止。"
-            : "这台电脑连接远程 OpenBot 服务。"}
-        </p>
-        {error ? (
-          <p className="login-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <nav className="settings-rows" aria-label="Desktop 设置">
-          <button type="button" onClick={onModel}>
-            <span>
-              模型 API<small>OpenAI / Anthropic</small>
-            </span>
-            <span aria-hidden="true">›</span>
-          </button>
-          {plan.mode !== "host" ? (
-            <button type="button" onClick={onConnection}>
-              <span>
-                服务电脑<small>更改连接地址</small>
-              </span>
-              <span aria-hidden="true">›</span>
-            </button>
-          ) : null}
-          <button type="button" onClick={onWorker}>
-            <span>
-              工作电脑<small>查看设备、绑定与权限</small>
-            </span>
-            <span aria-hidden="true">›</span>
-          </button>
-          <button type="button" onClick={onRole}>
-            <span>
-              这台电脑的用途<small>服务电脑或本地客户端</small>
-            </span>
-            <span aria-hidden="true">›</span>
-          </button>
-        </nav>
-        <button className="setup-skip" type="button" onClick={onBack}>
-          返回 OpenBot
+    <main className="desktop-settings-layout">
+      <aside className="settings-navigation">
+        <button className="settings-back" type="button" onClick={onBack}>
+          <span aria-hidden="true">←</span> 返回工作空间
         </button>
+        <h1>设置</h1>
+        <nav aria-label="设置分类">
+          {sections.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              aria-current={section === item.id ? "page" : undefined}
+              onClick={() => setSection(item.id)}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="settings-brand">
+          <OpenBotMark />
+          <span>
+            OpenBot Desktop<small>此设备的设置</small>
+          </span>
+        </div>
+      </aside>
+      <section className="settings-content" aria-labelledby="settings-section-title">
+        <header className="settings-page-header">
+          <div>
+            <h2 id="settings-section-title">{selected?.label}</h2>
+            <p>{selected?.description}</p>
+          </div>
+          <button className="icon-button" aria-label="关闭设置" type="button" onClick={onBack}>
+            <CloseIcon />
+          </button>
+        </header>
+        <div className="settings-page-body">
+          {error && (
+            <p className="login-error" role="alert">
+              {error}
+            </p>
+          )}
+          {!saved && (
+            <p className="connection-warning" role="status">
+              当前偏好仅在本次打开期间有效，无法保存到此设备。
+            </p>
+          )}
+          {section === "general" && (
+            <>
+              <SettingsGroup title="外观" description="更少的干扰，刚好的信息。">
+                <SettingRow
+                  title="半透明侧栏"
+                  description={
+                    material.status === "reduced"
+                      ? "系统已启用减少透明度或高对比度，当前使用不透明背景。"
+                      : material.status === "unsupported" || material.status === "unavailable"
+                        ? "当前运行环境使用不透明背景；macOS 桌面应用支持原生材质。"
+                        : "让 macOS 原生材质融入左侧导航。"
+                  }
+                >
+                  <Switch
+                    label="半透明侧栏"
+                    checked={values.sidebarTranslucent}
+                    onChange={(checked) => updatePreferences({ sidebarTranslucent: checked })}
+                  />
+                </SettingRow>
+                <SettingRow
+                  title="显示右侧信息栏"
+                  description="查看用量、任务状态和待处理事项，也可从顶部工具栏切换。"
+                >
+                  <Switch
+                    label="显示右侧信息栏"
+                    checked={values.rightPanelOpen}
+                    onChange={(checked) => updatePreferences({ rightPanelOpen: checked })}
+                  />
+                </SettingRow>
+                <SettingRow title="界面密度" description="调整侧栏列表和消息之间的间距。">
+                  <select
+                    aria-label="界面密度"
+                    value={values.density}
+                    onChange={(event) =>
+                      updatePreferences({
+                        density: event.target.value === "compact" ? "compact" : "comfortable",
+                      })
+                    }
+                  >
+                    <option value="comfortable">舒适</option>
+                    <option value="compact">紧凑</option>
+                  </select>
+                </SettingRow>
+                <SettingRow title="聊天字号" description="调整消息正文和输入区的文字大小。">
+                  <select
+                    aria-label="聊天字号"
+                    value={values.fontSize}
+                    onChange={(event) =>
+                      updatePreferences({
+                        fontSize: event.target.value === "large" ? "large" : "normal",
+                      })
+                    }
+                  >
+                    <option value="normal">标准 · 14 px</option>
+                    <option value="large">较大 · 16 px</option>
+                  </select>
+                </SettingRow>
+                <SettingRow
+                  title="减少动态效果"
+                  description="关闭平滑滚动与界面动效。系统的减少动态效果设置始终优先。"
+                >
+                  <Switch
+                    label="减少动态效果"
+                    checked={values.reduceMotion}
+                    onChange={(checked) => updatePreferences({ reduceMotion: checked })}
+                  />
+                </SettingRow>
+              </SettingsGroup>
+              <SettingsGroup title="聊天" description="让输入与阅读符合你的习惯。">
+                <SettingRow title="发送消息" description="Shift + Enter 始终换行。">
+                  <select
+                    aria-label="发送消息快捷键"
+                    value={values.sendShortcut}
+                    onChange={(event) =>
+                      updatePreferences({
+                        sendShortcut: event.target.value === "modifier" ? "modifier" : "enter",
+                      })
+                    }
+                  >
+                    <option value="enter">Enter 发送</option>
+                    <option value="modifier">⌘ / Ctrl + Enter 发送</option>
+                  </select>
+                </SettingRow>
+                <SettingRow title="消息时间格式" description="用于频道消息的时间显示。">
+                  <select
+                    aria-label="消息时间格式"
+                    value={values.hour12 ? "12" : "24"}
+                    onChange={(event) => updatePreferences({ hour12: event.target.value === "12" })}
+                  >
+                    <option value="24">24 小时制</option>
+                    <option value="12">12 小时制</option>
+                  </select>
+                </SettingRow>
+              </SettingsGroup>
+              <p className="settings-footnote">
+                偏好自动保存在这台设备。模型与服务配置由你的服务电脑管理。
+              </p>
+            </>
+          )}
+          {section === "models" && <ModelSettingsScreen embedded onDone={() => {}} />}
+          {section === "connection" && (
+            <>
+              <SettingsGroup title="当前连接">
+                <SettingRow
+                  title="这台电脑的用途"
+                  description={
+                    plan.mode === "host"
+                      ? "服务电脑 · 在本机保存数据并运行 OpenBot 服务"
+                      : "本地客户端 · 连接已有 OpenBot 服务"
+                  }
+                >
+                  <button className="secondary-button" type="button" onClick={onRole}>
+                    更改用途
+                  </button>
+                </SettingRow>
+                <SettingRow
+                  title="服务地址"
+                  description={
+                    connection?.status === "configured" ? connection.serverUrl : "尚未连接"
+                  }
+                >
+                  {plan.mode !== "host" ? (
+                    <button type="button" className="secondary-button" onClick={onConnection}>
+                      更改连接
+                    </button>
+                  ) : (
+                    <span className="settings-tag">仅本机</span>
+                  )}
+                </SettingRow>
+                <SettingRow
+                  title="服务运行"
+                  description={
+                    plan.mode === "host"
+                      ? "退出 OpenBot 会停止本机服务。重新打开后继续使用已保存的数据；自动任务需要服务保持运行。"
+                      : "自动任务在服务电脑上调度，客户端无需一直打开。"
+                  }
+                />
+              </SettingsGroup>
+              <SettingsGroup title="工作电脑" description="为 Bot 提供执行任务的设备。">
+                <SettingRow
+                  title="设备、绑定与权限"
+                  description="查看在线设备、绑定状态与待批准的权限。"
+                >
+                  <button className="secondary-button" type="button" onClick={onWorker}>
+                    管理工作电脑
+                  </button>
+                </SettingRow>
+                <SettingRow title="本机工作组件" description={workerDescription(localWorker)} />
+              </SettingsGroup>
+            </>
+          )}
+          {section === "privacy" && (
+            <>
+              <SettingsGroup title="数据保存位置">
+                <SettingRow
+                  title="模型密钥"
+                  description="在服务电脑上加密保存。界面只显示配置状态，不会读取已保存的明文密钥。"
+                />
+                <SettingRow
+                  title="频道、Bot 与任务"
+                  description="由你连接的 OpenBot 服务保存和管理。客户端显示当前账户有权访问的数据。"
+                />
+                <SettingRow
+                  title="操作与权限"
+                  description="技能需要审核，设备需要绑定；任务仍遵守服务端的路由和审批规则。"
+                />
+                <SettingRow
+                  title="用量统计"
+                  description="只有服务端记录的用量才会显示；没有记录时显示暂无数据。"
+                />
+              </SettingsGroup>
+              <SettingsGroup title="此设备的偏好">
+                <SettingRow
+                  title="恢复界面默认设置"
+                  description="恢复侧栏、信息栏、字号、间距和聊天习惯。"
+                >
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => {
+                      updatePreferences(defaultPreferences);
+                      setResetNotice(true);
+                    }}
+                  >
+                    恢复默认
+                  </button>
+                </SettingRow>
+                {resetNotice && (
+                  <p className="settings-success" role="status">
+                    已恢复默认界面偏好。
+                  </p>
+                )}
+              </SettingsGroup>
+            </>
+          )}
+          {section === "about" && (
+            <>
+              <div className="settings-about">
+                <OpenBotMark />
+                <h3>OpenBot Desktop</h3>
+                <p>连接你的 Bot，让工作在频道中展开。</p>
+              </div>
+              <SettingsGroup title="应用信息">
+                <SettingRow
+                  title="运行平台"
+                  description={
+                    runtime?.platform === "darwin" ? "macOS" : (runtime?.platform ?? "浏览器")
+                  }
+                />
+                <SettingRow
+                  title="桌面运行时"
+                  description={runtime ? `Electron ${runtime.shellVersion}` : "Web"}
+                />
+                <SettingRow title="模型接口" description="OpenAI · Anthropic" />
+                <SettingRow
+                  title="员工进化"
+                  description="员工的持续学习与进化方向受到 Hermes Agent 启发。"
+                />
+              </SettingsGroup>
+            </>
+          )}
+        </div>
       </section>
     </main>
   );
+}
+function SettingsGroup({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="settings-group">
+      <h3>{title}</h3>
+      {description && <p>{description}</p>}
+      <div className="settings-group-rows">{children}</div>
+    </section>
+  );
+}
+function SettingRow({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="setting-row">
+      <div>
+        <strong>{title}</strong>
+        <p>{description}</p>
+      </div>
+      {children && <div className="setting-control">{children}</div>}
+    </div>
+  );
+}
+function Switch({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange(value: boolean): void;
+}) {
+  return (
+    <label className="settings-switch">
+      <input
+        type="checkbox"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span aria-hidden="true" />
+    </label>
+  );
+}
+function workerDescription(state?: DesktopLocalWorkerState | null) {
+  const labels: Record<DesktopLocalWorkerState["status"], string> = {
+    "not-selected": "当前安装计划未启用本机工作组件。",
+    unavailable: "当前应用中未安装本机工作组件。可在工作电脑管理中连接其他设备。",
+    "not-configured": "尚未配置，打开工作电脑管理以完成绑定。",
+    disabled: "本机工作组件已停用。",
+    "requires-approval": "已配置，等待你在系统中批准所需权限。",
+    enabled: "本机工作组件已启用。",
+    invalid: "本机工作组件配置需要修复，请在工作电脑管理中检查。",
+  };
+  return state ? labels[state.status] : "可在工作电脑管理中查看设备状态。";
 }

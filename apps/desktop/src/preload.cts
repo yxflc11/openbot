@@ -1,4 +1,4 @@
-import type { OpenBotDesktopBridge } from "./runtime-contract.js";
+import type { DesktopSidebarMaterialState, OpenBotDesktopBridge } from "./runtime-contract.js";
 
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 const DESKTOP_CONNECTION_STATE_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_CONNECTION_STATE_CHANNEL =
@@ -18,6 +18,13 @@ const DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL: typeof import("./runtime-contract.js"
 const DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL =
   "openbot:desktop-open-local-worker-settings";
 
+const DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL =
+  "openbot:set-sidebar-translucency";
+const DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL =
+  "openbot:sidebar-material-state";
+const DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL =
+  "openbot:sidebar-material-changed";
+
 const shellVersion = process.versions.electron;
 if (shellVersion === undefined || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(shellVersion)) {
   throw new Error("Electron version is invalid.");
@@ -30,6 +37,19 @@ const runtimeInfo = Object.freeze({
 });
 const bridge: OpenBotDesktopBridge = Object.freeze({
   getRuntimeInfo: () => runtimeInfo,
+  setSidebarTranslucency: (enabled: boolean) => {
+    if (typeof enabled !== "boolean") return Promise.resolve({ status: "unavailable" });
+    return ipcRenderer.invoke(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL, enabled);
+  },
+  getSidebarMaterialState: () => ipcRenderer.invoke(DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL),
+  onSidebarMaterialChanged: (listener: (state: DesktopSidebarMaterialState) => void) => {
+    if (typeof listener !== "function") return () => {};
+    const handleChange = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      if (isSidebarMaterialState(value)) listener({ status: value.status });
+    };
+    ipcRenderer.on(DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL, handleChange);
+    return () => ipcRenderer.removeListener(DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL, handleChange);
+  },
   getNativeServerState: () => ipcRenderer.invoke("openbot:native-server-state"),
   installNativeServer: () => ipcRenderer.invoke("openbot:install-native-server"),
   getConnectionState: () => ipcRenderer.invoke(DESKTOP_CONNECTION_STATE_CHANNEL),
@@ -84,5 +104,15 @@ function isBoundedNodeId(value: unknown): value is string {
     value.length >= 1 &&
     value.length <= 128 &&
     /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(value)
+  );
+}
+
+function isSidebarMaterialState(value: unknown): value is DesktopSidebarMaterialState {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const state = value as Record<string, unknown>;
+  return (
+    Object.keys(state).length === 1 &&
+    typeof state.status === "string" &&
+    ["enabled", "disabled", "reduced", "unsupported", "unavailable"].includes(state.status)
   );
 }
