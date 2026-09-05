@@ -1,4 +1,4 @@
-import { access, cp, mkdir, readFile } from "node:fs/promises";
+import { access, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { listPackage } from "@electron/asar";
@@ -8,9 +8,12 @@ import { validateMacOSWorkerHostApplication } from "../../../scripts/macos-worke
 import {
   createDesktopFuseConfig,
   DESKTOP_ICON_RESOURCE_NAME,
+  DESKTOP_PREVIEW_IDENTITY,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
   desktopMacOSWorkerCompanionSource,
+  desktopPackagedManifest,
+  desktopPackageIdentity,
   packagedAsarPath,
   packagedDesktopMacOSWorkerCompanion,
   packagedDesktopResource,
@@ -18,17 +21,35 @@ import {
   shouldIgnoreDesktopSource,
   validateDesktopAsarEntries,
 } from "./package-policy.mjs";
+import { copyContainedResource } from "./package-resources.mjs";
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const identity = desktopPackageIdentity(process.argv.slice(2));
 const workspaceRoot = join(appRoot, "..", "..");
 const rendererEntry = join(appRoot, "dist", "renderer", "index.html");
 const nativeRuntime = process.platform === "darwin" ? join(appRoot, "native-runtime") : undefined;
 const desktopIconBase = join(appRoot, "resources", "openbot-icon");
 const desktopIconPng = `${desktopIconBase}.png`;
 const packageManifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
+const previewDownload =
+  identity === DESKTOP_PREVIEW_IDENTITY
+    ? {
+        cacheRoot: join(appRoot, "out", "preview", ".electron-cache"),
+        checksums: JSON.parse(
+          await readFile(
+            join(
+              dirname(fileURLToPath(import.meta.resolve("electron/package.json"))),
+              "checksums.json",
+            ),
+            "utf8",
+          ),
+        ),
+      }
+    : undefined;
 const workerCompanionSource = desktopMacOSWorkerCompanionSource(
   process.env.OPENBOT_DESKTOP_MACOS_WORKER_COMPANION,
   process.platform,
+  identity,
 );
 
 await Promise.all([
@@ -50,23 +71,47 @@ if (workerCompanionSource !== undefined) {
 }
 
 const packagePaths = await packager({
-  appBundleId: "dev.openbot.desktop",
+  appBundleId: identity.appBundleId,
   appVersion: packageManifest.version,
   arch: process.arch,
   asar: true,
   dir: appRoot,
+  ...(previewDownload ? { download: previewDownload } : {}),
   electronVersion: "44.2.0",
-  extraResource: [
-    desktopIconPng,
-    ...(nativeRuntime ? [nativeRuntime] : []),
-    ...(workerCompanionSource === undefined ? [] : [workerCompanionSource]),
+  extraResource: [desktopIconPng],
+  afterCopyExtraResources: [
+    async ({ buildPath }) => {
+      if (nativeRuntime) {
+        await copyContainedResource(
+          nativeRuntime,
+          packagedDesktopResource(buildPath, process.platform, "native-runtime", identity),
+        );
+      }
+      if (workerCompanionSource) {
+        await copyContainedResource(
+          workerCompanionSource,
+          packagedDesktopMacOSWorkerCompanion(buildPath, process.platform, identity),
+        );
+      }
+    },
   ],
-  afterCopy: [async ({ buildPath }) => stageDesktopRuntimeDependencies(buildPath)],
-  executableName: "openbot",
+  afterCopy: [
+    async ({ buildPath }) => {
+      await stageDesktopRuntimeDependencies(buildPath);
+      if (identity === DESKTOP_PREVIEW_IDENTITY) {
+        await writeFile(
+          join(buildPath, "package.json"),
+          `${JSON.stringify(desktopPackagedManifest(packageManifest, identity), null, 2)}\n`,
+        );
+      }
+    },
+  ],
+  executableName: identity.executableName,
   ignore: (candidatePath) => shouldIgnoreDesktopSource(appRoot, candidatePath),
   icon: desktopIconBase,
-  name: "OpenBot",
-  out: join(appRoot, "out"),
+  name: identity.name,
+  out:
+    identity === DESKTOP_PREVIEW_IDENTITY ? join(appRoot, "out", "preview") : join(appRoot, "out"),
   overwrite: true,
   platform: process.platform,
   prune: false,
@@ -77,14 +122,14 @@ if (packagePaths.length !== 1) {
   throw new Error(`Expected one Desktop package, received ${packagePaths.length}.`);
 }
 
-const target = packagedElectronTarget(packagePaths[0], process.platform);
-const asarPath = packagedAsarPath(packagePaths[0], process.platform);
+const target = packagedElectronTarget(packagePaths[0], process.platform, identity);
+const asarPath = packagedAsarPath(packagePaths[0], process.platform, identity);
 validateDesktopAsarEntries(listPackage(asarPath, { isPack: false }));
 const expectedFuses = createDesktopFuseConfig(process.platform, process.arch);
 await flipFuses(target, expectedFuses);
 
 await access(
-  packagedDesktopResource(packagePaths[0], process.platform, DESKTOP_ICON_RESOURCE_NAME),
+  packagedDesktopResource(packagePaths[0], process.platform, DESKTOP_ICON_RESOURCE_NAME, identity),
 );
 
 const actualFuses = await getCurrentFuseWire(target);
@@ -98,6 +143,7 @@ for (const fuseIndex of Object.values(FuseV1Options).filter((value) => typeof va
 const packagedWorkerCompanion = packagedDesktopMacOSWorkerCompanion(
   packagePaths[0],
   process.platform,
+  identity,
 );
 if (workerCompanionSource !== undefined) {
   if (packagedWorkerCompanion === undefined) {
@@ -116,7 +162,7 @@ if (workerCompanionSource !== undefined) {
 }
 
 console.log(
-  `Packaged unsigned OpenBot Desktop development artifact${
+  `Packaged unsigned ${identity.name} development artifact${
     workerCompanionSource === undefined ? " without" : " with"
   } the macOS Worker companion: ${packagePaths[0]}`,
 );

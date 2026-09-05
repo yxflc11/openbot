@@ -10,7 +10,10 @@ macOS 源码构建预览提供两种用途：
   不初始化或启动本地数据库和 Server。
 
 macOS 原生红黄绿按钮融入内容区域，应用内外共用同一个图标。设置包含模型、连接、工作电脑管理
-和用途选择；侧栏可以按需展开运行状态。
+和用途选择；原生窗口尺寸下，右侧信息栏默认保留。左侧搜索筛选已有权限的频道和 Bot。
+中间采用收发消息气泡、引用回复和固定输入框。阅读历史消息时不会被新消息强制拉回底部，
+主动发送后回到最新内容。当前 Server 尚未产生模型用量数据，Token 面板明确显示暂无记录；
+任务统计来自最近快照，不代表今日或全部历史累计。办公室场景继续搁置。
 
 ## 当前边界
 
@@ -44,6 +47,16 @@ HTTPS 接口查询模型元数据，不调用生成、不上传对话。以后�
 本地开发启动前也需先运行 `npm run prepare:native --workspace @openbot/desktop`，再执行
 `npm start --workspace @openbot/desktop`。首次启动不下载可执行代码。
 
+需要独立测试应用时，运行 `npm run package:preview --workspace @openbot/desktop`，然后在 Apple
+Silicon 打开 `apps/desktop/out/preview/OpenBot Preview-darwin-arm64/OpenBot Preview.app`
+（Intel 构建将 `arm64` 替换为 `x64`）。Finder、Dock、辅助进程和应用菜单使用 Preview 名称，
+图标仍为 OpenBot。该命令只打包，不启动应用、不覆盖 `/Applications`；`npm start` 是 Electron
+开发启动器，与这个打包应用不同。Preview 的 bundle ID 为 `dev.openbot.desktop.preview`，
+可执行文件为 `OpenBot Preview`，独立数据目录为 `~/Library/Application Support/OpenBot Preview`，
+包含会话 Cookie 和本机 Server 数据，不迁移已安装应用的数据。重新打包保留 Preview 数据。
+Preview 包含本地 Server，但禁止携带正式 macOS Worker 配套应用，因为后者的后台服务身份独立且共享。
+普通打包命令保留原有应用身份。
+
 高级用户可按[根目录源码部署说明](../README.zh-CN.md)分别部署 Server、PostgreSQL、Web 和 Worker。
 这些选项放在 GitHub 文档中，不进入 Desktop 首次用途选择。远程使用需配置受信任的 HTTPS 反向代理；
 数据库凭据和 Owner 认证留在服务端。
@@ -56,3 +69,5 @@ POST 接收 `provider`、`model`、`apiKey` 和最新 `revision`（首次为 nul
 
 原生 PostgreSQL 包固定为 `17.10.0-beta.17`。公开发行前仍需审查预发布打包依赖、上游二进制来源、
 分发许可、签名和公证；本机功能测试不能替代发行支持证据。
+
+视觉测试只在隔离环境使用测试数据，不向实际用户资料写入示例对话。

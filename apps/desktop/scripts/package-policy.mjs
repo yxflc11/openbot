@@ -35,9 +35,41 @@ export const DESKTOP_WINDOWS_METADATA = Object.freeze({
 export const DESKTOP_ICON_RESOURCE_NAME = "openbot-icon.png";
 export const DESKTOP_MACOS_WORKER_COMPANION_NAME = "OpenBot Worker Host.app";
 
-export function packagedDesktopResource(bundlePath, platform, resourceName) {
+export const DESKTOP_PACKAGE_IDENTITY = Object.freeze({
+  name: "OpenBot",
+  appBundleId: "dev.openbot.desktop",
+  executableName: "openbot",
+});
+
+export const DESKTOP_PREVIEW_IDENTITY = Object.freeze({
+  name: "OpenBot Preview",
+  appBundleId: "dev.openbot.desktop.preview",
+  executableName: "OpenBot Preview",
+});
+
+export function desktopPackageIdentity(args) {
+  if (args.length === 0) return DESKTOP_PACKAGE_IDENTITY;
+  if (args.length === 1 && args[0] === "--preview") return DESKTOP_PREVIEW_IDENTITY;
+  throw new Error("Desktop packaging accepts only the optional --preview argument.");
+}
+
+export function desktopPackagedManifest(manifest, identity) {
+  if (identity === DESKTOP_PACKAGE_IDENTITY) return manifest;
+  if (identity === DESKTOP_PREVIEW_IDENTITY) {
+    // Electron resolves this name before main starts, isolating its profile and instance lock.
+    return { ...manifest, name: "openbot-preview", productName: identity.name };
+  }
+  throw new Error("Desktop package identity is invalid.");
+}
+
+export function packagedDesktopResource(
+  bundlePath,
+  platform,
+  resourceName,
+  identity = DESKTOP_PACKAGE_IDENTITY,
+) {
   if (platform === "darwin") {
-    return join(bundlePath, "OpenBot.app", "Contents", "Resources", resourceName);
+    return join(bundlePath, `${identity.name}.app`, "Contents", "Resources", resourceName);
   }
   if (platform === "win32" || platform === "linux") {
     return join(bundlePath, "resources", resourceName);
@@ -45,8 +77,15 @@ export function packagedDesktopResource(bundlePath, platform, resourceName) {
   throw new Error(`Unsupported Desktop package platform: ${platform}`);
 }
 
-export function desktopMacOSWorkerCompanionSource(input, platform) {
+export function desktopMacOSWorkerCompanionSource(
+  input,
+  platform,
+  identity = DESKTOP_PACKAGE_IDENTITY,
+) {
   if (input === undefined || input === "") return undefined;
+  if (identity === DESKTOP_PREVIEW_IDENTITY) {
+    throw new Error("Desktop Preview cannot include the production Worker companion.");
+  }
   if (
     platform !== "darwin" ||
     typeof input !== "string" ||
@@ -60,9 +99,18 @@ export function desktopMacOSWorkerCompanionSource(input, platform) {
   return input;
 }
 
-export function packagedDesktopMacOSWorkerCompanion(bundlePath, platform) {
+export function packagedDesktopMacOSWorkerCompanion(
+  bundlePath,
+  platform,
+  identity = DESKTOP_PACKAGE_IDENTITY,
+) {
   if (platform !== "darwin") return undefined;
-  return packagedDesktopResource(bundlePath, platform, DESKTOP_MACOS_WORKER_COMPANION_NAME);
+  return packagedDesktopResource(
+    bundlePath,
+    platform,
+    DESKTOP_MACOS_WORKER_COMPANION_NAME,
+    identity,
+  );
 }
 
 export function shouldIgnoreDesktopSource(appRoot, candidatePath) {
@@ -107,16 +155,16 @@ export function validateDesktopAsarEntries(entries) {
   }
 }
 
-export function packagedElectronTarget(bundlePath, platform) {
-  if (platform === "darwin") return join(bundlePath, "OpenBot.app");
-  if (platform === "win32") return join(bundlePath, "openbot.exe");
-  if (platform === "linux") return join(bundlePath, "openbot");
+export function packagedElectronTarget(bundlePath, platform, identity = DESKTOP_PACKAGE_IDENTITY) {
+  if (platform === "darwin") return join(bundlePath, `${identity.name}.app`);
+  if (platform === "win32") return join(bundlePath, `${identity.executableName}.exe`);
+  if (platform === "linux") return join(bundlePath, identity.executableName);
   throw new Error(`Unsupported Desktop package platform: ${platform}`);
 }
 
-export function packagedAsarPath(bundlePath, platform) {
+export function packagedAsarPath(bundlePath, platform, identity = DESKTOP_PACKAGE_IDENTITY) {
   if (platform === "darwin")
-    return join(bundlePath, "OpenBot.app", "Contents", "Resources", "app.asar");
+    return join(bundlePath, `${identity.name}.app`, "Contents", "Resources", "app.asar");
   if (platform === "win32" || platform === "linux")
     return join(bundlePath, "resources", "app.asar");
   throw new Error(`Unsupported Desktop package platform: ${platform}`);

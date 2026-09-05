@@ -11,6 +11,7 @@
     "build:main": "tsc -p tsconfig.json",
     "build:renderer": "npm run build:desktop --workspace @openbot/web",
     "package": "npm run build && npm run prepare:native && node scripts/package.mjs",
+    "package:preview": "npm run build && npm run prepare:native && node scripts/package.mjs --preview",
     "start": "npm run build && electron .",
     "test": "vitest run src scripts",
     "typecheck": "tsc --noEmit -p tsconfig.json",

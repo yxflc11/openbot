@@ -78,3 +78,38 @@ export function CheckIcon() {
     </Icon>
   );
 }
+
+export function SearchIcon() {
+  return (
+    <Icon>
+      <circle cx="10.5" cy="10.5" r="6.5" {...strokeProps} />
+      <path d="m16 16 4 4" {...strokeProps} />
+    </Icon>
+  );
+}
+export function ComposeIcon() {
+  return (
+    <Icon>
+      <path
+        d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M15 4l5 5M10 14l1-5 7-7 5 5-7 7-5 1Z"
+        {...strokeProps}
+      />
+    </Icon>
+  );
+}
+export function SettingsIcon() {
+  return (
+    <Icon>
+      <path d="M4 7h16M4 17h16" {...strokeProps} />
+      <circle cx="9" cy="7" r="3" fill="var(--panel)" {...strokeProps} />
+      <circle cx="16" cy="17" r="3" fill="var(--panel)" {...strokeProps} />
+    </Icon>
+  );
+}
+export function SendIcon() {
+  return (
+    <Icon>
+      <path d="m4 11 16-7-7 16-2-7-7-2ZM11 13l9-9" {...strokeProps} />
+    </Icon>
+  );
+}

@@ -452,7 +452,7 @@ function AuthenticatedWorkspace({
   onSettings?: (() => void) | undefined;
   onLogout(): Promise<void>;
 }) {
-  const [showDetails, setShowDetails] = useState(onSettings === undefined);
+  const showDetails = true;
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
   const [selectedChannelId, setSelectedChannelId] = useState<string>();
   const [dialog, setDialog] = useState<Dialog>();
@@ -752,8 +752,6 @@ function AuthenticatedWorkspace({
         onManageNodes={() => setDialog("node")}
         onLogout={onLogout}
         onSettings={onSettings}
-        onToggleDetails={onSettings ? () => setShowDetails((value) => !value) : undefined}
-        showDetails={showDetails}
       />
 
       {selectedEmployeeId ? (
@@ -902,20 +900,30 @@ function ChannelEmptyState({
 }) {
   return (
     <main className="workspace-main channel-first-empty">
-      <span className="channel-empty-mark">#</span>
-      <p className="empty-eyebrow">OPENBOT CHANNELS</p>
-      <h1>从一个长期频道开始</h1>
-      <p>频道保存任务、Bot 对话、审批和结果。执行电脑可以随时替换，工作上下文不会丢失。</p>
-      <div>
-        <button className="primary-button" type="button" onClick={onCreateChannel}>
-          创建第一个频道
-        </button>
-        {!hasBots ? (
-          <button className="secondary-button" type="button" onClick={onCreateBot}>
-            先创建 Bot
+      <header className="empty-workspace-header">
+        <span>频道聊天</span>
+        <span>OpenBot 工作空间</span>
+      </header>
+      <section className="workspace-welcome" aria-labelledby="workspace-welcome-title">
+        <OpenBotMark className="welcome-mark" />
+        <h1 id="workspace-welcome-title">你的工作，从这里开始</h1>
+        <p>
+          为一件事建一个频道，和 Bot 一起完成。
+          <br />
+          对话、任务和结果，都留在这里。
+        </p>
+        <div>
+          <button className="primary-button" type="button" onClick={onCreateChannel}>
+            创建第一个频道
           </button>
-        ) : null}
-      </div>
+          {!hasBots ? (
+            <button className="secondary-button" type="button" onClick={onCreateBot}>
+              先创建 Bot
+            </button>
+          ) : null}
+        </div>
+        <small className="welcome-note">从左侧选择频道，随时继续之前的工作。</small>
+      </section>
     </main>
   );
 }

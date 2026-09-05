@@ -8,7 +8,8 @@ import {
   subscribeToChannelEvents,
 } from "../api";
 import { indexActiveRunsByBot, isActiveRun, mergeRuns, runStatusLabel } from "../run-state";
-import { HashIcon, PlusIcon } from "./Icons";
+import { HashIcon, PlusIcon, SendIcon } from "./Icons";
+import { OpenBotMark } from "./OpenBotMark";
 import { RichMessage } from "./RichMessage";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -50,6 +51,7 @@ export function ChannelWorkspace({
   const [sending, setSending] = useState(false);
   const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
   const messageList = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
   const activeRunByBot = indexActiveRunsByBot(runs);
   const activeRuns = runs.filter(isActiveRun);
   const messageById = useMemo(
@@ -114,6 +116,7 @@ export function ChannelWorkspace({
       },
       onState: setRealtimeState,
     });
+    stickToBottom.current = true;
     setMessages([]);
     setRuns([]);
     setReplyingTo(undefined);
@@ -126,8 +129,13 @@ export function ChannelWorkspace({
   }, [channel.id, onFrame, onProgress, onRun]);
 
   useEffect(() => {
-    if (messages.length > 0) {
-      messageList.current?.scrollTo({ top: messageList.current.scrollHeight, behavior: "smooth" });
+    if (messages.length > 0 && stickToBottom.current) {
+      messageList.current?.scrollTo({
+        top: messageList.current.scrollHeight,
+        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+      });
     }
   }, [messages.length]);
 
@@ -153,6 +161,7 @@ export function ChannelWorkspace({
         botId: targetBotId,
         ...(replyingTo === undefined ? {} : { replyToMessageId: replyingTo.id }),
       });
+      stickToBottom.current = true;
       setMessages((current) => mergeMessages(current, [result.message]));
       setRuns((current) => mergeRuns(current, [result.run]));
       onRun(result.run);
@@ -257,7 +266,17 @@ export function ChannelWorkspace({
           </section>
         ) : null}
 
-        <div className="message-list" ref={messageList} aria-live="polite">
+        <div
+          className="message-list"
+          ref={messageList}
+          onScroll={(event) => {
+            const list = event.currentTarget;
+            stickToBottom.current = list.scrollHeight - list.scrollTop - list.clientHeight < 96;
+          }}
+          role="log"
+          aria-label="频道消息记录"
+          aria-live="polite"
+        >
           {messagesLoading ? (
             <p className="conversation-status">正在读取本地消息…</p>
           ) : messages.length === 0 ? (
@@ -332,6 +351,7 @@ export function ChannelWorkspace({
           <div className="composer-input-row">
             <textarea
               id={`message-${channel.id}`}
+              aria-label="消息内容"
               value={messageText}
               maxLength={8000}
               rows={1}
@@ -350,10 +370,18 @@ export function ChannelWorkspace({
               disabled={sending || members.length === 0 || messageText.trim().length === 0}
               aria-label="发送消息"
             >
-              {sending ? "…" : "↑"}
+              {sending ? "…" : <SendIcon />}
             </button>
           </div>
-          {messageError ? <p className="composer-error">{messageError}</p> : null}
+          <div className="composer-footnote">
+            <span>Enter 发送 · Shift + Enter 换行</span>
+            <span>频道消息将保存到工作空间</span>
+          </div>
+          {messageError ? (
+            <p className="composer-error" role="alert">
+              {messageError}
+            </p>
+          ) : null}
         </form>
       </section>
     </main>
@@ -393,8 +421,10 @@ function MessageRow({
           >
             <RobotAvatar bot={author} compact status={run?.status ?? author.status} />
           </button>
+        ) : message.authorType === "human" ? (
+          <span>你</span>
         ) : (
-          <span>{message.authorType === "human" ? "你" : "O"}</span>
+          <OpenBotMark />
         )}
       </div>
       <div className="message-content">
