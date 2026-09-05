@@ -6,7 +6,7 @@
 
 **一套面向多频道、多 Agent 数字员工的自托管工作空间。**
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Português (Brasil)](README.pt-BR.md)
 
 [![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
@@ -134,6 +134,9 @@ OpenBot 已经跑通“本地频道 → 远程执行 Node → 结果回到频道
 - Node.js 22.22.2+、24.15.0+ 或 26+
 - npm 10 或更高版本
 - Docker 与 Docker Compose
+
+Server 容器固定使用 Node.js `24.20.0` LTS，以多阶段构建和非 root 进程运行。Compose 命令、
+旧数据卷注意事项与当前证据边界见 [Server 容器部署与验证](docs/SERVER_CONTAINER.zh-CN.md)。
 
 ### 本地运行
 

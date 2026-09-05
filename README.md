@@ -6,7 +6,7 @@
 
 **A self-hosted workspace for multi-channel, multi-agent digital workers.**
 
-[English](README.md) · [简体中文](README.zh-CN.md)
+[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Português (Brasil)](README.pt-BR.md)
 
 [![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
@@ -151,6 +151,10 @@ Desktop installation flow.
 - Node.js 22.22.2+, 24.15.0+, or 26+
 - npm 10 or newer
 - Docker with Docker Compose
+
+The Server container pins Node.js `24.20.0` LTS with a non-root, multi-stage runtime. See
+[Server container setup and verification](docs/SERVER_CONTAINER.md) for Compose commands, existing
+volume precautions, and the exact limits of the current evidence.
 
 ### Run locally
 
