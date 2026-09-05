@@ -152,6 +152,10 @@ Desktop installation flow.
 - npm 10 or newer
 - Docker with Docker Compose
 
+The Server container pins Node.js `24.20.0` LTS with a non-root, multi-stage runtime. See
+[Server container setup and verification](docs/SERVER_CONTAINER.md) for Compose commands, existing
+volume precautions, and the exact limits of the current evidence.
+
 ### Run locally
 
 ```bash

@@ -168,6 +168,10 @@ Web/Server/Node. Não é o fluxo de instalação Desktop planejado.
 - npm 10 ou mais recente
 - Docker com Docker Compose
 
+O contêiner do Server fixa o Node.js `24.20.0` LTS, com compilação em múltiplos estágios e execução
+sem root. Consulte [Configuração e verificação do contêiner Server](docs/SERVER_CONTAINER.md)
+(em inglês) para comandos Compose, cuidados com volumes existentes e limites da verificação atual.
+
 ### Executar localmente
 
 ```bash

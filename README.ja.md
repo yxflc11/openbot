@@ -163,6 +163,10 @@ Desktop インストールフローではありません。
 - npm 10 以降
 - Docker と Docker Compose
 
+Server コンテナーは Node.js `24.20.0` LTS に固定され、マルチステージビルドと非 root 実行を
+採用しています。Compose コマンド、既存ボリュームの注意点、検証範囲については
+[Server コンテナーの構築と検証](docs/SERVER_CONTAINER.md)（英語）を参照してください。
+
 ### ローカルで実行
 
 ```bash
