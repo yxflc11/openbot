@@ -7,8 +7,9 @@
 `10.9.9`，把仓库裁剪为 Server 及其六个内部运行工作区；最终镜像只复制这些工作区的编译输出、
 生产依赖、包元数据和数据库 migration。官方基础镜像随附的 npm 和许可证声明予以保留。
 
-这是 pre-alpha 部署基线。本地 arm64 Docker Desktop 构建和生命周期测试已通过；CI 要求分别
-执行 Linux amd64 和 arm64 原生验证。本地测试或绿色托管 CI 都不代表通用生产环境或宿主平台
+这是 pre-alpha 部署基线。本地 arm64 Docker Desktop 测试以及 Linux amd64、arm64 原生任务
+均已通过，见 [CI 33938120773](https://github.com/yxflc11/openbot/actions/runs/33938120773)。
+本地测试或绿色托管 CI 都不代表通用生产环境或宿主平台
 支持。该工作流不向镜像仓库发布产物。已有来源证明的 Worker 运行时仍保留 Node `22.22.2`。
 
 ## 从源码构建与运行

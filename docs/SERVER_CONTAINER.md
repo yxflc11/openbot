@@ -8,8 +8,9 @@ npm `10.9.9`, prunes the monorepo to the Server and its six internal runtime wor
 only their compiled output, production dependencies, package metadata, and database migrations
 into the final image. The official base retains its bundled npm and license notices.
 
-This is a pre-alpha deployment baseline. Local arm64 Docker Desktop build and lifecycle tests
-passed; CI requires separate native Linux amd64 and arm64 runs. Neither a local test nor a green
+This is a pre-alpha deployment baseline. Local arm64 Docker Desktop tests and separate native
+Linux amd64 and arm64 jobs passed in [CI run 33938120773](https://github.com/yxflc11/openbot/actions/runs/33938120773).
+Neither a local test nor a green
 hosted run establishes general production or host-platform support. No registry image is published
 by this workflow. The separately attested Worker runtime remains on Node `22.22.2`.
 

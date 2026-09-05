@@ -1,6 +1,6 @@
 # Research: Node 24 production Server container
 
-- Status: Implemented and locally verified; native hosted CI pending
+- Status: Implemented; native Linux amd64 and arm64 hosted verification passed
 - Date: 2026-09-05
 - Owner: @yxflc11
 - Related issue: 8-hour Server deployment milestone
@@ -117,6 +117,19 @@
 - Support level that the evidence permits: A green PR proves the reviewed image builds and passes
   the named hosted/container journeys. It does not publish an image or establish general Linux,
   NAS, cloud, macOS, Windows-container-host, or production support.
+
+## Observed verification
+
+- [PR #15](https://github.com/yxflc11/openbot/pull/15) at source commit
+  `7df48634fe34ce28e1ba863786804132940def65` passed all nine jobs in
+  [CI run 33938120773](https://github.com/yxflc11/openbot/actions/runs/33938120773).
+- Native [amd64 job 101229948183](https://github.com/yxflc11/openbot/actions/runs/33938120773/job/101229948183)
+  and [arm64 job 101229948275](https://github.com/yxflc11/openbot/actions/runs/33938120773/job/101229948275)
+  each passed Compose parsing, warning-free Dockerfile checks, seven-workspace compilation,
+  and the full Server smoke with all 18 migrations. Both logs contain the successful smoke marker.
+- `npm run check` passed locally on the same source. The independent review findings and the
+  remaining roadmap gates are recorded in [DEV-002](../reviews/DEV-002.md), with a matching
+  [Chinese record](../reviews/DEV-002.zh-CN.md). This records hosted test evidence, not a release.
 
 ## Unresolved questions
 
