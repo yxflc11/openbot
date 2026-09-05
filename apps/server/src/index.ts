@@ -9,14 +9,15 @@ import { FileArtifactStorage } from "./artifact-storage.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { EmployeePublisherKeyring } from "./employee-publisher-keyring.js";
 import { closeHttpServer } from "./http-shutdown.js";
+import { ModelSettingsService } from "./model-settings.js";
 import { NodeIdentityService } from "./node-identity.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { PostgresNodeIdentityStore } from "./postgres-node-identity-store.js";
-import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
 import { PostgresRequestThrottleStore } from "./postgres-request-throttle-store.js";
-import { RequestThrottle } from "./request-throttle.js";
+import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
+import { RequestThrottle } from "./request-throttle.js";
 import { RunDispatcher } from "./run-dispatcher.js";
 import { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
@@ -73,6 +74,14 @@ const auth = new OwnerAuthService(
   requestThrottle,
 );
 const app = createApp({
+  ...(env.OPENBOT_MODEL_SETTINGS_PATH && env.OPENBOT_MODEL_ENCRYPTION_KEY
+    ? {
+        modelSettings: new ModelSettingsService(
+          env.OPENBOT_MODEL_SETTINGS_PATH,
+          env.OPENBOT_MODEL_ENCRYPTION_KEY,
+        ),
+      }
+    : {}),
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,
   artifactStorage,
   auth,
@@ -100,6 +109,11 @@ const server = serve(
     port: env.OPENBOT_PORT,
   },
   (info) => {
+    // Only a successful bind can tell the owning Desktop process to send local credentials.
+    const parentPort = (
+      process as NodeJS.Process & { parentPort?: { postMessage(value: unknown): void } }
+    ).parentPort;
+    parentPort?.postMessage({ type: "openbot-server-ready", port: info.port });
     logger.info("server.listening", "OpenBot Server is listening.", {
       address: info.address,
       port: info.port,

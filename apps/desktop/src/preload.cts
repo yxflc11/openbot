@@ -30,6 +30,8 @@ const runtimeInfo = Object.freeze({
 });
 const bridge: OpenBotDesktopBridge = Object.freeze({
   getRuntimeInfo: () => runtimeInfo,
+  getNativeServerState: () => ipcRenderer.invoke("openbot:native-server-state"),
+  installNativeServer: () => ipcRenderer.invoke("openbot:install-native-server"),
   getConnectionState: () => ipcRenderer.invoke(DESKTOP_CONNECTION_STATE_CHANNEL),
   configureServer: (serverUrl: string) => {
     if (typeof serverUrl !== "string" || serverUrl.length === 0 || serverUrl.length > 2_048) {

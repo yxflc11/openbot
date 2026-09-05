@@ -1,15 +1,16 @@
-import { flipFuses, FuseState, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
-import { packager } from "@electron/packager";
-import { listPackage } from "@electron/asar";
 import { access, cp, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listPackage } from "@electron/asar";
+import { FuseState, FuseV1Options, flipFuses, getCurrentFuseWire } from "@electron/fuses";
+import { packager } from "@electron/packager";
+import { validateMacOSWorkerHostApplication } from "../../../scripts/macos-worker-host-release.mjs";
 import {
   createDesktopFuseConfig,
-  desktopMacOSWorkerCompanionSource,
   DESKTOP_ICON_RESOURCE_NAME,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
+  desktopMacOSWorkerCompanionSource,
   packagedAsarPath,
   packagedDesktopMacOSWorkerCompanion,
   packagedDesktopResource,
@@ -17,11 +18,11 @@ import {
   shouldIgnoreDesktopSource,
   validateDesktopAsarEntries,
 } from "./package-policy.mjs";
-import { validateMacOSWorkerHostApplication } from "../../../scripts/macos-worker-host-release.mjs";
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = join(appRoot, "..", "..");
 const rendererEntry = join(appRoot, "dist", "renderer", "index.html");
+const nativeRuntime = process.platform === "darwin" ? join(appRoot, "native-runtime") : undefined;
 const desktopIconBase = join(appRoot, "resources", "openbot-icon");
 const desktopIconPng = `${desktopIconBase}.png`;
 const packageManifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
@@ -31,6 +32,12 @@ const workerCompanionSource = desktopMacOSWorkerCompanionSource(
 );
 
 await Promise.all([
+  ...(nativeRuntime
+    ? [
+        access(join(nativeRuntime, "apps/server/dist/index.js")),
+        access(join(nativeRuntime, "postgres/bin/postgres")),
+      ]
+    : []),
   access(rendererEntry),
   access(desktopIconPng),
   access(`${desktopIconBase}.icns`),
@@ -51,6 +58,7 @@ const packagePaths = await packager({
   electronVersion: "44.2.0",
   extraResource: [
     desktopIconPng,
+    ...(nativeRuntime ? [nativeRuntime] : []),
     ...(workerCompanionSource === undefined ? [] : [workerCompanionSource]),
   ],
   afterCopy: [async ({ buildPath }) => stageDesktopRuntimeDependencies(buildPath)],

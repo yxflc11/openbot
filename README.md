@@ -1,4 +1,6 @@
 <p align="center">
+
+Current macOS source-build onboarding: [Desktop setup](docs/DESKTOP_ONBOARDING.md).
   <img src="docs/design/openbot-readme-banner.png" alt="OpenBot" width="100%">
 </p>
 

@@ -5,8 +5,8 @@ import {
   copyFile,
   lstat,
   mkdir,
-  readFile,
   readdir,
+  readFile,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -120,7 +120,10 @@ export async function verifyNodeRuntimeArchive(filePath, architecture) {
   return target;
 }
 
-export function collectProductionPackageGraph(lockfile) {
+export function collectProductionPackageGraph(lockfile, entryPoint = "apps/node") {
+  if (!["apps/node", "apps/server"].includes(entryPoint)) {
+    throw new Error("Unsupported production entry point.");
+  }
   if (lockfile?.lockfileVersion !== 3 || !isRecord(lockfile.packages)) {
     throw new Error("Release packaging requires an npm lockfileVersion 3 package graph.");
   }
@@ -175,7 +178,7 @@ export function collectProductionPackageGraph(lockfile) {
     visiting.delete(packageKey);
   };
 
-  visit("apps/node");
+  visit(entryPoint);
   return {
     workspaceKeys: [...workspaceKeys].sort(),
     packageKeys: [...packageKeys].sort(),

@@ -101,6 +101,36 @@ describe("server app", () => {
     expect(crossSite.status).toBe(403);
   });
 
+  it("protects model settings with Owner authentication and mutation origin checks", async () => {
+    const app = createTestApp({ store: createTestStore() });
+    expect((await app.request("/api/v1/settings/model")).status).toBe(401);
+    expect(
+      (
+        await app.request("/api/v1/settings/model", {
+          method: "POST",
+          headers: { Origin: testOrigin },
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (
+        await app.request("/api/v1/settings/model", {
+          method: "POST",
+          headers: { Origin: "https://attacker.example" },
+        })
+      ).status,
+    ).toBe(403);
+    const response = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Origin: testOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    const cookie = response.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const settings = await app.request("/api/v1/settings/model", { headers: { Cookie: cookie } });
+    expect(settings.status).toBe(200);
+    expect(await settings.json()).toEqual({ status: "unavailable" });
+  });
+
   it("reports M1 health", async () => {
     const app = createTestApp({ store: createTestStore() });
     const response = await app.request("/health");

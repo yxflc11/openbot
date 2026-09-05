@@ -92,3 +92,19 @@ The following ISC license text is reproduced for `signal-exit`:
 > WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
 > NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE
 > OF THIS SOFTWARE.
+
+## Native Desktop Server preview
+
+- PostgreSQL 17.10 — PostgreSQL Global Development Group and the Regents of the University
+  of California; PostgreSQL License. Native packaging uses
+  `@embedded-postgres/darwin-arm64` / `darwin-x64` `17.10.0-beta.17`, MIT packager,
+  commit `c23ad8a026c711c8666c3c2596d0fde643cf378a`. The wrapper code is not used.
+- Postgres.js 3.4.9 — Rasmus Porsager; Unlicense. Its package notice is retained alongside code.
+- The PostgreSQL binary bundle includes OpenSSL, ICU, LZ4, Zstandard, zlib, libxml2, Kerberos,
+  libedit, libiconv, gettext and libuuid. These are not relicensed under OpenBot's MIT license.
+  Upstream notices and their source/hash inventory are retained in
+  `apps/desktop/resources/native-notices` and copied into the native runtime. The packager's MIT
+  notice is also retained. No upstream executable implementation is copied into OpenBot source.
+- This is an internal unsigned development bundle. Exact per-library binary/source correspondence
+  and LGPL distribution obligations remain public-release gates, documented in that inventory.
+  Do not represent the preview as an attested or distribution-cleared release.

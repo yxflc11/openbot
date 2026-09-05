@@ -3,7 +3,16 @@ import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ignoredDirectories = new Set([".git", ".turbo", "build", "coverage", "dist", "node_modules"]);
+const ignoredDirectories = new Set([
+  ".git",
+  ".turbo",
+  "build",
+  "coverage",
+  "dist",
+  "node_modules",
+  "native-runtime",
+  "out",
+]);
 const markdownFiles = collectMarkdownFiles(repositoryRoot);
 const failures = [];
 

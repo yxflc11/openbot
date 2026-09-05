@@ -56,6 +56,11 @@ import {
   prepareEmployeeTemplateExport,
 } from "./employee-package.js";
 import {
+  ModelSettingsError,
+  type ModelSettingsService,
+  modelSettingsInputSchema,
+} from "./model-settings.js";
+import {
   InvalidNodeEnrollmentError,
   NodeIdentityNotFoundError,
   type NodeIdentityService,
@@ -71,6 +76,7 @@ import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  modelSettings?: ModelSettingsService;
   allowedOrigins: string[];
   artifactStorage?: Pick<ArtifactStorage, "read">;
   auth: OwnerAuthService;
@@ -254,6 +260,35 @@ export function createApp(dependencies: AppDependencies) {
       },
     };
     return context.json(summary);
+  });
+
+  app.get("/api/v1/settings/model", async (context) => {
+    if (!dependencies.modelSettings) return context.json({ status: "unavailable" });
+    try {
+      return context.json(await dependencies.modelSettings.summary());
+    } catch {
+      return context.json({ error: "Model configuration could not be read." }, 503);
+    }
+  });
+  app.post("/api/v1/settings/model", async (context) => {
+    if (!dependencies.modelSettings)
+      return context.json({ error: "Model configuration is not enabled on this Server." }, 503);
+    const input = await parseRequest(context.req.raw, modelSettingsInputSchema, 4096);
+    try {
+      return context.json(await dependencies.modelSettings.save(input));
+    } catch (error) {
+      if (error instanceof ModelSettingsError) {
+        return context.json(
+          { error: error.code },
+          error.code === "conflict" || error.code === "busy"
+            ? 409
+            : error.code === "storage_unavailable"
+              ? 503
+              : 422,
+        );
+      }
+      return context.json({ error: "Model configuration could not be saved." }, 503);
+    }
   });
 
   app.get("/api/v1/workspace", async (context) => {

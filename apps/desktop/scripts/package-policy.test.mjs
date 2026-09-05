@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { join, resolve } from "node:path";
+import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { describe, expect, it } from "vitest";
 import {
   createDesktopFuseConfig,
-  desktopMacOSWorkerCompanionSource,
   DESKTOP_ICON_RESOURCE_NAME,
   DESKTOP_MACOS_WORKER_COMPANION_NAME,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
+  desktopMacOSWorkerCompanionSource,
   packagedAsarPath,
   packagedDesktopMacOSWorkerCompanion,
   packagedDesktopResource,
@@ -114,6 +114,7 @@ describe("Desktop package source policy", () => {
 
   it("pins and validates the exact packaged runtime dependency closure", () => {
     expect(DESKTOP_RUNTIME_DEPENDENCIES).toEqual({
+      postgres: "3.4.9",
       "signal-exit": "4.1.0",
       "write-file-atomic": "8.0.0",
     });
@@ -121,6 +122,8 @@ describe("Desktop package source policy", () => {
       "/dist/main.js",
       "/dist/preload.cjs",
       "/dist/renderer/index.html",
+      "/node_modules/postgres/package.json",
+      "/node_modules/postgres/src/index.js",
       "/node_modules/signal-exit/dist/cjs/index.js",
       "/node_modules/signal-exit/package.json",
       "/node_modules/write-file-atomic/lib/index.js",

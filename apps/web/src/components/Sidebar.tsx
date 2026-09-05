@@ -2,6 +2,7 @@ import type { Bot, Channel, Run } from "@openbot/domain";
 import { useState } from "react";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
 import { BotIcon, HashIcon, NodeIcon, PlusIcon } from "./Icons";
+import { OpenBotMark } from "./OpenBotMark";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
@@ -9,6 +10,9 @@ interface SidebarProps {
   channels: Channel[];
   runs: Run[];
   ownerName: string;
+  onSettings?: (() => void) | undefined;
+  onToggleDetails?: (() => void) | undefined;
+  showDetails?: boolean;
   selectedChannelId?: string | undefined;
   selectedBotId?: string | undefined;
   onSelectChannel(channelId: string): void;
@@ -24,6 +28,9 @@ export function Sidebar({
   channels,
   runs,
   ownerName,
+  onSettings,
+  onToggleDetails,
+  showDetails,
   selectedChannelId,
   selectedBotId,
   onSelectChannel,
@@ -52,6 +59,7 @@ export function Sidebar({
   return (
     <aside className="sidebar" aria-label="主导航">
       <a className="brand" href="/" aria-label="OpenBot 首页">
+        <OpenBotMark />
         OpenBot
       </a>
 
@@ -104,24 +112,30 @@ export function Sidebar({
         </SidebarSection>
 
         <nav className="system-nav" aria-label="系统功能">
-          <button type="button">
-            <span className="system-nav-icon">◷</span>例行任务
-          </button>
-          <button type="button">
-            <span className="system-nav-icon">⌁</span>技能
-          </button>
           <button type="button" onClick={onManageNodes}>
             <span className="system-nav-icon">
               <NodeIcon />
             </span>
             节点
           </button>
-          <button type="button">
-            <span className="system-nav-icon">◇</span>审计
-          </button>
         </nav>
       </div>
 
+      {onToggleDetails ? (
+        <button
+          className="sidebar-settings"
+          type="button"
+          onClick={onToggleDetails}
+          aria-expanded={showDetails}
+        >
+          {showDetails ? "收起运行状态" : "运行状态"}
+        </button>
+      ) : null}
+      {onSettings ? (
+        <button className="sidebar-settings" type="button" onClick={onSettings}>
+          设置
+        </button>
+      ) : null}
       <footer className="sidebar-owner">
         <span>
           <strong>{ownerName}</strong>

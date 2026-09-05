@@ -18,6 +18,7 @@ import {
   decideApproval,
   getAuthSession,
   getEmployeeProfile,
+  getModelSettings,
   getWorkspace,
   joinBotToChannel,
   login,
@@ -31,7 +32,9 @@ import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
 import { DesktopConnectionScreen } from "./components/DesktopConnectionScreen";
+import { DesktopInstallScreen } from "./components/DesktopInstallScreen";
 import { DesktopLocalWorkerScreen } from "./components/DesktopLocalWorkerScreen";
+import { DesktopSettingsScreen } from "./components/DesktopSettingsScreen";
 import { DesktopSetupScreen } from "./components/DesktopSetupScreen";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView } from "./components/EmployeeProfileView";
@@ -39,7 +42,9 @@ import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
 import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
+import { ModelSettingsScreen } from "./components/ModelSettingsScreen";
 import { NodeManagerDialog } from "./components/NodeManagerDialog";
+import { OpenBotMark } from "./components/OpenBotMark";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import {
@@ -67,6 +72,13 @@ export function App() {
   const [desktopSetupPlan, setDesktopSetupPlan] = useState<
     DesktopSetupPlanState | null | undefined
   >(() => (desktopBridge === undefined ? null : undefined));
+  const [nativeReady, setNativeReady] = useState(false);
+  const [modelChecked, setModelChecked] = useState(false);
+  const [showModelSetup, setShowModelSetup] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string>();
+  const [showNodeSettings, setShowNodeSettings] = useState(false);
+  const [settingsNodes, setSettingsNodes] = useState<WorkspaceSnapshot["nodes"]>([]);
   const [showConnectionSetup, setShowConnectionSetup] = useState(false);
   const [showSetupPlan, setShowSetupPlan] = useState(false);
   const [desktopLocalWorker, setDesktopLocalWorker] = useState<
@@ -122,7 +134,11 @@ export function App() {
 
   const setupPlanReady = desktopSetupPlan === null || desktopSetupPlan?.status === "configured";
   const connectionReady =
-    setupPlanReady && (desktopConnection === null || desktopConnection?.status === "configured");
+    setupPlanReady &&
+    (desktopSetupPlan?.status !== "configured" ||
+      desktopSetupPlan.plan.mode !== "host" ||
+      nativeReady) &&
+    (desktopConnection === null || desktopConnection?.status === "configured");
 
   useEffect(() => {
     if (!connectionReady) return;
@@ -130,6 +146,26 @@ export function App() {
     void refreshSession(controller.signal);
     return () => controller.abort();
   }, [connectionReady, refreshSession]);
+
+  useEffect(() => {
+    if (!nativeReady || session?.authenticated !== true || modelChecked) return;
+    let active = true;
+    void getModelSettings()
+      .then((model) => {
+        if (!active) return;
+        setModelChecked(true);
+        if (model.status !== "configured") setShowModelSetup(true);
+      })
+      .catch(() => {
+        if (active) {
+          setModelChecked(true);
+          setShowModelSetup(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [nativeReady, session, modelChecked]);
 
   useEffect(() => subscribeToUnauthorized(() => setSession({ authenticated: false })), []);
 
@@ -180,7 +216,7 @@ export function App() {
   ) {
     return (
       <main className="loading-screen">
-        <span className="loading-mark">O</span>
+        <OpenBotMark className="onboarding-mark" />
         <h1>正在读取 Desktop 配置</h1>
         <p>正在打开你的本地安装计划和连接设置…</p>
       </main>
@@ -196,14 +232,48 @@ export function App() {
     return (
       <DesktopSetupScreen
         state={desktopSetupPlan}
+        onCancel={showSettings ? () => setShowSetupPlan(false) : undefined}
         onSave={async (plan) => {
           const result = await desktopBridge.saveSetupPlan(plan);
           if (result.status === "configured") {
+            const wasHost =
+              desktopSetupPlan?.status === "configured" && desktopSetupPlan.plan.mode === "host";
             setDesktopSetupPlan(result);
+            if (wasHost && plan.mode !== "host") {
+              setNativeReady(false);
+              setDesktopConnection({ status: "unconfigured" });
+              setSession(undefined);
+            }
+            if (plan.mode === "host" && !wasHost) {
+              setNativeReady(false);
+              setModelChecked(false);
+            }
+            setShowConnectionSetup(plan.mode === "client");
+            setShowSettings(false);
             setSkipLocalWorkerSetup(false);
             setShowSetupPlan(false);
           }
           return result;
+        }}
+      />
+    );
+  }
+
+  if (
+    desktopBridge !== undefined &&
+    desktopSetupPlan?.status === "configured" &&
+    desktopSetupPlan.plan.mode === "host" &&
+    !nativeReady
+  ) {
+    return (
+      <DesktopInstallScreen
+        bridge={desktopBridge}
+        onBack={() => setShowSetupPlan(true)}
+        onReady={(serverUrl) => {
+          setDesktopConnection({ status: "configured", serverUrl });
+          setNativeReady(true);
+          setSession(undefined);
+          setSessionError(undefined);
         }}
       />
     );
@@ -227,6 +297,7 @@ export function App() {
             setSessionError(undefined);
             setDesktopConnection(result);
             setShowConnectionSetup(false);
+            await refreshSession();
           }
           return result;
         }}
@@ -239,7 +310,7 @@ export function App() {
   if (session === undefined) {
     return (
       <main className="loading-screen">
-        <span className="loading-mark">O</span>
+        <OpenBotMark className="onboarding-mark" />
         <h1>{sessionError ? "无法打开 OpenBot" : "正在验证本地会话"}</h1>
         <p>{sessionError ?? "正在安全连接你的 OpenBot Server…"}</p>
         {sessionError ? (
@@ -266,6 +337,55 @@ export function App() {
     return <LoginScreen onLogin={async (password) => setSession(await login(password))} />;
   }
 
+  if (nativeReady && !modelChecked)
+    return (
+      <main className="loading-screen">
+        <OpenBotMark className="onboarding-mark" />
+        <h1>正在读取模型配置</h1>
+      </main>
+    );
+
+  if (showModelSetup)
+    return (
+      <ModelSettingsScreen
+        onboarding={!showSettings}
+        onDone={() => {
+          setShowModelSetup(false);
+          setModelChecked(true);
+        }}
+      />
+    );
+
+  if (showSettings && desktopSetupPlan?.status === "configured") {
+    return (
+      <>
+        <DesktopSettingsScreen
+          error={settingsError}
+          plan={desktopSetupPlan.plan}
+          onModel={() => setShowModelSetup(true)}
+          onConnection={() => setShowConnectionSetup(true)}
+          onRole={() => setShowSetupPlan(true)}
+          onBack={() => setShowSettings(false)}
+          onWorker={() => {
+            void getWorkspace()
+              .then((workspace) => {
+                setSettingsNodes(workspace.nodes);
+                setShowNodeSettings(true);
+                setSettingsError(undefined);
+              })
+              .catch(() => setSettingsError("无法读取工作电脑，请检查连接后重试。"));
+          }}
+        />
+        {showNodeSettings ? (
+          <NodeManagerDialog
+            onlineNodes={settingsNodes}
+            onClose={() => setShowNodeSettings(false)}
+          />
+        ) : null}
+      </>
+    );
+  }
+
   if (
     desktopBridge !== undefined &&
     desktopSetupPlan?.status === "configured" &&
@@ -275,7 +395,7 @@ export function App() {
     if (desktopLocalWorker === undefined || desktopLocalWorker === null) {
       return (
         <main className="loading-screen">
-          <span className="loading-mark">O</span>
+          <OpenBotMark className="onboarding-mark" />
           <h1>正在检查本机 Worker</h1>
           <p>正在读取原生组件、身份与 macOS 后台项目的真实状态…</p>
         </main>
@@ -314,6 +434,7 @@ export function App() {
   return (
     <AuthenticatedWorkspace
       ownerName={session.owner.name}
+      onSettings={desktopBridge ? () => setShowSettings(true) : undefined}
       onLogout={async () => {
         await logout();
         setSession({ authenticated: false });
@@ -323,12 +444,15 @@ export function App() {
 }
 
 function AuthenticatedWorkspace({
+  onSettings,
   ownerName,
   onLogout,
 }: {
   ownerName: string;
+  onSettings?: (() => void) | undefined;
   onLogout(): Promise<void>;
 }) {
+  const [showDetails, setShowDetails] = useState(onSettings === undefined);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
   const [selectedChannelId, setSelectedChannelId] = useState<string>();
   const [dialog, setDialog] = useState<Dialog>();
@@ -597,7 +721,7 @@ function AuthenticatedWorkspace({
   if (workspace === undefined) {
     return (
       <main className="loading-screen">
-        <span className="loading-mark">O</span>
+        <OpenBotMark className="onboarding-mark" />
         <h1>{error ? "无法打开 OpenBot" : "正在连接 OpenBot"}</h1>
         <p>{error ?? "正在读取本地频道、Bots 与节点状态…"}</p>
         {error ? (
@@ -613,7 +737,7 @@ function AuthenticatedWorkspace({
   const selectedRun = workspace.runs.find((run) => run.id === selectedRunId);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${showDetails ? "" : "without-context"}`}>
       <Sidebar
         bots={workspace.bots}
         channels={workspace.channels}
@@ -627,6 +751,9 @@ function AuthenticatedWorkspace({
         onCreateChannel={() => setDialog("channel")}
         onManageNodes={() => setDialog("node")}
         onLogout={onLogout}
+        onSettings={onSettings}
+        onToggleDetails={onSettings ? () => setShowDetails((value) => !value) : undefined}
+        showDetails={showDetails}
       />
 
       {selectedEmployeeId ? (
@@ -660,16 +787,18 @@ function AuthenticatedWorkspace({
         />
       )}
 
-      {selectedEmployeeId ? (
-        <EmployeeProfileRail profile={employeeProfile} nodes={workspace.nodes} />
-      ) : (
-        <ContextRail
-          realtimeState={workspaceRealtimeState}
-          workspace={workspace}
-          onDecideApproval={handleDecideApproval}
-          onInspectRun={setSelectedRunId}
-        />
-      )}
+      {showDetails ? (
+        selectedEmployeeId ? (
+          <EmployeeProfileRail profile={employeeProfile} nodes={workspace.nodes} />
+        ) : (
+          <ContextRail
+            realtimeState={workspaceRealtimeState}
+            workspace={workspace}
+            onDecideApproval={handleDecideApproval}
+            onInspectRun={setSelectedRunId}
+          />
+        )
+      ) : null}
 
       <MobileNavigation
         panel={mobilePanel}

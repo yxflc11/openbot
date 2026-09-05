@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { ApiError } from "../api";
+import { OpenBotMark } from "./OpenBotMark";
 
 export function LoginScreen({
   ownerName,
@@ -28,10 +29,8 @@ export function LoginScreen({
   return (
     <main className="login-screen">
       <section className="login-card" aria-labelledby="login-title">
-        <div className="login-robot" aria-hidden="true">
-          <img src="/robots/pixel-bot.svg" alt="" />
-        </div>
-        <p className="login-eyebrow">SELF-HOSTED WORKSPACE</p>
+        <OpenBotMark className="onboarding-mark" />
+
         <h1 id="login-title">进入 OpenBot</h1>
         <p className="login-copy">
           {ownerName ? `${ownerName}，` : ""}使用部署时设置的 Owner 密码继续。

@@ -1,0 +1,1 @@
+/*	$NetBSD: readline.c,v 1.178 2022/12/02 19:23:15 christos Exp $	*/

@@ -61,6 +61,9 @@ export type DesktopLocalWorkerOperationResult =
     }>;
 
 export interface OpenBotDesktopBridge {
+  getNativeServerState?(): Promise<NativeServerState>;
+  installNativeServer?(): Promise<NativeServerState>;
+  getRuntimeInfo?(): Readonly<{ kind: "desktop"; platform: string; shellVersion: string }>;
   getConnectionState(): Promise<DesktopConnectionState>;
   configureServer(serverUrl: string): Promise<ConfigureDesktopServerResult>;
   getSetupPlanState(): Promise<DesktopSetupPlanState>;
@@ -95,3 +98,12 @@ export function getOpenBotDesktopBridge(): OpenBotDesktopBridge | undefined {
   }
   return bridge;
 }
+
+export type NativeServerState =
+  | Readonly<{ status: "idle" }>
+  | Readonly<{ status: "installing"; step: "checking" | "database" | "server" | "connecting" }>
+  | Readonly<{ status: "ready"; serverUrl: string }>
+  | Readonly<{
+      status: "failed";
+      code: "unsupported_platform" | "installation_failed" | "service_stopped" | "stopping";
+    }>;

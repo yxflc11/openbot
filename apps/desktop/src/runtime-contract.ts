@@ -70,6 +70,8 @@ export const DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL =
   "openbot:desktop-open-local-worker-settings";
 
 export interface OpenBotDesktopBridge {
+  getNativeServerState?(): Promise<NativeServerState>;
+  installNativeServer?(): Promise<NativeServerState>;
   getRuntimeInfo(): DesktopRuntimeInfo;
   getConnectionState(): Promise<DesktopConnectionState>;
   configureServer(serverUrl: string): Promise<ConfigureDesktopServerResult>;
@@ -93,3 +95,12 @@ export function createDesktopRuntimeInfo(
   }
   return Object.freeze({ kind: "desktop", platform, shellVersion });
 }
+
+export type NativeServerState =
+  | Readonly<{ status: "idle" }>
+  | Readonly<{ status: "installing"; step: "checking" | "database" | "server" | "connecting" }>
+  | Readonly<{ status: "ready"; serverUrl: string }>
+  | Readonly<{
+      status: "failed";
+      code: "unsupported_platform" | "installation_failed" | "service_stopped" | "stopping";
+    }>;

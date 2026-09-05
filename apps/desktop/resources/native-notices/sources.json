@@ -1,0 +1,72 @@
+[
+  {
+    "file": "PostgreSQL.txt",
+    "source": "https://raw.githubusercontent.com/postgres/postgres/REL_17_10/COPYRIGHT",
+    "sha256": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd"
+  },
+  {
+    "file": "OpenSSL.txt",
+    "source": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.0.20/LICENSE.txt",
+    "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+  },
+  {
+    "file": "ICU.txt",
+    "source": "https://raw.githubusercontent.com/unicode-org/icu/release-68-2/icu4c/LICENSE",
+    "sha256": "7915b19db903070778581ae05d8bf4ea241b34a05deb51ca4f5cbb15ea1cbba3"
+  },
+  {
+    "file": "LZ4.txt",
+    "source": "https://raw.githubusercontent.com/lz4/lz4/v1.10.0/lib/LICENSE",
+    "sha256": "8b58c446121a109ccf32edc094bba3010a3d85e4ee3702950db55e4d3e87736c"
+  },
+  {
+    "file": "Zstandard.txt",
+    "source": "https://raw.githubusercontent.com/facebook/zstd/v1.5.7/LICENSE",
+    "sha256": "7055266497633c9025b777c78eb7235af13922117480ed5c674677adc381c9d8"
+  },
+  {
+    "file": "Zlib.txt",
+    "source": "https://raw.githubusercontent.com/madler/zlib/v1.3.2/LICENSE",
+    "sha256": "e32ff4e00d9d94930537635291da39e7e612703334bf6fde8c7f1686fe8a45a2"
+  },
+  {
+    "file": "Libxml2.txt",
+    "source": "https://raw.githubusercontent.com/GNOME/libxml2/v2.15.3/Copyright",
+    "sha256": "5d4873884a890122a4b9b20ad56ac6f7da1d796a5bfcf04a427970ac96217626"
+  },
+  {
+    "file": "Kerberos.txt",
+    "source": "https://raw.githubusercontent.com/krb5/krb5/krb5-1.22-final/NOTICE",
+    "sha256": "83914195f655de4f4970014a26f38b16bf4c5ff357ea51645ca2aea3a92764eb"
+  },
+  {
+    "file": "Libedit.txt",
+    "source": "https://raw.githubusercontent.com/NetBSD/src/netbsd-10/lib/libedit/readline.c",
+    "sha256": "5708b34478a61c3cccf9952af5e5b561edec686a1d161ca66063fb9dbd47f929"
+  },
+  {
+    "file": "Libiconv-LGPL.txt",
+    "source": "https://raw.githubusercontent.com/arthenica/libiconv/v1.17/COPYING.LIB",
+    "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+  },
+  {
+    "file": "LGPL-2.1.txt",
+    "source": "https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt",
+    "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+  },
+  {
+    "file": "Gettext-LGPL.txt",
+    "source": "https://raw.githubusercontent.com/autotools-mirror/gettext/v0.23.1/gettext-runtime/intl/COPYING.LIB",
+    "sha256": "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95"
+  },
+  {
+    "file": "Libuuid.txt",
+    "source": "https://raw.githubusercontent.com/util-linux/util-linux/v2.41/libuuid/COPYING",
+    "sha256": "5068749ee9c2f2c545af4a4de9fde3c39dc8d90af47cc0b3a42700116f9b7e71"
+  },
+  {
+    "file": "Libiconv-notice.txt",
+    "source": "https://raw.githubusercontent.com/arthenica/libiconv/v1.17/README",
+    "sha256": "dd37af33149d9722d6edca08aeb1e18591dda95bb645d81a2f011a5d83088929"
+  }
+]

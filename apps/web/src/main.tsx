@@ -3,6 +3,11 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import "./styles.css";
 
+const runtime = window.openbotDesktop?.getRuntimeInfo?.();
+if (runtime?.kind === "desktop") {
+  document.documentElement.dataset.desktop = runtime.platform;
+}
+
 const root = document.getElementById("root");
 
 if (root === null) {

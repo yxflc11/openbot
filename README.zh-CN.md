@@ -1,4 +1,6 @@
 <p align="center">
+
+当前 macOS 源码构建引导：[Desktop 首次设置](docs/DESKTOP_ONBOARDING.zh-CN.md)。
   <img src="docs/design/openbot-readme-banner.png" alt="OpenBot" width="100%">
 </p>
 

@@ -6,6 +6,7 @@
       "!**/.turbo",
       "!**/dist",
       "!apps/desktop/out",
+      "!apps/desktop/native-runtime",
       "!**/coverage",
       "!**/node_modules",
       "!package-lock.json"

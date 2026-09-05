@@ -1,10 +1,10 @@
 import { type FormEvent, useState } from "react";
-import { desktopSetupModeTitle } from "../desktop-setup";
 import type {
   ConfigureDesktopServerResult,
   DesktopConnectionState,
   DesktopSetupPlanInput,
 } from "../desktop-runtime";
+import { OpenBotMark } from "./OpenBotMark";
 
 export function DesktopConnectionScreen({
   canCancel = false,
@@ -45,28 +45,19 @@ export function DesktopConnectionScreen({
   return (
     <main className="login-screen desktop-connection-screen">
       <section className="login-card desktop-connection-card" aria-labelledby="connection-title">
-        <div className="connection-mark" aria-hidden="true">
-          O
-        </div>
-        <p className="login-eyebrow">OPENBOT DESKTOP</p>
-        <h1 id="connection-title">连接你的 Server</h1>
+        <OpenBotMark className="onboarding-mark" />
+
+        <h1 id="connection-title">连接服务电脑</h1>
         <p className="login-copy">{desktopConnectionCopy(setupPlan)}</p>
-        {setupPlan ? (
-          <section className="connection-plan-summary" aria-label="当前安装计划">
-            <span>
-              <strong>{desktopSetupModeTitle(setupPlan.mode)}</strong>
-              <small>
-                {setupPlan.plannedWorkerCount === 0
-                  ? "暂不配置工作电脑"
-                  : `计划 ${setupPlan.plannedWorkerCount} 台工作电脑`}
-              </small>
-            </span>
-            {onChangePlan ? (
-              <button className="secondary-button" type="button" onClick={onChangePlan}>
-                修改计划
-              </button>
-            ) : null}
-          </section>
+        {onChangePlan ? (
+          <button
+            className="setup-change-role"
+            type="button"
+            disabled={submitting}
+            onClick={onChangePlan}
+          >
+            更改这台电脑的用途
+          </button>
         ) : null}
         {connection.status === "invalid" ? (
           <p className="connection-warning" role="alert">
@@ -74,7 +65,7 @@ export function DesktopConnectionScreen({
           </p>
         ) : null}
         <form onSubmit={handleSubmit}>
-          <label htmlFor="desktop-server-url">Server 地址</label>
+          <label htmlFor="desktop-server-url">服务地址</label>
           <input
             id="desktop-server-url"
             type="url"
@@ -117,17 +108,8 @@ export function DesktopConnectionScreen({
   );
 }
 
-function desktopConnectionCopy(plan?: DesktopSetupPlanInput): string {
-  if (plan?.mode === "host") {
-    return "自动安装 Server 与 PostgreSQL 的功能尚未交付；如果你已经手动部署，可以先验证并连接它。";
-  }
-  if (plan?.mode === "advanced") {
-    return "完成独立 Server 部署后在这里连接；你也可以完全不安装 Desktop，直接使用 Web。";
-  }
-  if (plan?.mode === "client-worker") {
-    return "先连接唯一的 OpenBot Server；之后再逐台安装 Worker Service 并完成绑定。";
-  }
-  return "输入自部署 OpenBot Server 的公开地址；Desktop 会先验证服务，再由系统窗口请你确认。";
+function desktopConnectionCopy(_plan?: DesktopSetupPlanInput): string {
+  return "输入服务电脑的 OpenBot 地址，连接后使用同一套 Bot 和工作记录。";
 }
 
 export function desktopConnectionErrorMessage(

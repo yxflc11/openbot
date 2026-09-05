@@ -1,14 +1,16 @@
-import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { basename, isAbsolute, join, relative, sep } from "node:path";
+import { FuseV1Options, FuseVersion } from "@electron/fuses";
 
 const ALLOWED_PACKAGE_ROOTS = new Set(["dist"]);
 const ALLOWED_PACKAGE_FILES = new Set(["package.json"]);
 const ALLOWED_RUNTIME_DEPENDENCY_ROOTS = [
+  "node_modules/postgres",
   "node_modules/signal-exit",
   "node_modules/write-file-atomic",
 ];
 
 export const DESKTOP_RUNTIME_DEPENDENCIES = Object.freeze({
+  postgres: "3.4.9",
   "signal-exit": "4.1.0",
   "write-file-atomic": "8.0.0",
 });
@@ -17,6 +19,8 @@ export const REQUIRED_DESKTOP_ASAR_ENTRIES = Object.freeze([
   "/dist/main.js",
   "/dist/preload.cjs",
   "/dist/renderer/index.html",
+  "/node_modules/postgres/package.json",
+  "/node_modules/postgres/src/index.js",
   "/node_modules/signal-exit/dist/cjs/index.js",
   "/node_modules/signal-exit/package.json",
   "/node_modules/write-file-atomic/lib/index.js",

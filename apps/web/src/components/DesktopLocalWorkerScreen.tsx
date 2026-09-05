@@ -1,3 +1,4 @@
+import { OpenBotMark } from "./OpenBotMark";
 import { type FormEvent, useState } from "react";
 import type {
   DesktopLocalWorkerOperationResult,
@@ -46,10 +47,8 @@ export function DesktopLocalWorkerScreen({
   return (
     <main className="login-screen desktop-worker-screen">
       <section className="login-card desktop-worker-card" aria-labelledby="desktop-worker-title">
-        <div className="connection-mark" aria-hidden="true">
-          O
-        </div>
-        <p className="login-eyebrow">OPENBOT WORKER</p>
+        <OpenBotMark className="onboarding-mark" />
+
         <h1 id="desktop-worker-title">配置这台工作电脑</h1>
         <p className="login-copy">Desktop 仍然可以正常使用；这里只为这台电脑增加任务执行能力。</p>
 
