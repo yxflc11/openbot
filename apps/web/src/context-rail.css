@@ -1,6 +1,6 @@
 .context-rail.usage-rail {
   min-width: 0;
-  padding: 32px 20px;
+  padding: 24px 20px;
   border-left: 0;
   background: transparent;
   color: #303438;
@@ -20,6 +20,22 @@
   color: #474d52;
   font-size: 13px;
   font-weight: 600;
+}
+
+.usage-rail-scope {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  overflow: hidden;
+  color: #4c555d;
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+}
+
+.usage-rail-scope span {
+  color: #78818a;
+  font-size: 11px;
 }
 
 .usage-rail-connection {
@@ -49,9 +65,12 @@
 }
 
 .usage-rail-tokens {
-  margin-top: 36px;
-  padding-bottom: 25px;
-  border-bottom: 1px solid #e7e9eb;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  margin-top: 26px;
+  padding: 19px 0;
+  border-top: 1px solid #e7e9eb;
 }
 
 .usage-rail h3 {
@@ -61,28 +80,8 @@
   font-weight: 500;
 }
 
-.usage-rail-token-metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin: 23px 0 0;
-}
-
-.usage-rail-token-metrics dt {
-  color: #747c83;
-  font-size: 11px;
-}
-
-.usage-rail-token-metrics dd {
-  margin: 10px 0 0;
-  color: #757e86;
-  font-size: 28px;
-  font-weight: 500;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
 .usage-rail-unavailable {
-  margin: 20px 0 0;
+  margin: 0;
   color: #6a737b;
   font-size: 11px;
 }
@@ -92,6 +91,56 @@
   color: #777f87;
   font-size: 10px;
   line-height: 1.6;
+}
+
+.usage-rail-tokens .usage-rail-caption {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.usage-rail-workspace-overview {
+  padding-top: 17px;
+  border-top: 1px solid #e7e9eb;
+}
+
+.usage-rail-workspace-overview > summary {
+  border-radius: 4px;
+  color: #60686f;
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+  user-select: none;
+}
+
+.usage-rail-workspace-overview > summary::marker {
+  color: #89919a;
+  font-size: 10px;
+}
+
+.usage-rail-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  margin-top: 32px;
+  padding: 8px 0;
+  color: #79828a;
+}
+
+.usage-rail-empty-state > svg {
+  width: 20px;
+  height: 20px;
+  color: #708778;
+}
+
+.usage-rail-empty-state p {
+  margin: 0;
+  color: #5d6770;
+  font-size: 12px;
+}
+
+.usage-rail-empty-state span {
+  font-size: 11px;
+  line-height: 1.7;
 }
 
 .usage-rail-section {
@@ -129,11 +178,6 @@
   border-left: 1px solid #dce0e4;
 }
 
-.usage-rail-token-metrics > div + div {
-  padding-left: 24px;
-  border-left: 1px solid #e1e5e8;
-}
-
 .usage-rail-task-metrics dt {
   color: #707980;
   font-size: 10px;
@@ -146,24 +190,6 @@
   font-weight: 500;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-}
-
-.usage-rail-empty,
-.usage-rail-clear {
-  margin: 0;
-  color: #747c84;
-  font-size: 11px;
-  line-height: 1.7;
-}
-
-.usage-rail-clear {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.usage-rail-clear svg {
-  color: #708778;
 }
 
 .usage-rail-section-heading > .usage-rail-attention-count {
@@ -199,6 +225,7 @@
 }
 
 .usage-rail-run:focus-visible,
+.usage-rail-workspace-overview > summary:focus-visible,
 .usage-rail a:focus-visible {
   outline: 2px solid #487da9;
   outline-offset: 2px;
@@ -267,11 +294,14 @@
 }
 
 .usage-rail-result > a {
-  display: inline-block;
+  display: block;
+  overflow: hidden;
   margin: 0 0 8px 13px;
   color: #547792;
   font-size: 10px;
   text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .usage-rail-result > a:hover {

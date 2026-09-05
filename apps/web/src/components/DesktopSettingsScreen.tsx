@@ -138,6 +138,16 @@ export function DesktopSettingsScreen({
                   />
                 </SettingRow>
                 <SettingRow
+                  title="显示左侧导航"
+                  description="查看频道、Bot 和工作空间入口，也可从顶部工具栏切换。"
+                >
+                  <Switch
+                    label="显示左侧导航"
+                    checked={values.leftPanelOpen}
+                    onChange={(checked) => updatePreferences({ leftPanelOpen: checked })}
+                  />
+                </SettingRow>
+                <SettingRow
                   title="显示右侧信息栏"
                   description="查看用量、任务状态和待处理事项，也可从顶部工具栏切换。"
                 >

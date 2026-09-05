@@ -12,15 +12,46 @@ The macOS source-build preview offers two choices:
 
 The macOS window uses native traffic lights inside the content area. The application and in-app
 branding share one icon. The left navigation provides New conversation, Automations, Skills,
-channels and Bots. Search filters the authorized channel and Bot list. Conversations use distinct
-incoming/outgoing message bubbles, quoted replies and a persistent composer. Scrolling through
-older messages does not jump to new ones; sending a message returns to the latest content. The
-office scene remains deferred.
+channels and Bots. Search filters the authorized channel and Bot list. The office scene remains
+deferred.
 
-The right information panel starts open. Its top-toolbar button and Settings switch open or close
-it, and the choice is saved locally for the next launch. The Token panel reports missing usage
-explicitly because the current Server does not yet produce model usage measurements. Task
-statistics describe the recent Server snapshot, not a daily or all-time total.
+## Workspace navigation and conversations
+
+A shared toolbar aligns navigation with the native window controls. The left side contains the
+sidebar toggle and back/forward buttons, the middle identifies the current channel or destination,
+and the information-panel toggle stays at the far right. Both side panels start open and can be
+hidden independently from the toolbar or Settings; those choices are saved locally. Channel
+membership and adding an existing Bot are available from the channel's more menu.
+
+Back and forward revisit channels, Bot profiles, Skills and Automations within the current
+workspace. Creating a channel opens it immediately. Returning from Settings preserves the selected
+view, channel draft and reading position. Navigation is local presentation state, not a change to
+Server routing or permissions. See [navigation research](research/desktop-navigation-continuity.md).
+
+The conversation keeps a shared reading surface, lightweight human-message bubbles and quoted
+replies. Task status appears beside its associated message. The rounded composer grows from two
+to eight lines, with the receiving Bot selector and send button below the text. Reading older
+messages stays in place as new messages arrive; **Return to latest** resumes following the bottom.
+
+Each channel retains its draft text, selected Bot and quoted reply in workspace-session memory.
+Switching channels while a send is pending does not move its result into another channel, and a
+successful send clears only the unchanged submitted draft. Newer edits are kept. Only one message
+submission per channel is pending at a time; failures retain the draft and are not retried
+automatically. After an uncertain network result, check the channel history before resubmitting.
+
+Drafts are not saved to disk or localStorage and do not survive logout, changing Owner/Server,
+reload or closing the window. The bounded cache retains up to 32 visited channels with drafts of
+at most 8,000 characters. Unsent drafts, quoted replies and pending sends are not evicted; if all
+slots are in use, the next channel displays a limit notice until an older draft is sent or cleared.
+This is not offline sending or Server-side idempotency. See
+[conversation research](research/desktop-conversation-continuity.md).
+
+The information panel prioritizes the selected channel's pending approvals, active tasks and
+recent results. Workspace totals are available in a disclosure below them. Existing approval and
+task-inspection actions retain Server authorization. The Token panel explicitly reports missing
+usage because the current Server does not yet produce model measurements; task statistics describe
+the recent bounded snapshot, not a daily or all-time total. See
+[inspector research](research/desktop-contextual-inspector.md).
 
 macOS sidebar translucency uses Electron's native sidebar material behind the left navigation;
 chat and detail surfaces remain opaque. It can be disabled in Settings. macOS Reduce Transparency
@@ -28,13 +59,31 @@ or High Contrast overrides the requested effect, and unsupported or unavailable 
 an opaque fallback. The current workspace has a light appearance; no complete dark appearance or
 Liquid Glass implementation is claimed. See [material research](research/desktop-sidebar-material.md).
 
+## Native menus and shortcuts
+
+The macOS application, File, Edit, View and Window menus use Chinese labels. Standard text editing,
+zoom, fullscreen and window actions use Electron's native roles. Navigation commands are enabled
+only when their corresponding view action is available.
+
+| Action | macOS shortcut |
+| --- | --- |
+| New conversation | Command+N |
+| Open Settings | Command+, |
+| Back / Forward | Command+[ / Command+] |
+| Show or hide the left sidebar | Command+B |
+| Show or hide the information panel | Command+Shift+B |
+
+The same view actions remain available in the interface. No global keyboard shortcut, arbitrary
+command bridge, Reload menu or Developer Tools menu is added. See
+[native menu research](research/desktop-native-navigation-menu.md).
+
 ## Settings and local preferences
 
 Settings has five categories:
 
 | Category | Available controls and information |
 | --- | --- |
-| General & Appearance | Sidebar translucency, right-panel visibility, comfortable/compact spacing, 14/16 px chat text, reduced motion, Enter or Command/Ctrl+Enter to send, and 12/24-hour message timestamps |
+| General & Appearance | Sidebar translucency, independent left/right-panel visibility, comfortable/compact spacing, 14/16 px chat text, reduced motion, Enter or Command/Ctrl+Enter to send, and 12/24-hour message timestamps |
 | Models & API | Read the configured default and validate/save OpenAI or Anthropic model access |
 | Server & Work Computers | Current role and Server address, change role or remote connection, open device management, and read local Worker status |
 | Privacy & Data | Where data and model credentials are stored, Server authorization boundaries, usage availability, and reset local interface preferences |
@@ -82,6 +131,10 @@ See [recurring-task research](research/server-automations.md).
 This is a source-build preview, not a signed/notarized public installer. Native installation has
 been exercised on macOS arm64. The x64 package is pinned but has not been exercised on Intel;
 Windows and Linux retain remote-client behavior and have no native installer in this change.
+
+This interface refinement does not add model-generated replies, input screenshot/file attachments,
+task cancellation or automatic/safe retries. Those require separately reviewed Server behavior;
+the composer only submits through the existing authenticated text-message API.
 
 The bundled Server currently listens **only on this Mac**. Sharing this native installation with
 another computer requires a future authenticated HTTPS provisioning flow. Do not enter its

@@ -138,3 +138,26 @@ export function SkillIcon() {
     </Icon>
   );
 }
+
+export function PanelLeftIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="4" width="18" height="16" rx="3" {...strokeProps} />
+      <path d="M8 4v16" {...strokeProps} />
+    </Icon>
+  );
+}
+export function BackIcon() {
+  return (
+    <Icon>
+      <path d="m14 5-7 7 7 7M7 12h14" {...strokeProps} />
+    </Icon>
+  );
+}
+export function ForwardIcon() {
+  return (
+    <Icon>
+      <path d="m10 5 7 7-7 7M17 12H3" {...strokeProps} />
+    </Icon>
+  );
+}

@@ -5,6 +5,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   nativeTheme,
   net,
   protocol,
@@ -31,11 +32,13 @@ import {
 import { DesktopLocalWorkerController } from "./local-worker-controller.js";
 import { MacOSWorkerCompanion } from "./macos-worker-companion.js";
 import { NativeServerController } from "./native-server.js";
+import { DesktopNavigationMenuController } from "./navigation-menu.js";
 import {
   DESKTOP_CONFIGURE_SERVER_CHANNEL,
   DESKTOP_CONNECTION_STATE_CHANNEL,
   DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL,
   DESKTOP_LOCAL_WORKER_STATE_CHANNEL,
+  DESKTOP_NAVIGATION_MENU_STATE_CHANNEL,
   DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL,
   DESKTOP_SAVE_SETUP_PLAN_CHANNEL,
   DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL,
@@ -59,6 +62,7 @@ let quitting = false;
 let mainWindow: BrowserWindow | undefined;
 let desktopSession: Session | undefined;
 let sidebarMaterial: SidebarMaterialController | undefined;
+let navigationMenu: DesktopNavigationMenuController | undefined;
 
 // Every renderer is sandboxed globally before Electron creates a process.
 app.enableSandbox();
@@ -102,6 +106,14 @@ function registerDesktopIpc(
   setupPlanController: DesktopSetupPlanController,
   localWorkerController: DesktopLocalWorkerController,
 ): void {
+  ipcMain.removeHandler(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL);
+  ipcMain.handle(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL, (event, value: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    if (!navigationMenu) throw new Error("Desktop navigation menu is unavailable.");
+    navigationMenu.update(value);
+  });
   ipcMain.removeHandler(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL);
   ipcMain.removeHandler(DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL);
   ipcMain.handle(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL, (event, enabled: unknown) => {
@@ -205,6 +217,14 @@ async function createMainWindow(activeSession: Session): Promise<void> {
   });
 
   mainWindow = window;
+  navigationMenu?.reset();
+  window.on("focus", () => navigationMenu?.refresh());
+  window.on("blur", () => navigationMenu?.refresh());
+  window.webContents.on("did-start-navigation", (details) => {
+    if (details.isMainFrame) navigationMenu?.reset();
+  });
+  window.webContents.on("did-finish-load", () => navigationMenu?.refresh());
+  window.webContents.on("render-process-gone", () => navigationMenu?.reset());
   const material = new SidebarMaterialController({
     platform: process.platform,
     window,
@@ -227,6 +247,7 @@ async function createMainWindow(activeSession: Session): Promise<void> {
     nativeTheme.removeListener("updated", refreshMaterial);
     if (sidebarMaterial === material) sidebarMaterial = undefined;
     if (mainWindow === window) mainWindow = undefined;
+    navigationMenu?.reset();
   });
   await window.loadURL(DESKTOP_ENTRY_URL);
 }
@@ -405,6 +426,16 @@ async function startDesktop(): Promise<void> {
   });
   desktopSession = activeSession;
   registerDesktopIpc(connectionController, setupPlanController, localWorkerController);
+  navigationMenu = new DesktopNavigationMenuController({
+    appName: app.name,
+    platform: process.platform,
+    getWindow: () => mainWindow,
+    install: (template) => {
+      const menu = Menu.buildFromTemplate(template);
+      Menu.setApplicationMenu(menu);
+      return menu;
+    },
+  });
   await createMainWindow(activeSession);
 }
 

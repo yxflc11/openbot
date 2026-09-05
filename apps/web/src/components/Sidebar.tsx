@@ -23,6 +23,7 @@ interface SidebarProps {
   channels: Channel[];
   runs: Run[];
   ownerName: string;
+  onHome?: (() => void) | undefined;
   onSettings?: (() => void) | undefined;
   selectedChannelId?: string | undefined;
   selectedBotId?: string | undefined;
@@ -43,6 +44,7 @@ export function Sidebar({
   runs,
   ownerName,
   onSettings,
+  onHome,
   selectedChannelId,
   selectedBotId,
   onSelectChannel,
@@ -76,7 +78,19 @@ export function Sidebar({
 
   return (
     <aside className="sidebar" aria-label="主导航">
-      <a className="brand" href="/" aria-label="OpenBot 首页">
+      <a
+        className="brand"
+        href="/"
+        aria-label="OpenBot 首页"
+        onClick={
+          onHome
+            ? (event) => {
+                event.preventDefault();
+                onHome();
+              }
+            : undefined
+        }
+      >
         <OpenBotMark />
         OpenBot
       </a>

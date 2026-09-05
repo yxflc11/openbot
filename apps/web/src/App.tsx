@@ -28,6 +28,7 @@ import {
   subscribeToWorkspaceEvents,
 } from "./api";
 import { AutomationsScreen } from "./components/AutomationsScreen";
+import { ChannelMembersMenu } from "./components/ChannelMembersMenu";
 import { ChannelWorkspace } from "./components/ChannelWorkspace";
 import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
@@ -40,7 +41,7 @@ import { DesktopSetupScreen } from "./components/DesktopSetupScreen";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView, type ProfileTab } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
-import { PanelRightIcon } from "./components/Icons";
+import { BackIcon, ForwardIcon, HashIcon, PanelLeftIcon, PanelRightIcon } from "./components/Icons";
 import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
@@ -50,6 +51,7 @@ import { OpenBotMark } from "./components/OpenBotMark";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import { SkillLibraryScreen } from "./components/SkillLibraryScreen";
+import { createConversationSession } from "./conversation-session";
 import {
   type DesktopConnectionState,
   type DesktopLocalWorkerState,
@@ -64,7 +66,9 @@ import {
   mergeRuns,
   projectRunOnNodes,
 } from "./run-state";
+import { useDesktopNavigation } from "./use-desktop-navigation";
 import { useWorkspaceAppearance } from "./use-workspace-appearance";
+import { useWorkspaceNavigation } from "./workspace-navigation";
 import { updatePreferences, useWorkspacePreferences } from "./workspace-preferences";
 
 type Dialog = "bot" | "channel" | "node" | undefined;
@@ -362,8 +366,8 @@ export function App() {
       />
     );
 
-  if (showSettings && desktopSetupPlan?.status === "configured") {
-    return (
+  const settingsPanel =
+    showSettings && desktopSetupPlan?.status === "configured" ? (
       <>
         <DesktopSettingsScreen
           error={settingsError}
@@ -391,8 +395,7 @@ export function App() {
           />
         ) : null}
       </>
-    );
-  }
+    ) : null;
 
   if (
     desktopBridge !== undefined &&
@@ -440,38 +443,61 @@ export function App() {
   }
 
   return (
-    <AuthenticatedWorkspace
-      ownerName={session.owner.name}
-      onSettings={desktopBridge ? () => setShowSettings(true) : undefined}
-      onLogout={async () => {
-        await logout();
-        setSession({ authenticated: false });
-      }}
-    />
+    <>
+      <div className="workspace-preserved" hidden={showSettings} inert={showSettings}>
+        <AuthenticatedWorkspace
+          key={`${session.owner.id}:${desktopConnection?.status === "configured" ? desktopConnection.serverUrl : "web"}`}
+          active={!showSettings}
+          ownerName={session.owner.name}
+          onSettings={desktopBridge ? () => setShowSettings(true) : undefined}
+          onLogout={async () => {
+            await logout();
+            setSession({ authenticated: false });
+          }}
+        />
+      </div>
+      {settingsPanel}
+    </>
   );
 }
 
-function AuthenticatedWorkspace({
+export function AuthenticatedWorkspace({
+  active = true,
   onSettings,
   ownerName,
   onLogout,
 }: {
+  active?: boolean;
   ownerName: string;
   onSettings?: (() => void) | undefined;
   onLogout(): Promise<void>;
 }) {
   const { values: preferences } = useWorkspacePreferences();
   const showDetails = preferences.rightPanelOpen;
-  const [destination, setDestination] = useState<"chat" | "automations" | "skills">("chat");
+  const navigation = useWorkspaceNavigation();
+  const location = navigation.location;
+  const destination =
+    location.kind === "automations" || location.kind === "skills" ? location.kind : "chat";
+  const selectedChannelId = location.kind === "channel" ? location.id : undefined;
+  const selectedEmployeeId = location.kind === "employee" ? location.id : undefined;
+  const employeeInitialTab = location.kind === "employee" ? location.tab : "overview";
+  const [conversationSession] = useState(createConversationSession);
+  const [focusRequest, setFocusRequest] = useState(0);
+  const sessionLifetime = useRef(0);
+  useEffect(() => {
+    const generation = ++sessionLifetime.current;
+    return () => {
+      queueMicrotask(() => {
+        if (sessionLifetime.current === generation) conversationSession.dispose();
+      });
+    };
+  }, [conversationSession]);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
-  const [selectedChannelId, setSelectedChannelId] = useState<string>();
   const [dialog, setDialog] = useState<Dialog>();
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [selectedRunId, setSelectedRunId] = useState<string>();
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>();
-  const [employeeInitialTab, setEmployeeInitialTab] = useState<ProfileTab>("overview");
   const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile>();
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
   const [employeeProfileError, setEmployeeProfileError] = useState<string>();
@@ -565,12 +591,15 @@ function AuthenticatedWorkspace({
     setEmployeeProfileLoading(true);
     setEmployeeProfileError(undefined);
     try {
-      setEmployeeProfile(await getEmployeeProfile(botId, signal));
+      const profile = await getEmployeeProfile(botId, signal);
+      if (!signal?.aborted && selectedEmployeeIdRef.current === botId) setEmployeeProfile(profile);
     } catch (cause) {
       if (cause instanceof DOMException && cause.name === "AbortError") return;
-      setEmployeeProfileError(cause instanceof Error ? cause.message : "无法读取员工档案。");
+      if (selectedEmployeeIdRef.current === botId)
+        setEmployeeProfileError(cause instanceof Error ? cause.message : "无法读取员工档案。");
     } finally {
-      if (!signal?.aborted) setEmployeeProfileLoading(false);
+      if (!signal?.aborted && selectedEmployeeIdRef.current === botId)
+        setEmployeeProfileLoading(false);
     }
   }, []);
 
@@ -590,15 +619,59 @@ function AuthenticatedWorkspace({
 
   const workspaceReady = workspace !== undefined;
   useEffect(() => {
-    if (workspace === undefined) return;
-    if (workspace.channels.length === 0) {
-      if (selectedChannelId !== undefined) setSelectedChannelId(undefined);
-      return;
+    if (!workspace) return;
+    if (location.kind === "home" && workspace.channels[0]) {
+      navigation.replace({ kind: "channel", id: workspace.channels[0].id });
+    } else if (
+      location.kind === "channel" &&
+      !workspace.channels.some((channel) => channel.id === location.id)
+    ) {
+      navigation.replace(
+        workspace.channels[0]
+          ? { kind: "channel", id: workspace.channels[0].id }
+          : { kind: "home" },
+      );
+    } else if (
+      location.kind === "employee" &&
+      !workspace.bots.some((bot) => bot.id === location.id)
+    ) {
+      navigation.replace({ kind: "home" });
     }
-    if (!workspace.channels.some((channel) => channel.id === selectedChannelId)) {
-      setSelectedChannelId(workspace.channels[0]?.id);
-    }
-  }, [selectedChannelId, workspace]);
+  }, [workspace, location, navigation.replace]);
+
+  useDesktopNavigation({
+    active:
+      active &&
+      workspaceReady &&
+      !dialog &&
+      !selectedRunId &&
+      !employeeImportOpen &&
+      !employeeExportOpen,
+    settingsAvailable:
+      active &&
+      onSettings !== undefined &&
+      !dialog &&
+      !selectedRunId &&
+      !employeeImportOpen &&
+      !employeeExportOpen,
+    canGoBack: navigation.canGoBack,
+    canGoForward: navigation.canGoForward,
+    onBack: navigation.back,
+    onForward: navigation.forward,
+    onNewConversation: () => setDialog("channel"),
+    onSettings,
+  });
+
+  useEffect(() => {
+    if (!active) return;
+    const frame = requestAnimationFrame(() => {
+      if (focusRequest > 0)
+        document
+          .querySelector<HTMLTextAreaElement>('[aria-label="消息内容"]')
+          ?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, focusRequest]);
 
   useEffect(() => {
     if (!workspaceReady) return;
@@ -671,7 +744,8 @@ function AuthenticatedWorkspace({
   async function handleCreateChannel(input: CreateChannelInput) {
     const channel = await createChannel(input);
     await refresh();
-    setSelectedChannelId(channel.id);
+    selectChannel(channel.id);
+    setFocusRequest((value) => value + 1);
     setDialog(undefined);
     setMobilePanel(undefined);
     showNotice(`${channel.name} 已创建。`);
@@ -704,21 +778,17 @@ function AuthenticatedWorkspace({
   }
 
   function selectChannel(channelId: string) {
-    setDestination("chat");
+    navigation.navigate({ kind: "channel", id: channelId });
     setEmployeeExportOpen(false);
     setEmployeeImportOpen(false);
-    setSelectedChannelId(channelId);
-    setSelectedEmployeeId(undefined);
     setSelectedRunId(undefined);
     setMobilePanel(undefined);
   }
 
   function openEmployee(botId: string, initialTab: ProfileTab = "overview") {
-    setEmployeeInitialTab(initialTab);
-    setDestination("chat");
+    navigation.navigate({ kind: "employee", id: botId, tab: initialTab });
     setEmployeeExportOpen(false);
     setEmployeeImportOpen(false);
-    setSelectedEmployeeId(botId);
     setSelectedRunId(undefined);
     setMobilePanel(undefined);
   }
@@ -764,43 +834,111 @@ function AuthenticatedWorkspace({
   );
 
   return (
-    <div className={`app-shell ${showDetails ? "" : "without-context"}`}>
-      <Sidebar
-        bots={workspace.bots}
-        channels={workspace.channels}
-        runs={workspace.runs}
-        ownerName={ownerName}
-        destination={destination}
-        onAutomations={() => setDestination("automations")}
-        onSkills={() => setDestination("skills")}
-        selectedChannelId={destination === "chat" ? selectedChannel?.id : undefined}
-        selectedBotId={destination === "chat" ? selectedEmployeeId : undefined}
-        onSelectChannel={selectChannel}
-        onSelectBot={openEmployee}
-        onCreateBot={() => setDialog("bot")}
-        onCreateChannel={() => setDialog("channel")}
-        onManageNodes={() => setDialog("node")}
-        onLogout={onLogout}
-        onSettings={onSettings}
-      />
-
-      {destination === "automations" ? (
-        <AutomationsScreen
+    <div
+      className={`app-shell desktop-workspace ${showDetails ? "" : "without-context"} ${preferences.leftPanelOpen ? "" : "without-sidebar"}`}
+    >
+      <header className="workspace-toolbar">
+        <nav className="toolbar-navigation" aria-label="页面与侧栏导航">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={preferences.leftPanelOpen ? "收起侧栏" : "打开侧栏"}
+            aria-expanded={preferences.leftPanelOpen}
+            aria-controls="workspace-sidebar"
+            title="切换侧栏 · ⌘B"
+            onClick={() => updatePreferences({ leftPanelOpen: !preferences.leftPanelOpen })}
+          >
+            <PanelLeftIcon />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="后退"
+            title="后退 · ⌘["
+            disabled={!navigation.canGoBack}
+            onClick={navigation.back}
+          >
+            <BackIcon />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="前进"
+            title="前进 · ⌘]"
+            disabled={!navigation.canGoForward}
+            onClick={navigation.forward}
+          >
+            <ForwardIcon />
+          </button>
+        </nav>
+        <div className="toolbar-context">
+          <div className="toolbar-title">
+            <HashIcon />
+            <h1
+              title={
+                destination === "automations"
+                  ? "自动任务"
+                  : destination === "skills"
+                    ? "技能广场"
+                    : selectedEmployeeId
+                      ? (employeeProfile?.employee.name ?? "Bot 档案")
+                      : (selectedChannel?.name ?? "频道聊天")
+              }
+            >
+              {destination === "automations"
+                ? "自动任务"
+                : destination === "skills"
+                  ? "技能广场"
+                  : selectedEmployeeId
+                    ? (employeeProfile?.employee.name ?? "Bot 档案")
+                    : (selectedChannel?.name ?? "频道聊天")}
+            </h1>
+          </div>
+          {destination === "chat" && selectedChannel && (
+            <ChannelMembersMenu
+              key={selectedChannel.id}
+              channel={selectedChannel}
+              bots={workspace.bots}
+              onJoin={handleJoinBot}
+              onOpenBot={openEmployee}
+            />
+          )}
+        </div>
+        <div className="toolbar-layout">{panelToggle}</div>
+      </header>
+      <div id="workspace-sidebar" className="workspace-sidebar" hidden={!preferences.leftPanelOpen}>
+        <Sidebar
+          onHome={() => navigation.navigate({ kind: "home" })}
           bots={workspace.bots}
           channels={workspace.channels}
-          headerAction={panelToggle}
+          runs={workspace.runs}
+          ownerName={ownerName}
+          destination={destination}
+          onAutomations={() => navigation.navigate({ kind: "automations" })}
+          onSkills={() => navigation.navigate({ kind: "skills" })}
+          selectedChannelId={destination === "chat" ? selectedChannel?.id : undefined}
+          selectedBotId={destination === "chat" ? selectedEmployeeId : undefined}
+          onSelectChannel={selectChannel}
+          onSelectBot={openEmployee}
+          onCreateBot={() => setDialog("bot")}
+          onCreateChannel={() => setDialog("channel")}
+          onManageNodes={() => setDialog("node")}
+          onLogout={onLogout}
+          onSettings={onSettings}
         />
+      </div>
+
+      {destination === "automations" ? (
+        <AutomationsScreen bots={workspace.bots} channels={workspace.channels} />
       ) : destination === "skills" ? (
         <SkillLibraryScreen
           bots={workspace.bots}
           onOpenBot={(botId) => openEmployee(botId, "skills")}
-          headerAction={panelToggle}
         />
       ) : selectedEmployeeId ? (
         <EmployeeProfileView
           key={`${selectedEmployeeId}:${employeeInitialTab}`}
           initialTab={employeeInitialTab}
-          headerAction={panelToggle}
           profile={employeeProfile}
           loading={employeeProfileLoading}
           error={employeeProfileError}
@@ -811,7 +949,9 @@ function AuthenticatedWorkspace({
         />
       ) : selectedChannel ? (
         <ChannelWorkspace
-          headerAction={panelToggle}
+          key={selectedChannel.id}
+          session={conversationSession}
+          globalHeader
           channel={selectedChannel}
           bots={workspace.bots}
           artifacts={workspace.artifacts}
@@ -825,7 +965,6 @@ function AuthenticatedWorkspace({
         />
       ) : (
         <ChannelEmptyState
-          headerAction={panelToggle}
           hasBots={workspace.bots.length > 0}
           onCreateBot={() => setDialog("bot")}
           onCreateChannel={() => setDialog("channel")}
@@ -838,6 +977,7 @@ function AuthenticatedWorkspace({
             <EmployeeProfileRail profile={employeeProfile} nodes={workspace.nodes} />
           ) : (
             <ContextRail
+              selectedChannelId={destination === "chat" ? selectedChannel?.id : undefined}
               realtimeState={workspaceRealtimeState}
               workspace={workspace}
               onDecideApproval={handleDecideApproval}
@@ -917,8 +1057,7 @@ function AuthenticatedWorkspace({
           onClose={() => setEmployeeImportOpen(false)}
           onActivated={(result) => {
             setEmployeeImportOpen(false);
-            setSelectedChannelId(undefined);
-            setSelectedEmployeeId(result.employee.id);
+            openEmployee(result.employee.id);
             void refresh();
             showNotice(
               result.replayed

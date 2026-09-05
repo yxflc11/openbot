@@ -43,6 +43,7 @@ describe("Workspace preference storage", () => {
     const parsed = preferences.parsePreferences(
       JSON.stringify({
         sidebarTranslucent: false,
+        leftPanelOpen: false,
         rightPanelOpen: false,
         density: "compact",
         fontSize: "large",
@@ -55,6 +56,7 @@ describe("Workspace preference storage", () => {
     );
     expect(parsed).toEqual({
       sidebarTranslucent: false,
+      leftPanelOpen: false,
       rightPanelOpen: false,
       density: "compact",
       fontSize: "large",
@@ -65,7 +67,7 @@ describe("Workspace preference storage", () => {
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(
       preferences.parsePreferences(
-        '{"rightPanelOpen":"false","fontSize":"huge","density":5,"reduceMotion":1,"__proto__":{"hour12":true}}',
+        '{"leftPanelOpen":"false","rightPanelOpen":"false","fontSize":"huge","density":5,"reduceMotion":1,"__proto__":{"hour12":true}}',
       ),
     ).toEqual(preferences.defaultPreferences);
   });

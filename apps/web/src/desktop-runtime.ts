@@ -64,7 +64,22 @@ export type DesktopSidebarMaterialState = Readonly<{
   status: "enabled" | "disabled" | "reduced" | "unsupported" | "unavailable";
 }>;
 
+export type DesktopNavigationCommand =
+  | "new-conversation"
+  | "open-settings"
+  | "go-back"
+  | "go-forward"
+  | "toggle-sidebar"
+  | "toggle-details";
+export interface DesktopNavigationMenuState {
+  workspaceReady: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  settingsAvailable: boolean;
+}
 export interface OpenBotDesktopBridge {
+  onNavigationCommand?(listener: (command: DesktopNavigationCommand) => void): () => void;
+  updateNavigationMenuState?(state: DesktopNavigationMenuState): Promise<void>;
   setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;
   getSidebarMaterialState?(): Promise<DesktopSidebarMaterialState>;
   onSidebarMaterialChanged?(listener: (state: DesktopSidebarMaterialState) => void): () => void;

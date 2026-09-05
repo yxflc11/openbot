@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Approval, ExecutionNode, Run, WorkspaceSnapshot } from "@openbot/domain";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { interact, renderComponent } from "../test/render-component";
 import { ContextRail } from "./ContextRail";
@@ -47,17 +48,18 @@ describe("ContextRail", () => {
       const tokens = rendered.container.querySelector('[aria-label="Token 用量"]');
       expect(tokens?.textContent).toContain("暂无用量记录");
       expect(tokens?.textContent).not.toContain("0");
-      expect(tokens?.querySelectorAll('dd [aria-label="暂无数据"]')).toHaveLength(2);
-      expect(Array.from(tokens?.querySelectorAll("dd") ?? [], (item) => item.textContent)).toEqual([
-        "—",
-        "—",
-      ]);
+      expect(tokens?.querySelector("dd")).toBeNull();
       expect(metric(rendered.container, "进行中")).toBe("0");
       expect(metric(rendered.container, "已完成")).toBe("0");
       expect(metric(rendered.container, "记录数")).toBe("0");
       expect(rendered.container.textContent).toContain("尚未连接工作电脑");
       expect(rendered.container.textContent).toContain("已同步");
       expect(rendered.container.textContent).not.toContain("节省");
+      const overview = rendered.container.querySelector("details");
+      expect(overview?.open).toBe(false);
+      expect(overview?.querySelector('[aria-label="最近任务统计"]')).not.toBeNull();
+      await interact(() => overview?.querySelector("summary")?.click());
+      expect(overview?.open).toBe(true);
     } finally {
       await rendered.unmount();
     }
@@ -149,7 +151,7 @@ describe("ContextRail", () => {
     );
     try {
       expect(rendered.container.querySelectorAll(".approval-card")).toHaveLength(1);
-      expect(rendered.container.textContent).toContain("工作电脑1 台在线");
+      expect(rendered.container.textContent).toContain("工作电脑1 台已连接");
       expect(rendered.container.textContent).toContain("Design Mac");
       expect(rendered.container.textContent).toContain("macos · 1/2 任务");
       const reject = Array.from(rendered.container.querySelectorAll("button")).find(
@@ -158,6 +160,187 @@ describe("ContextRail", () => {
       if (reject === undefined) throw new Error("Approval rejection action is missing");
       await interact(() => reject.click());
       expect(onDecideApproval).toHaveBeenCalledWith("approval-1", "reject");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+
+  it("shows only the selected channel's tasks, progress, results and attachments", async () => {
+    const runs = [
+      run("current", "running"),
+      { ...run("elsewhere", "running"), channelId: "channel-2" },
+      run("finished", "completed"),
+      { ...run("other-result", "completed"), channelId: "channel-2" },
+    ];
+    const snapshot = workspace({
+      runs,
+      progress: [
+        {
+          id: "progress-new",
+          runId: "current",
+          channelId: "channel-1",
+          nodeId: "node-1",
+          stage: "working",
+          message: "正在整理本频道结果",
+          createdAt: "2026-09-05T02:00:00Z",
+        },
+        {
+          id: "progress-old",
+          runId: "current",
+          channelId: "channel-1",
+          nodeId: "node-1",
+          stage: "working",
+          message: "旧的任务进度",
+          createdAt: "2026-09-05T01:00:00Z",
+        },
+        {
+          id: "progress-conflict",
+          runId: "current",
+          channelId: "channel-2",
+          nodeId: "node-1",
+          stage: "working",
+          message: "频道关联不符的进度",
+          createdAt: "2026-09-05T03:00:00Z",
+        },
+      ],
+      artifacts: [
+        {
+          id: "artifact-current",
+          runId: "finished",
+          name: "本频道截图.png",
+          mediaType: "image/png",
+          sha256: "0".repeat(64),
+          sizeBytes: 64,
+          createdAt: "2026-09-05T01:00:00Z",
+        },
+        {
+          id: "artifact-other",
+          runId: "other-result",
+          name: "另一个频道的截图.png",
+          mediaType: "image/png",
+          sha256: "0".repeat(64),
+          sizeBytes: 64,
+          createdAt: "2026-09-05T01:00:00Z",
+        },
+      ],
+    });
+    const originalSnapshot = JSON.stringify(snapshot);
+    const rendered = await renderComponent(
+      <ContextRail
+        selectedChannelId="channel-1"
+        realtimeState="live"
+        workspace={snapshot}
+        onDecideApproval={vi.fn()}
+        onInspectRun={vi.fn()}
+      />,
+    );
+    try {
+      expect(rendered.container.textContent).toContain("正在整理本频道结果");
+      expect(rendered.container.textContent).not.toContain("旧的任务进度");
+      expect(rendered.container.textContent).not.toContain("频道关联不符的进度");
+      expect(rendered.container.textContent).not.toContain("Task elsewhere");
+      expect(rendered.container.textContent).not.toContain("Task other-result");
+      expect(rendered.container.textContent).not.toContain("另一个频道的截图");
+      expect(rendered.container.textContent).toContain("2 条最近任务记录");
+      expect(rendered.container.querySelector("a")?.getAttribute("href")).toBe(
+        "/api/v1/artifacts/artifact-current/content",
+      );
+      expect(metric(rendered.container, "记录数")).toBe("4");
+      expect(JSON.stringify(snapshot)).toBe(originalSnapshot);
+    } finally {
+      await rendered.unmount();
+    }
+  });
+
+  it("retains channel approvals outside the recent-run sample and rejects conflicting associations", async () => {
+    const base: Approval = {
+      id: "approval-outside-sample",
+      runId: "old-run",
+      channelId: "channel-1",
+      botId: "bot-1",
+      nodeId: "node-1",
+      action: "form.submit",
+      target: "https://example.test/form",
+      summary: "本频道仍需确认",
+      risk: "write",
+      targetFingerprint: "0".repeat(64),
+      beforeState: {},
+      status: "pending",
+      expiresAt: "2999-01-01T00:00:00Z",
+      createdAt: "2026-09-05T00:00:00Z",
+    };
+    const onDecideApproval = vi.fn(async () => undefined);
+    const rendered = await renderComponent(
+      <ContextRail
+        selectedChannelId="channel-1"
+        realtimeState="live"
+        workspace={workspace({
+          runs: [{ ...run("other-run", "waiting_approval"), channelId: "channel-2" }],
+          approvals: [
+            base,
+            {
+              ...base,
+              id: "conflicting-approval",
+              runId: "other-run",
+              summary: "已知关联冲突",
+            },
+            {
+              ...base,
+              id: "other-channel-approval",
+              channelId: "channel-2",
+              summary: "其他频道的确认",
+            },
+          ],
+        })}
+        onDecideApproval={onDecideApproval}
+        onInspectRun={vi.fn()}
+      />,
+    );
+    try {
+      expect(rendered.container.querySelectorAll(".approval-card")).toHaveLength(1);
+      expect(rendered.container.textContent).toContain("本频道仍需确认");
+      expect(rendered.container.textContent).not.toContain("已知关联冲突");
+      expect(rendered.container.textContent).not.toContain("其他频道的确认");
+      const firstSection = rendered.container.querySelector("aside > section");
+      expect(firstSection?.getAttribute("aria-label")).toBe("需要确认的操作");
+      const approve = rendered.container.querySelector<HTMLButtonElement>(".approval-approve");
+      await interact(() => approve?.click());
+      expect(onDecideApproval).toHaveBeenCalledWith("approval-outside-sample", "approve");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+
+  it("switches scope immediately and leaves an empty channel empty", async () => {
+    function ScopeHarness() {
+      const [selectedChannelId, setSelectedChannelId] = useState("channel-1");
+      return (
+        <>
+          <button type="button" onClick={() => setSelectedChannelId("empty-channel")}>
+            切换频道
+          </button>
+          <ContextRail
+            selectedChannelId={selectedChannelId}
+            realtimeState="connecting"
+            workspace={workspace({ runs: [run("selected", "running")] })}
+            onDecideApproval={vi.fn()}
+            onInspectRun={vi.fn()}
+          />
+        </>
+      );
+    }
+    const rendered = await renderComponent(<ScopeHarness />);
+    try {
+      expect(rendered.container.textContent).toContain("Task selected");
+      await interact(() => rendered.container.querySelector("button")?.click());
+      expect(rendered.container.textContent).not.toContain("Task selected");
+      expect(rendered.container.textContent).toContain("这个频道暂无任务动态");
+      expect(rendered.container.textContent).toContain("0 条最近任务记录");
+      expect(rendered.container.textContent).toContain("连接中");
+      expect(rendered.container.querySelector('[aria-label="当前任务"]')).toBeNull();
+      expect(rendered.container.querySelector('[aria-label="最近结果"]')).toBeNull();
+      expect(rendered.container.querySelector('[aria-label="需要确认的操作"]')).toBeNull();
+      expect(metric(rendered.container, "记录数")).toBe("1");
     } finally {
       await rendered.unmount();
     }

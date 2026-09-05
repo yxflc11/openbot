@@ -77,7 +77,27 @@ export const DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL = "openbot:set-sidebar-tra
 export const DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL = "openbot:sidebar-material-state";
 export const DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL = "openbot:sidebar-material-changed";
 
+export type DesktopNavigationCommand =
+  | "new-conversation"
+  | "open-settings"
+  | "go-back"
+  | "go-forward"
+  | "toggle-sidebar"
+  | "toggle-details";
+
+export type DesktopNavigationMenuState = Readonly<{
+  workspaceReady: boolean;
+  settingsAvailable: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}>;
+
+export const DESKTOP_NAVIGATION_COMMAND_CHANNEL = "openbot:navigation-command";
+export const DESKTOP_NAVIGATION_MENU_STATE_CHANNEL = "openbot:navigation-menu-state";
+
 export interface OpenBotDesktopBridge {
+  onNavigationCommand?(listener: (command: DesktopNavigationCommand) => void): () => void;
+  updateNavigationMenuState?(state: DesktopNavigationMenuState): Promise<void>;
   setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;
   getSidebarMaterialState?(): Promise<DesktopSidebarMaterialState>;
   onSidebarMaterialChanged?(listener: (state: DesktopSidebarMaterialState) => void): () => void;

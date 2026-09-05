@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 export interface WorkspacePreferences {
   sidebarTranslucent: boolean;
+  leftPanelOpen: boolean;
   rightPanelOpen: boolean;
   density: "comfortable" | "compact";
   fontSize: "normal" | "large";
@@ -12,6 +13,7 @@ export interface WorkspacePreferences {
 
 export const defaultPreferences: Readonly<WorkspacePreferences> = Object.freeze({
   sidebarTranslucent: true,
+  leftPanelOpen: true,
   rightPanelOpen: true,
   density: "comfortable",
   fontSize: "normal",
@@ -30,6 +32,7 @@ export function parsePreferences(raw: string | null): Readonly<WorkspacePreferen
     return Object.freeze({
       sidebarTranslucent:
         typeof input.sidebarTranslucent === "boolean" ? input.sidebarTranslucent : true,
+      leftPanelOpen: typeof input.leftPanelOpen === "boolean" ? input.leftPanelOpen : true,
       rightPanelOpen: typeof input.rightPanelOpen === "boolean" ? input.rightPanelOpen : true,
       density: input.density === "compact" ? "compact" : "comfortable",
       fontSize: input.fontSize === "large" ? "large" : "normal",

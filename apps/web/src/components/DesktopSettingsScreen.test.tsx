@@ -59,6 +59,9 @@ describe("Desktop settings interactions", () => {
           .querySelector<HTMLInputElement>('[aria-label="显示右侧信息栏"]')
           ?.click(),
       );
+      await interact(() =>
+        rendered.container.querySelector<HTMLInputElement>('[aria-label="显示左侧导航"]')?.click(),
+      );
       await select(rendered.container, "界面密度", "compact");
       await select(rendered.container, "聊天字号", "large");
       await select(rendered.container, "发送消息快捷键", "modifier");
@@ -68,6 +71,7 @@ describe("Desktop settings interactions", () => {
       );
       expect(stored()).toEqual({
         sidebarTranslucent: false,
+        leftPanelOpen: false,
         rightPanelOpen: false,
         density: "compact",
         fontSize: "large",
