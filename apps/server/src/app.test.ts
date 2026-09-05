@@ -63,6 +63,90 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
+  it("authenticates and origin-checks automatic task creation, then validates a bounded command", async () => {
+    const create = vi.fn().mockResolvedValue({ id: "schedule-1" });
+    const automations = {
+      create,
+      list: vi.fn().mockResolvedValue([]),
+      setEnabled: vi.fn(),
+      delete: vi.fn(),
+      submitDue: vi.fn(),
+    };
+    const app = createTestApp({ store: createTestStore(), automations });
+    const command = {
+      name: "Daily check",
+      channelId: "channel-1",
+      botId: "bot-1",
+      prompt: "Check the channel",
+      intervalMinutes: 1440,
+      firstRunAt: "2027-01-01T00:00:00.000Z",
+    };
+    const post = (cookie?: string, origin = testOrigin, body: unknown = command) =>
+      app.request("/api/v1/automations", {
+        method: "POST",
+        headers: {
+          Origin: origin,
+          "Content-Type": "application/json",
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    expect((await post()).status).toBe(401);
+    const login = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Origin: testOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0];
+    expect(cookie).toBeDefined();
+    expect((await post(cookie, "https://untrusted.example")).status).toBe(403);
+    expect((await post(cookie, testOrigin, { ...command, approveAll: true })).status).toBe(422);
+    expect((await post(cookie, testOrigin, { ...command, intervalMinutes: 1 })).status).toBe(422);
+    expect(
+      (await post(cookie, testOrigin, { ...command, prompt: "x".repeat(40_000) })).status,
+    ).toBe(413);
+    const streamBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(40_000));
+        controller.close();
+      },
+    });
+    const streamed = await app.request(
+      new Request("http://localhost/api/v1/automations", {
+        method: "POST",
+        headers: { Origin: testOrigin, "Content-Type": "application/json", Cookie: cookie ?? "" },
+        body: streamBody,
+        duplex: "half",
+      } as RequestInit & { duplex: "half" }),
+    );
+    expect(streamed.status).toBe(413);
+    expect(create).not.toHaveBeenCalled();
+    expect((await post(cookie)).status).toBe(201);
+    expect(create).toHaveBeenCalledExactlyOnceWith(command);
+    expect(
+      (await app.request("/api/v1/automations", { headers: { Cookie: cookie ?? "" } })).status,
+    ).toBe(200);
+    expect(
+      (
+        await app.request("/api/v1/automations/schedule-1", {
+          method: "PATCH",
+          headers: { Origin: testOrigin, "Content-Type": "application/json", Cookie: cookie ?? "" },
+          body: JSON.stringify({ enabled: false }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(automations.setEnabled).toHaveBeenCalledWith("schedule-1", false);
+    expect(
+      (
+        await app.request("/api/v1/automations/schedule-1", {
+          method: "DELETE",
+          headers: { Origin: testOrigin, Cookie: cookie ?? "" },
+        })
+      ).status,
+    ).toBe(200);
+    expect(automations.delete).toHaveBeenCalledWith("schedule-1");
+  });
+
   it("accepts configured Web origins and an exact same-origin Desktop proxy request", () => {
     expect(
       isTrustedMutationOrigin(testOrigin, "https://server.example/api/v1/auth/login", [testOrigin]),
@@ -1889,6 +1973,7 @@ function createCompatibleBrowserNode(): ExecutionNode {
 }
 
 function createTestApp({
+  automations,
   store,
   dispatchRun,
   disconnectNode,
@@ -1905,6 +1990,7 @@ function createTestApp({
   remoteAddress = "127.0.0.1",
   trustedProxyAddress,
 }: {
+  automations?: Parameters<typeof createApp>[0]["automations"];
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
   disconnectNode?: (nodeId: string) => boolean;
@@ -1932,6 +2018,7 @@ function createTestApp({
     requestThrottle,
   );
   return createApp({
+    ...(automations === undefined ? {} : { automations }),
     allowedOrigins: [testOrigin],
     auth,
     ...(dispatchRun === undefined ? {} : { dispatchRun }),

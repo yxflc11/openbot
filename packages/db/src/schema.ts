@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   integer,
@@ -551,5 +552,37 @@ export const artifacts = pgTable(
     uniqueIndex("artifacts_storage_key_idx").on(table.storageKey),
     check("artifacts_name_not_blank", sql`length(btrim(${table.name})) > 0`),
     check("artifacts_sha256_valid", sql`length(${table.sha256}) = 64`),
+  ],
+);
+
+export const automations = pgTable(
+  "automations",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    botId: text("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    prompt: text("prompt").notNull(),
+    intervalMinutes: integer("interval_minutes").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }).notNull(),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastRunId: text("last_run_id").references(() => runs.id, { onDelete: "set null" }),
+    lastOutcome: text("last_outcome"),
+    ...timestamps,
+  },
+  (table) => [
+    index("automations_due_idx").on(table.nextRunAt).where(sql`${table.enabled} = true`),
+    check("automations_name_valid", sql`length(btrim(${table.name})) BETWEEN 1 AND 80`),
+    check("automations_prompt_valid", sql`length(btrim(${table.prompt})) BETWEEN 1 AND 8000`),
+    check("automations_interval_valid", sql`${table.intervalMinutes} BETWEEN 15 AND 10080`),
+    check(
+      "automations_outcome_valid",
+      sql`${table.lastOutcome} IN ('submitted', 'skipped_active', 'target_unavailable')`,
+    ),
   ],
 );

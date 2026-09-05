@@ -41,6 +41,11 @@ import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
+import {
+  type AutomationStore,
+  createAutomationInputSchema,
+  updateAutomationInputSchema,
+} from "./automations.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { ClientIdentityError, resolveClientIdentity } from "./client-identity.js";
 import {
@@ -76,6 +81,7 @@ import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  automations?: AutomationStore;
   modelSettings?: ModelSettingsService;
   allowedOrigins: string[];
   artifactStorage?: Pick<ArtifactStorage, "read">;
@@ -564,6 +570,49 @@ export function createApp(dependencies: AppDependencies) {
     });
     dependencies.dispatchRun?.(result.run);
     return context.json(result, 201);
+  });
+
+  app.use(
+    "/api/v1/automations",
+    bodyLimit({
+      maxSize: 32768,
+      onError: (context) => context.json({ error: "Automatic task request is too large." }, 413),
+    }),
+  );
+  app.use(
+    "/api/v1/automations/:automationId",
+    bodyLimit({
+      maxSize: 1024,
+      onError: (context) => context.json({ error: "Automatic task request is too large." }, 413),
+    }),
+  );
+  app.get("/api/v1/automations", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    return context.json({ automations: await dependencies.automations.list() });
+  });
+  app.post("/api/v1/automations", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    const input = await parseRequest(context.req.raw, createAutomationInputSchema, 32768);
+    return context.json({ automation: await dependencies.automations.create(input) }, 201);
+  });
+  app.patch("/api/v1/automations/:automationId", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    const input = await parseRequest(context.req.raw, updateAutomationInputSchema, 1024);
+    return context.json({
+      automation: await dependencies.automations.setEnabled(
+        context.req.param("automationId"),
+        input.enabled,
+      ),
+    });
+  });
+  app.delete("/api/v1/automations/:automationId", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    await dependencies.automations.delete(context.req.param("automationId"));
+    return context.json({ deleted: true });
   });
 
   app.get("/api/v1/bots", async (context) =>

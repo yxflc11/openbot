@@ -1207,118 +1207,10 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   }
 
   async submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult> {
-    const now = new Date();
-    const runId = randomUUID();
-    const message = {
-      id: randomUUID(),
-      channelId,
-      authorType: "human" as const,
-      authorId: null,
-      replyToMessageId: input.replyToMessageId ?? null,
-      runId,
-      content: input.content,
-      createdAt: now,
-    };
-    let selectedBotId: string | undefined;
-    let selectedExecutionProfile: Bot["computerProfile"] | undefined;
-
-    // The source message, queued Run, and both audit events must become visible together.
-    await this.#db.transaction(async (transaction) => {
-      const channelRows = await transaction
-        .select({ id: channels.id })
-        .from(channels)
-        .where(eq(channels.id, channelId))
-        .limit(1);
-      if (channelRows.length === 0) {
-        throw new StoreNotFoundError("Channel not found.");
-      }
-
-      if (input.replyToMessageId !== undefined) {
-        const [replyTarget] = await transaction
-          .select({ id: messages.id })
-          .from(messages)
-          .where(and(eq(messages.id, input.replyToMessageId), eq(messages.channelId, channelId)))
-          .limit(1);
-        if (replyTarget === undefined) {
-          throw new StoreValidationError("The replied message does not belong to this channel.");
-        }
-      }
-
-      const candidates = await transaction
-        .select({
-          id: bots.id,
-          name: bots.name,
-          role: bots.role,
-          computerProfile: bots.computerProfile,
-        })
-        .from(channelBots)
-        .innerJoin(bots, eq(channelBots.botId, bots.id))
-        .where(eq(channelBots.channelId, channelId))
-        .orderBy(asc(channelBots.joinedAt), asc(bots.createdAt), asc(bots.id));
-      const assignee = selectChannelAssignee(candidates, input.botId);
-      if (assignee === undefined) {
-        throw new StoreValidationError(
-          input.botId === undefined
-            ? "Add a Bot to this channel before assigning a task."
-            : "The selected Bot is not a member of this channel.",
-        );
-      }
-      selectedBotId = assignee.id;
-      selectedExecutionProfile = assignee.computerProfile as Bot["computerProfile"];
-
-      await transaction.insert(messages).values(message);
-      await transaction.insert(runs).values({
-        id: runId,
-        channelId,
-        botId: assignee.id,
-        sourceMessageId: message.id,
-        executionProfile: assignee.computerProfile,
-        instruction: input.content,
-        title: taskTitle(input.content),
-        status: "queued",
-        createdAt: now,
-        updatedAt: now,
-      });
-      await transaction.insert(runEvents).values([
-        {
-          id: randomUUID(),
-          channelId,
-          type: "MESSAGE_CREATED",
-          payload: { messageId: message.id, authorType: message.authorType },
-        },
-        {
-          id: randomUUID(),
-          runId,
-          channelId,
-          botId: assignee.id,
-          type: "RUN_CREATED",
-          payload: {
-            sourceMessageId: message.id,
-            title: taskTitle(input.content),
-            executionProfile: assignee.computerProfile,
-          },
-        },
-      ]);
-    });
-
-    if (selectedBotId === undefined || selectedExecutionProfile === undefined) {
-      throw new Error("Task assignee was not selected.");
-    }
-    return {
-      message: toMessage(message),
-      run: {
-        id: runId,
-        channelId,
-        botId: selectedBotId,
-        sourceMessageId: message.id,
-        executionProfile: selectedExecutionProfile,
-        instruction: input.content,
-        title: taskTitle(input.content),
-        status: "queued",
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      },
-    };
+    // Interactive and scheduled submissions share this exact routing and audit transaction.
+    return this.#db.transaction((transaction) =>
+      submitTaskInTransaction(transaction, channelId, input),
+    );
   }
 
   async assignRun(runId: string, nodeId: string): Promise<Run | undefined> {
@@ -2236,4 +2128,121 @@ function hasDatabaseCode(error: unknown, code: string): boolean {
     return true;
   }
   return "cause" in error && hasDatabaseCode(error.cause, code);
+}
+
+export async function submitTaskInTransaction(
+  transaction: Parameters<Parameters<Database["transaction"]>[0]>[0],
+  channelId: string,
+  input: CreateMessageInput,
+  automationId?: string,
+): Promise<SubmitTaskResult> {
+  const now = new Date();
+  const runId = randomUUID();
+  const message = {
+    id: randomUUID(),
+    channelId,
+    authorType: automationId === undefined ? ("human" as const) : ("system" as const),
+    authorId: null,
+    replyToMessageId: input.replyToMessageId ?? null,
+    runId,
+    content: input.content,
+    createdAt: now,
+  };
+
+  const channelRows = await transaction
+    .select({ id: channels.id })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .limit(1);
+  if (channelRows.length === 0) {
+    throw new StoreNotFoundError("Channel not found.");
+  }
+
+  if (input.replyToMessageId !== undefined) {
+    const [replyTarget] = await transaction
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.id, input.replyToMessageId), eq(messages.channelId, channelId)))
+      .limit(1);
+    if (replyTarget === undefined) {
+      throw new StoreValidationError("The replied message does not belong to this channel.");
+    }
+  }
+
+  const candidates = await transaction
+    .select({
+      id: bots.id,
+      name: bots.name,
+      role: bots.role,
+      computerProfile: bots.computerProfile,
+    })
+    .from(channelBots)
+    .innerJoin(bots, eq(channelBots.botId, bots.id))
+    .where(eq(channelBots.channelId, channelId))
+    .orderBy(asc(channelBots.joinedAt), asc(bots.createdAt), asc(bots.id));
+  const assignee = selectChannelAssignee(candidates, input.botId);
+  if (assignee === undefined) {
+    throw new StoreValidationError(
+      input.botId === undefined
+        ? "Add a Bot to this channel before assigning a task."
+        : "The selected Bot is not a member of this channel.",
+    );
+  }
+  const selectedBotId = assignee.id;
+  const selectedExecutionProfile = assignee.computerProfile as Bot["computerProfile"];
+
+  await transaction.insert(messages).values(message);
+  await transaction.insert(runs).values({
+    id: runId,
+    channelId,
+    botId: assignee.id,
+    sourceMessageId: message.id,
+    executionProfile: assignee.computerProfile,
+    instruction: input.content,
+    title: taskTitle(input.content),
+    status: "queued",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await transaction.insert(runEvents).values([
+    {
+      id: randomUUID(),
+      channelId,
+      type: "MESSAGE_CREATED",
+      payload: {
+        messageId: message.id,
+        authorType: message.authorType,
+        ...(automationId === undefined ? {} : { automationId }),
+      },
+    },
+    {
+      id: randomUUID(),
+      runId,
+      channelId,
+      botId: assignee.id,
+      type: "RUN_CREATED",
+      payload: {
+        sourceMessageId: message.id,
+        ...(automationId === undefined ? {} : { automationId }),
+        title: taskTitle(input.content),
+        executionProfile: assignee.computerProfile,
+      },
+    },
+  ]);
+
+  return {
+    message: toMessage(message),
+    run: {
+      id: runId,
+      channelId,
+      botId: selectedBotId,
+      sourceMessageId: message.id,
+      executionProfile: selectedExecutionProfile,
+      instruction: input.content,
+      title: taskTitle(input.content),
+      status: "queued",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    },
+  };
 }
