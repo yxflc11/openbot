@@ -8,15 +8,18 @@ import { OpenBotMark } from "./OpenBotMark";
 
 export function DesktopSetupScreen({
   state,
+  platform,
   onSave,
   onCancel,
 }: {
   state: DesktopSetupPlanState;
+  platform?: string | undefined;
   onSave(plan: DesktopSetupPlanInput): Promise<SaveDesktopSetupPlanResult>;
   onCancel?: (() => void) | undefined;
 }) {
+  const canHost = platform === "darwin";
   const [mode, setMode] = useState<"host" | "client">(
-    state.status === "configured" && state.plan.mode !== "host" ? "client" : "host",
+    canHost && (state.status !== "configured" || state.plan.mode === "host") ? "host" : "client",
   );
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -61,27 +64,33 @@ export function DesktopSetupScreen({
                   "作为服务电脑",
                   "在本机保存数据、运行 OpenBot 服务。自动安装，无需 Docker。",
                 ],
-                ["client", "连接服务电脑", "连接已经部署的 OpenBot。这台电脑只安装客户端。"],
+                [
+                  "client",
+                  "连接服务电脑",
+                  "连接已经部署的 OpenBot，在这里管理工作区和已授权的工作电脑。",
+                ],
               ] as const
-            ).map(([value, title, description]) => (
-              <label className={`setup-mode ${mode === value ? "selected" : ""}`} key={value}>
-                <input
-                  id={`desktop-mode-${value}`}
-                  type="radio"
-                  name="desktop-mode"
-                  value={value}
-                  checked={mode === value}
-                  onChange={() => setMode(value)}
-                />
-                <span>
-                  <strong>
-                    {title}
-                    {value === "host" ? <em>首次使用</em> : null}
-                  </strong>
-                  <small>{description}</small>
-                </span>
-              </label>
-            ))}
+            )
+              .filter(([value]) => value !== "host" || canHost)
+              .map(([value, title, description]) => (
+                <label className={`setup-mode ${mode === value ? "selected" : ""}`} key={value}>
+                  <input
+                    id={`desktop-mode-${value}`}
+                    type="radio"
+                    name="desktop-mode"
+                    value={value}
+                    checked={mode === value}
+                    onChange={() => setMode(value)}
+                  />
+                  <span>
+                    <strong>
+                      {title}
+                      {value === "host" ? <em>首次使用</em> : null}
+                    </strong>
+                    <small>{description}</small>
+                  </span>
+                </label>
+              ))}
           </fieldset>
           <p className="setup-next-step">
             {mode === "host"
@@ -102,7 +111,11 @@ export function DesktopSetupScreen({
             </button>
           ) : null}
         </form>
-        <p className="login-note">模型和工作电脑可以随时在设置中调整。</p>
+        <p className="login-note">
+          {canHost
+            ? "模型和工作电脑可以随时在设置中调整。"
+            : "本版本在这台电脑上提供远程客户端；本地服务安装目前仅适用于 macOS。"}
+        </p>
       </section>
     </main>
   );

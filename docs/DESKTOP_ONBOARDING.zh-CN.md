@@ -2,7 +2,8 @@
 
 [English](DESKTOP_ONBOARDING.md)
 
-macOS 源码构建预览提供两种用途：
+macOS、Windows 和 Linux 共用同一个 Desktop 应用。macOS 源码构建预览提供两种用途；
+Windows、Linux 和无法识别的平台目前仅提供连接已有 Server 的入口，等待对应的本地服务安装实现：
 
 - **服务电脑：** Desktop 初始化自己的 PostgreSQL 17 数据库、启动随包提供的 Server、创建
   私有 Owner 身份、自动连接，然后进入模型设置。无需 Docker、Homebrew、管理员账户或首次启动下载。
@@ -131,7 +132,7 @@ HTTPS 接口查询模型元数据，不调用生成、不上传对话。以后�
 
 ## 构建与高级自部署
 
-在仓库根目录安装锁定依赖并运行 `npm run check`，然后在 macOS 执行
+在仓库根目录安装锁定依赖并运行 `npm run check`，然后在目标操作系统执行
 `npm run package --workspace @openbot/desktop`。打包会将编译后的 Server、生产依赖、PostgreSQL
 和许可通知放入 `native-runtime`，再组装应用。生成目录不会进入 Git。
 本地开发启动前也需先运行 `npm run prepare:native --workspace @openbot/desktop`，再执行
@@ -156,6 +157,12 @@ Preview 包含本地 Server，但禁止携带正式 macOS Worker 配套应用，
 加密主密钥应保存在独立秘密管理工具中；丢失后无法解密原有 API Key。两项均不设置则禁用此接口。
 每个配置文件只允许一个 Server 写入。Owner 专用的 `GET`/`POST /api/v1/settings/model` 沿用来源检查；
 POST 接收 `provider`、`model`、`apiKey` 和最新 `revision`（首次为 null）。
+
+CI 打包 Linux x64、Windows x64 和 macOS arm64，各端验证成功后保留未签名包七天。
+登录 GitHub 后，可从对应的成功 [CI 运行](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
+下载带提交标识的 `.tar.gz`，使用 `tar -xzf <archive>` 解压以保留可执行权限和内部链接。
+这些是临时开发产物，不是签名安装器、自动更新或桌面控制认证。
+见[交付调研](research/desktop-cross-platform-handoff.md)。
 
 原生 PostgreSQL 包固定为 `17.10.0-beta.17`。公开发行前仍需审查预发布打包依赖、上游二进制来源、
 分发许可、签名和公证；本机功能测试不能替代发行支持证据。

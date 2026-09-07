@@ -2,7 +2,9 @@
 
 [简体中文](DESKTOP_ONBOARDING.zh-CN.md)
 
-The macOS source-build preview offers two choices:
+Desktop shares one application across macOS, Windows and Linux. The macOS source-build preview
+offers two choices; Windows, Linux and unknown platforms offer only the existing-Server connection
+until native service setup is implemented for them:
 
 - **Service computer:** Desktop initializes an app-owned PostgreSQL 17 database, starts the
   bundled Server, creates its private Owner bootstrap identity, connects and opens model setup.
@@ -165,7 +167,7 @@ Remote clients cannot configure older Servers that do not implement the endpoint
 ## Build and advanced self-deployment
 
 From the repository root, install locked dependencies, run `npm run check`, then run
-`npm run package --workspace @openbot/desktop` on macOS. Packaging stages the compiled Server,
+`npm run package --workspace @openbot/desktop` on the target OS. macOS packaging stages the compiled Server,
 production dependency closure, PostgreSQL binaries and notices in `native-runtime` before
 assembling the application. The generated runtime is ignored by Git. A local development launch
 also needs `npm run prepare:native --workspace @openbot/desktop` before `npm start --workspace
@@ -194,6 +196,13 @@ Keep the encryption key in a secret manager outside the settings file; losing it
 unreadable. Omit both to disable the endpoint. Run one Server writer per settings file. The API is
 Owner-only `GET`/`POST /api/v1/settings/model`, with the existing mutation-origin checks; POST
 requires `provider`, `model`, `apiKey`, and the last `revision` (null for initial configuration).
+
+CI packages Linux x64, Windows x64 and macOS arm64 and retains each successful platform's unsigned
+bundle for seven days. Download the commit-named `.tar.gz` from the successful
+[CI run](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) while signed in to GitHub.
+Extract with `tar -xzf <archive>` to preserve executable modes and internal links. These bundles
+are temporary development artifacts, not signed installers, automatic updates or desktop-control
+certification. See [handoff research](research/desktop-cross-platform-handoff.md).
 
 The native PostgreSQL package is pinned to `17.10.0-beta.17`. Its prerelease packaging, upstream
 binary provenance, distribution notices, signing and notarization must be reviewed before a

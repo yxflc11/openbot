@@ -102,6 +102,7 @@ describe("Desktop application connection gate", () => {
       enableLocalWorker: vi.fn(),
       openLocalWorkerSettings: vi.fn(),
       installNativeServer: install,
+      getRuntimeInfo: () => ({ kind: "desktop", platform: "darwin", shellVersion: "44.2.0" }),
       getNativeServerState: vi.fn(async () => ({ status: "installing", step: "database" })),
     };
     const rendered = await renderComponent(<App />);

@@ -242,6 +242,7 @@ export function App() {
     return (
       <DesktopSetupScreen
         state={desktopSetupPlan}
+        platform={desktopBridge.getRuntimeInfo?.().platform}
         onCancel={showSettings ? () => setShowSetupPlan(false) : undefined}
         onSave={async (plan) => {
           const result = await desktopBridge.saveSetupPlan(plan);

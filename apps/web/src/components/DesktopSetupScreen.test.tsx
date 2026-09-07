@@ -9,7 +9,7 @@ describe("Desktop role selection", () => {
     async (mode) => {
       const onSave = vi.fn(async (plan) => ({ status: "configured" as const, plan }));
       const rendered = await renderComponent(
-        <DesktopSetupScreen state={{ status: "unconfigured" }} onSave={onSave} />,
+        <DesktopSetupScreen platform="darwin" state={{ status: "unconfigured" }} onSave={onSave} />,
       );
       try {
         expect(rendered.container.querySelectorAll("input[type='radio']")).toHaveLength(2);
@@ -24,6 +24,40 @@ describe("Desktop role selection", () => {
             ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
         );
         expect(onSave).toHaveBeenCalledWith({ mode, plannedWorkerCount: 0, localWorker: false });
+      } finally {
+        await rendered.unmount();
+      }
+    },
+  );
+  it.each(["win32", "linux", undefined])(
+    "offers a usable client default on %s even with a retained host plan",
+    async (platform) => {
+      const onSave = vi.fn(async (plan) => ({ status: "configured" as const, plan }));
+      const rendered = await renderComponent(
+        <DesktopSetupScreen
+          platform={platform}
+          state={{
+            status: "configured",
+            plan: { mode: "host", localWorker: false, plannedWorkerCount: 0 },
+          }}
+          onSave={onSave}
+        />,
+      );
+      try {
+        expect(rendered.container.querySelector("#desktop-mode-host")).toBeNull();
+        expect(
+          (rendered.container.querySelector("#desktop-mode-client") as HTMLInputElement).checked,
+        ).toBe(true);
+        await interact(() =>
+          rendered.container
+            .querySelector("form")
+            ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+        );
+        expect(onSave).toHaveBeenCalledWith({
+          mode: "client",
+          localWorker: false,
+          plannedWorkerCount: 0,
+        });
       } finally {
         await rendered.unmount();
       }
