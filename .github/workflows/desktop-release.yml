@@ -1,0 +1,79 @@
+name: Prepare Desktop release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful main push CI run with all three installer artifacts
+        required: true
+        type: string
+      version:
+        description: Desktop version in that commit, for example 0.1.0-alpha.2
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_RUN_ID: ${{ inputs.run_id }}
+      RELEASE_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.22.2
+      - name: Validate the source run before downloading any executable assets
+        shell: bash
+        run: |
+          [[ "$RELEASE_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$RELEASE_RUN_ID" > "$RUNNER_TEMP/source-run.json"
+          node --input-type=module -e '
+            import fs from "node:fs";
+            import { validateDesktopReleaseRun } from "./scripts/prepare-desktop-release.mjs";
+            const run = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/source-run.json", "utf8"));
+            const sha = validateDesktopReleaseRun(run, process.env.GH_REPO);
+            fs.appendFileSync(process.env.GITHUB_ENV, "RELEASE_SOURCE_COMMIT=" + sha + "\n");
+          '
+      - name: Retrieve and verify the complete native installer set
+        shell: bash
+        run: |
+          gh run download "$RELEASE_RUN_ID" --pattern "openbot-installers-*-$RELEASE_SOURCE_COMMIT" --dir "$RUNNER_TEMP/downloads"
+          node scripts/prepare-desktop-release.mjs "$RUNNER_TEMP/downloads" "$RUNNER_TEMP/release" "$RUNNER_TEMP/source-run.json" "$RELEASE_VERSION" "$GH_REPO"
+      - name: Create a reviewable draft prerelease without replacing existing assets
+        shell: bash
+        run: |
+          tag="desktop-v$RELEASE_VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo '::error::This Desktop release already exists; refusing to replace it.'
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          OpenBot Desktop $RELEASE_VERSION — unsigned development installers.
+
+          Source: $RELEASE_SOURCE_COMMIT
+          Verified CI: https://github.com/$GH_REPO/actions/runs/$RELEASE_RUN_ID
+
+          macOS arm64 includes the local Server and PostgreSQL; Windows x64 and Linux x64 connect to a separately deployed Server. Installing the client does not grant computer-control authority. Signing, notarization and real-device conformance remain pending. No automatic updater is enabled.
+
+          Install: macOS — open the DMG and drag OpenBot into Applications; Windows — open the EXE for a per-user installation; Linux — install the DEB with your package manager or run the AppImage. See the Desktop installation guide in the repository. Verify downloads against SHA256SUMS; the manifest records the exact source and target.
+          EOF
+          gh release create "$tag" "$RUNNER_TEMP/release/"* --target "$RELEASE_SOURCE_COMMIT" --title "OpenBot Desktop $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --draft --prerelease --latest=false

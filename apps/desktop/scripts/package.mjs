@@ -30,6 +30,10 @@ const rendererEntry = join(appRoot, "dist", "renderer", "index.html");
 const nativeRuntime = process.platform === "darwin" ? join(appRoot, "native-runtime") : undefined;
 const desktopIconBase = join(appRoot, "resources", "openbot-icon");
 const desktopIconPng = `${desktopIconBase}.png`;
+const electronDistribution = join(
+  dirname(fileURLToPath(import.meta.resolve("electron/package.json"))),
+  "dist",
+);
 const packageManifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
 const previewDownload =
   identity === DESKTOP_PREVIEW_IDENTITY
@@ -78,7 +82,11 @@ const packagePaths = await packager({
   dir: appRoot,
   ...(previewDownload ? { download: previewDownload } : {}),
   electronVersion: "44.2.0",
-  extraResource: [desktopIconPng],
+  extraResource: [
+    desktopIconPng,
+    join(electronDistribution, "LICENSE"),
+    join(electronDistribution, "LICENSES.chromium.html"),
+  ],
   afterCopyExtraResources: [
     async ({ buildPath }) => {
       if (nativeRuntime) {

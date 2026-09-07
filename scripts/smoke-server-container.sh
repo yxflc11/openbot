@@ -17,6 +17,7 @@ postgres_container="openbot-postgres-smoke-${suffix}"
 server_container="openbot-server-smoke-${suffix}"
 invalid_server_container="openbot-server-invalid-smoke-${suffix}"
 object_volume="openbot-server-objects-${suffix}"
+model_volume="openbot-server-model-${suffix}"
 database_password="openbot-container-ci-only"
 
 cleanup() {
@@ -25,6 +26,7 @@ cleanup() {
   docker rm --force "$invalid_server_container" >/dev/null 2>&1
   docker rm --force "$postgres_container" >/dev/null 2>&1
   docker volume rm --force "$object_volume" >/dev/null 2>&1
+  docker volume rm --force "$model_volume" >/dev/null 2>&1
   docker network rm "$network" >/dev/null 2>&1
 }
 trap cleanup EXIT
@@ -115,6 +117,7 @@ expected_migration_count="$(docker run --rm --entrypoint node "$image" --input-t
 
 docker network create "$network" >/dev/null
 docker volume create "$object_volume" >/dev/null
+docker volume create "$model_volume" >/dev/null
 docker run --detach \
   --name "$postgres_container" \
   --network "$network" \
@@ -157,6 +160,8 @@ docker run --detach \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700 \
   --mount "type=volume,src=${object_volume},dst=/var/lib/openbot/objects" \
+  --mount "type=volume,src=${model_volume},dst=/var/lib/openbot/model" \
+  --env OPENBOT_MODEL_DIRECTORY=/var/lib/openbot/model \
   --env OPENBOT_HOST=0.0.0.0 \
   --env OPENBOT_PORT=3001 \
   --env "OPENBOT_DATABASE_URL=$database_url" \
@@ -184,6 +189,10 @@ fi
 
 docker exec "$server_container" node --input-type=module --eval '
   import { writeFile } from "node:fs/promises";
+  import { bootstrapModelSettings } from "./apps/server/dist/model-settings-bootstrap.js";
+  const models = await bootstrapModelSettings({ OPENBOT_MODEL_DIRECTORY: "/var/lib/openbot/model" },
+    async () => Response.json({ id: "container-smoke-model" }));
+  await models.save({ provider: "openai", model: "container-smoke-model", apiKey: "container-test-key-private", revision: null, agentEnabled: false });
   await writeFile("/var/lib/openbot/objects/container-smoke", "ok", { flag: "wx", mode: 0o600 });
 '
 
@@ -191,6 +200,10 @@ docker restart --time 20 "$server_container" >/dev/null
 wait_for_health "$server_container"
 docker exec "$server_container" node --input-type=module --eval '
   import { readFile } from "node:fs/promises";
+  import { bootstrapModelSettings } from "./apps/server/dist/model-settings-bootstrap.js";
+  const models = await bootstrapModelSettings({ OPENBOT_MODEL_DIRECTORY: "/var/lib/openbot/model" });
+  const summary = await models.summary();
+  if (summary.status !== "configured" || summary.model !== "container-smoke-model" || summary.agentEnabled !== false) process.exit(1);
   if (await readFile("/var/lib/openbot/objects/container-smoke", "utf8") !== "ok") process.exit(1);
 '
 

@@ -40,14 +40,21 @@ Windows、Linux 首次启动提供远程客户端流程。
 
 ### 下载开发包
 
+**下载入口：[Desktop 下载与安装](docs/DESKTOP_INSTALLATION.zh-CN.md)** — 包含各平台文件名、
+安装步骤、命令安装入口、首次模型配置与升级/数据说明。macOS arm64 的 DMG、Windows x64 的
+当前用户 EXE、Linux x64 的 AppImage/DEB 已有原生 CI 构建路径。公开安装包将在
+[Desktop Releases](https://github.com/yxflc11/openbot/releases) 提供；只有 `desktop-v...`
+Release 实际含有附件时才算已发布。成功 CI 中的安装器产物保留 14 天。
+
 在 [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) 中打开目标提交对应的
 成功运行，下载 `openbot-desktop-<platform>-<arch>-<commit>.tar.gz` 产物。
 需要登录 GitHub；产物保留七天。使用 `tar -xzf <archive>` 解压以保留可执行权限和符号链接，
 然后打开目录中的 macOS `OpenBot.app`、Windows `openbot.exe` 或 Linux `openbot`。
 仍须遵守操作系统对未签名应用的要求。
 
-每个平台仅在本平台包检查通过后上传。这些是应用目录，不是 DMG/MSI/deb 安装器，也没有自动更新
-通道。旧的 `v0.1.0-alpha.1` GitHub Release 仍是仅含源码的基础快照。
+每个平台仅在本平台包检查通过后上传。上面的 tar 归档是应用目录；单独的
+`openbot-installers-...` 产物包含安装器与校验值。目前没有自动更新通道。
+旧的 `v0.1.0-alpha.1` GitHub Release 仍是仅含源码的基础快照。
 
 ### 从源码构建
 

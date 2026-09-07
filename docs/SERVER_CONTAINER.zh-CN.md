@@ -60,3 +60,21 @@ amd64 目标请将变量改为 `amd64`。冒烟只创建和清理自身的临时
 持久化、migration 幂等和 SIGTERM 零退出码，不发布产物。
 
 详细证据与残余风险见[上游调研](research/server-node24-production-container.md)。
+
+## 持久化模型配置
+
+默认 Compose 会将 `openbot-model` 挂载到 `/var/lib/openbot/model`，并设置
+`OPENBOT_MODEL_DIRECTORY`。第一次启动时，Server 在私有目录创建 32 字节加密密钥；加密后的
+模型配置保存在同一目录。默认不启用任何提供方，Owner 连接后在 Desktop 设置中配置并明确开启。
+源码开发的 `.env.example` 使用 `./data/model`，生命周期相同。
+
+备份时，将**整个模型目录**（包括 `encryption.key` 和 `settings.json`）与 PostgreSQL、对象文件
+一起保留。备份应当作机密保护：密钥与密文放在一起，不能抵御读取整个目录的攻击。恢复时使用
+Server 用户所有权，目录权限 `0700`、文件权限 `0600`。已有配置却缺少密钥、密钥损坏、符号链接
+或 Unix 权限过宽会阻止启动；应恢复原密钥，不要删除数据。容器重启测试使用假提供方验证配置
+保留，不发送付费请求。
+
+已有 Desktop 管理的服务继续使用 `OPENBOT_MODEL_SETTINGS_PATH` 与
+`OPENBOT_MODEL_ENCRYPTION_KEY` 初始化配置，不要与 `OPENBOT_MODEL_DIRECTORY` 同时设置。
+独立部署也可保留原来的显式密钥方案；目前没有自动密钥迁移或轮换。明文密钥只允许 Server 用户
+读取，渲染进程与 Worker 不持有，设置 API 从不返回密钥。

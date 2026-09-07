@@ -10,7 +10,7 @@ import { AutomationScheduler } from "./automations.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { EmployeePublisherKeyring } from "./employee-publisher-keyring.js";
 import { closeHttpServer } from "./http-shutdown.js";
-import { ModelSettingsService } from "./model-settings.js";
+import { bootstrapModelSettings } from "./model-settings-bootstrap.js";
 import { NativeAgentRunner } from "./native-agent.js";
 import { NodeIdentityService } from "./node-identity.js";
 import { NodeRegistry } from "./node-registry.js";
@@ -28,6 +28,8 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 const env = serverEnvSchema.parse(process.env);
 const logger = createLogger({ level: env.OPENBOT_LOG_LEVEL });
+// Validate retained key material before database migration or Run recovery changes durable state.
+const modelSettings = await bootstrapModelSettings(env);
 const HTTP_SHUTDOWN_GRACE_MS = 10_000;
 const database = createDatabase(env.OPENBOT_DATABASE_URL);
 await database.migrate();
@@ -68,10 +70,6 @@ const dispatcher = new RunDispatcher(
 );
 await dispatcher.start();
 // Existing credentials do not enable inference: the Owner must explicitly opt in in Settings.
-const modelSettings =
-  env.OPENBOT_MODEL_SETTINGS_PATH && env.OPENBOT_MODEL_ENCRYPTION_KEY
-    ? new ModelSettingsService(env.OPENBOT_MODEL_SETTINGS_PATH, env.OPENBOT_MODEL_ENCRYPTION_KEY)
-    : undefined;
 const nativeAgent = modelSettings
   ? new NativeAgentRunner(new PostgresAgentStore(database.db), modelSettings, realtime, () =>
       logger.error(

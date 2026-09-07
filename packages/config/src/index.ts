@@ -81,6 +81,7 @@ export const serverEnvSchema = z
     OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: z.string().trim().min(1).optional(),
     OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: z.string().trim().min(1).optional(),
     OPENBOT_MODEL_SETTINGS_PATH: z.string().trim().min(1).optional(),
+    OPENBOT_MODEL_DIRECTORY: z.string().trim().min(1).optional(),
     OPENBOT_MODEL_ENCRYPTION_KEY: z
       .string()
       .regex(/^[a-f0-9]{64}$/u)
@@ -96,6 +97,17 @@ export const serverEnvSchema = z
     ),
   })
   .superRefine((value, context) => {
+    if (
+      value.OPENBOT_MODEL_DIRECTORY !== undefined &&
+      (value.OPENBOT_MODEL_SETTINGS_PATH !== undefined ||
+        value.OPENBOT_MODEL_ENCRYPTION_KEY !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Model directory cannot be combined with legacy model path or encryption key.",
+        path: ["OPENBOT_MODEL_DIRECTORY"],
+      });
+    }
     if (
       (value.OPENBOT_MODEL_SETTINGS_PATH === undefined) !==
       (value.OPENBOT_MODEL_ENCRYPTION_KEY === undefined)

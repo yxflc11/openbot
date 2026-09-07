@@ -43,6 +43,7 @@ export function validateServerContainer({
     "npm exec -- turbo run build --filter=@openbot/server...",
     "npm ci --omit=dev --ignore-scripts --audit=false",
     "install -d --owner=node --group=node --mode=0700 /var/lib/openbot/objects",
+    "install -d --owner=node --group=node --mode=0700 /var/lib/openbot/model",
     "COPY --from=production-dependencies --chown=node:node /workspace/node_modules ./node_modules",
     "/workspace/apps/server/dist ./apps/server/dist",
     "/workspace/packages/db/migrations ./packages/db/migrations",
@@ -101,6 +102,8 @@ export function validateServerContainer({
     '"127.0.0.1:3001:3001"',
     "OPENBOT_OBJECT_STORE_PATH: /var/lib/openbot/objects",
     "openbot-objects:/var/lib/openbot/objects",
+    "OPENBOT_MODEL_DIRECTORY: /var/lib/openbot/model",
+    "openbot-model:/var/lib/openbot/model",
   ];
   for (const fragment of requiredComposeFragments) {
     if (!compose.includes(fragment)) {

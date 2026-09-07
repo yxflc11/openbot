@@ -40,13 +40,21 @@ Windows と Linux の初回起動はリモート接続を案内します。
 
 ### 開発用バンドルのダウンロード
 
+**[Desktop のダウンロードとインストール手順（英語）](docs/DESKTOP_INSTALLATION.md)** に、
+ファイル名、コマンドによるインストール、初回モデル設定をまとめています。DMG（macOS arm64）、
+ユーザー単位 EXE（Windows x64）、AppImage/DEB（Linux x64）はネイティブ CI で作成します。
+[Releases](https://github.com/yxflc11/openbot/releases) に `desktop-v...` の添付ファイルが公開
+されるまでは、成功した CI のインストーラー成果物を使用してください（GitHub ログインが必要、
+保存期間 14 日）。公開はまだ保留中です。
+
 [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) で対象コミットの成功した実行を開き、
 `openbot-desktop-<platform>-<arch>-<commit>.tar.gz` をダウンロードしてください。
 GitHub へのログインが必要で、保存期間は 7 日です。`tar -xzf <archive>` で実行権限とシンボリックリンクを保持して展開します。
 macOS は `OpenBot.app`、Windows は `openbot.exe`、Linux は `openbot` を開きます。
 未署名アプリに対する OS の要件は引き続き適用されます。
 
-各対象のパッケージ検証に成功した場合だけアップロードします。DMG/MSI/deb インストーラーや自動更新ではありません。
+各対象のパッケージ検証に成功した場合だけアップロードします。tar はアプリのディレクトリで、
+別の `openbot-installers-...` 成果物にはインストーラーとチェックサムを含みます。自動更新はありません。
 古い `v0.1.0-alpha.1` Release はソースのみの基盤スナップショットです。
 
 ### ソースからビルド

@@ -35,6 +35,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 
 | OpenBot 范围 | 调研来源 | 许可证 | 决定与现状 |
 | --- | --- | --- | --- |
+| Desktop 安装分发与模型配置初始化 | electron-builder 26.16.0 / f4610970f78b6ce223b1f4cee2b5e8f5caa14a48；现有 Packager 20.3.0、Fuses 2.1.3；Node 24.20.0 文件/加密与 Compose 卷 | MIT；BSD-2-Clause；Node.js 许可；规范条款 | 只在已验证应用包外复用 builder，生成 DMG/NSIS/AppImage/DEB；完整核对源提交与产物后创建草稿 Release。Server 私有模型目录保留密钥，损坏时关闭失败。未复制上游源码，见[调研](research/desktop-installable-delivery.md)和[安装](DESKTOP_INSTALLATION.zh-CN.md)。 |
 | Server 原生 Agent 循环 | ai 7.0.93、@ai-sdk/openai 4.0.60、@ai-sdk/anthropic 4.0.49；比较 OpenAI Agents JS v0.17.0 和已固定的 Hermes 运行时 | Apache-2.0；MIT | 复用已发布 ToolLoopAgent、严格的频道只读工具、有界迭代和官方模型 HTTP。Owner 启用、数据库领取/回复/审计与配置撤销仍由 OpenBot 管理。未复制源码，见[调研](research/native-agent-loop.md)与[运行说明](NATIVE_AGENT.zh-CN.md)。 |
 | Desktop 统一顶栏与页面历史 | React 19.2.8；2026-09-05 审查的 Apple 工具栏与 WAI-ARIA 指引；比较 React Router 8.3.0 / 2edaca7 和 react-resizable-panels 4.9.0 | MIT；Apple/WHATWG/W3C 条款 | 复用原生控件与 React 状态，实现固定顶栏、左右栏独立开关和有界的授权页面访问历史。显示设置时保留认证工作空间；更换 Owner/Server 或退出登录时结束其生命周期。不引入 URL 路由器、拖动缩放依赖或 Codex 源码/素材。见[调研](research/desktop-navigation-continuity.md)。 |
 | Desktop 频道草稿与发送连续性 | 现有 React 19.2.8、原生 HTML textarea 和 CSSOM View；比较 react-textarea-autosize 8.5.9 | MIT；WHATWG/W3C 条款 | 复用外部存储快照与原生几何测量，建立有界工作空间内存缓存、按频道区分的草稿版本和发送归属，并恢复阅读位置。文字不进入 localStorage；发送完成保留更新后的输入，结果不明确时不自动重试。未新增依赖或复制源码，见[调研](research/desktop-conversation-continuity.md)。 |

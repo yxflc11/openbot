@@ -103,6 +103,12 @@ The following ISC license text is reproduced for `signal-exit`:
 
 ## Native Desktop Server preview
 
+Desktop installer creation additionally uses build-only `electron-builder` 26.16.0, reviewed at
+`f4610970f78b6ce223b1f4cee2b5e8f5caa14a48`, MIT, copyright 2015 Loopline Systems. No upstream
+source was copied or substantially adapted. Its package license and downloaded installer-tool
+notices remain under their upstream licenses; the application does not load electron-builder at
+runtime. See `docs/research/desktop-installable-delivery.md` for the installer-only reuse boundary.
+
 - PostgreSQL 17.10 — PostgreSQL Global Development Group and the Regents of the University
   of California; PostgreSQL License. Native packaging uses
   `@embedded-postgres/darwin-arm64` / `darwin-x64` `17.10.0-beta.17`, MIT packager,

@@ -44,14 +44,22 @@ Windows and Linux initially offer the remote-client path.
 
 ### Download a development bundle
 
+**Start here: [Desktop downloads and installation](docs/DESKTOP_INSTALLATION.md)** — platform file
+names, installation steps, command installers, first model setup and upgrade/data guidance.
+Versioned DMG (macOS arm64), per-user EXE (Windows x64), AppImage and DEB (Linux x64) now have a
+native CI build path. Published installers will appear in
+[Desktop Releases](https://github.com/yxflc11/openbot/releases); publication remains pending until a
+`desktop-v...` release contains those assets. Successful CI installer artifacts expire after 14 days.
+
 Open a successful run for the desired commit in [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 and download its `openbot-desktop-<platform>-<arch>-<commit>.tar.gz` artifact. GitHub sign-in is
 required; these artifacts expire after seven days. Extract with `tar -xzf <archive>` to retain
 executable permissions and symlinks. Open `OpenBot.app` on macOS, `openbot.exe` on Windows, or
 `openbot` on Linux from the extracted directory. OS requirements for unsigned apps still apply.
 
-Each platform uploads only after its package checks pass. These are application directories, not
-DMG/MSI/deb installers or an auto-update channel. The older `v0.1.0-alpha.1` GitHub Release remains a
+Each platform uploads only after its package checks pass. The tar archives above are application
+directories; the separate `openbot-installers-...` artifacts contain installers and checksums.
+No automatic update channel is enabled. The older `v0.1.0-alpha.1` GitHub Release remains a
 source-only foundation snapshot.
 
 ### Build from source

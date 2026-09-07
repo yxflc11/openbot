@@ -42,6 +42,13 @@ A inicialização dos serviços locais tem evidência em macOS arm64; Windows e 
 
 ### Baixar um bundle de desenvolvimento
 
+**[Downloads e instalação do Desktop (em inglês)](docs/DESKTOP_INSTALLATION.md)** reúne os nomes
+dos arquivos, comandos de instalação e a primeira configuração do modelo. O CI nativo gera DMG
+(macOS arm64), EXE por usuário (Windows x64) e AppImage/DEB (Linux x64). Até que uma versão
+`desktop-v...` com anexos seja publicada em [Releases](https://github.com/yxflc11/openbot/releases),
+use os artefatos de instaladores de um CI bem-sucedido: exigem login e são retidos por 14 dias.
+A publicação ainda está pendente.
+
 Abra uma execução bem-sucedida do commit desejado em
 [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) e baixe
 `openbot-desktop-<platform>-<arch>-<commit>.tar.gz`. É necessário entrar no GitHub; os artefatos
@@ -49,8 +56,9 @@ expiram em sete dias. Extraia com `tar -xzf <archive>` para preservar permissõe
 Abra `OpenBot.app` no macOS, `openbot.exe` no Windows ou `openbot` no Linux.
 Continuam valendo os requisitos do sistema para aplicativos sem assinatura.
 
-Cada destino envia seu bundle apenas após passar nas verificações. São diretórios de aplicação,
-não instaladores DMG/MSI/deb nem um canal de atualização automática.
+Cada destino envia seu bundle apenas após passar nas verificações. Os arquivos tar são diretórios
+de aplicação; os artefatos separados `openbot-installers-...` contêm instaladores e checksums.
+Não há canal de atualização automática.
 A Release antiga `v0.1.0-alpha.1` continua sendo um snapshot da fundação contendo apenas código-fonte.
 
 ### Compilar a partir do código-fonte
