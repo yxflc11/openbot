@@ -37,7 +37,9 @@ base="https://github.com/yxflc11/openbot/releases/download/desktop-v$version"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/openbot-install.XXXXXXXX")"
 mounted=false
 install_lock=""
+install_stage=""
 cleanup() {
+  if [[ -n "$install_stage" ]]; then rm -rf -- "$install_stage"; fi
   if [[ -n "$install_lock" ]]; then rmdir "$install_lock" || true; fi
   if [[ "$mounted" == true ]] && ! /usr/bin/hdiutil detach "$stage/mount" -quiet; then
     echo "Retained mounted installer at $stage for manual cleanup." >&2
@@ -91,10 +93,25 @@ else
   for parent in "$HOME/.local" "$HOME/.local/opt" "$HOME/.local/opt/openbot" "$destination"; do
     if [[ -L "$parent" ]]; then echo 'Refusing a linked installation directory.' >&2; exit 1; fi
   done
-  if [[ -e "$destination" ]]; then echo 'This version is already installed; it was retained.'; exit 0; fi
+  if [[ -e "$destination" ]]; then
+    if [[ -f "$destination/openbot.AppImage" && ! -L "$destination/openbot.AppImage" ]] &&
+       [[ "$("${hash_command[@]}" "$destination/openbot.AppImage" | awk '{ print $1 }')" == "$expected" ]]; then
+      echo 'This verified version is already installed; it was retained.'
+      exit 0
+    fi
+    echo 'An incomplete or different installation already exists. Review that directory before retrying.' >&2
+    exit 1
+  fi
   mkdir -p "$HOME/.local/opt/openbot"
-  mkdir "$destination"
-  install -m 0755 "$stage/$asset" "$destination/openbot.AppImage"
+  install_stage="$(mktemp -d "$HOME/.local/opt/openbot/.install-$version.XXXXXXXX")"
+  install -m 0755 "$stage/$asset" "$install_stage/openbot.AppImage"
+  # GNU/BusyBox no-target-directory semantics prevent nesting into a concurrent installation.
+  mv -nT -- "$install_stage" "$destination"
+  if [[ -d "$install_stage" ]]; then
+    echo 'Another installation appeared; it was retained.' >&2
+    exit 1
+  fi
+  install_stage=""
   echo "Installed: $destination/openbot.AppImage"
   echo 'Run that file to open Desktop. If AppImage runtime dependencies are unavailable, use the DEB download.'
 fi

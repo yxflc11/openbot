@@ -77,3 +77,10 @@ provider evidence, and package builds distinct from real-device certification.
   audit passed; actual built Web/Server/database verified save/reload/secret-free summaries and
   desktop/narrow layouts. Public model metadata returned HTTP 200; all inference remained fixtures.
 - P4 commit 74d7819 passed all 9 hosted CI jobs in run 34151847897.
+
+- 18:49–19:12 UTC: hardened installer recovery and streamed Windows downloads. Full repository
+  check passed; real Linux fixtures verified failed-copy cleanup, retry and concurrent-target
+  preservation. Nine offline PowerShell 7.5.0 fixtures passed, including redirect denial/count,
+  streamed size limits, existing-file preservation and cancellation before/during body transfer.
+  Native Windows CI now runs the fixtures under both Windows PowerShell and pwsh.
+- OpenRouter commit 078bba1 passed all 9 hosted CI jobs in run 34153185480.

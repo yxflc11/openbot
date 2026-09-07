@@ -50,3 +50,88 @@ test("shell bootstrap refuses altered downloads and cleans staging before any in
   assert.equal(result.status, 1);
   assert.match(result.stderr, /checksum mismatch; nothing was installed/);
 });
+
+test("native PowerShell bounds streamed downloads, redirects, cancellation and exclusive files", {
+  skip: process.platform !== "win32",
+}, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "openbot-windows-download-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const executable of ["pwsh", "powershell"]) {
+    const result = spawnSync(
+      executable,
+      [
+        "-NoProfile",
+        "-File",
+        fileURLToPath(new URL("./install-desktop-download.test.ps1", import.meta.url)),
+        "-ScriptPath",
+        fileURLToPath(new URL("./install-desktop.ps1", import.meta.url)),
+        "-TestDirectory",
+        directory,
+      ],
+      { encoding: "utf8", timeout: 30000 },
+    );
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.match(result.stdout, /"cases":9/);
+  }
+});
+
+test("Linux installation recovers from copy failure and retains a concurrent destination", {
+  skip: process.platform !== "linux",
+}, async (t) => {
+  const { createHash } = await import("node:crypto");
+  const { mkdir, readdir } = await import("node:fs/promises");
+  const directory = await mkdtemp(join(tmpdir(), "openbot-linux-install-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const commands = join(directory, "bin");
+  await mkdir(commands);
+  const fixtureHome = join(directory, "fixture-home");
+  await mkdir(fixtureHome);
+  const isolated = join(directory, "installer.sh");
+  const original = await readFile(script, "utf8");
+  // Use the real script with a task-owned home path without changing the process HOME environment.
+  await writeFile(
+    isolated,
+    original
+      .replace(
+        "set -euo pipefail",
+        `set -euo pipefail\nfixture_home='${fixtureHome.replaceAll("'", "'\\''")}'`,
+      )
+      .replaceAll("$HOME", "$fixture_home"),
+  );
+  const bytes = "OpenBot installation fixture";
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  const files = {
+    id: "#!/bin/sh\necho 1000\n",
+    uname: '#!/bin/sh\nif [ "$1" = "-s" ]; then echo Linux; else echo x86_64; fi\n',
+    curl: `#!/bin/bash\nset -eu\nwhile [[ "$#" -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done\ncase "$out" in */SHA256SUMS) printf '%s  %s\\n' '${digest}' 'openbot-desktop-0.1.0-alpha.2-linux-x64.AppImage' > "$out";; *) printf '%s' '${bytes}' > "$out";; esac\n`,
+    install: "#!/bin/sh\nexit 1\n",
+  };
+  for (const [name, body] of Object.entries(files))
+    await writeFile(join(commands, name), body, { mode: 0o755 });
+  const run = () =>
+    spawnSync("bash", [isolated], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${commands}:${process.env.PATH}` },
+    });
+  const parent = join(fixtureHome, ".local/opt/openbot"),
+    target = join(parent, "0.1.0-alpha.2");
+  assert.equal(run().status, 1);
+  assert.deepEqual(await readdir(parent), []);
+  await rm(join(commands, "install"));
+  const success = run();
+  assert.equal(success.status, 0, success.stderr);
+  assert.equal(await readFile(join(target, "openbot.AppImage"), "utf8"), bytes);
+  assert.equal(run().status, 0);
+  await rm(target, { recursive: true });
+  await writeFile(
+    join(commands, "mv"),
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: This is Bash positional-argument syntax.
+    '#!/bin/bash\nset -eu\ndestination="${@: -1}"\nmkdir "$destination"\nprintf "retained" > "$destination/race"\nexec /bin/mv "$@"\n',
+    { mode: 0o755 },
+  );
+  const raced = run();
+  assert.equal(raced.status, 1);
+  assert.match(raced.stderr, /Another installation appeared/);
+  assert.equal(await readFile(join(target, "race"), "utf8"), "retained");
+  assert.deepEqual(await readdir(parent), ["0.1.0-alpha.2"]);
+});

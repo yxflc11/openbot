@@ -68,6 +68,35 @@
 - Update README download sections, installation documentation and maintained translations with
   actual availability, including pending publication rather than speculative download URLs.
 
+## Installer recovery and Windows transfer review (2026-09-08)
+
+Final source review found two concrete gaps: the Linux bootstrap created its final version directory
+before copying, so a failed copy could make retry look installed; Windows Invoke-WebRequest bounded
+time but did not bound downloaded bytes while reading. On .NET Framework, automatic redirects may
+also downgrade HTTPS to HTTP. These are part of the original installer acceptance boundary.
+
+Reviewed Microsoft HttpClient/HttpClientHandler APIs for .NET Framework 4.8 and the current native
+PowerShell CI lane, plus GNU coreutils mv no-clobber/no-target-directory semantics. The first viable
+options are existing platform APIs, not another downloader or installer dependency. Sources:
+[AllowAutoRedirect](https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpclienthandler.allowautoredirect),
+[ResponseHeadersRead](https://learn.microsoft.com/en-us/dotnet/api/system.net.http.httpcompletionoption),
+[mv](https://www.gnu.org/software/coreutils/manual/html_node/mv-invocation.html).
+
+Use streamed Windows reads with an overall cancellation deadline, byte caps, HTTPS-only bounded
+redirects to GitHub release hosts, exclusive output creation and deterministic disposal. Preserve
+Internet-zone marking and nonzero installer exit handling. For Linux, copy into a private sibling
+stage and publish without replacing a concurrent target; failures clean only this invocation's stage.
+Test failure/retry, concurrent target retention, HTTP downgrade, redirect count and streamed oversize
+with local fixtures. Windows HTTP tests run in native PowerShell CI, not as a source-string proxy.
+No upstream source is copied or substantially adapted; no new dependency is added.
+
+Validation: the full repository check passed. Real Linux Bash fixtures passed copy-failure cleanup,
+retry, existing-checksum verification and concurrent destination retention. All nine HTTP/file
+fixtures passed in Microsoft PowerShell 7.5.0, using an isolated network-disabled container pinned
+to `mcr.microsoft.com/powershell@sha256:042240d57ec9e47e511033b92625a8d95875ee5860af3015992c248b58a8be81`.
+The same fixtures run under both Windows PowerShell and pwsh in native Windows CI. They include
+cancellation before headers and during a stalled response body; no public asset is downloaded.
+
 ## Unresolved questions
 
 - Dependency admission review: the complete installed graph reports zero high/critical advisories;

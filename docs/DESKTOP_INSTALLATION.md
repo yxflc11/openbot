@@ -88,3 +88,5 @@ creates a draft prerelease with four installer assets, a combined manifest and c
 It does not publish the draft or overwrite an existing release. Complete the retained native
 dependency notice/source review and signing/distribution review before publishing. Draft status is
 visible only to repository maintainers and is not a public download channel.
+
+The Windows command installer streams at most 16 KiB of checksums and 2 GiB of installer bytes, allowing at most five HTTPS redirects on approved GitHub release hosts. Cancellation, limits or failures remove partial downloads. Linux copies into a private sibling stage before publishing the version directory; failed copies are retryable and concurrent destinations are retained without overwrite or nesting.
