@@ -5360,3 +5360,14 @@ select:focus-visible {
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
+
+.native-run-controls {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.native-run-controls p {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}

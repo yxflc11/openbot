@@ -405,6 +405,8 @@ export const runs = pgTable(
     status: text("status").notNull().default("queued"),
     resultSummary: text("result_summary"),
     errorMessage: text("error_message"),
+    errorCode: text("error_code"),
+    modelUsage: jsonb("model_usage"),
     ...timestamps,
   },
   (table) => [
@@ -423,6 +425,10 @@ export const runs = pgTable(
       .where(sql`${table.sourceMessageId} IS NOT NULL`),
     check("runs_title_not_blank", sql`length(btrim(${table.title})) > 0`),
     check("runs_instruction_not_blank", sql`length(btrim(${table.instruction})) > 0`),
+    check(
+      "runs_model_usage_native",
+      sql`${table.modelUsage} IS NULL OR (${table.executionProfile} = 'none' AND ${table.nodeId} IS NULL AND jsonb_typeof(${table.modelUsage}) = 'object')`,
+    ),
     check(
       "runs_status_valid",
       sql`${table.status} IN ('queued', 'assigned', 'running', 'waiting_approval', 'blocked', 'completed', 'failed', 'cancelled')`,

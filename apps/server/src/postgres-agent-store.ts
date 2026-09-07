@@ -1,9 +1,23 @@
 import { randomUUID } from "node:crypto";
-import { artifacts as artifactsTable, channelBots, messages, runEvents, runs } from "@openbot/db";
-import type { Run, RunProgress } from "@openbot/domain";
+import {
+  artifacts as artifactsTable,
+  bots,
+  channelBots,
+  messages,
+  runEvents,
+  runs,
+} from "@openbot/db";
+import type { Run, RunModelUsage, RunProgress } from "@openbot/domain";
 import { and, asc, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import type { AgentRunStore } from "./native-agent.js";
 import type { PersistedArtifact } from "./artifact-storage.js";
+import {
+  NativeExecutionError,
+  type NativeFailureCode,
+  nativeFailureMessages,
+  runModelUsageSchema,
+} from "./agent-observations.js";
+import { StoreConflictError, StoreNotFoundError } from "./control-plane-store.js";
 import { toMessage, toRun } from "./postgres-store.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
@@ -100,7 +114,77 @@ export class PostgresAgentStore implements AgentRunStore {
       )
       .where(running(run))
       .limit(1);
-    if (!row) throw new Error("Agent scope revoked.");
+    if (!row) throw new NativeExecutionError("scope_revoked");
+  }
+  async profile(run: Run) {
+    await this.assertScope(run);
+    const [profile] = await this.db
+      .select({
+        name: bots.name,
+        role: bots.role,
+        description: bots.description,
+        revision: bots.profileRevision,
+      })
+      .from(bots)
+      .where(eq(bots.id, run.botId))
+      .limit(1);
+    if (!profile) throw new NativeExecutionError("scope_revoked");
+    return profile;
+  }
+  async usage(run: Run, input: RunModelUsage): Promise<Run> {
+    const usage = runModelUsageSchema.parse(input);
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(runs)
+        .set({ modelUsage: usage, updatedAt: new Date() })
+        .where(
+          and(
+            running(run),
+            sql`coalesce((${runs.modelUsage}->>'steps')::integer, 0) = ${usage.steps - 1}`,
+          ),
+        )
+        .returning();
+      if (!row) throw new NativeExecutionError("scope_revoked");
+      await tx
+        .insert(runEvents)
+        .values({
+          id: randomUUID(),
+          runId: run.id,
+          channelId: run.channelId,
+          botId: run.botId,
+          type: "MODEL_USAGE_RECORDED",
+          payload: { executor: "native-agent", ...usage },
+        });
+      return toRun(row);
+    });
+  }
+  async cancel(runId: string): Promise<Run> {
+    return this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(runs).where(eq(runs.id, runId)).for("update");
+      if (!row) throw new StoreNotFoundError("Task not found.");
+      if (row.executionProfile !== "none" || row.nodeId !== null)
+        throw new StoreConflictError("Only native Agent tasks can be stopped here.");
+      if (row.status === "cancelled") return toRun(row);
+      if (row.status !== "running" && row.status !== "queued")
+        throw new StoreConflictError("This task has already ended.");
+      const [cancelled] = await tx
+        .update(runs)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(eq(runs.id, row.id))
+        .returning();
+      if (!cancelled) throw new Error("Cancellation was not persisted.");
+      await tx
+        .insert(runEvents)
+        .values({
+          id: randomUUID(),
+          runId: row.id,
+          channelId: row.channelId,
+          botId: row.botId,
+          type: "RUN_CANCELLED",
+          payload: { executor: "native-agent", actor: "owner" },
+        });
+      return toRun(cancelled);
+    });
   }
   async context(run: Run): Promise<unknown> {
     await this.assertScope(run);
@@ -180,7 +264,7 @@ export class PostgresAgentStore implements AgentRunStore {
     }
     return this.db.transaction(async (tx) => {
       const [member] = await tx.select().from(channelBots).where(membership(run)).for("share");
-      if (!member) throw new Error("Agent scope revoked.");
+      if (!member) throw new NativeExecutionError("scope_revoked");
       const now = new Date();
       const [row] = await tx
         .update(runs)
@@ -245,13 +329,12 @@ export class PostgresAgentStore implements AgentRunStore {
       };
     });
   }
-  async fail(run: Run): Promise<Run | undefined> {
+  async fail(run: Run, code: NativeFailureCode = "execution_failed"): Promise<Run | undefined> {
     return this.db.transaction(async (tx) => {
-      const errorMessage =
-        "Native Agent could not complete. Check model settings, channel access, and task limits before creating a new task.";
+      const errorMessage = nativeFailureMessages[code];
       const [row] = await tx
         .update(runs)
-        .set({ status: "failed", errorMessage, updatedAt: new Date() })
+        .set({ status: "failed", errorMessage, errorCode: code, updatedAt: new Date() })
         .where(running(run))
         .returning();
       if (!row) return undefined;
@@ -262,7 +345,7 @@ export class PostgresAgentStore implements AgentRunStore {
         botId: row.botId,
         type: "RUN_FAILED",
         payload: {
-          code: "provider_execution_failed",
+          code,
           message: errorMessage,
           executor: "native-agent",
         },

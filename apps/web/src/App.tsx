@@ -1020,6 +1020,10 @@ export function AuthenticatedWorkspace({
           liveFrame={framesByRun.get(selectedRun.id)}
           run={selectedRun}
           onClose={closeInspector}
+          onRun={(run) => {
+            projectRun(run);
+            setSelectedRunId(run.id);
+          }}
         />
       ) : null}
 

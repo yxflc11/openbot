@@ -58,6 +58,133 @@ describe.skipIf(!databaseUrl)("PostgreSQL automation transaction", () => {
     await database.client`update automations set next_run_at=now()-interval '2 days' where id=${id}`;
   }
 
+  it("binds the Bot profile and retains sequential model observations in Run projections", async () => {
+    if (!database) return;
+    const control = new PostgresControlPlaneStore(database.db);
+    const native = new PostgresAgentStore(database.db);
+    await database.client`update bots set description='Use sources carefully',profile_revision=4 where id='test-bot'`;
+    const task = await control.submitTask("test-channel", {
+      botId: "test-bot",
+      content: "Summarize",
+    });
+    const claimed = await native.claim(task.run, "2020-01-01T00:00:00Z");
+    if (!claimed) throw Error("No claim");
+    expect(await native.profile(claimed)).toEqual({
+      name: "Test Bot",
+      role: "Assistant",
+      description: "Use sources carefully",
+      revision: 4,
+    });
+    await native.usage(claimed, {
+      provider: "openai",
+      model: "fixture",
+      steps: 1,
+      inputTokens: 100,
+      outputTokens: 20,
+    });
+    await native.usage(claimed, {
+      provider: "openai",
+      model: "fixture",
+      steps: 2,
+      inputTokens: null,
+      outputTokens: 30,
+    });
+    const rows = await control.listRuns("test-channel");
+    expect(rows[0]?.modelUsage).toEqual({
+      provider: "openai",
+      model: "fixture",
+      steps: 2,
+      inputTokens: null,
+      outputTokens: 30,
+    });
+    await expect(
+      native.usage(claimed, {
+        provider: "openai",
+        model: "fixture",
+        steps: 2,
+        inputTokens: 999,
+        outputTokens: 999,
+      }),
+    ).rejects.toThrow();
+    await native.complete(claimed, "Done");
+    await expect(
+      native.usage(claimed, {
+        provider: "openai",
+        model: "fixture",
+        steps: 3,
+        inputTokens: 999,
+        outputTokens: 999,
+      }),
+    ).rejects.toThrow();
+    const [counts] =
+      await database.client`select count(*)::integer as count from run_events where type='MODEL_USAGE_RECORDED'`;
+    expect(counts?.count).toBe(2);
+  });
+  it("cancels queued native tasks once and prevents future claims", async () => {
+    if (!database) return;
+    const control = new PostgresControlPlaneStore(database.db);
+    const native = new PostgresAgentStore(database.db);
+    const task = await control.submitTask("test-channel", {
+      botId: "test-bot",
+      content: "Cancel before start",
+    });
+    expect((await native.cancel(task.run.id)).status).toBe("cancelled");
+    expect((await native.cancel(task.run.id)).status).toBe("cancelled");
+    expect(await native.claim(task.run, "2020-01-01T00:00:00Z")).toBeUndefined();
+    const [counts] =
+      await database.client`select count(*)::integer as count from run_events where type='RUN_CANCELLED'`;
+    expect(counts?.count).toBe(1);
+  });
+  it("prevents late completion and failure from replacing a durable cancellation", async () => {
+    if (!database) return;
+    const control = new PostgresControlPlaneStore(database.db);
+    const native = new PostgresAgentStore(database.db);
+    const task = await control.submitTask("test-channel", {
+      botId: "test-bot",
+      content: "Cancel active task",
+    });
+    const claimed = await native.claim(task.run, "2020-01-01T00:00:00Z");
+    if (!claimed) throw Error("No claim");
+    await native.cancel(claimed.id);
+    await expect(native.complete(claimed, "Late answer")).rejects.toThrow();
+    expect(await native.fail(claimed)).toBeUndefined();
+    const [counts] =
+      await database.client`select (select status from runs where id=${claimed.id}) as status,(select count(*) from messages where author_type='bot')::integer as replies,(select count(*) from run_events where type in ('RUN_COMPLETED','RUN_FAILED'))::integer as terminals`;
+    expect(counts).toEqual({ status: "cancelled", replies: 0, terminals: 0 });
+  });
+  it("serializes cancellation against completion and rejects Worker or ended tasks", async () => {
+    if (!database || !peer) return;
+    const control = new PostgresControlPlaneStore(database.db);
+    const native = new PostgresAgentStore(database.db);
+    const other = new PostgresAgentStore(peer.db);
+    const task = await control.submitTask("test-channel", {
+      botId: "test-bot",
+      content: "Race terminal state",
+    });
+    const claimed = await native.claim(task.run, "2020-01-01T00:00:00Z");
+    if (!claimed) throw Error("No claim");
+    const outcomes = await Promise.allSettled([
+      native.complete(claimed, "Done"),
+      other.cancel(claimed.id),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
+    const [counts] =
+      await database.client`select count(*)::integer as count from run_events where type in ('RUN_COMPLETED','RUN_CANCELLED')`;
+    expect(counts?.count).toBe(1);
+    await expect(native.cancel("unknown")).rejects.toThrow("not found");
+    const worker = await control.submitTask("test-channel", {
+      botId: "test-bot",
+      content: "Worker cannot be stopped here",
+    });
+    await database.client`update runs set execution_profile='docker-linux' where id=${worker.run.id}`;
+    await expect(native.cancel(worker.run.id)).rejects.toThrow("Only native");
+    const failed = await control.submitTask("test-channel", {
+      botId: "test-bot",
+      content: "Ended task",
+    });
+    await database.client`update runs set status='failed' where id=${failed.run.id}`;
+    await expect(native.cancel(failed.run.id)).rejects.toThrow("already ended");
+  });
   it("competing processes create one normal queued Run and advance directly beyond downtime", async () => {
     if (!store || !peerStore || !database) return;
     const schedule = await store.create(command());
@@ -265,9 +392,11 @@ describe.skipIf(!databaseUrl)("PostgreSQL automation transaction", () => {
     const active = await native.claim(task.run, "2000-01-01T00:00:00Z");
     if (!active) throw new Error("Fixture did not claim.");
     await database.client`delete from channel_bots`;
-    await expect(native.context(active)).rejects.toThrow(/revoked/);
-    await expect(native.tasks(active)).rejects.toThrow(/revoked/);
-    await expect(native.complete(active, "Invalid reply")).rejects.toThrow(/revoked/);
+    await expect(native.context(active)).rejects.toMatchObject({ code: "scope_revoked" });
+    await expect(native.tasks(active)).rejects.toMatchObject({ code: "scope_revoked" });
+    await expect(native.complete(active, "Invalid reply")).rejects.toMatchObject({
+      code: "scope_revoked",
+    });
     expect((await native.fail(active))?.status).toBe("failed");
   });
   it("commits a source-based report with its reply, artifact and audit, with no duplicate publication", async () => {

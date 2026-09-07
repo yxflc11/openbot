@@ -1,3 +1,4 @@
+import { runModelUsageSchema } from "./agent-observations.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   approvals as approvalsTable,
@@ -1771,7 +1772,10 @@ function toBotAppearance(value: unknown): Bot["appearance"] {
 }
 
 export function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
+  const usage = runModelUsageSchema.safeParse(row.modelUsage);
   return {
+    ...(usage.success ? { modelUsage: usage.data } : {}),
+    ...(row.errorCode ? { errorCode: row.errorCode } : {}),
     id: row.id,
     channelId: row.channelId,
     botId: row.botId,

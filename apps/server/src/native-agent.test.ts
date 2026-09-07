@@ -49,6 +49,13 @@ function fixture() {
     queued: vi.fn(async () => []),
     claim: vi.fn(async () => run),
     assertScope: vi.fn(async () => {}),
+    profile: vi.fn(async () => ({
+      name: "Research Bot",
+      role: "Research",
+      description: "Use verified sources.",
+      revision: 3,
+    })),
+    usage: vi.fn(async (_run, modelUsage) => ({ ...run, modelUsage })),
     context: vi.fn(async () => [{ author: "human", content: "The launch is Tuesday." }]),
     tasks: vi.fn(async () => [{ title: "Launch", status: "completed" }]),
     progress: vi.fn(async (_run, stage, message) => ({
@@ -64,9 +71,49 @@ function fixture() {
   };
   const publish = vi.fn(),
     checkSettings = vi.fn(async () => {});
-  return { store, publish, checkSettings, run, signal: new AbortController().signal };
+  return {
+    store,
+    publish,
+    checkSettings,
+    run,
+    modelIdentity: { provider: "openai" as const, model: "fixture" },
+    signal: new AbortController().signal,
+  };
 }
 describe("native Agent loop", () => {
+  it("uses the assigned Bot profile and persists per-step provider counts", async () => {
+    const f = fixture();
+    const model = new MockLanguageModelV4({ doGenerate: [calls(), answer()] });
+    await executeAgentRun({ ...f, model });
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toContain("Use verified sources.");
+    expect(f.store.profile).toHaveBeenCalledExactlyOnceWith(run);
+    expect(f.store.usage).toHaveBeenLastCalledWith(run, {
+      provider: "openai",
+      model: "fixture",
+      steps: 2,
+      inputTokens: 20,
+      outputTokens: 20,
+    });
+  });
+  it("stops before another model call when observed token usage reaches the threshold", async () => {
+    const f = fixture();
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        { ...calls(), usage: { ...usage, inputTokens: { ...usage.inputTokens, total: 64000 } } },
+        answer(),
+      ],
+    });
+    await expect(executeAgentRun({ ...f, model })).rejects.toThrow(/limits/);
+    expect(model.doGenerateCalls).toHaveLength(1);
+    expect(f.store.usage).toHaveBeenCalledTimes(1);
+  });
+  it("does not publish a final answer if usage persistence failed inside an isolated SDK callback", async () => {
+    const f = fixture();
+    vi.mocked(f.store.usage).mockRejectedValue(new Error("database unavailable"));
+    const model = new MockLanguageModelV4({ doGenerate: answer() });
+    await expect(executeAgentRun({ ...f, model })).rejects.toThrow();
+    expect(f.store.complete).not.toHaveBeenCalled();
+  });
   it("reads an explicit source, prepares a report, and returns verifiable source metadata", async () => {
     const f = fixture();
     const readSource = vi.fn(async () => ({
@@ -246,6 +293,7 @@ describe("native Agent loop", () => {
     expect(f.store.context).toHaveBeenCalledWith(run);
     expect(model.doGenerateCalls[0]?.maxOutputTokens).toBe(1024);
     expect(f.publish.mock.calls.map(([event]) => event.stage)).toEqual([
+      "context",
       "planning",
       "observation",
       "planning",
@@ -322,6 +370,54 @@ describe("native Agent loop", () => {
     expect(f.store.queued).not.toHaveBeenCalled();
     expect(makeModel).not.toHaveBeenCalled();
   });
+  it("aborts only the requested active task and ignores late output", async () => {
+    const f = fixture();
+    const other = { ...run, id: "other-run", channelId: "other-channel" };
+    vi.mocked(f.store.queued).mockResolvedValueOnce([run, other]).mockResolvedValue([]);
+    vi.mocked(f.store.claim).mockImplementation(async (value) => value);
+    const config = {
+      provider: "openai",
+      model: "fixture",
+      apiKey: "not-a-real-key",
+      revision: "initial",
+      agentEnabled: true,
+      agentEnabledAt: "2026-09-07T00:00:00Z",
+    };
+    const settings = {
+      agentSettings: async () => config,
+      onChange: () => () => {},
+    } as unknown as ModelSettingsService;
+    const models: MockLanguageModelV4[] = [];
+    const runner = new NativeAgentRunner(
+      f.store,
+      settings,
+      new ChannelRealtimeHub(),
+      vi.fn(),
+      () => {
+        const model = new MockLanguageModelV4({
+          doGenerate: async (options) =>
+            new Promise((_resolve, reject) =>
+              options.abortSignal?.addEventListener("abort", () => reject(new Error("aborted")), {
+                once: true,
+              }),
+            ),
+        });
+        models.push(model);
+        return model;
+      },
+    );
+    try {
+      runner.start();
+      await vi.waitFor(() => expect(models[1]?.doGenerateCalls).toHaveLength(1));
+      runner.cancel(run.id);
+      await vi.waitFor(() => expect(f.store.fail).toHaveBeenCalledTimes(1));
+      expect(models[0]?.doGenerateCalls[0]?.abortSignal?.aborted).toBe(true);
+      expect(models[1]?.doGenerateCalls[0]?.abortSignal?.aborted).toBe(false);
+      expect(f.store.complete).not.toHaveBeenCalled();
+    } finally {
+      await runner.stop();
+    }
+  });
   it("bounds concurrency, serializes channels, and aborts active inference when settings change", async () => {
     const f = fixture();
     const queued = [
@@ -386,6 +482,25 @@ describe("native Agent loop", () => {
 });
 
 describe("official provider HTTP contracts", () => {
+  it.each([
+    [401, "model_credentials"],
+    [403, "model_credentials"],
+    [429, "model_rate_limit"],
+    [503, "model_unavailable"],
+  ])("categorizes provider HTTP %s without retaining its body", async (status, code) => {
+    const bounded = agentFetch(
+      "openai",
+      async () =>
+        new Response("PRIVATE PROVIDER BODY", {
+          status: Number(status),
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    await expect(
+      bounded("https://api.openai.com/v1/responses", { method: "POST" }),
+    ).rejects.toMatchObject({ code });
+  });
+
   it.each(["openai", "anthropic"] as const)(
     "executes %s tool response followed by final answer through the real SDK",
     async (provider) => {

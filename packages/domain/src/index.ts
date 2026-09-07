@@ -471,8 +471,19 @@ export interface Run {
   status: RunStatus;
   resultSummary?: string;
   errorMessage?: string;
+  errorCode?: string;
+  modelUsage?: RunModelUsage;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Provider-reported counts for observed steps; null means at least one count was unavailable. */
+export interface RunModelUsage {
+  provider: "openai" | "anthropic";
+  model: string;
+  steps: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
 }
 
 export interface Approval {

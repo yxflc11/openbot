@@ -74,6 +74,15 @@ export async function logout(): Promise<void> {
   await request<void>("/api/v1/auth/logout", { method: "POST" });
 }
 
+export async function cancelNativeRun(runId: string): Promise<Run> {
+  const result = await request<{ run: Run }>(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  return result.run;
+}
+
 export function subscribeToUnauthorized(handler: () => void): () => void {
   window.addEventListener("openbot:unauthorized", handler);
   return () => window.removeEventListener("openbot:unauthorized", handler);

@@ -63,6 +63,42 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
+  it("authenticates a strict native task cancel command and maps conflicts without leaking errors", async () => {
+    const cancelNativeRun = vi.fn(
+      async (_id: string) => ({ id: "run-1", channelId: "channel-1", status: "cancelled" }) as Run,
+    );
+    const app = createTestApp({ store: createTestStore(), cancelNativeRun });
+    const post = (cookie?: string, body: unknown = {}, origin = testOrigin) =>
+      app.request("/api/v1/runs/run-1/cancel", {
+        method: "POST",
+        headers: {
+          Origin: origin,
+          "Content-Type": "application/json",
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    expect((await post()).status).toBe(401);
+    const login = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Origin: testOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0];
+    expect((await post(cookie, { force: true })).status).toBe(422);
+    expect((await post(cookie, {}, "https://other.example")).status).toBe(403);
+    expect(cancelNativeRun).not.toHaveBeenCalled();
+    expect((await post(cookie)).status).toBe(200);
+    expect(cancelNativeRun).toHaveBeenCalledExactlyOnceWith("run-1");
+    cancelNativeRun.mockRejectedValueOnce(new StoreConflictError("Task ended."));
+    expect((await post(cookie)).status).toBe(409);
+    cancelNativeRun.mockRejectedValueOnce(new StoreNotFoundError("Task not found."));
+    expect((await post(cookie)).status).toBe(404);
+    cancelNativeRun.mockRejectedValueOnce(new Error("PRIVATE PROVIDER BODY"));
+    const failed = await post(cookie);
+    expect(failed.status).toBe(500);
+    expect(await failed.text()).not.toContain("PRIVATE");
+  });
   it("authenticates and origin-checks automatic task creation, then validates a bounded command", async () => {
     const create = vi.fn().mockResolvedValue({ id: "schedule-1" });
     const automations = {
@@ -2004,6 +2040,7 @@ function createCompatibleBrowserNode(): ExecutionNode {
 }
 
 function createTestApp({
+  cancelNativeRun,
   automations,
   store,
   dispatchRun,
@@ -2021,6 +2058,7 @@ function createTestApp({
   remoteAddress = "127.0.0.1",
   trustedProxyAddress,
 }: {
+  cancelNativeRun?: Parameters<typeof createApp>[0]["cancelNativeRun"];
   automations?: Parameters<typeof createApp>[0]["automations"];
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
@@ -2049,6 +2087,7 @@ function createTestApp({
     requestThrottle,
   );
   return createApp({
+    ...(cancelNativeRun === undefined ? {} : { cancelNativeRun }),
     ...(automations === undefined ? {} : { automations }),
     allowedOrigins: [testOrigin],
     auth,

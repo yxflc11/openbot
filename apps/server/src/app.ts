@@ -39,7 +39,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import {
   type AutomationStore,
@@ -81,6 +81,7 @@ import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  cancelNativeRun?: (runId: string) => Promise<Run>;
   automations?: AutomationStore;
   modelSettings?: ModelSettingsService;
   allowedOrigins: string[];
@@ -471,6 +472,16 @@ export function createApp(dependencies: AppDependencies) {
         "X-Content-Type-Options": "nosniff",
       },
     });
+  });
+
+  app.post("/api/v1/runs/:runId/cancel", async (context) => {
+    await parseRequest(context.req.raw, z.object({}).strict(), 128);
+    if (!dependencies.cancelNativeRun)
+      return context.json({ error: "Native task cancellation is unavailable." }, 503);
+    const run = await dependencies.cancelNativeRun(context.req.param("runId"));
+    realtime.publish({ type: "run.updated", channelId: run.channelId, run });
+    workspaceRealtime.publish({ type: "run.updated", run });
+    return context.json({ run });
   });
 
   app.get("/api/v1/runs/:runId/frame", (context) => {

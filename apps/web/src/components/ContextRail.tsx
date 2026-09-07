@@ -66,6 +66,9 @@ export function ContextRail({
       latestArtifact.set(artifact.runId, artifact);
     }
   }
+  const observed = scopedRuns.flatMap((run) => (run.modelUsage ? [run.modelUsage] : []));
+  const knownInput = observed.filter((usage) => usage.inputTokens !== null);
+  const knownOutput = observed.filter((usage) => usage.outputTokens !== null);
   const hasActivity = pendingApprovals.length > 0 || scopedRuns.length > 0;
 
   return (
@@ -175,8 +178,32 @@ export function ContextRail({
 
       <section className="usage-rail-tokens" aria-label="Token 用量">
         <h3>Token 用量</h3>
-        <p className="usage-rail-unavailable">暂无用量记录</p>
-        <p className="usage-rail-caption">当前服务尚未提供模型用量数据</p>
+        {observed.length ? (
+          <>
+            <p className="usage-rail-unavailable">
+              输入{" "}
+              {knownInput.length
+                ? knownInput
+                    .reduce((sum, usage) => sum + (usage.inputTokens ?? 0), 0)
+                    .toLocaleString()
+                : "未知"}{" "}
+              · 输出{" "}
+              {knownOutput.length
+                ? knownOutput
+                    .reduce((sum, usage) => sum + (usage.outputTokens ?? 0), 0)
+                    .toLocaleString()
+                : "未知"}
+            </p>
+            <p className="usage-rail-caption">
+              已加载范围内 {observed.length} 个任务的已知记录；未记录部分不计入，不代表账单。
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="usage-rail-unavailable">暂无用量记录</p>
+            <p className="usage-rail-caption">当前范围没有已记录的模型用量</p>
+          </>
+        )}
       </section>
 
       <details className="usage-rail-workspace-overview">

@@ -70,9 +70,10 @@ const dispatcher = new RunDispatcher(
 );
 await dispatcher.start();
 // Existing credentials do not enable inference: the Owner must explicitly opt in in Settings.
+const nativeStore = new PostgresAgentStore(database.db);
 const nativeAgent = modelSettings
   ? new NativeAgentRunner(
-      new PostgresAgentStore(database.db),
+      nativeStore,
       modelSettings,
       realtime,
       () =>
@@ -83,6 +84,7 @@ const nativeAgent = modelSettings
       undefined,
       {
         artifacts: artifactStorage,
+        onUpdated: (run) => workspaceRealtime.publish({ type: "run.updated", run }),
         onCompleted: (run, artifacts) =>
           workspaceRealtime.publish({ type: "run.updated", run, artifacts }),
       },
@@ -118,6 +120,11 @@ const automationScheduler = new AutomationScheduler(
     ),
 );
 const app = createApp({
+  cancelNativeRun: async (runId) => {
+    const run = await nativeStore.cancel(runId);
+    nativeAgent?.cancel(runId);
+    return run;
+  },
   automations,
   ...(modelSettings ? { modelSettings } : {}),
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,

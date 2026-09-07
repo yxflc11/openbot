@@ -8,7 +8,7 @@ validation; elapsed time alone is not evidence of completion.
 | --- | --- | --- | --- |
 | 1 | Download, install, model setup | Durable versioned downloads, install path, persistent model configuration | Local checks and all 9 hosted jobs passed; public release pending |
 | 2 | Useful tool task and file delivery | Scoped source reading produces a downloadable report | Implemented; full check, 12 PostgreSQL tests and actual browser download passed |
-| 3 | Execution experience | Bot context, understandable execution state, stop/recovery and usage bounds | Pending |
+| 3 | Execution experience | Bot context, understandable execution state, stop/recovery and usage bounds | Implemented; full check, 16 database tests and actual browser stop/resubmit/usage passed |
 | 4 | Knowledge in execution | Reviewed skills/memory influence tasks, with provenance and review boundaries | Pending |
 | 5 | Broader ecosystem | Messaging, isolated delegation, more execution environments | Pending; ordered after core journey |
 
@@ -54,3 +54,12 @@ provider evidence, and package builds distinct from real-device certification.
   save dialog and exclusive new-file creation. Full check passed; actual Electron at openbot://app
   exercised renderer/preload/main/Server/disk, saved matching provenance and refused overwrite.
   QA intercepted only the native dialog selection, so this is not manual OS-dialog certification.
+
+- 17:34–18:02 UTC: completed Bot role context, durable Owner cancellation, explicit new-task
+  resubmission, provider-reported usage and fixed failure codes. Full check and all 16 PostgreSQL
+  tests passed. Built browser verified context, 300/240 reported tokens, cancellation during model
+  work, distinct resubmitted task/history and narrow layout, with zero page errors.
+- The P2 credential scan found only a synthetic credential URL in a negative test. Replaced the
+  literal with runtime construction and rewrote the two unmerged P2 commits without relaxing the
+  scanner. Full offline historical scan passed; commit 268063c passed all 9 hosted CI jobs in
+  run 34149581888.

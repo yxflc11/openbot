@@ -15,6 +15,10 @@ runs iteration; PostgreSQL remains the authority for tasks, channel membership, 
    For example: “Read this channel and summarize the outstanding tasks.”
 3. The task changes from queued to running. The inspector records model steps and tool observations;
    a successful task produces a Bot reply and completed Run. A failure is visible on the Run.
+4. The inspector identifies native work as **executed by Server**, shows recorded input/output
+   tokens and allows the Owner to stop a queued/running native task. A failed or cancelled task can
+   be explicitly submitted again as a new task; this starts from the original instruction, not a
+   model checkpoint. Worker task cancellation is not exposed by this native-only command.
 
 Inference is off by default, including for existing encrypted model configurations. Enabling it
 allows new `none`-profile tasks, including scheduled tasks, to send the task and requested channel
@@ -30,6 +34,9 @@ untrusted source material; downloads contain model-written text, not executable 
 Desktop uses a native **Save report** dialog for Markdown files; choose a new `.md` filename.
 Existing files are not overwritten. General browser downloads remain disabled in the native shell.
 
+The native loop includes the assigned Bot's current name, role and description as bounded context,
+and records the profile revision it used. Profile content does not grant tools or override policy.
+
 ## Tools and limits
 
 | Boundary | Behavior |
@@ -39,15 +46,24 @@ Existing files are not overwritten. General browser downloads remain disabled in
 | `read_public_page` | Read one of at most 3 explicit task URLs by index; 15 seconds, 512 KiB input, 6,000 UTF-8 bytes of extracted text |
 | `write_report` | Prepare at most 2 Markdown files; 24 KiB authored text and 32 KiB including Server source provenance |
 | Authority | Strict schemas; Server binds channel/Bot and URL list from the claimed Run and rechecks membership and Run state. No model-selected URL or filesystem path |
-| Iteration | At most 5 model steps, 8 executed tools and 1,024 output tokens per step |
+| Iteration | At most 5 model steps, 8 executed tools and 1,024 output tokens per step; no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
 | Time/output | 90-second inference deadline, 30-second HTTP deadline, 512 KiB provider reply, 16 KiB instruction/tool projection, 8,000-character final reply |
 | Concurrency | At most 2 active native Runs per Server, one per channel; conditional database claims prevent duplicate execution |
 | Network | Fixed official provider endpoints plus task-authorized public HTTPS GETs. Source DNS answers must all be public; the connection pins the checked address and verifies the original TLS host. No redirects, proxies or automatic retries; OpenAI response storage is disabled |
 | Lifecycle | Reply, report metadata, completion and audit commit together. Prepared report files are removed when publication fails. Interrupted running tasks fail on restart; ambiguous/failed tasks are not automatically retried |
 
 Progress contains action/result summaries, never internal reasoning, API keys or raw provider error
-bodies. Provider token usage is not yet persisted or aggregated into the usage panel. These limits
-bound the native loop; database availability remains required for state changes and shutdown.
+bodies. Per-step provider-reported input/output totals and model identity persist in PostgreSQL.
+Missing or invalid counts remain unknown. The usage panel sums only known records in the loaded
+channel/workspace sample; it is not a lifetime total, cost estimate or bill. An interrupted request
+may incur usage that was never reported. Reported-token thresholds stop subsequent calls, not a
+provider request already in flight. Existing byte/time/step limits apply even when counts are absent.
+Database availability remains required for state changes and shutdown.
+
+Cancellation and audit commit before the active request is aborted. Late results cannot replace a
+cancelled Run. Credential rejection, rate limits, unavailable providers, changed settings, revoked
+scope, tool failures and execution limits have fixed actionable failure messages. No automatic retry
+is performed. See [execution experience research](research/agent-execution-experience.md).
 
 The tools do not expose memory, executable skills, shell, local files/PDFs, arbitrary URLs, computer input, external
 messages or approval decisions. Existing Worker-profile tasks keep their existing dispatcher and
