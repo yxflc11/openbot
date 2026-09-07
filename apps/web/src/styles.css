@@ -3968,6 +3968,40 @@ select:focus-visible {
   border-radius: 4px;
   object-fit: cover;
 }
+.message-artifacts .artifact-card-document,
+.inspector-artifacts .artifact-card-document {
+  grid-template-columns: 42px minmax(0, 1fr);
+  max-width: 100%;
+  padding: 10px 12px;
+}
+.artifact-document-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-soft, #f2f4f6);
+  color: var(--text-muted, #637082);
+  font-size: 11px;
+  font-weight: 600;
+}
+.artifact-card-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.artifact-card-label strong,
+.artifact-card-label small {
+  display: block;
+}
+.artifact-card-label strong {
+  font-size: 12px;
+}
+.artifact-card-label small {
+  margin-top: 5px;
+  color: var(--text-muted, #637082);
+  font-size: 10px;
+}
 .message-composer {
   width: calc(100% - clamp(44px, 6vw, 84px));
   max-width: 880px;
@@ -5299,8 +5333,30 @@ select:focus-visible {
 .setup-change-role:hover {
   color: var(--blue);
 }
-.app-shell.without-context { grid-template-columns: 264px minmax(0, 1fr); }
-:root[data-desktop="darwin"] .channel-header { -webkit-app-region: drag; user-select: none; }
-:root[data-desktop] .channel-first-empty h1 { font-size: 30px; letter-spacing: -0.03em; }
-:root[data-desktop] .channel-first-empty .empty-eyebrow { display: none; }
-@media (max-width: 760px) { .app-shell.without-context { grid-template-columns: minmax(0, 1fr); } }
+.app-shell.without-context {
+  grid-template-columns: 264px minmax(0, 1fr);
+}
+:root[data-desktop="darwin"] .channel-header {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+:root[data-desktop] .channel-first-empty h1 {
+  font-size: 30px;
+  letter-spacing: -0.03em;
+}
+:root[data-desktop] .channel-first-empty .empty-eyebrow {
+  display: none;
+}
+@media (max-width: 760px) {
+  .app-shell.without-context {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.artifact-save-notice {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

@@ -464,7 +464,10 @@ export function createApp(dependencies: AppDependencies) {
         "Cache-Control": "private, no-store",
         "Content-Length": String(bytes.byteLength),
         "Content-Type": record.mediaType,
-        "Content-Disposition": "inline",
+        "Content-Disposition":
+          record.mediaType === "text/markdown"
+            ? `attachment; filename="report.md"; filename*=UTF-8''${encodeURIComponent(record.name).replace(/['()*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`
+            : "inline",
         "X-Content-Type-Options": "nosniff",
       },
     });

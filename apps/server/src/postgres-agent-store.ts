@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { channelBots, messages, runEvents, runs } from "@openbot/db";
+import { artifacts as artifactsTable, channelBots, messages, runEvents, runs } from "@openbot/db";
 import type { Run, RunProgress } from "@openbot/domain";
 import { and, asc, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import type { AgentRunStore } from "./native-agent.js";
+import type { PersistedArtifact } from "./artifact-storage.js";
 import { toMessage, toRun } from "./postgres-store.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
@@ -78,16 +79,14 @@ export class PostgresAgentStore implements AgentRunStore {
         )
         .returning();
       if (!row) return undefined;
-      await tx
-        .insert(runEvents)
-        .values({
-          id: randomUUID(),
-          runId: row.id,
-          channelId: row.channelId,
-          botId: row.botId,
-          type: "RUN_STARTED",
-          payload: { executor: "native-agent" },
-        });
+      await tx.insert(runEvents).values({
+        id: randomUUID(),
+        runId: row.id,
+        channelId: row.channelId,
+        botId: row.botId,
+        type: "RUN_STARTED",
+        payload: { executor: "native-agent" },
+      });
       return toRun(row);
     });
   }
@@ -147,17 +146,15 @@ export class PostgresAgentStore implements AgentRunStore {
       if (!row) throw new Error("Run is no longer active.");
       const id = randomUUID(),
         createdAt = new Date();
-      await tx
-        .insert(runEvents)
-        .values({
-          id,
-          runId: run.id,
-          channelId: run.channelId,
-          botId: run.botId,
-          type: "RUN_PROGRESS",
-          payload: { stage, message },
-          createdAt,
-        });
+      await tx.insert(runEvents).values({
+        id,
+        runId: run.id,
+        channelId: run.channelId,
+        botId: run.botId,
+        type: "RUN_PROGRESS",
+        payload: { stage, message },
+        createdAt,
+      });
       return {
         id,
         runId: run.id,
@@ -168,8 +165,19 @@ export class PostgresAgentStore implements AgentRunStore {
       };
     });
   }
-  async complete(run: Run, text: string) {
+  async complete(run: Run, text: string, artifacts: PersistedArtifact[] = []) {
     if (!text.trim() || text.length > 8000) throw new Error("Invalid final answer.");
+    if (
+      artifacts.length > 2 ||
+      artifacts.some(
+        (record) =>
+          record.artifact.runId !== run.id ||
+          record.artifact.mediaType !== "text/markdown" ||
+          !record.storageKey.startsWith(`runs/${run.id}/`),
+      )
+    ) {
+      throw new Error("Artifact does not belong to this native task.");
+    }
     return this.db.transaction(async (tx) => {
       const [member] = await tx.select().from(channelBots).where(membership(run)).for("share");
       if (!member) throw new Error("Agent scope revoked.");
@@ -194,6 +202,20 @@ export class PostgresAgentStore implements AgentRunStore {
         })
         .returning();
       if (!message) throw new Error("Reply was not persisted.");
+      if (artifacts.length) {
+        await tx.insert(artifactsTable).values(
+          artifacts.map((record) => ({
+            id: record.artifact.id,
+            runId: run.id,
+            name: record.artifact.name,
+            mediaType: record.artifact.mediaType,
+            storageKey: record.storageKey,
+            sha256: record.artifact.sha256,
+            metadata: { ...record.metadata, sizeBytes: record.artifact.sizeBytes },
+            createdAt: new Date(record.artifact.createdAt),
+          })),
+        );
+      }
       await tx.insert(runEvents).values([
         {
           id: randomUUID(),
@@ -209,10 +231,18 @@ export class PostgresAgentStore implements AgentRunStore {
           channelId: row.channelId,
           botId: row.botId,
           type: "RUN_COMPLETED",
-          payload: { executor: "native-agent", summary: text },
+          payload: {
+            executor: "native-agent",
+            summary: text,
+            artifactIds: artifacts.map((record) => record.artifact.id),
+          },
         },
       ]);
-      return { run: toRun(row), message: toMessage(message) };
+      return {
+        run: toRun(row),
+        message: toMessage(message),
+        artifacts: artifacts.map((record) => record.artifact),
+      };
     });
   }
   async fail(run: Run): Promise<Run | undefined> {
@@ -225,20 +255,18 @@ export class PostgresAgentStore implements AgentRunStore {
         .where(running(run))
         .returning();
       if (!row) return undefined;
-      await tx
-        .insert(runEvents)
-        .values({
-          id: randomUUID(),
-          runId: row.id,
-          channelId: row.channelId,
-          botId: row.botId,
-          type: "RUN_FAILED",
-          payload: {
-            code: "provider_execution_failed",
-            message: errorMessage,
-            executor: "native-agent",
-          },
-        });
+      await tx.insert(runEvents).values({
+        id: randomUUID(),
+        runId: row.id,
+        channelId: row.channelId,
+        botId: row.botId,
+        type: "RUN_FAILED",
+        payload: {
+          code: "provider_execution_failed",
+          message: errorMessage,
+          executor: "native-agent",
+        },
+      });
       return toRun(row);
     });
   }

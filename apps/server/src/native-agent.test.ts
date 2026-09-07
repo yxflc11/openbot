@@ -67,12 +67,180 @@ function fixture() {
   return { store, publish, checkSettings, run, signal: new AbortController().signal };
 }
 describe("native Agent loop", () => {
+  it("reads an explicit source, prepares a report, and returns verifiable source metadata", async () => {
+    const f = fixture();
+    const readSource = vi.fn(async () => ({
+      url: "https://example.com/research",
+      text: "Launch is Tuesday.",
+      truncated: false,
+      fetchedAt: "2026-09-08T00:00:00.000Z",
+    }));
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        calls("read_public_page", '{"sourceIndex":0}'),
+        calls(
+          "write_report",
+          JSON.stringify({ name: "研究报告.md", markdown: "# Findings\n\nLaunch is Tuesday." }),
+        ),
+        answer("The report is attached."),
+      ],
+    });
+    const result = await executeAgentRun({
+      ...f,
+      run: { ...run, instruction: "Read https://example.com/research and write a report" },
+      model,
+      allowReports: true,
+      readSource,
+    });
+    expect(readSource).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain("Launch is Tuesday.");
+    expect(result.text).toBe("The report is attached.");
+    expect(result.reports).toHaveLength(1);
+    expect(result.reports[0]).toMatchObject({
+      name: "研究报告.md",
+      mediaType: "text/markdown",
+      metadata: {
+        executor: "native-agent",
+        sources: [{ url: "https://example.com/research", truncated: false }],
+      },
+    });
+    expect(result.reports[0]?.text).toContain("## Sources read by OpenBot");
+    expect(f.store.complete).not.toHaveBeenCalled();
+  });
+
+  it("rejects unlisted sources, extra network arguments, unsafe filenames and duplicate reports", async () => {
+    for (const [name, input] of [
+      ["read_public_page", '{"sourceIndex":1}'],
+      ["read_public_page", '{"sourceIndex":0,"url":"https://attacker.example"}'],
+      ["write_report", '{"name":"../report.md","markdown":"content"}'],
+      ["write_report", '{"name":"report.html","markdown":"content"}'],
+    ]) {
+      const f = fixture();
+      const readSource = vi.fn();
+      const model = new MockLanguageModelV4({ doGenerate: [calls(name, input), answer()] });
+      await expect(
+        executeAgentRun({
+          ...f,
+          run: { ...run, instruction: "Read https://example.com" },
+          model,
+          readSource,
+          allowReports: true,
+        }),
+      ).rejects.toThrow();
+      expect(readSource).not.toHaveBeenCalled();
+    }
+    const duplicate = calls("write_report", '{"name":"report.md","markdown":"content"}', 2);
+    await expect(
+      executeAgentRun({
+        ...fixture(),
+        model: new MockLanguageModelV4({ doGenerate: [duplicate, answer()] }),
+        allowReports: true,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("does not retain a prepared report when a later model step fails", async () => {
+    const f = fixture();
+    let step = 0;
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        if (++step === 1) return calls("write_report", '{"name":"report.md","markdown":"draft"}');
+        throw new Error("upstream failure");
+      },
+    });
+    await expect(executeAgentRun({ ...f, model, allowReports: true })).rejects.toThrow();
+    expect(f.store.complete).not.toHaveBeenCalled();
+  });
+
+  it.each(["commit-failure", "settings-revoked", "notification-failure"])(
+    "keeps report bytes consistent with terminal authority: %s",
+    async (mode) => {
+      const f = fixture();
+      vi.mocked(f.store.queued).mockResolvedValueOnce([run]).mockResolvedValue([]);
+      const config = {
+        provider: "openai",
+        model: "fixture",
+        apiKey: "fixture-key",
+        revision: "first",
+        agentEnabled: true,
+        agentEnabledAt: "2026-09-07T00:00:00Z",
+      };
+      const settings = {
+        agentSettings: vi.fn(async () => ({ ...config })),
+        onChange: () => () => {},
+      } as unknown as ModelSettingsService;
+      const artifact = {
+        id: "report",
+        runId: run.id,
+        name: "report.md",
+        mediaType: "text/markdown",
+        sha256: "a".repeat(64),
+        sizeBytes: 10,
+        createdAt: run.createdAt,
+      };
+      const record = { artifact, storageKey: "runs/run/report.md", metadata: {} };
+      const storage = {
+        persist: vi.fn(async () => {
+          if (mode === "settings-revoked") config.revision = "second";
+          return [record];
+        }),
+        read: vi.fn(),
+        remove: vi.fn(async () => {}),
+      };
+      vi.mocked(f.store.complete).mockImplementation(async () => {
+        if (mode === "commit-failure") throw new Error("transaction failed");
+        return {
+          run: { ...run, status: "completed" },
+          artifacts: [artifact],
+          message: {
+            id: "reply",
+            channelId: run.channelId,
+            authorType: "bot",
+            authorId: run.botId,
+            content: "Attached.",
+            createdAt: run.createdAt,
+          },
+        };
+      });
+      const realtime = new ChannelRealtimeHub();
+      if (mode === "notification-failure")
+        realtime.subscribe(run.channelId, (event) => {
+          if (event.type === "message.created") throw new Error("listener failed after commit");
+        });
+      const error = vi.fn();
+      const model = new MockLanguageModelV4({
+        doGenerate: [calls("write_report", '{"name":"report.md","markdown":"a report"}'), answer()],
+      });
+      const runner = new NativeAgentRunner(f.store, settings, realtime, error, () => model, {
+        artifacts: storage,
+      });
+      try {
+        runner.start();
+        await vi.waitFor(() => {
+          if (mode === "notification-failure") expect(error).toHaveBeenCalledTimes(1);
+          else expect(f.store.fail).toHaveBeenCalledTimes(1);
+        });
+        if (mode === "notification-failure") {
+          expect(storage.remove).not.toHaveBeenCalled();
+          expect(f.store.fail).not.toHaveBeenCalled();
+        } else {
+          expect(storage.remove).toHaveBeenCalledWith([record.storageKey]);
+          if (mode === "settings-revoked") expect(f.store.complete).not.toHaveBeenCalled();
+        }
+      } finally {
+        await runner.stop();
+      }
+    },
+  );
   it("returns a scoped observation to the model and completes on the next step", async () => {
     const f = fixture();
     const model = new MockLanguageModelV4({
       doGenerate: [calls(), answer("The launch is Tuesday.")],
     });
-    expect(await executeAgentRun({ ...f, model })).toBe("The launch is Tuesday.");
+    expect(await executeAgentRun({ ...f, model })).toEqual({
+      text: "The launch is Tuesday.",
+      reports: [],
+    });
     expect(model.doGenerateCalls).toHaveLength(2);
     expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain("The launch is Tuesday.");
     expect(f.store.context).toHaveBeenCalledWith(run);
@@ -280,7 +448,10 @@ describe("official provider HTTP contracts", () => {
         provider === "openai"
           ? createOpenAI({ apiKey: "fixture-key", fetch }).responses("test-model")
           : createAnthropic({ apiKey: "fixture-key", fetch })("test-model");
-      expect(await executeAgentRun({ ...fixture(), model })).toBe("Tuesday.");
+      expect(await executeAgentRun({ ...fixture(), model })).toEqual({
+        text: "Tuesday.",
+        reports: [],
+      });
       expect(requests).toHaveLength(2);
       expect(JSON.stringify(requests[1]?.body)).toContain("The launch is Tuesday.");
       expect(requests[0]?.url).toBe(

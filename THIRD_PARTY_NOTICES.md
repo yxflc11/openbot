@@ -122,3 +122,12 @@ runtime. See `docs/research/desktop-installable-delivery.md` for the installer-o
 - This is an internal unsigned development bundle. Exact per-library binary/source correspondence
   and LGPL distribution obligations remain public-release gates, documented in that inventory.
   Do not represent the preview as an attested or distribution-cleared release.
+
+## Native Agent public sources
+
+- ipaddr.js 2.5.0 (dc55282780d8702bac31ef012ca52e4a77fbca1f), MIT.
+- html-to-text 10.0.1 (1c39d9885075836a7e45d0236c7a5541dede8e52), MIT.
+- @types/html-to-text 9.0.4, MIT, build-time types only.
+
+Packages retain their upstream notices in the production dependency closure. No upstream source
+was copied or substantially adapted. See [research](docs/research/agent-research-artifacts.md).

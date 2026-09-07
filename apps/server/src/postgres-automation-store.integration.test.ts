@@ -6,6 +6,7 @@ import { createDatabase } from "@openbot/db";
 import { MockLanguageModelV4 } from "ai/test";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import { FileArtifactStorage } from "./artifact-storage.js";
 import { ModelSettingsService } from "./model-settings.js";
 import { NativeAgentRunner } from "./native-agent.js";
 import { PostgresAgentStore } from "./postgres-agent-store.js";
@@ -269,6 +270,144 @@ describe.skipIf(!databaseUrl)("PostgreSQL automation transaction", () => {
     await expect(native.complete(active, "Invalid reply")).rejects.toThrow(/revoked/);
     expect((await native.fail(active))?.status).toBe("failed");
   });
+  it("commits a source-based report with its reply, artifact and audit, with no duplicate publication", async () => {
+    if (!database) return;
+    const native = new PostgresAgentStore(database.db);
+    const control = new PostgresControlPlaneStore(database.db);
+    const directory = await mkdtemp(join(tmpdir(), "openbot-report-e2e-"));
+    const storage = new FileArtifactStorage(join(directory, "objects"));
+    const settings = new ModelSettingsService(
+      join(directory, "model.json"),
+      "a".repeat(64),
+      async () => Response.json({ id: "fixture-model" }),
+    );
+    const usage = {
+      inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 1, text: 1, reasoning: 0 },
+    };
+    let step = 0;
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => {
+        step++;
+        if (step <= 2)
+          return {
+            content: [
+              {
+                type: "tool-call",
+                toolCallId: `call-${step}`,
+                toolName: step === 1 ? "read_public_page" : "write_report",
+                input:
+                  step === 1
+                    ? '{"sourceIndex":0}'
+                    : '{"name":"findings.md","markdown":"# Findings\\nLaunch is Tuesday."}',
+              },
+            ],
+            usage,
+            finishReason: { unified: "tool-calls", raw: "tool_calls" },
+            warnings: [],
+          };
+        return {
+          content: [{ type: "text", text: "The report is attached." }],
+          usage,
+          finishReason: { unified: "stop", raw: "stop" },
+          warnings: [],
+        };
+      },
+    });
+    const completed = vi.fn();
+    const runner = new NativeAgentRunner(
+      native,
+      settings,
+      new ChannelRealtimeHub(),
+      vi.fn(),
+      () => model,
+      {
+        artifacts: storage,
+        readSource: async (url) => ({
+          url,
+          text: "Launch is Tuesday.",
+          fetchedAt: "2026-09-08T00:00:00.000Z",
+          truncated: false,
+        }),
+        onCompleted: completed,
+      },
+    );
+    try {
+      await settings.save({
+        provider: "openai",
+        model: "fixture-model",
+        apiKey: "fixture-key-not-real",
+        revision: null,
+        agentEnabled: true,
+      });
+      const task = await control.submitTask("test-channel", {
+        content: "Read https://example.com/research and write a report",
+        botId: "test-bot",
+      });
+      runner.start();
+      await vi.waitFor(() => expect(completed).toHaveBeenCalledTimes(1));
+      const artifacts = await control.listArtifacts(task.run.id);
+      expect(artifacts).toHaveLength(1);
+      const artifact = artifacts[0];
+      if (!artifact) throw new Error("Report artifact missing.");
+      expect(artifact).toMatchObject({
+        runId: task.run.id,
+        name: "findings.md",
+        mediaType: "text/markdown",
+      });
+      const record = await control.getArtifact(artifact.id);
+      if (!record) throw new Error("Report record missing.");
+      const text = (await storage.read(record.storageKey)).toString("utf8");
+      expect(text).toContain("Launch is Tuesday.");
+      expect(text).toContain("https://example.com/research");
+      expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain("Launch is Tuesday.");
+      const [counts] =
+        await database.client`select (select count(*) from messages where run_id=${task.run.id} and author_type='bot')::integer as replies, (select count(*) from artifacts where run_id=${task.run.id})::integer as artifacts, (select count(*) from run_events where run_id=${task.run.id} and type='RUN_COMPLETED')::integer as completed`;
+      expect(counts).toEqual({ replies: 1, artifacts: 1, completed: 1 });
+      await expect(native.complete(task.run, "Duplicate")).rejects.toThrow();
+    } finally {
+      await runner.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rolls back a native report when terminal artifact insertion fails", async () => {
+    if (!database) return;
+    const native = new PostgresAgentStore(database.db);
+    const control = new PostgresControlPlaneStore(database.db);
+    const task = await control.submitTask("test-channel", {
+      content: "Write a report",
+      botId: "test-bot",
+    });
+    const active = await native.claim(task.run, "2000-01-01T00:00:00Z");
+    if (!active) throw new Error("Fixture did not claim.");
+    const artifact = {
+      id: randomUUID(),
+      runId: active.id,
+      name: "report.md",
+      mediaType: "text/markdown",
+      sha256: "a".repeat(64),
+      sizeBytes: 10,
+      createdAt: new Date().toISOString(),
+    };
+    const record = { artifact, storageKey: `runs/${active.id}/${artifact.id}.md`, metadata: {} };
+    await expect(
+      native.complete(active, "Wrong scope", [
+        { ...record, artifact: { ...artifact, runId: "other" } },
+      ]),
+    ).rejects.toThrow("belong");
+    await database.client`alter table artifacts add constraint test_report_rollback check (media_type <> 'text/markdown')`;
+    try {
+      await expect(native.complete(active, "Report prepared", [record])).rejects.toThrow();
+      await native.assertScope(active);
+      const [counts] =
+        await database.client`select (select count(*) from messages where author_type='bot')::integer as replies, (select count(*) from artifacts)::integer as artifacts, (select count(*) from run_events where type='RUN_COMPLETED')::integer as completed`;
+      expect(counts).toEqual({ replies: 0, artifacts: 0, completed: 0 });
+    } finally {
+      await database.client`alter table artifacts drop constraint test_report_rollback`;
+    }
+  });
+
   it("runs a newly submitted task through SDK observation and persists its final Bot reply", async () => {
     if (!database) return;
     const native = new PostgresAgentStore(database.db),

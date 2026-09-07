@@ -1,3 +1,4 @@
+import { ArtifactDownloadLink } from "./ArtifactCard";
 import type {
   ApprovalDecision,
   Artifact,
@@ -152,14 +153,10 @@ export function ContextRail({
                     onInspect={onInspectRun}
                   />
                   {artifact ? (
-                    <a
-                      href={`/api/v1/artifacts/${encodeURIComponent(artifact.id)}/content`}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={artifact.name}
-                    >
-                      查看附件：{artifact.name} <span aria-hidden="true">↗</span>
-                    </a>
+                    <ArtifactDownloadLink artifact={artifact}>
+                      {artifact.mediaType === "text/markdown" ? "下载报告" : "查看附件"}：
+                      {artifact.name} <span aria-hidden="true">↗</span>
+                    </ArtifactDownloadLink>
                   ) : null}
                 </div>
               );

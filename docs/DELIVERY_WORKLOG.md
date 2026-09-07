@@ -6,8 +6,8 @@ validation; elapsed time alone is not evidence of completion.
 
 | Priority | Project | Acceptance | State |
 | --- | --- | --- | --- |
-| 1 | Download, install, model setup | Durable versioned downloads, install path, persistent model configuration | Local checks passed; native CI and public release pending |
-| 2 | Useful tool task and file delivery | Scoped source reading produces a downloadable report | Research completed; implementation next |
+| 1 | Download, install, model setup | Durable versioned downloads, install path, persistent model configuration | Local checks and all 9 hosted jobs passed; public release pending |
+| 2 | Useful tool task and file delivery | Scoped source reading produces a downloadable report | Implemented; full check, 12 PostgreSQL tests and actual browser download passed |
 | 3 | Execution experience | Bot context, understandable execution state, stop/recovery and usage bounds | Pending |
 | 4 | Knowledge in execution | Reviewed skills/memory influence tasks, with provenance and review boundaries | Pending |
 | 5 | Broader ecosystem | Messaging, isolated delegation, more execution environments | Pending; ordered after core journey |
@@ -23,7 +23,7 @@ validation; elapsed time alone is not evidence of completion.
   guide and persistent private model-directory initialization. `npm run check` passed. Actual
   macOS DMG creation plus read-only mount/ASAR/fuse/native executable/license checks passed.
   The first DMG trial exposed a nested-app path error; the adapter was corrected and the actual
-  mounted structure is now checked during every macOS installer build. Final local DMG size:
+  mounted structure is now checked during every macOS installer build. First verified local DMG size:
   191,019,942 bytes, SHA-256 `3c42b0d5cf8824352615245c5b6ce003786bd2607b7e718b411222aa4678fd6c`.
   Public release remains pending: native dependency/source correspondence and real-device/signing
   evidence are separate gates. Local fixtures made no paid provider calls.
@@ -33,3 +33,24 @@ validation; elapsed time alone is not evidence of completion.
 Complete each project, then run its meaningful tests and the repository check. Re-run only for
 changes, failures or unresolved concerns. Keep mocked provider evidence distinct from live paid
 provider evidence, and package builds distinct from real-device certification.
+
+- 16:35–16:59 UTC: hosted packaging exposed an incomplete npm Electron cache notice path on all
+  three platforms. Copying notices from the runtime actually extracted by Packager fixed it.
+  Commit ead6c8f passed all 9 CI jobs in run 34144512831, including all three native installers and
+  both container architectures. No public Release was published.
+- 16:45–17:22 UTC: implemented explicit task URL reading and transactional Markdown reports,
+  authenticated downloads and shared file cards. Research preceded implementation. Full repository
+  check passed; 12 disposable PostgreSQL integration tests passed; production npm audit found zero
+  vulnerabilities. Actual built UI with real Server/database passed login, task submission, report
+  download (UTF-8 filename/provenance), unauthenticated 401, reload retention, 1280x900 and 390x844
+  layouts, zero page errors. Model and source responses in this journey were deterministic fixtures.
+  Browser QA found and fixed Chinese punctuation in task URL extraction.
+- Live source attempt: local DNS resolves example.com and rfc-editor.org into reserved 198.18.*
+  addresses. The reader rejected both before connecting as designed. Public-network HTTPS success
+  remains unverified in this proxy network; the private-address denial must not be weakened.
+
+- 17:24–17:33 UTC: native-shell review found its intentional global browser-download denial. Added
+  an artifact-UUID-only main-process save adapter with authenticated bounded Markdown fetch, native
+  save dialog and exclusive new-file creation. Full check passed; actual Electron at openbot://app
+  exercised renderer/preload/main/Server/disk, saved matching provenance and refused overwrite.
+  QA intercepted only the native dialog selection, so this is not manual OS-dialog certification.

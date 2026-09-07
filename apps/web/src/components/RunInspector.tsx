@@ -1,6 +1,7 @@
 import type { Artifact, Bot, ExecutionNode, Run, RunFrame, RunProgress } from "@openbot/domain";
 import { useEffect, useRef } from "react";
 import { runStatusLabel } from "../run-state";
+import { ArtifactCard } from "./ArtifactCard";
 import { CloseIcon, NodeIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -148,22 +149,7 @@ export function RunInspector({
               <h3>产物</h3>
               <div className="inspector-artifacts">
                 {artifacts.map((artifact) => (
-                  <a
-                    href={`/api/v1/artifacts/${artifact.id}/content`}
-                    target="_blank"
-                    rel="noreferrer"
-                    key={artifact.id}
-                  >
-                    <img
-                      src={`/api/v1/artifacts/${artifact.id}/content`}
-                      alt={artifact.name}
-                      loading="lazy"
-                    />
-                    <span>
-                      <strong>{artifact.name}</strong>
-                      <small>{formatBytes(artifact.sizeBytes)}</small>
-                    </span>
-                  </a>
+                  <ArtifactCard artifact={artifact} key={artifact.id} />
                 ))}
               </div>
             </section>

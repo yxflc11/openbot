@@ -56,6 +56,7 @@ import { proxyDesktopServerRequest } from "./server-proxy.js";
 import { FileDesktopSetupPlanStore } from "./setup-plan.js";
 import { DesktopSetupPlanController } from "./setup-plan-controller.js";
 import { SidebarMaterialController } from "./sidebar-material.js";
+import { DesktopReportSaver } from "./report-save.js";
 
 let nativeServer: NativeServerController | undefined;
 let quitting = false;
@@ -106,6 +107,33 @@ function registerDesktopIpc(
   setupPlanController: DesktopSetupPlanController,
   localWorkerController: DesktopLocalWorkerController,
 ): void {
+  const reportSaver = new DesktopReportSaver({
+    connection: () => connectionController.getState(),
+    fetch: (input, init) => {
+      if (!desktopSession) throw new Error("Desktop session is unavailable.");
+      return desktopSession.fetch(input, init);
+    },
+    active: () => !quitting && mainWindow !== undefined && !mainWindow.isDestroyed(),
+    choosePath: async (name) => {
+      const window = mainWindow;
+      if (!window || window.isDestroyed()) return undefined;
+      const result = await dialog.showSaveDialog(window, {
+        title: "保存报告",
+        buttonLabel: "保存",
+        defaultPath: name,
+        filters: [{ name: "Markdown 报告", extensions: ["md"] }],
+        message: "选择新文件名保存报告；已有文件不会被覆盖。",
+        showsTagField: false,
+      });
+      return result.canceled ? undefined : result.filePath;
+    },
+  });
+  ipcMain.removeHandler("openbot:save-report");
+  ipcMain.handle("openbot:save-report", (event, artifactId: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
+      throw new Error("Desktop IPC sender is not allowed.");
+    return reportSaver.save(artifactId);
+  });
   ipcMain.removeHandler(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL);
   ipcMain.handle(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL, (event, value: unknown) => {
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {

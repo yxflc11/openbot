@@ -71,11 +71,21 @@ const dispatcher = new RunDispatcher(
 await dispatcher.start();
 // Existing credentials do not enable inference: the Owner must explicitly opt in in Settings.
 const nativeAgent = modelSettings
-  ? new NativeAgentRunner(new PostgresAgentStore(database.db), modelSettings, realtime, () =>
-      logger.error(
-        "agent.poll_failed",
-        "Native Agent polling failed; Run state remains in PostgreSQL.",
-      ),
+  ? new NativeAgentRunner(
+      new PostgresAgentStore(database.db),
+      modelSettings,
+      realtime,
+      () =>
+        logger.error(
+          "agent.poll_failed",
+          "Native Agent polling failed; Run state remains in PostgreSQL.",
+        ),
+      undefined,
+      {
+        artifacts: artifactStorage,
+        onCompleted: (run, artifacts) =>
+          workspaceRealtime.publish({ type: "run.updated", run, artifacts }),
+      },
     )
   : undefined;
 const requestThrottle = new RequestThrottle(new PostgresRequestThrottleStore(database.db));
