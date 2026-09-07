@@ -54,16 +54,30 @@ describe("Native Server boundary", () => {
     );
     expect(opts.encrypt).not.toHaveBeenCalled();
   });
-  it("deduplicates clicks and never launches when encryption is unavailable", async () => {
+  it("deduplicates pending installation attempts before inspecting resources", async () => {
     const opts = await options();
-    await fakeResources(opts);
     const service = new NativeServerController(opts);
     const first = service.start();
     expect(service.start()).toBe(first);
-    await first;
-    expect(opts.encrypt).toHaveBeenCalledOnce();
+    expect(await first).toEqual({ status: "failed", code: "installation_failed" });
+    expect(opts.encrypt).not.toHaveBeenCalled();
     expect(opts.launchServer).not.toHaveBeenCalled();
-    await service.stop();
-    expect(service.getState()).toEqual({ status: "idle" });
   });
+  // Native bootstrap requires POSIX ownership/mode evidence before it reaches Keychain.
+  // A Windows filesystem cannot satisfy that prerequisite by spoofing options.platform.
+  it.skipIf(process.platform === "win32")(
+    "never launches when encryption is unavailable",
+    async () => {
+      const opts = await options();
+      await fakeResources(opts);
+      const service = new NativeServerController(opts);
+      const first = service.start();
+      expect(service.start()).toBe(first);
+      await first;
+      expect(opts.encrypt).toHaveBeenCalledOnce();
+      expect(opts.launchServer).not.toHaveBeenCalled();
+      await service.stop();
+      expect(service.getState()).toEqual({ status: "idle" });
+    },
+  );
 });

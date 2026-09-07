@@ -60,3 +60,11 @@ No upstream source is copied or substantially adapted. Existing dependency notic
 - Update English and Chinese Desktop docs and all maintained root README translations.
 - Claims stay at unsigned development bundles / tested contracts. Real-device control and signed
   public installers remain separate acceptance gates.
+
+## Hosted follow-up
+
+The first PR run exposed a native bootstrap fixture that spoofed macOS on Windows while retaining
+Windows filesystem semantics. The controller correctly rejected POSIX ownership/mode evidence
+before reaching encryption. Keep that encryption prerequisite check explicitly POSIX-only and
+exercise pending-request deduplication on all three platforms without spoofing filesystem proof.
+Production directory checks and unsupported-platform rejection remain unchanged.
