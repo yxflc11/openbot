@@ -96,6 +96,8 @@ OpenBot 尚未提供 Hermes/Pi/OpenClaw 运行时适配器、插件安装生命�
 [Hermes Agent 学习图谱](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)
 启发。OpenBot 自行负责证据、审核和迁移模型，不声称原创了这一概念。
 
+[本次交付证据与尚未实现的能力](docs/DELIVERY_STATUS.zh-CN.md)。
+
 ## 开发与独立部署
 
 Desktop 是可选入口。单独运行 Server、PostgreSQL 和 Web：

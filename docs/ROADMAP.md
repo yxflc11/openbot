@@ -1,5 +1,7 @@
 # 实施路线图
 
+当前交付状态见 [2026-09-08 功能与缺口清单](DELIVERY_STATUS.zh-CN.md)。下文保留此前阶段路线。
+
 ## 当前进度
 
 M1 第二切片已完成：Server 会自动执行 PostgreSQL migration；频道、Bot、频道成员、频道消息、任务、结构化事件、Owner Session、结果和 Artifact 元数据会真实落库；Web 可以本地登录、创建组合式 Bot、创建频道、把 Bot 加入频道并指定 Bot 提交任务。任务完成结果会作为 Bot 回复保存到频道，频道 SSE、多浏览器即时同步、回复关系、富文本表格、断线检测和自动重连已跑通。任务再以 Bot 固定的 execution profile 匹配有容量的 Node。

@@ -102,3 +102,6 @@ provider evidence, and package builds distinct from real-device certification.
   and save-dialog selection while loading the built ASAR; it is not uninstrumented signed-app evidence.
 - Commit 3f8e38b passed all 9 hosted jobs in run 34154753020, including the explicit native bootstrap
   lane (Windows PowerShell and pwsh). Stream-lifecycle commit verification follows separately.
+
+- Final runtime commit cb718fc passed all 9 hosted CI jobs in run 34155768881. Three installer
+  artifacts and three portable-bundle artifacts are available, each retained for 14 days.

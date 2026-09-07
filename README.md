@@ -104,6 +104,8 @@ Employee evolution and learning are explicitly inspired by
 [Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py).
 OpenBot owns its evidence, review and portability model and does not claim to have invented that concept.
 
+[Current delivery evidence and remaining capability gaps](docs/DELIVERY_STATUS.md).
+
 ## Development
 
 Desktop is optional. To run Server, PostgreSQL and Web separately:
