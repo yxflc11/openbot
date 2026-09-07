@@ -11,9 +11,11 @@ import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { EmployeePublisherKeyring } from "./employee-publisher-keyring.js";
 import { closeHttpServer } from "./http-shutdown.js";
 import { ModelSettingsService } from "./model-settings.js";
+import { NativeAgentRunner } from "./native-agent.js";
 import { NodeIdentityService } from "./node-identity.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
+import { PostgresAgentStore } from "./postgres-agent-store.js";
 import { PostgresAutomationStore } from "./postgres-automation-store.js";
 import { PostgresNodeIdentityStore } from "./postgres-node-identity-store.js";
 import { PostgresRequestThrottleStore } from "./postgres-request-throttle-store.js";
@@ -65,6 +67,19 @@ const dispatcher = new RunDispatcher(
   logger,
 );
 await dispatcher.start();
+// Existing credentials do not enable inference: the Owner must explicitly opt in in Settings.
+const modelSettings =
+  env.OPENBOT_MODEL_SETTINGS_PATH && env.OPENBOT_MODEL_ENCRYPTION_KEY
+    ? new ModelSettingsService(env.OPENBOT_MODEL_SETTINGS_PATH, env.OPENBOT_MODEL_ENCRYPTION_KEY)
+    : undefined;
+const nativeAgent = modelSettings
+  ? new NativeAgentRunner(new PostgresAgentStore(database.db), modelSettings, realtime, () =>
+      logger.error(
+        "agent.poll_failed",
+        "Native Agent polling failed; Run state remains in PostgreSQL.",
+      ),
+    )
+  : undefined;
 const requestThrottle = new RequestThrottle(new PostgresRequestThrottleStore(database.db));
 const auth = new OwnerAuthService(
   new PostgresOwnerSessionStore(database.db),
@@ -86,6 +101,7 @@ const automationScheduler = new AutomationScheduler(
     });
     realtime.publish({ type: "run.created", channelId: result.run.channelId, run: result.run });
     dispatcher.enqueue(result.run);
+    nativeAgent?.enqueue();
   },
   () =>
     logger.error(
@@ -95,18 +111,14 @@ const automationScheduler = new AutomationScheduler(
 );
 const app = createApp({
   automations,
-  ...(env.OPENBOT_MODEL_SETTINGS_PATH && env.OPENBOT_MODEL_ENCRYPTION_KEY
-    ? {
-        modelSettings: new ModelSettingsService(
-          env.OPENBOT_MODEL_SETTINGS_PATH,
-          env.OPENBOT_MODEL_ENCRYPTION_KEY,
-        ),
-      }
-    : {}),
+  ...(modelSettings ? { modelSettings } : {}),
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,
   artifactStorage,
   auth,
-  dispatchRun: (run) => dispatcher.enqueue(run),
+  dispatchRun: (run) => {
+    dispatcher.enqueue(run);
+    nativeAgent?.enqueue();
+  },
   ...(employeePublisher === undefined ? {} : { employeePublisher }),
   disconnectNode: (nodeId) => nodeRegistry.disconnect(nodeId),
   getRemoteAddress: (context) => getConnInfo(context).remote.address,
@@ -146,6 +158,7 @@ const server = serve(
 const httpServer = server as HttpServer;
 nodeRegistry.attach(httpServer);
 automationScheduler.start();
+nativeAgent?.start();
 
 let shutdownPromise: Promise<void> | undefined;
 
@@ -167,6 +180,7 @@ async function shutdownOnce(signal: string): Promise<void> {
       "Automatic task polling exceeded the shutdown grace period; queued Runs recover on restart.",
     );
   const dispatcherDrain = dispatcher.stop();
+  await nativeAgent?.stop();
   nodeRegistry.close();
 
   const [dispatcherResult, httpResult] = await Promise.allSettled([dispatcherDrain, httpDrain]);

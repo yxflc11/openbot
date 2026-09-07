@@ -200,6 +200,7 @@ describe("Desktop settings interactions", () => {
       const call = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
       expect(call?.[0]).toBe("/api/v1/settings/model");
       expect(JSON.parse(call?.[1]?.body as string)).toEqual({
+        agentEnabled: false,
         provider: "anthropic",
         model: "available-model",
         apiKey: "test-key-for-ui-validation-only",

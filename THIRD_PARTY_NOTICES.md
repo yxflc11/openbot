@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-OpenBot's Windows Worker Host and Desktop build reference the following components. Exact resolved
+OpenBot's Server, Worker Hosts and Desktop build reference the following components. Exact resolved
 versions are recorded in checked-in lockfiles; release artifacts must also carry generated SBOMs
 and notices.
 
@@ -21,6 +21,14 @@ and notices.
 - `signal-exit` 4.1.0 — Copyright 2015–2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors; ISC
   License. This is the sole runtime dependency of `write-file-atomic` in the Desktop application
   ASAR.
+
+- Vercel AI SDK `ai` 7.0.93, `@ai-sdk/openai` 4.0.60, `@ai-sdk/anthropic` 4.0.49,
+  `@ai-sdk/provider` 4.0.10, `@ai-sdk/provider-utils` 5.0.36 and the SDK's transitive
+  `@ai-sdk/gateway` 4.0.75 — Copyright 2023 Vercel, Inc.; Apache License 2.0.
+  The Server uses explicit OpenAI/Anthropic adapters, not the gateway. Package LICENSE files
+  remain in the packaged production dependency tree. No upstream implementation was copied.
+  See [Agent research](docs/research/native-agent-loop.md) and the
+  [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
 
 No upstream source is copied into OpenBot. The following MIT license text is reproduced for the
 MIT-licensed dependencies listed above:

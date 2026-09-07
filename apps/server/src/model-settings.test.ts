@@ -28,6 +28,30 @@ const input = {
   revision: null,
 };
 describe("Owner model settings", () => {
+  it("requires explicit opt-in, preserves the eligibility boundary, and notifies on disable", async () => {
+    const { service, path } = await fixture();
+    expect(await service.agentSettings()).toBeUndefined();
+    const legacy = await service.save(input);
+    expect(await service.agentSettings()).toBeUndefined();
+    expect(await new ModelSettingsService(path, "a".repeat(64)).agentSettings()).toBeUndefined();
+    const changed = vi.fn();
+    const unsubscribe = service.onChange(changed);
+    const enabled = await service.save({ ...input, revision: legacy.revision, agentEnabled: true });
+    const settings = await service.agentSettings();
+    expect(settings?.agentEnabledAt).toEqual(expect.any(String));
+    expect(JSON.stringify(enabled)).not.toContain(input.apiKey);
+    expect(changed).toHaveBeenCalledTimes(1);
+    const updated = await service.save({
+      ...input,
+      revision: enabled.revision,
+      agentEnabled: true,
+    });
+    expect((await service.agentSettings())?.agentEnabledAt).toBe(settings?.agentEnabledAt);
+    await service.save({ ...input, revision: updated.revision, agentEnabled: false });
+    expect(await service.agentSettings()).toBeUndefined();
+    expect(changed).toHaveBeenCalledTimes(3);
+    unsubscribe();
+  });
   it("validates with the official provider, encrypts the key and only returns a public summary", async () => {
     const { service, path, fetcher } = await fixture();
     const result = await service.save(input);

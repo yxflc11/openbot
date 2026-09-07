@@ -81,13 +81,14 @@ enter a trusted HTTPS Server origin and sign in as its Owner. See
 | --- | --- | --- |
 | Desktop and Web | Channels, Bots, approvals, task inspector, shared back/forward navigation, native menus, conversation draft/scroll restoration, skills gallery and persistent interface preferences | Notifications, localization polish and broader accessibility/device evidence |
 | Local macOS services | App-owned PostgreSQL and Server, encrypted bootstrap, restart with retained data, explicit remote-client switching | Cross-platform guided services, authenticated remote sharing, backup, upgrades and login-service recovery |
-| Models | Owner-only OpenAI/Anthropic metadata validation and encrypted default model settings | Agent inference loop and bounded external-agent adapters; storing a key does not generate replies |
+| Models / native Agent | Owner opt-in, encrypted OpenAI/Anthropic settings, bounded model/tool/observation loop, scoped channel reads and durable Bot replies | Live model evidence, broader governed tools and external-agent adapters |
 | Automatic tasks | PostgreSQL schedules, pause/resume/delete, bounded intervals, one due occurrence after downtime and existing authorized task routing | Multi-Server coordination and additional schedule semantics |
 | Employee profile | Role/biography editing, dated evolution archive, reviewed skills, typed Owner-managed memory, review-bound export/import and experimental DSSE signing | Autonomous learning, executable skills, selective cloning and public trust distribution |
 | Worker protocol | Outbound connections, one-time pairing, revocation, versioned capability routing, progress, frames and artifacts | Proof-of-possession identity, complete service/device conformance and signed distribution |
 | Computer execution | Read-only Docker/browser URL-to-screenshot flow | Safe interaction, native desktop Providers, signed single-use leases and exclusive takeover |
 
-OpenBot does not yet provide a native coordinating-agent inference loop, Hermes/Pi/OpenClaw runtime
+The [native Agent](docs/NATIVE_AGENT.md) runs new `none`-profile tasks after explicit Owner opt-in.
+OpenBot does not yet provide Hermes/Pi/OpenClaw runtime
 adapters, a plugin installation lifecycle, or arbitrary desktop control. Cua, Lume and coder are
 extension boundaries. The optional office visualization remains deferred.
 
@@ -123,7 +124,7 @@ Send an explicit public URL in a channel to obtain a screenshot.
 
 For container deployment, see [Server container](docs/SERVER_CONTAINER.md). For scheduled work,
 see [Automations](docs/AUTOMATIONS.md): the Server must stay running; schedules confer no extra
-authority and do not create an inference engine.
+authority. Native execution requires the separate [Agent opt-in](docs/NATIVE_AGENT.md).
 
 ## Security and architecture
 

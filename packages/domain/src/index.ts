@@ -513,7 +513,7 @@ export interface RunProgress {
   id: EntityId;
   runId: EntityId;
   channelId: EntityId;
-  nodeId: EntityId;
+  nodeId?: EntityId;
   stage: string;
   message: string;
   createdAt: string;

@@ -86,7 +86,7 @@ Settings has five categories:
 | Category | Available controls and information |
 | --- | --- |
 | General & Appearance | Sidebar translucency, independent left/right-panel visibility, comfortable/compact spacing, 14/16 px chat text, reduced motion, Enter or Command/Ctrl+Enter to send, and 12/24-hour message timestamps |
-| Models & API | Read the configured default and validate/save OpenAI or Anthropic model access |
+| Models & API | Read and validate/save model access; explicitly enable or disable the native Agent |
 | Server & Work Computers | Current role and Server address, change role or remote connection, open device management, and read local Worker status |
 | Privacy & Data | Where data and model credentials are stored, Server authorization boundaries, usage availability, and reset local interface preferences |
 | About OpenBot | Application branding, platform/runtime information, supported model-interface choices, and Hermes Agent attribution |
@@ -122,9 +122,9 @@ Resuming an expired schedule advances it into the future. At a due check, missin
 pauses its schedule instead of choosing another Bot. Pausing or deleting a schedule stops future
 submissions and preserves already-created Runs and history.
 
-A schedule grants no extra permissions and adds no model inference loop or unsupported execution
-capability. Submission time is not a guarantee of execution or completion; an eligible Worker and
-the existing capability/approval requirements still apply. Older Servers without the automation
+A schedule grants no extra permissions. Native inference requires separate [Agent opt-in](NATIVE_AGENT.md);
+Worker tasks retain their existing capability/approval requirements. Submission time is not a
+guarantee of execution or completion. Older Servers without the automation
 API show an unavailable state. This is single-Server operation, not multi-replica dispatch support.
 See [recurring-task research](research/server-automations.md).
 
@@ -134,7 +134,8 @@ This is a source-build preview, not a signed/notarized public installer. Native 
 been exercised on macOS arm64. The x64 package is pinned but has not been exercised on Intel;
 Windows and Linux retain remote-client behavior and have no native installer in this change.
 
-This interface refinement does not add model-generated replies, input screenshot/file attachments,
+The [native Agent](NATIVE_AGENT.md) adds model-generated replies after Owner opt-in.
+This interface does not add input screenshot/file attachments,
 task cancellation or automatic/safe retries. Those require separately reviewed Server behavior;
 the composer only submits through the existing authenticated text-message API.
 
@@ -160,8 +161,10 @@ no generation or transcript is sent. Keys can be replaced in Settings. Concurren
 reject instead of overwriting a newer revision. Skipping postpones configuration until Settings
 (or the next startup). There is no custom proxy URL in this initial UI.
 
-This stores and validates the workspace default; it does **not** add an agent inference loop or
-make an unsupported provider functional. Existing task-execution capabilities remain unchanged.
+Saving credentials leaves inference disabled unless the Owner checks **Enable native Agent**.
+The [native Agent](NATIVE_AGENT.md) then executes new `none`-profile tasks through a bounded
+model/tool/observation loop. It sends task/context data to the selected provider and may incur API
+charges. Unsupported Worker capabilities remain unavailable.
 Remote clients cannot configure older Servers that do not implement the endpoint.
 
 ## Build and advanced self-deployment
@@ -196,6 +199,7 @@ Keep the encryption key in a secret manager outside the settings file; losing it
 unreadable. Omit both to disable the endpoint. Run one Server writer per settings file. The API is
 Owner-only `GET`/`POST /api/v1/settings/model`, with the existing mutation-origin checks; POST
 requires `provider`, `model`, `apiKey`, and the last `revision` (null for initial configuration).
+`agentEnabled` defaults to false. Only Owner opt-in enables inference for newly created tasks.
 
 CI packages Linux x64, Windows x64 and macOS arm64 and retains each successful platform's unsigned
 bundle for seven days. Download the commit-named `.tar.gz` from the successful

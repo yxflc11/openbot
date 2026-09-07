@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createDatabase } from "@openbot/db";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { MockLanguageModelV4 } from "ai/test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
+import { ModelSettingsService } from "./model-settings.js";
+import { NativeAgentRunner } from "./native-agent.js";
+import { PostgresAgentStore } from "./postgres-agent-store.js";
 import { PostgresAutomationStore } from "./postgres-automation-store.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
 
@@ -171,5 +179,171 @@ describe.skipIf(!databaseUrl)("PostgreSQL automation transaction", () => {
     ]);
     expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(await store.list()).toHaveLength(50);
+  });
+  it("native claims exclude pre-opt-in and Worker tasks and serialize each channel", async () => {
+    if (!database || !peer) return;
+    const native = new PostgresAgentStore(database.db),
+      competing = new PostgresAgentStore(peer.db);
+    const control = new PostgresControlPlaneStore(database.db);
+    const first = (
+      await control.submitTask("test-channel", { content: "First", botId: "test-bot" })
+    ).run;
+    const second = (
+      await control.submitTask("test-channel", { content: "Second", botId: "test-bot" })
+    ).run;
+    expect(await native.queued("2200-01-01T00:00:00Z")).toHaveLength(0);
+    expect(await native.claim(first, "2200-01-01T00:00:00Z")).toBeUndefined();
+    const attempts = await Promise.all([
+      native.claim(first, "2000-01-01T00:00:00Z"),
+      competing.claim(first, "2000-01-01T00:00:00Z"),
+      competing.claim(second, "2000-01-01T00:00:00Z"),
+    ]);
+    expect(attempts.filter(Boolean)).toHaveLength(1);
+    const active = attempts.find((value) => value !== undefined);
+    if (!active) throw new Error("Fixture did not claim.");
+    expect(active.nodeId).toBeUndefined();
+    expect(await control.failRunningRuns()).toHaveLength(1);
+    expect(await native.claim(active, "2000-01-01T00:00:00Z")).toBeUndefined();
+    await database.client`update runs set execution_profile='docker-linux' where status='queued'`;
+    expect(await native.queued("2000-01-01T00:00:00Z")).toHaveLength(0);
+    expect(await native.claim(second, "2000-01-01T00:00:00Z")).toBeUndefined();
+  });
+
+  it("native observations stay in the claimed channel and completion/audit commit once", async () => {
+    if (!database) return;
+    const native = new PostgresAgentStore(database.db),
+      control = new PostgresControlPlaneStore(database.db);
+    await database.client`insert into channels (id,name) values ('private-channel','Private')`;
+    await database.client`insert into messages (id,channel_id,author_type,content,created_at) values ('private-message','private-channel','human','OTHER_CHANNEL_SECRET',now()-interval '1 minute'), ('earlier-message','test-channel','human','Launch Tuesday',now()-interval '1 minute')`;
+    const task = await control.submitTask("test-channel", {
+      content: "Summarize",
+      botId: "test-bot",
+    });
+    const active = await native.claim(task.run, "2000-01-01T00:00:00Z");
+    expect(active).toBeDefined();
+    if (!active) return;
+    await database.client`insert into messages (id,channel_id,author_type,content,created_at) values ('future-message','test-channel','human','FUTURE_SECRET',now()+interval '1 minute')`;
+    const context = JSON.stringify(await native.context(active));
+    expect(context).toContain("Launch Tuesday");
+    expect(context).not.toMatch(/OTHER_CHANNEL_SECRET|FUTURE_SECRET/);
+    await native.progress(active, "planning", "Model step 1.");
+    expect((await control.listRunProgress("test-channel"))[0]).toMatchObject({
+      stage: "planning",
+      runId: active.id,
+    });
+    expect((await control.listRunProgress("test-channel"))[0]?.nodeId).toBeUndefined();
+    await database.client`alter table messages add constraint test_agent_rollback check (author_type <> 'bot')`;
+    try {
+      await expect(native.complete(active, "Launch Tuesday.")).rejects.toThrow();
+      await native.assertScope(active);
+      const [counts] =
+        await database.client`select count(*)::integer as count from run_events where type='RUN_COMPLETED'`;
+      expect(counts?.count).toBe(0);
+    } finally {
+      await database.client`alter table messages drop constraint test_agent_rollback`;
+    }
+    const result = await native.complete(active, "Launch Tuesday.");
+    expect(result.run.status).toBe("completed");
+    expect(result.message).toMatchObject({
+      authorType: "bot",
+      authorId: active.botId,
+      runId: active.id,
+      replyToMessageId: task.message.id,
+    });
+    await expect(native.complete(active, "Duplicate")).rejects.toThrow();
+    const [counts] =
+      await database.client`select (select count(*) from messages where author_type='bot')::integer as replies, (select count(*) from run_events where type='RUN_COMPLETED')::integer as completed`;
+    expect(counts).toEqual({ replies: 1, completed: 1 });
+  });
+
+  it("native reads and completion fail closed after Bot membership is removed", async () => {
+    if (!database) return;
+    const native = new PostgresAgentStore(database.db),
+      control = new PostgresControlPlaneStore(database.db);
+    const task = await control.submitTask("test-channel", { content: "Review", botId: "test-bot" });
+    const active = await native.claim(task.run, "2000-01-01T00:00:00Z");
+    if (!active) throw new Error("Fixture did not claim.");
+    await database.client`delete from channel_bots`;
+    await expect(native.context(active)).rejects.toThrow(/revoked/);
+    await expect(native.tasks(active)).rejects.toThrow(/revoked/);
+    await expect(native.complete(active, "Invalid reply")).rejects.toThrow(/revoked/);
+    expect((await native.fail(active))?.status).toBe("failed");
+  });
+  it("runs a newly submitted task through SDK observation and persists its final Bot reply", async () => {
+    if (!database) return;
+    const native = new PostgresAgentStore(database.db),
+      control = new PostgresControlPlaneStore(database.db);
+    const directory = await mkdtemp(join(tmpdir(), "openbot-agent-e2e-"));
+    const settings = new ModelSettingsService(
+      join(directory, "model.json"),
+      "a".repeat(64),
+      async () => Response.json({ id: "fixture-model" }),
+    );
+    const usage = {
+      inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+      outputTokens: { total: 1, text: 1, reasoning: 0 },
+    };
+    let step = 0;
+    const model = new MockLanguageModelV4({
+      doGenerate: async () =>
+        ++step === 1
+          ? {
+              content: [
+                {
+                  type: "tool-call",
+                  toolName: "read_channel_context",
+                  toolCallId: "call-1",
+                  input: "{}",
+                },
+              ],
+              usage,
+              finishReason: { unified: "tool-calls", raw: "tool_calls" },
+              warnings: [],
+            }
+          : {
+              content: [{ type: "text", text: "The channel is ready." }],
+              usage,
+              finishReason: { unified: "stop", raw: "stop" },
+              warnings: [],
+            },
+    });
+    const errors = vi.fn();
+    const runner = new NativeAgentRunner(
+      native,
+      settings,
+      new ChannelRealtimeHub(),
+      errors,
+      () => model,
+    );
+    try {
+      await settings.save({
+        provider: "openai",
+        model: "fixture-model",
+        apiKey: "fixture-key-not-real",
+        revision: null,
+        agentEnabled: true,
+      });
+      const task = await control.submitTask("test-channel", {
+        content: "Read this channel",
+        botId: "test-bot",
+      });
+      runner.start();
+      await vi.waitFor(async () => {
+        const [row] = await database.client`select status from runs where id=${task.run.id}`;
+        expect(row?.status).toBe("completed");
+      });
+      const [reply] =
+        await database.client`select author_type, content from messages where run_id=${task.run.id} and author_type='bot'`;
+      expect(reply).toEqual({ author_type: "bot", content: "The channel is ready." });
+      expect(model.doGenerateCalls).toHaveLength(2);
+      expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain("Read this channel");
+      expect((await control.listRunProgress("test-channel")).map((event) => event.stage)).toContain(
+        "observation",
+      );
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      await runner.stop();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
