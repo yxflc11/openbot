@@ -47,7 +47,7 @@ npm run db:up
 npm run dev
 ```
 
-先替换 `.env` 中的 `OPENBOT_OWNER_PASSWORD` 和 `OPENBOT_NODE_TOKEN`。默认 Server 使用端口
+先替换 `.env` 中的 `OPENBOT_OWNER_PASSWORD`。默认 Server 使用端口
 `3001`，Web 使用 `5173`。没有配置兼容 Provider 时，Node 不上报执行能力。
 
 提交 PR 前运行：

@@ -1,9 +1,57 @@
-FROM node:22.22.0-alpine
+FROM node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS base
 
+FROM base AS toolchain
+ENV TURBO_TELEMETRY_DISABLED=1
+RUN corepack enable npm \
+  && corepack prepare npm@10.9.9 --activate \
+  && test "$(npm --version)" = "10.9.9"
 WORKDIR /workspace
-COPY . .
-RUN npm ci && npm run build
 
+FROM toolchain AS pruner
+COPY . .
+RUN npm ci --ignore-scripts --audit=false
+RUN npm exec -- turbo prune @openbot/server --docker --out-dir=/pruned
+
+FROM toolchain AS build
+COPY --from=pruner /pruned/json/ ./
+RUN npm ci --ignore-scripts --audit=false
+COPY --from=pruner /pruned/full/ ./
+COPY --from=pruner /workspace/tsconfig.base.json ./tsconfig.base.json
+RUN npm exec -- turbo run build --filter=@openbot/server...
+
+FROM toolchain AS production-dependencies
+COPY --from=pruner /pruned/json/ ./
+RUN npm ci --omit=dev --ignore-scripts --audit=false
+
+FROM base AS runtime
 ENV NODE_ENV=production
+ENV OPENBOT_OBJECT_STORE_PATH=/var/lib/openbot/objects
+WORKDIR /workspace
+
+RUN install -d --owner=node --group=node --mode=0700 /var/lib/openbot/objects
+
+COPY --from=production-dependencies --chown=node:node /workspace/node_modules ./node_modules
+COPY --from=build --chown=node:node /workspace/package.json ./package.json
+COPY --from=build --chown=node:node /workspace/apps/server/package.json ./apps/server/package.json
+COPY --from=build --chown=node:node /workspace/apps/server/dist ./apps/server/dist
+COPY --from=build --chown=node:node /workspace/packages/config/package.json ./packages/config/package.json
+COPY --from=build --chown=node:node /workspace/packages/config/dist ./packages/config/dist
+COPY --from=build --chown=node:node /workspace/packages/db/package.json ./packages/db/package.json
+COPY --from=build --chown=node:node /workspace/packages/db/dist ./packages/db/dist
+COPY --from=build --chown=node:node /workspace/packages/db/migrations ./packages/db/migrations
+COPY --from=build --chown=node:node /workspace/packages/domain/package.json ./packages/domain/package.json
+COPY --from=build --chown=node:node /workspace/packages/domain/dist ./packages/domain/dist
+COPY --from=build --chown=node:node /workspace/packages/logging/package.json ./packages/logging/package.json
+COPY --from=build --chown=node:node /workspace/packages/logging/dist ./packages/logging/dist
+COPY --from=build --chown=node:node /workspace/packages/policy/package.json ./packages/policy/package.json
+COPY --from=build --chown=node:node /workspace/packages/policy/dist ./packages/policy/dist
+COPY --from=build --chown=node:node /workspace/packages/protocol/package.json ./packages/protocol/package.json
+COPY --from=build --chown=node:node /workspace/packages/protocol/dist ./packages/protocol/dist
+COPY --chown=node:node deploy/server/healthcheck.mjs ./deploy/server/healthcheck.mjs
+
+USER node
 EXPOSE 3001
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=6 \
+  CMD ["node", "deploy/server/healthcheck.mjs"]
 CMD ["node", "apps/server/dist/index.js"]

@@ -22,6 +22,10 @@ services:
       context: ../..
       dockerfile: deploy/server/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,7 +33,6 @@ services:
       OPENBOT_HOST: 0.0.0.0
       OPENBOT_PORT: 3001
       OPENBOT_DATABASE_URL: postgres://openbot:${OPENBOT_POSTGRES_PASSWORD:-openbot-development-only}@postgres:5432/openbot
-      OPENBOT_NODE_TOKEN: ${OPENBOT_NODE_TOKEN:?set OPENBOT_NODE_TOKEN}
       OPENBOT_OWNER_NAME: ${OPENBOT_OWNER_NAME:-Owner}
       OPENBOT_OWNER_PASSWORD: ${OPENBOT_OWNER_PASSWORD:?set OPENBOT_OWNER_PASSWORD}
       OPENBOT_SESSION_TTL_HOURS: ${OPENBOT_SESSION_TTL_HOURS:-12}
