@@ -3,6 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { Run } from "@openbot/domain";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
+import { NativeExecutionError } from "./agent-observations.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import type { ModelSettingsService } from "./model-settings.js";
 import {
@@ -669,6 +670,62 @@ describe("native Agent loop", () => {
 
 describe("official provider HTTP contracts", () => {
   it.each([
+    [new DOMException("fixture deadline", "TimeoutError"), "task_timeout"],
+    [new NativeExecutionError("settings_changed"), "settings_changed"],
+  ])("retains categorized cancellation during response consumption", async (reason, code) => {
+    const controller = new AbortController();
+    let released: Response | undefined;
+    const bounded = agentFetch("openai", async (_input, init) => {
+      released = new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            start(stream) {
+              init?.signal?.addEventListener(
+                "abort",
+                () => stream.error(new Error("PRIVATE STREAM ERROR")),
+                { once: true },
+              );
+            },
+            pull() {
+              controller.abort(reason);
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        { headers: { "content-type": "application/json" } },
+      );
+      return released;
+    });
+    await expect(
+      bounded("https://api.openai.com/v1/responses", { method: "POST", signal: controller.signal }),
+    ).rejects.toMatchObject({ code });
+    expect(released?.body?.locked).toBe(false);
+  });
+
+  it("sanitizes a mid-body provider failure and releases the reader", async () => {
+    const response = new Response(
+      new ReadableStream<Uint8Array>(
+        {
+          pull(stream) {
+            stream.error(new Error("PRIVATE STREAM ERROR"));
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+      { headers: { "content-type": "application/json" } },
+    );
+    await expect(
+      agentFetch("openai", async () => response)("https://api.openai.com/v1/responses", {
+        method: "POST",
+      }),
+    ).rejects.toMatchObject({
+      code: "model_unavailable",
+      message: expect.not.stringContaining("PRIVATE"),
+    });
+    expect(response.body?.locked).toBe(false);
+  });
+
+  it.each([
     [401, "model_credentials"],
     [403, "model_credentials"],
     [429, "model_rate_limit"],
@@ -786,6 +843,6 @@ describe("official provider HTTP contracts", () => {
         "https://api.openai.com/v1/responses",
         { method: "POST" },
       ),
-    ).rejects.toThrow(/large/);
+    ).rejects.toMatchObject({ code: "task_limit" });
   });
 });

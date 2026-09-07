@@ -87,3 +87,16 @@
   three-step usage (300 input / 240 output), in-flight stop, explicit resubmit with a new Run ID,
   two retained cancelled tasks, reload, 1280x900 / 390x844 layouts and zero page errors.
 - No paid model request, checkpoint recovery or live provider billing validation was performed.
+
+## Response-body abort review (2026-09-08)
+
+Final review found that the 30-second provider deadline was categorized while receiving headers,
+but errors during response-body consumption escaped as an unclassified execution failure.
+Reviewed the [WHATWG Fetch abort algorithm](https://fetch.spec.whatwg.org/#abort-fetch) and Node
+24.20.0 `lib/internal/abort_controller.js` (release tag object
+`8392e555cbdef2145d2cd2a2a7d29204d88d4e15`): abort also applies to response consumption, and a
+composed signal retains its reason. The first viable option remains the existing standard API.
+Normalize body errors using the same fixed catalogue, preserving Server-originated denial reasons,
+classifying oversize as task_limit and discarding untrusted stream error text. No new dependency or
+copied source. Verify with actual ReadableStream fixtures that fail or abort after headers, and
+retain reader cancellation/release behavior.

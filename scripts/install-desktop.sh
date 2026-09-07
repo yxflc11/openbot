@@ -106,7 +106,14 @@ else
   install_stage="$(mktemp -d "$HOME/.local/opt/openbot/.install-$version.XXXXXXXX")"
   install -m 0755 "$stage/$asset" "$install_stage/openbot.AppImage"
   # GNU/BusyBox no-target-directory semantics prevent nesting into a concurrent installation.
-  mv -nT -- "$install_stage" "$destination"
+  if ! mv -nT -- "$install_stage" "$destination"; then
+    if [[ -e "$destination" || -L "$destination" ]]; then
+      echo 'Another installation appeared; it was retained.' >&2
+    else
+      echo 'Unable to publish the installation; its private staging directory will be removed.' >&2
+    fi
+    exit 1
+  fi
   if [[ -d "$install_stage" ]]; then
     echo 'Another installation appeared; it was retained.' >&2
     exit 1

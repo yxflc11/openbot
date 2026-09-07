@@ -93,7 +93,7 @@ export function agentFetch(
         : new NativeExecutionError(signal.aborted ? "task_timeout" : "model_unavailable");
     }
     const reader = response.body?.getReader();
-    if (!reader) throw new Error("Missing model response.");
+    if (!reader) throw new NativeExecutionError("model_unavailable");
     const chunks: Uint8Array[] = [];
     let size = 0;
     try {
@@ -113,13 +113,22 @@ export function agentFetch(
         const next = await reader.read();
         if (next.done) break;
         size += next.value.byteLength;
-        if (size > 512 * 1024) throw new Error("Model response too large.");
+        if (size > 512 * 1024) throw new NativeExecutionError("task_limit");
         chunks.push(next.value);
       }
       return new Response(Buffer.concat(chunks), {
         status: response.status,
         headers: { "content-type": "application/json" },
       });
+    } catch (error) {
+      // A fetch can abort after headers; retain Server denials without exposing stream errors.
+      if (signal.aborted)
+        throw signal.reason instanceof NativeExecutionError
+          ? signal.reason
+          : new NativeExecutionError("task_timeout");
+      throw error instanceof NativeExecutionError
+        ? error
+        : new NativeExecutionError("model_unavailable");
     } finally {
       await reader.cancel().catch(() => undefined);
       reader.releaseLock();

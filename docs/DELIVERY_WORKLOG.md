@@ -78,9 +78,17 @@ provider evidence, and package builds distinct from real-device certification.
   desktop/narrow layouts. Public model metadata returned HTTP 200; all inference remained fixtures.
 - P4 commit 74d7819 passed all 9 hosted CI jobs in run 34151847897.
 
-- 18:49–19:12 UTC: hardened installer recovery and streamed Windows downloads. Full repository
+- 18:49–19:05 UTC: hardened installer recovery and streamed Windows downloads. Full repository
   check passed; real Linux fixtures verified failed-copy cleanup, retry and concurrent-target
   preservation. Nine offline PowerShell 7.5.0 fixtures passed, including redirect denial/count,
   streamed size limits, existing-file preservation and cancellation before/during body transfer.
   Native Windows CI now runs the fixtures under both Windows PowerShell and pwsh.
 - OpenRouter commit 078bba1 passed all 9 hosted CI jobs in run 34153185480.
+
+- Final hardening: body-transfer aborts now retain fixed timeout/Server-denial categories and
+  discard upstream stream errors. The full check passed, including three new body-stream cases.
+  Ubuntu CI exposed a coreutils no-clobber exit-code difference; both Linux behaviors now retain
+  the concurrent directory and clean staging. The portable matrix now explicitly runs bootstrap
+  tests, including Windows PowerShell and pwsh. Rebuilt the full local macOS DMG with all features;
+  mount, ASAR, fuse and native-resource checks passed. This local build has no Worker companion;
+  the native CI package builds and includes it.

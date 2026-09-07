@@ -86,6 +86,8 @@ jobs:
           node-version: 22.22.2
           cache: npm
       - run: npm ci
+      - name: Verify native Desktop bootstrap behavior
+        run: node --test scripts/install-desktop.test.mjs
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
