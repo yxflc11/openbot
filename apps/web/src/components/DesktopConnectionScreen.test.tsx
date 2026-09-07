@@ -87,24 +87,20 @@ describe("DesktopConnectionScreen", () => {
     }
   });
 
-  it("explains a hosting plan without claiming that services were installed", async () => {
+  it("lets a remote client return to the role choice", async () => {
     const onChangePlan = vi.fn();
     const rendered = await renderComponent(
       <DesktopConnectionScreen
         connection={{ status: "unconfigured" }}
         onChangePlan={onChangePlan}
         onConfigure={vi.fn()}
-        setupPlan={{ mode: "host", plannedWorkerCount: 5, localWorker: true }}
+        setupPlan={{ mode: "client", plannedWorkerCount: 0, localWorker: false }}
       />,
     );
     try {
-      expect(rendered.container.textContent).toContain("在这里托管 OpenBot");
-      expect(rendered.container.textContent).toContain("计划 5 台工作电脑");
-      expect(rendered.container.textContent).toContain(
-        "自动安装 Server 与 PostgreSQL 的功能尚未交付",
-      );
+      expect(rendered.container.textContent).toContain("连接服务电脑");
       const changeButton = [...rendered.container.querySelectorAll("button")].find(
-        (button) => button.textContent === "修改计划",
+        (button) => button.textContent === "更改这台电脑的用途",
       );
       if (changeButton === undefined) throw new Error("Change plan button not found.");
       await interact(() => changeButton.click());

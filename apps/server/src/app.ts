@@ -41,6 +41,11 @@ import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
+import {
+  type AutomationStore,
+  createAutomationInputSchema,
+  updateAutomationInputSchema,
+} from "./automations.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { ClientIdentityError, resolveClientIdentity } from "./client-identity.js";
 import {
@@ -55,6 +60,11 @@ import {
   inspectEmployeeTemplate,
   prepareEmployeeTemplateExport,
 } from "./employee-package.js";
+import {
+  ModelSettingsError,
+  type ModelSettingsService,
+  modelSettingsInputSchema,
+} from "./model-settings.js";
 import {
   InvalidNodeEnrollmentError,
   NodeIdentityNotFoundError,
@@ -71,6 +81,8 @@ import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  automations?: AutomationStore;
+  modelSettings?: ModelSettingsService;
   allowedOrigins: string[];
   artifactStorage?: Pick<ArtifactStorage, "read">;
   auth: OwnerAuthService;
@@ -254,6 +266,35 @@ export function createApp(dependencies: AppDependencies) {
       },
     };
     return context.json(summary);
+  });
+
+  app.get("/api/v1/settings/model", async (context) => {
+    if (!dependencies.modelSettings) return context.json({ status: "unavailable" });
+    try {
+      return context.json(await dependencies.modelSettings.summary());
+    } catch {
+      return context.json({ error: "Model configuration could not be read." }, 503);
+    }
+  });
+  app.post("/api/v1/settings/model", async (context) => {
+    if (!dependencies.modelSettings)
+      return context.json({ error: "Model configuration is not enabled on this Server." }, 503);
+    const input = await parseRequest(context.req.raw, modelSettingsInputSchema, 4096);
+    try {
+      return context.json(await dependencies.modelSettings.save(input));
+    } catch (error) {
+      if (error instanceof ModelSettingsError) {
+        return context.json(
+          { error: error.code },
+          error.code === "conflict" || error.code === "busy"
+            ? 409
+            : error.code === "storage_unavailable"
+              ? 503
+              : 422,
+        );
+      }
+      return context.json({ error: "Model configuration could not be saved." }, 503);
+    }
   });
 
   app.get("/api/v1/workspace", async (context) => {
@@ -529,6 +570,49 @@ export function createApp(dependencies: AppDependencies) {
     });
     dependencies.dispatchRun?.(result.run);
     return context.json(result, 201);
+  });
+
+  app.use(
+    "/api/v1/automations",
+    bodyLimit({
+      maxSize: 32768,
+      onError: (context) => context.json({ error: "Automatic task request is too large." }, 413),
+    }),
+  );
+  app.use(
+    "/api/v1/automations/:automationId",
+    bodyLimit({
+      maxSize: 1024,
+      onError: (context) => context.json({ error: "Automatic task request is too large." }, 413),
+    }),
+  );
+  app.get("/api/v1/automations", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    return context.json({ automations: await dependencies.automations.list() });
+  });
+  app.post("/api/v1/automations", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    const input = await parseRequest(context.req.raw, createAutomationInputSchema, 32768);
+    return context.json({ automation: await dependencies.automations.create(input) }, 201);
+  });
+  app.patch("/api/v1/automations/:automationId", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    const input = await parseRequest(context.req.raw, updateAutomationInputSchema, 1024);
+    return context.json({
+      automation: await dependencies.automations.setEnabled(
+        context.req.param("automationId"),
+        input.enabled,
+      ),
+    });
+  });
+  app.delete("/api/v1/automations/:automationId", async (context) => {
+    if (!dependencies.automations)
+      return context.json({ error: "Automatic tasks are unavailable on this Server." }, 503);
+    await dependencies.automations.delete(context.req.param("automationId"));
+    return context.json({ deleted: true });
   });
 
   app.get("/api/v1/bots", async (context) =>

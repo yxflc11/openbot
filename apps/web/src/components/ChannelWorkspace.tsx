@@ -1,5 +1,15 @@
 import type { Artifact, Bot, Channel, Message, Run, RunFrame, RunProgress } from "@openbot/domain";
-import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   createMessage,
   listMessages,
@@ -7,12 +17,19 @@ import {
   type RealtimeConnectionState,
   subscribeToChannelEvents,
 } from "../api";
-import { indexActiveRunsByBot, isActiveRun, mergeRuns, runStatusLabel } from "../run-state";
-import { HashIcon, PlusIcon } from "./Icons";
+import { type ConversationSession, createConversationSession } from "../conversation-session";
+import { isActiveRun, runStatusLabel } from "../run-state";
+import { useWorkspacePreferences } from "../workspace-preferences";
+import { ChannelMembersMenu } from "./ChannelMembersMenu";
+import { HashIcon, SendIcon } from "./Icons";
+import { OpenBotMark } from "./OpenBotMark";
 import { RichMessage } from "./RichMessage";
 import { RobotAvatar } from "./RobotAvatar";
 
 export function ChannelWorkspace({
+  headerAction,
+  globalHeader = false,
+  session: suppliedSession,
   channel,
   bots,
   artifacts,
@@ -24,6 +41,9 @@ export function ChannelWorkspace({
   onProgress,
   onRun,
 }: {
+  headerAction?: ReactNode;
+  globalHeader?: boolean;
+  session?: ConversationSession;
   channel: Channel;
   bots: Bot[];
   artifacts: Artifact[];
@@ -35,27 +55,36 @@ export function ChannelWorkspace({
   onProgress(progress: RunProgress): void;
   onRun(run: Run, artifacts?: Artifact[]): void;
 }) {
+  const { values: preferences } = useWorkspacePreferences();
+  const [ownSession] = useState(createConversationSession);
+  const session = suppliedSession ?? ownSession;
+  const firstMemberId = channel.botIds.find((id) => bots.some((bot) => bot.id === id)) ?? "";
+  const conversation = useMemo(
+    () => session.channel(channel.id, firstMemberId),
+    [session, channel.id, firstMemberId],
+  );
+  const state = useSyncExternalStore(
+    conversation.subscribe,
+    conversation.getSnapshot,
+    conversation.getSnapshot,
+  );
+  const { messages, runs, draft, loading, loadError, sendError, sending, capacityError } = state;
   const members = bots.filter((bot) => channel.botIds.includes(bot.id));
-  const available = bots.filter((bot) => !channel.botIds.includes(bot.id));
   const botsById = useMemo(() => new Map(bots.map((bot) => [bot.id, bot])), [bots]);
-  const [joinBotId, setJoinBotId] = useState(available[0]?.id ?? "");
-  const [targetBotId, setTargetBotId] = useState(members[0]?.id ?? "");
-  const [joining, setJoining] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [messageText, setMessageText] = useState("");
-  const [replyingTo, setReplyingTo] = useState<Message>();
-  const [messagesLoading, setMessagesLoading] = useState(true);
-  const [messageError, setMessageError] = useState<string>();
-  const [sending, setSending] = useState(false);
-  const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
-  const messageList = useRef<HTMLDivElement>(null);
-  const activeRunByBot = indexActiveRunsByBot(runs);
-  const activeRuns = runs.filter(isActiveRun);
   const messageById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs]);
+  const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
+  const [readAttempt, setReadAttempt] = useState(0);
+  const [awayFromLatest, setAwayFromLatest] = useState(!conversation.scroll.atBottom);
+  const messageList = useRef<HTMLDivElement>(null);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  const restored = useRef(false);
+  const viewportSize = useRef({ width: 0, height: 0 });
+  const mounted = useRef(false);
+  const targetBot = botsById.get(draft.targetBotId);
   const artifactsByRun = useMemo(() => {
     const result = new Map<string, Artifact[]>();
     for (const artifact of artifacts) {
@@ -70,196 +99,228 @@ export function ChannelWorkspace({
     for (const item of progress) result.set(item.runId, item);
     return result;
   }, [progress]);
+  const unlinkedRuns = runs.filter(
+    (run) => isActiveRun(run) && !messages.some((message) => message.runId === run.id),
+  );
 
   useEffect(() => {
-    if (!members.some((bot) => bot.id === targetBotId)) setTargetBotId(members[0]?.id ?? "");
-    if (!available.some((bot) => bot.id === joinBotId)) setJoinBotId(available[0]?.id ?? "");
-  }, [available, joinBotId, members, targetBotId]);
+    if (!channel.botIds.includes(draft.targetBotId) || !botsById.has(draft.targetBotId)) {
+      if (draft.targetBotId !== firstMemberId) conversation.edit({ targetBotId: firstMemberId });
+    }
+  }, [conversation, channel.botIds, botsById, draft.targetBotId, firstMemberId]);
 
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a user retry deliberately restarts this bounded subscription/read lifecycle.
   useEffect(() => {
     const controller = new AbortController();
-    let initialSync = true;
+    let revision = 0;
     const syncChannel = async () => {
+      const requestedRevision = ++revision;
       try {
         const [messageItems, runItems] = await Promise.all([
           listMessages(channel.id, controller.signal),
           listRuns(channel.id, controller.signal),
         ]);
-        setMessages((current) => mergeMessages(messageItems, current));
-        setRuns((current) => mergeRuns(runItems, current));
-        for (const run of runItems) onRun(run);
-        setMessageError(undefined);
+        if (controller.signal.aborted || requestedRevision !== revision) return;
+        conversation.merge(messageItems, runItems);
+        conversation.loaded();
+        for (const run of runItems) if (run.channelId === channel.id) onRun(run);
       } catch (cause: unknown) {
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
-        setMessageError(cause instanceof Error ? cause.message : "无法读取本地消息。");
-      } finally {
-        if (!controller.signal.aborted && initialSync) {
-          initialSync = false;
-          setMessagesLoading(false);
-        }
+        if (controller.signal.aborted || requestedRevision !== revision) return;
+        conversation.loaded(cause instanceof Error ? cause.message : "无法读取频道消息。");
       }
     };
     const unsubscribe = subscribeToChannelEvents(channel.id, {
       onMessage(message) {
-        setMessages((current) => mergeMessages(current, [message]));
+        if (!controller.signal.aborted) conversation.merge([message]);
       },
-      onFrame,
-      onProgress,
+      onFrame(frame) {
+        if (!controller.signal.aborted) onFrame(frame);
+      },
+      onProgress(item) {
+        if (!controller.signal.aborted) onProgress(item);
+      },
       onRun(run, projectedArtifacts) {
-        setRuns((current) => mergeRuns(current, [run]));
+        if (controller.signal.aborted || run.channelId !== channel.id) return;
+        conversation.merge([], [run]);
         onRun(run, projectedArtifacts);
       },
       onReady() {
-        void syncChannel();
+        if (!controller.signal.aborted) void syncChannel();
       },
-      onState: setRealtimeState,
+      onState(value) {
+        if (!controller.signal.aborted) setRealtimeState(value);
+      },
     });
-    setMessages([]);
-    setRuns([]);
-    setReplyingTo(undefined);
-    setMessagesLoading(true);
-    setMessageError(undefined);
+    void syncChannel();
     return () => {
       controller.abort();
       unsubscribe();
     };
-  }, [channel.id, onFrame, onProgress, onRun]);
+  }, [channel.id, conversation, onFrame, onProgress, onRun, readAttempt]);
 
-  useEffect(() => {
-    if (messages.length > 0) {
-      messageList.current?.scrollTo({ top: messageList.current.scrollHeight, behavior: "smooth" });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: message count changes invalidate DOM scroll geometry.
+  useLayoutEffect(() => {
+    const list = messageList.current;
+    if (!list || loading || list.clientHeight === 0) return;
+    if (!restored.current) {
+      list.scrollTop = conversation.scroll.atBottom ? list.scrollHeight : conversation.scroll.top;
+      restored.current = true;
+    } else if (conversation.scroll.atBottom) {
+      list.scrollTo?.({
+        top: list.scrollHeight,
+        behavior:
+          preferences.reduceMotion ||
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth",
+      });
     }
-  }, [messages.length]);
+  }, [conversation, loading, messages.length, preferences.reduceMotion]);
 
-  async function joinSelectedBot() {
-    if (joinBotId.length === 0 || joining) return;
-    setJoining(true);
-    try {
-      await onJoin(joinBotId);
-    } finally {
-      setJoining(false);
-    }
-  }
+  useLayoutEffect(() => {
+    const list = messageList.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    viewportSize.current = { width: list.clientWidth, height: list.clientHeight };
+    const observer = new ResizeObserver(() => {
+      viewportSize.current = { width: list.clientWidth, height: list.clientHeight };
+      if (list.clientHeight === 0) return;
+      const snapshot = conversation.getSnapshot();
+      if (snapshot.loading && snapshot.messages.length === 0) return;
+      // Resizing a sidebar, composer or window must preserve the user's existing follow intent.
+      list.scrollTop = conversation.scroll.atBottom ? list.scrollHeight : conversation.scroll.top;
+      conversation.scroll.top = list.scrollTop;
+      conversation.scroll.atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+      setAwayFromLatest(!conversation.scroll.atBottom);
+      restored.current = true;
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [conversation]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: textarea value and font changes invalidate measured content height.
+  useLayoutEffect(() => {
+    const input = textarea.current;
+    if (!input) return;
+    const resize = () => {
+      const style = window.getComputedStyle(input);
+      const lineHeight = Number.parseFloat(style.lineHeight) || 24;
+      const padding =
+        (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+      input.style.height = "auto";
+      input.style.height = `${Math.max(2 * lineHeight + padding, Math.min(input.scrollHeight, 8 * lineHeight + padding))}px`;
+    };
+    resize();
+    let width = input.clientWidth;
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : new ResizeObserver(() => {
+            if (input.clientWidth !== width) {
+              width = input.clientWidth;
+              resize();
+            }
+          });
+    observer?.observe(input);
+    return () => observer?.disconnect();
+  }, [draft.text, preferences.fontSize]);
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const content = messageText.trim();
-    if (content.length === 0 || sending || targetBotId.length === 0) return;
-    setSending(true);
-    setMessageError(undefined);
-    try {
-      const result = await createMessage(channel.id, {
-        content,
-        botId: targetBotId,
-        ...(replyingTo === undefined ? {} : { replyToMessageId: replyingTo.id }),
-      });
-      setMessages((current) => mergeMessages(current, [result.message]));
-      setRuns((current) => mergeRuns(current, [result.run]));
-      onRun(result.run);
-      setMessageText("");
-      setReplyingTo(undefined);
-    } catch (cause) {
-      setMessageError(cause instanceof Error ? cause.message : "消息未能保存。");
-    } finally {
-      setSending(false);
-    }
+    if (sending || !members.some((bot) => bot.id === draft.targetBotId)) return;
+    const result = await conversation.send((input) => createMessage(channel.id, input));
+    if (result && mounted.current) onRun(result.run);
   }
-
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    if (
+      event.key !== "Enter" ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing ||
+      event.keyCode === 229 ||
+      event.altKey
+    )
+      return;
+    if (preferences.sendShortcut === "modifier" && !event.metaKey && !event.ctrlKey) return;
     event.preventDefault();
     event.currentTarget.form?.requestSubmit();
   }
-
-  const targetBot = botsById.get(targetBotId);
+  function showLatest() {
+    conversation.scroll.atBottom = true;
+    const list = messageList.current;
+    if (list) {
+      list.scrollTop = list.scrollHeight;
+      conversation.scroll.top = list.scrollTop;
+    }
+    setAwayFromLatest(false);
+  }
   return (
-    <main className="workspace-main channel-workspace">
-      <header className="channel-conversation-header">
-        <div className="channel-identity">
-          <span className="channel-title-icon">
-            <HashIcon />
-          </span>
-          <div>
-            <h1>{channel.name}</h1>
-            <p>{channel.description || "长期任务与 Bot 对话"}</p>
-          </div>
-        </div>
-        <div className="channel-team-summary">
-          <div className="member-stack" title={`${members.length} 名 Bot`}>
-            {members.slice(0, 4).map((bot) => (
-              <button
-                type="button"
-                aria-label={`打开 ${bot.name} 的员工档案`}
-                onClick={() => onOpenBot(bot.id)}
-                key={bot.id}
-              >
-                <RobotAvatar
-                  bot={bot}
-                  compact
-                  status={activeRunByBot.get(bot.id)?.status ?? bot.status}
-                />
-              </button>
-            ))}
-            {members.length > 4 ? <span>+{members.length - 4}</span> : null}
-          </div>
-          {available.length > 0 ? (
-            <div className="join-control compact-join-control">
-              <select
-                aria-label="选择要加入频道的 Bot"
-                value={joinBotId}
-                onChange={(event) => setJoinBotId(event.target.value)}
-              >
-                {available.map((bot) => (
-                  <option value={bot.id} key={bot.id}>
-                    {bot.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="icon-button"
-                type="button"
-                disabled={joining}
-                onClick={() => void joinSelectedBot()}
-                aria-label="加入频道"
-              >
-                <PlusIcon />
-              </button>
+    <main
+      className={`workspace-main channel-workspace conversation-round-one${globalHeader ? " has-global-header" : ""}`}
+    >
+      {!globalHeader ? (
+        <header className="channel-conversation-header">
+          <div className="channel-identity">
+            <span className="channel-title-icon">
+              <HashIcon />
+            </span>
+            <div>
+              <h1>{channel.name}</h1>
+              <p>{channel.description || "长期任务与 Bot 对话"}</p>
             </div>
-          ) : null}
-          <span className={`realtime-state ${realtimeState}`}>
-            <i />
-            {realtimeLabel(realtimeState)}
-          </span>
-        </div>
-      </header>
-
+          </div>
+          <div className="channel-team-summary">
+            <ChannelMembersMenu
+              channel={channel}
+              bots={bots}
+              onJoin={onJoin}
+              onOpenBot={onOpenBot}
+            />
+            {headerAction}
+          </div>
+        </header>
+      ) : null}
       <section
         className="conversation-panel channel-conversation"
         aria-label={`${channel.name} 消息`}
       >
-        {activeRuns.length > 0 ? (
-          <section className="active-run-strip" aria-label="正在执行的任务">
-            {activeRuns.slice(0, 3).map((run) => {
-              const assignee = botsById.get(run.botId);
-              return (
-                <button type="button" onClick={() => onInspectRun(run.id)} key={run.id}>
-                  {assignee ? <RobotAvatar bot={assignee} compact status={run.status} /> : null}
-                  <span>
-                    <strong>
-                      {assignee?.name ?? "Bot"} · {runStatusLabel(run.status)}
-                    </strong>
-                    <small>{latestProgressByRun.get(run.id)?.message ?? run.title}</small>
-                  </span>
-                  <span aria-hidden="true">›</span>
-                </button>
-              );
-            })}
-          </section>
+        {loadError ? (
+          <div className="conversation-load-error" role="alert">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => setReadAttempt((value) => value + 1)}>
+              重新读取
+            </button>
+          </div>
         ) : null}
-
-        <div className="message-list" ref={messageList} aria-live="polite">
-          {messagesLoading ? (
-            <p className="conversation-status">正在读取本地消息…</p>
+        <div
+          className="message-list"
+          ref={messageList}
+          onScroll={(event) => {
+            const list = event.currentTarget;
+            // Hidden settings content has zero geometry; it must not erase the saved reading position.
+            if (list.clientHeight === 0) return;
+            if (
+              typeof ResizeObserver !== "undefined" &&
+              (list.clientWidth !== viewportSize.current.width ||
+                list.clientHeight !== viewportSize.current.height)
+            )
+              return;
+            conversation.scroll.top = list.scrollTop;
+            conversation.scroll.atBottom =
+              list.scrollHeight - list.scrollTop - list.clientHeight < 80;
+            setAwayFromLatest(!conversation.scroll.atBottom);
+          }}
+          role="log"
+          aria-label="频道消息记录"
+          aria-live="polite"
+        >
+          {loading && messages.length === 0 ? (
+            <p className="conversation-status">正在读取频道消息…</p>
           ) : messages.length === 0 ? (
             <div className="conversation-empty">
               <span className="conversation-icon">
@@ -268,93 +329,147 @@ export function ChannelWorkspace({
               <h2>{channel.name} 的第一条消息</h2>
               <p>
                 {members.length === 0
-                  ? "先将一名 Bot 加入频道。"
+                  ? "先从顶部菜单添加一名 Bot。"
                   : "选择一名 Bot，直接交代第一件工作。"}
               </p>
             </div>
           ) : (
-            messages.map((message) => {
-              const author =
-                message.authorId === undefined ? undefined : botsById.get(message.authorId);
-              const replyTarget =
-                message.replyToMessageId === undefined
-                  ? undefined
-                  : messageById.get(message.replyToMessageId);
-              const run =
-                message.runId === undefined
-                  ? undefined
-                  : runs.find((item) => item.id === message.runId);
-              const messageArtifacts =
-                message.runId === undefined ? [] : (artifactsByRun.get(message.runId) ?? []);
-              return (
-                <MessageRow
-                  message={message}
-                  author={author}
-                  replyTarget={replyTarget}
-                  botsById={botsById}
-                  artifacts={messageArtifacts}
-                  run={run}
-                  onReply={() => setReplyingTo(message)}
-                  onInspectRun={onInspectRun}
-                  onOpenBot={onOpenBot}
-                  key={message.id}
-                />
-              );
-            })
+            messages.map((message) => (
+              <MessageRow
+                key={message.id}
+                message={message}
+                author={message.authorId === undefined ? undefined : botsById.get(message.authorId)}
+                replyTarget={
+                  message.replyToMessageId === undefined
+                    ? undefined
+                    : messageById.get(message.replyToMessageId)
+                }
+                botsById={botsById}
+                artifacts={
+                  message.runId === undefined ? [] : (artifactsByRun.get(message.runId) ?? [])
+                }
+                run={message.runId === undefined ? undefined : runsById.get(message.runId)}
+                progress={
+                  message.runId === undefined ? undefined : latestProgressByRun.get(message.runId)
+                }
+                onReply={() => {
+                  conversation.edit({ replyTo: message });
+                  textarea.current?.focus();
+                }}
+                onInspectRun={onInspectRun}
+                onOpenBot={onOpenBot}
+              />
+            ))
           )}
+          {unlinkedRuns.length > 0 ? (
+            <section className="unlinked-run-status" aria-label="其他正在执行的任务">
+              {unlinkedRuns.map((run) => (
+                <button type="button" key={run.id} onClick={() => onInspectRun(run.id)}>
+                  <strong>
+                    {botsById.get(run.botId)?.name ?? "Bot"} · {runStatusLabel(run.status)}
+                  </strong>
+                  <span>{latestProgressByRun.get(run.id)?.message ?? run.title}</span>
+                </button>
+              ))}
+            </section>
+          ) : null}
         </div>
-
+        {awayFromLatest ? (
+          <button type="button" className="conversation-latest" onClick={showLatest}>
+            ↓ 回到最新
+          </button>
+        ) : null}
+        {capacityError ? (
+          <p className="conversation-capacity-error" role="alert">
+            {capacityError}
+          </p>
+        ) : null}
         <form className="message-composer" onSubmit={sendMessage}>
-          {replyingTo ? (
+          {draft.replyTo ? (
             <div className="composer-reply">
-              <span>回复 {messageAuthorName(replyingTo, botsById)}</span>
-              <p>{replyingTo.content}</p>
-              <button type="button" onClick={() => setReplyingTo(undefined)} aria-label="取消回复">
+              <span>回复 {messageAuthorName(draft.replyTo, botsById)}</span>
+              <p>{draft.replyTo.content}</p>
+              <button
+                type="button"
+                onClick={() => conversation.edit({ replyTo: undefined })}
+                aria-label="取消回复"
+              >
                 ×
               </button>
             </div>
           ) : null}
-          <div className="composer-target">
-            <span>发送给</span>
-            <select
-              value={targetBotId}
-              disabled={members.length === 0}
-              onChange={(event) => setTargetBotId(event.target.value)}
-              aria-label="选择接收任务的 Bot"
-            >
-              {members.map((bot) => (
-                <option value={bot.id} key={bot.id}>
-                  {bot.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="composer-input-row">
-            <textarea
-              id={`message-${channel.id}`}
-              value={messageText}
-              maxLength={8000}
-              rows={1}
-              disabled={members.length === 0}
-              placeholder={
-                members.length === 0
-                  ? "先把一名 Bot 加入频道"
-                  : `给 ${targetBot?.name ?? "Bot"} 发消息`
-              }
-              onChange={(event) => setMessageText(event.target.value)}
-              onKeyDown={handleComposerKeyDown}
-            />
+          <textarea
+            ref={textarea}
+            id={`message-${channel.id}`}
+            aria-label="消息内容"
+            value={draft.text}
+            maxLength={8000}
+            rows={2}
+            disabled={members.length === 0 || Boolean(capacityError)}
+            placeholder={
+              members.length === 0
+                ? "先从顶部菜单添加一名 Bot"
+                : `给 ${targetBot?.name ?? "Bot"} 发消息`
+            }
+            onChange={(event) => conversation.edit({ text: event.target.value })}
+            onKeyDown={handleComposerKeyDown}
+          />
+          <div className="composer-toolbar">
+            <div className="composer-bot-chip">
+              {targetBot ? <RobotAvatar bot={targetBot} compact /> : <HashIcon />}
+              <select
+                value={draft.targetBotId}
+                disabled={members.length === 0 || Boolean(capacityError)}
+                onChange={(event) => conversation.edit({ targetBotId: event.target.value })}
+                aria-label="选择接收任务的 Bot"
+              >
+                {members.length === 0 ? (
+                  <option value="">选择 Bot</option>
+                ) : (
+                  members.map((bot) => (
+                    <option value={bot.id} key={bot.id}>
+                      {bot.name}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
             <button
               className="composer-send"
               type="submit"
-              disabled={sending || members.length === 0 || messageText.trim().length === 0}
+              disabled={
+                sending || Boolean(capacityError) || members.length === 0 || !draft.text.trim()
+              }
               aria-label="发送消息"
+              title={
+                preferences.sendShortcut === "modifier" ? "⌘ / Ctrl + Enter 发送" : "Enter 发送"
+              }
             >
-              {sending ? "…" : "↑"}
+              {sending ? <span aria-hidden="true">…</span> : <SendIcon />}
             </button>
           </div>
-          {messageError ? <p className="composer-error">{messageError}</p> : null}
+          {sending ? (
+            <p className="composer-pending" role="status">
+              正在发送，你可以继续起草下一条。
+            </p>
+          ) : null}
+          {sendError ? (
+            <p className="composer-error" role="alert">
+              {sendError}
+            </p>
+          ) : null}
         </form>
+        <div className="conversation-footer">
+          <span>
+            {preferences.sendShortcut === "modifier"
+              ? "⌘ / Ctrl + Enter 发送 · Enter 换行"
+              : "Enter 发送 · Shift + Enter 换行"}
+          </span>
+          <span className={`realtime-state ${realtimeState}`}>
+            <i />
+            {realtimeLabel(realtimeState)}
+          </span>
+        </div>
       </section>
     </main>
   );
@@ -367,6 +482,7 @@ function MessageRow({
   botsById,
   artifacts,
   run,
+  progress,
   onReply,
   onInspectRun,
   onOpenBot,
@@ -377,10 +493,12 @@ function MessageRow({
   botsById: Map<string, Bot>;
   artifacts: Artifact[];
   run: Run | undefined;
+  progress: RunProgress | undefined;
   onReply(): void;
   onInspectRun(runId: string): void;
   onOpenBot(botId: string): void;
 }) {
+  const { values: preferences } = useWorkspacePreferences();
   const name = message.authorType === "human" ? "你" : (author?.name ?? "OpenBot");
   return (
     <article className={`message-row ${message.authorType}`}>
@@ -393,14 +511,18 @@ function MessageRow({
           >
             <RobotAvatar bot={author} compact status={run?.status ?? author.status} />
           </button>
+        ) : message.authorType === "human" ? (
+          <span>你</span>
         ) : (
-          <span>{message.authorType === "human" ? "你" : "O"}</span>
+          <OpenBotMark />
         )}
       </div>
       <div className="message-content">
         <header>
           <strong>{name}</strong>
-          <time dateTime={message.createdAt}>{formatMessageTime(message.createdAt)}</time>
+          <time dateTime={message.createdAt}>
+            {formatMessageTime(message.createdAt, preferences.hour12)}
+          </time>
         </header>
         {replyTarget ? (
           <blockquote>
@@ -427,15 +549,22 @@ function MessageRow({
             ))}
           </div>
         ) : null}
+        {run ? (
+          <button
+            className={`message-run-status ${run.status}`}
+            type="button"
+            onClick={() => onInspectRun(run.id)}
+          >
+            <span className="run-status-dot" aria-hidden="true" />
+            <strong>{runStatusLabel(run.status)}</strong>
+            <span>{progress?.message ?? run.title}</span>
+            <span aria-hidden="true">›</span>
+          </button>
+        ) : null}
         <div className="message-actions">
           <button type="button" onClick={onReply}>
             ↩ 回复
           </button>
-          {run ? (
-            <button type="button" onClick={() => onInspectRun(run.id)}>
-              任务详情 ↗
-            </button>
-          ) : null}
         </div>
       </div>
     </article>
@@ -449,25 +578,17 @@ function messageAuthorName(message: Message, botsById: Map<string, Bot> = new Ma
   );
 }
 
-function formatMessageTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(
+function formatMessageTime(value: string, hour12: boolean) {
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12 }).format(
     new Date(value),
   );
-}
-
-function mergeMessages(primary: Message[], secondary: Message[]): Message[] {
-  const byId = new Map<string, Message>();
-  for (const message of [...primary, ...secondary]) byId.set(message.id, message);
-  return Array.from(byId.values())
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    .slice(-200);
 }
 
 function realtimeLabel(state: RealtimeConnectionState) {
   const labels: Record<RealtimeConnectionState, string> = {
     connecting: "连接中",
-    live: "实时",
-    retrying: "重连中",
+    live: "实时连接",
+    retrying: "正在重连",
   };
   return labels[state];
 }

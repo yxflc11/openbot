@@ -2035,19 +2035,6 @@ select:focus-visible {
   padding: 0 11px;
   font-size: 9px;
 }
-.connection-mark {
-  display: grid;
-  width: 64px;
-  height: 64px;
-  place-items: center;
-  margin: 0 auto 18px;
-  border-radius: 18px;
-  color: #fff;
-  background: #17191c;
-  box-shadow: inset 0 -4px 0 #4caf42;
-  font-size: 29px;
-  font-weight: 780;
-}
 .connection-hint {
   margin: 0 0 2px;
   color: #878e96;
@@ -5054,3 +5041,264 @@ select:focus-visible {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* Native window controls remain above the sidebar; no second title strip is rendered. */
+:root[data-desktop="darwin"] .sidebar {
+  padding-top: 76px;
+}
+:root[data-desktop="darwin"] .sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 64px;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+:root[data-desktop="darwin"] :is(.login-screen, .loading-screen)::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 56px;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+:root[data-desktop="darwin"] :is(.login-screen, .loading-screen) {
+  padding-top: 72px;
+}
+:root[data-desktop="darwin"] :is(button, a, input, select, textarea, summary) {
+  -webkit-app-region: no-drag;
+}
+.openbot-mark {
+  display: block;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: -0.03em;
+}
+.onboarding-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  margin: 0 auto 24px;
+}
+:root[data-desktop] .login-screen {
+  background: #fff;
+}
+:root[data-desktop] .login-card {
+  border: 0;
+  box-shadow: none;
+  padding: 24px;
+}
+:root[data-desktop] .login-card h1 {
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+:root[data-desktop] .login-copy {
+  color: #59616b;
+  font-size: 14px;
+  margin: 12px 0 28px;
+}
+:root[data-desktop] .login-card input::placeholder {
+  color: #686f78;
+}
+:root[data-desktop] :is(.login-note, .connection-hint, .desktop-worker-footer span) {
+  color: #606873;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.desktop-setup-screen {
+  place-items: center;
+}
+.desktop-setup-card {
+  width: min(100%, 520px);
+  margin: 0;
+}
+.setup-role-options {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.setup-role-options .setup-mode {
+  min-height: 92px;
+  padding: 18px;
+  align-items: center;
+}
+.setup-role-options .setup-mode strong {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+.setup-role-options .setup-mode small {
+  color: #59616b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.setup-mode em {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  color: #52606f;
+}
+.setup-next-step {
+  margin: 12px 0;
+  font-size: 12px;
+  color: #59616b;
+  line-height: 1.6;
+  text-align: center;
+}
+.desktop-install-card {
+  width: min(100%, 480px);
+}
+.installation-steps {
+  padding: 0;
+  margin: 28px 0;
+  list-style: none;
+  display: grid;
+  gap: 22px;
+}
+.installation-steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.installation-steps li > span {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #f1f2f4;
+  color: #59616b;
+  font-size: 12px;
+}
+.installation-steps .step-done {
+  background: #eaf5ed;
+  color: #23793d;
+}
+.installation-steps .step-running {
+  background: var(--blue);
+  color: white;
+}
+.installation-steps small {
+  margin-left: auto;
+  color: #59616b;
+  font-size: 12px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.model-provider-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+  display: flex;
+  gap: 24px;
+}
+.model-provider-options legend {
+  font-size: 12px;
+  font-weight: 650;
+  margin-bottom: 12px;
+}
+.login-card .model-provider-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.login-card .model-provider-options input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--blue);
+}
+.setup-skip {
+  display: block;
+  margin: 22px auto 0;
+  padding: 8px;
+  background: transparent;
+  border: 0;
+  color: #59616b;
+  font-size: 13px;
+  cursor: pointer;
+}
+.setup-skip:hover {
+  color: #17191c;
+  text-decoration: underline;
+}
+.settings-rows {
+  margin: 24px 0;
+}
+.settings-rows button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-rows button:hover {
+  color: var(--blue);
+}
+.settings-rows button > span:first-child {
+  display: grid;
+  gap: 5px;
+  font-size: 14px;
+}
+.settings-rows small {
+  font-size: 12px;
+  color: #59616b;
+}
+.sidebar-settings {
+  padding: 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+.sidebar-settings:hover {
+  background: #edf0f3;
+}
+.setup-change-role {
+  display: block;
+  margin: -12px auto 24px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: #59616b;
+  font-size: 12px;
+  cursor: pointer;
+}
+.setup-change-role:hover {
+  color: var(--blue);
+}
+.app-shell.without-context { grid-template-columns: 264px minmax(0, 1fr); }
+:root[data-desktop="darwin"] .channel-header { -webkit-app-region: drag; user-select: none; }
+:root[data-desktop] .channel-first-empty h1 { font-size: 30px; letter-spacing: -0.03em; }
+:root[data-desktop] .channel-first-empty .empty-eyebrow { display: none; }
+@media (max-width: 760px) { .app-shell.without-context { grid-template-columns: minmax(0, 1fr); } }

@@ -957,3 +957,23 @@ function isMessageCreatedEvent(
     typeof value.message.createdAt === "string"
   );
 }
+
+export type ModelSettingsSummary =
+  | { status: "unavailable" }
+  | { status: "unconfigured"; revision: null }
+  | { status: "configured"; provider: "openai" | "anthropic"; model: string; revision: string };
+export function getModelSettings(): Promise<ModelSettingsSummary> {
+  return request<ModelSettingsSummary>("/api/v1/settings/model");
+}
+export function saveModelSettings(input: {
+  provider: "openai" | "anthropic";
+  model: string;
+  apiKey: string;
+  revision: string | null;
+}): Promise<ModelSettingsSummary> {
+  return request<ModelSettingsSummary>("/api/v1/settings/model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}

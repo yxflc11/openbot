@@ -24,3 +24,6 @@ backups/
 *.mobileprovision
 .idea/
 .vscode/
+
+# Packaged native Desktop runtime, recreated from locked dependencies.
+apps/desktop/native-runtime/

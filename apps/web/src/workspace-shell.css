@@ -1,0 +1,628 @@
+/* The three workspace columns share the native window instead of adding a title strip. */
+.app-shell,
+.app-shell.without-context {
+  grid-template-columns: 236px minmax(0, 1fr) 294px;
+  gap: 12px;
+  height: 100dvh;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+  background: #f6f7f8;
+}
+.app-shell > * {
+  min-width: 0;
+}
+.app-shell .sidebar {
+  position: relative;
+  top: auto;
+  height: calc(100dvh - 24px);
+  min-height: 0;
+  padding: 22px 14px 12px;
+  border: 1px solid #fff;
+  border-radius: 22px;
+  background: #fcfcfd;
+}
+:root[data-desktop="darwin"] .app-shell .sidebar {
+  padding-top: 58px;
+}
+:root[data-desktop="darwin"] .app-shell .sidebar::before {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 248px;
+  height: 60px;
+}
+.app-shell .brand {
+  display: flex;
+  gap: 9px;
+  margin: 0 10px 26px;
+  align-items: center;
+  font-size: 25px;
+  line-height: 34px;
+  letter-spacing: -0.035em;
+  font-weight: 740;
+}
+.app-shell .brand img {
+  width: 33px;
+  height: 33px;
+  border-radius: 10px;
+}
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  margin: 0 4px 18px;
+  padding: 0 12px;
+  border: 1px solid #e4e6e9;
+  border-radius: 12px;
+  color: #68707c;
+  background: #f8f9fa;
+}
+.sidebar-search:focus-within {
+  border-color: #9bafca;
+  outline: 2px solid #dce6f5;
+}
+.sidebar-search svg {
+  flex: 0 0 16px;
+}
+.sidebar-search input {
+  min-width: 0;
+  width: 100%;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #20252d;
+  font-size: 12px;
+}
+.sidebar-search input:focus-visible {
+  outline: none;
+}
+.sidebar-search input::placeholder {
+  color: #67717d;
+}
+.workspace-actions {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 15px;
+}
+.workspace-actions button,
+.app-shell .sidebar-settings {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 43px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+}
+.workspace-actions button:hover,
+.app-shell .sidebar-settings:hover {
+  background: #eff1f3;
+}
+.workspace-actions button > span {
+  flex: 1;
+}
+.workspace-actions button:first-child {
+  color: #171b21;
+  font-weight: 610;
+}
+.app-shell .sidebar-body {
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.app-shell .sidebar-section {
+  padding: 15px 0;
+  border: 0;
+}
+.app-shell .sidebar-heading {
+  padding: 0 8px 8px 12px;
+}
+.app-shell .sidebar-heading h2 {
+  font-size: 11px;
+  font-weight: 540;
+  color: #626d78;
+}
+.app-shell .sidebar-heading .icon-button {
+  border: 0;
+  background: transparent;
+  color: #65707c;
+  width: 25px;
+  height: 25px;
+}
+.app-shell .sidebar-list {
+  gap: 4px;
+}
+.app-shell .sidebar-row {
+  min-height: 52px;
+  border-radius: 11px;
+  padding: 8px 10px;
+}
+.app-shell .sidebar-row.selected {
+  background: #eaf0f8;
+  color: #203e62;
+}
+.app-shell .sidebar-row:hover {
+  background: #f0f2f5;
+}
+.app-shell .channel-list-row {
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+}
+.channel-list-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 11px;
+  background: #e9ecf1;
+  color: #596d83;
+}
+.selected .channel-list-avatar {
+  background: #dce7f5;
+  color: #3669a1;
+}
+.channel-list-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.channel-list-copy strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 570;
+}
+.app-shell .channel-list-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #647181;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.app-shell .sidebar-empty {
+  display: flex;
+  min-height: 36px;
+  color: #66717c;
+  font-size: 12px;
+}
+.app-shell .bot-row {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 13px;
+}
+.app-shell .bot-row .robot-avatar {
+  width: 28px;
+  height: 28px;
+}
+.app-shell .bot-state {
+  font-size: 9px;
+  color: #69727c;
+}
+.app-shell .sidebar-settings {
+  border-top: 1px solid #e7e9ec;
+  border-radius: 0;
+  min-height: 48px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+.app-shell .sidebar-owner {
+  border: 0;
+  margin: 0;
+  padding: 10px 12px 4px;
+  gap: 8px;
+}
+.app-shell .sidebar-owner strong {
+  font-size: 11px;
+}
+.app-shell .sidebar-owner small {
+  font-size: 10px;
+  color: #68717c;
+}
+.app-shell .sidebar-owner button {
+  border: 0;
+  background: transparent;
+  padding: 6px;
+  font-size: 10px;
+  color: #66707d;
+}
+.app-shell .context-rail {
+  grid-column: auto;
+  height: calc(100dvh - 24px);
+  min-height: 0;
+  top: auto;
+  position: relative;
+  border: 0;
+  padding-top: 32px;
+  overflow-y: auto;
+  background: transparent;
+}
+.app-shell .context-rail .rail-title,
+.app-shell .context-rail .attention {
+  display: flex;
+}
+.app-shell .context-rail .attention {
+  flex-direction: column;
+}
+.app-shell .workspace-main {
+  height: calc(100dvh - 24px);
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+}
+.app-shell .channel-workspace {
+  overflow: hidden;
+  background: #f6f7f8;
+}
+.app-shell .channel-conversation-header {
+  min-height: 82px;
+  flex: 0 0 auto;
+  gap: 12px;
+  padding: 10px 18px 18px;
+  border: 0;
+  background: transparent;
+}
+.app-shell .channel-identity {
+  gap: 10px;
+}
+.app-shell .channel-identity .channel-title-icon {
+  height: 38px;
+  width: 38px;
+  border-radius: 13px;
+  color: #506a87;
+  background: #e8edf3;
+}
+.app-shell .channel-identity h1 {
+  font-size: 17px;
+  font-weight: 650;
+}
+.app-shell .channel-identity p {
+  max-width: 240px;
+  font-size: 11px;
+  color: #657080;
+}
+.app-shell .channel-team-summary {
+  gap: 8px;
+}
+.app-shell .channel-team-summary .realtime-state {
+  font-size: 10px;
+  color: #62717c;
+}
+.app-shell .channel-conversation {
+  border-radius: 16px;
+  background: #f0f3f6;
+  overflow: hidden;
+}
+.app-shell .message-list {
+  padding: 24px 22px;
+  background: transparent;
+  scrollbar-width: thin;
+}
+.app-shell .message-row {
+  gap: 9px;
+  margin-bottom: 19px;
+}
+.app-shell .message-content {
+  padding: 12px 14px 8px;
+  border: 1px solid #e4e8ed;
+  border-radius: 14px 14px 14px 4px;
+  box-shadow: 0 1px 2px #16293e05;
+}
+.app-shell .message-row.human .message-content {
+  background: #e1ecf9;
+  border-color: #dbe7f7;
+  border-radius: 14px 14px 4px 14px;
+}
+.app-shell .message-content > header {
+  margin-bottom: 8px;
+}
+.app-shell .message-content > header strong {
+  color: #284e7b;
+  font-size: 11px;
+}
+.app-shell .message-content time {
+  color: #607086;
+  font-size: 10px;
+}
+.app-shell .rich-message {
+  color: #26313f;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.app-shell .message-content p {
+  font-size: 13px;
+  line-height: 1.75;
+}
+.app-shell .message-actions {
+  opacity: 1;
+  gap: 12px;
+  padding-top: 7px;
+}
+.app-shell .message-actions button {
+  color: #65758a;
+  font-size: 10px;
+}
+.app-shell .message-avatar .openbot-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+}
+.app-shell .message-composer {
+  width: calc(100% - 28px);
+  max-width: none;
+  margin: 0 14px 14px;
+  border: 1px solid #dce2e9;
+  border-radius: 15px;
+  padding: 10px 12px;
+  box-shadow: 0 3px 12px #1a304408;
+}
+.app-shell .composer-target {
+  font-size: 10px;
+  color: #657181;
+  padding: 0 4px 4px;
+}
+.app-shell .composer-target select {
+  font-size: 11px;
+  padding: 2px 18px 2px 2px;
+}
+.app-shell .composer-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 35px;
+}
+.app-shell .message-composer textarea {
+  padding: 9px 4px;
+  min-height: 43px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.app-shell .message-composer textarea::placeholder {
+  color: #657181;
+}
+.app-shell .message-composer:focus-within {
+  border-color: #819cba;
+}
+.app-shell .composer-send {
+  width: 35px;
+  height: 35px;
+  border-radius: 11px;
+  background: #242b36;
+}
+.app-shell .composer-send:disabled {
+  color: #718094;
+  background: #e9edf2;
+}
+.app-shell .composer-footnote {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 4px 0;
+  font-size: 9px;
+  color: #627181;
+}
+.app-shell .active-run-strip {
+  padding: 10px 14px;
+  background: #f7f9fb;
+}
+.app-shell .conversation-empty h2 {
+  font-size: 18px;
+  font-weight: 620;
+  color: #2c3542;
+}
+.app-shell .conversation-empty p {
+  font-size: 12px;
+  color: #627181;
+}
+.app-shell .conversation-icon {
+  color: #627b98;
+  background: #e4eaf2;
+  border-radius: 18px;
+}
+.app-shell .channel-first-empty {
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  align-items: stretch;
+  background: #f6f7f8;
+}
+.empty-workspace-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 82px;
+  padding: 0 20px 12px;
+  gap: 12px;
+}
+.empty-workspace-header span:first-child {
+  font-size: 17px;
+  font-weight: 620;
+}
+.empty-workspace-header span:last-child {
+  font-size: 10px;
+  color: #64707e;
+}
+.workspace-welcome {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 18px 80px;
+  text-align: center;
+  border-radius: 16px;
+  background: #f0f3f6;
+}
+.app-shell .workspace-welcome .welcome-mark {
+  height: 64px;
+  width: 64px;
+  border-radius: 19px;
+  margin-bottom: 21px;
+}
+.app-shell .workspace-welcome h1 {
+  margin: 0;
+  font-size: clamp(21px, 2vw, 26px);
+  font-weight: 640;
+  letter-spacing: -0.035em;
+}
+.app-shell .workspace-welcome p {
+  margin: 13px 0 24px;
+  max-width: 330px;
+  color: #657181;
+  font-size: 13px;
+  line-height: 1.9;
+}
+.workspace-welcome > div {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.workspace-welcome .primary-button {
+  min-height: 40px;
+  border-radius: 10px;
+  background: #263445;
+  border-color: #263445;
+  font-size: 12px;
+  padding: 10px 15px;
+}
+.workspace-welcome .secondary-button {
+  min-height: 40px;
+  border-radius: 10px;
+  font-size: 12px;
+  padding: 10px 15px;
+}
+.welcome-note {
+  margin-top: 32px;
+  color: #657181;
+  font-size: 10px;
+}
+@media (max-width: 1100px) and (min-width: 761px) {
+  .app-shell,
+  .app-shell.without-context {
+    grid-template-columns: 208px minmax(0, 1fr) 250px;
+    gap: 8px;
+    padding: 10px;
+  }
+  .app-shell .sidebar {
+    padding-inline: 10px;
+    height: calc(100dvh - 20px);
+  }
+  .app-shell .brand {
+    font-size: 23px;
+    margin-left: 8px;
+  }
+  .app-shell .context-rail {
+    padding-inline: 12px;
+    height: calc(100dvh - 20px);
+  }
+  .app-shell .workspace-main {
+    height: calc(100dvh - 20px);
+  }
+  .app-shell .channel-conversation-header {
+    padding-inline: 10px;
+    flex-wrap: wrap;
+    gap: 7px;
+    min-height: 100px;
+  }
+  .app-shell .channel-team-summary {
+    gap: 8px;
+    margin-left: auto;
+  }
+  .app-shell .channel-identity p {
+    max-width: 180px;
+  }
+  .app-shell .message-list {
+    padding: 18px 12px;
+  }
+  .app-shell .composer-footnote span:last-child {
+    display: none;
+  }
+  .app-shell .bot-state {
+    display: none;
+  }
+  .app-shell .bot-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .app-shell,
+  .app-shell.without-context {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
+    gap: 0;
+  }
+  .app-shell .sidebar,
+  .app-shell .context-rail {
+    display: none;
+  }
+  .app-shell .workspace-main {
+    height: calc(100dvh - 62px);
+    padding: 0;
+  }
+  .app-shell .channel-conversation-header {
+    padding: 14px 16px;
+    gap: 10px;
+    min-height: 86px;
+    flex-wrap: wrap;
+  }
+  .app-shell .channel-conversation,
+  .workspace-welcome {
+    border-radius: 0;
+  }
+  .app-shell .channel-team-summary {
+    margin-left: auto;
+    gap: 9px;
+  }
+  .app-shell .message-list {
+    padding: 20px 12px;
+  }
+  .app-shell .message-composer {
+    margin: 0 10px 10px;
+    width: calc(100% - 20px);
+  }
+  .app-shell .composer-footnote span:last-child {
+    display: none;
+  }
+  .app-shell .empty-workspace-header {
+    min-height: 72px;
+    padding: 16px;
+  }
+  .app-shell .workspace-welcome {
+    padding-bottom: 50px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell * {
+    scroll-behavior: auto;
+  }
+}
+
+:root[data-desktop="darwin"] .channel-conversation-header,
+:root[data-desktop="darwin"] .empty-workspace-header {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+:root[data-desktop="darwin"] .channel-conversation-header button,
+:root[data-desktop="darwin"] .channel-conversation-header select {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.app-shell .message-composer .composer-send {
+  min-width: 35px;
+  min-height: 35px;
+  width: 35px;
+  height: 35px;
+  justify-self: end;
+  align-self: end;
+}

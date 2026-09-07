@@ -1,16 +1,20 @@
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
+  nativeTheme,
   net,
   protocol,
-  session,
   type Session,
+  safeStorage,
+  session,
+  utilityProcess,
   type WebContents,
 } from "electron";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { FileDesktopConnectionStore } from "./connection-config.js";
 import { DesktopConnectionController } from "./connection-controller.js";
 import { desktopWindowIconPath } from "./desktop-icon.js";
@@ -19,38 +23,57 @@ import {
   issueDesktopNodeEnrollmentToken,
 } from "./desktop-server-actions.js";
 import { isTrustedDesktopIpcSender } from "./ipc-security.js";
-import { DesktopLocalWorkerController } from "./local-worker-controller.js";
 import {
   DESKTOP_ENTRY_URL,
   DESKTOP_SCHEME,
   isDesktopAssetRequestMethod,
   resolveDesktopAssetPath,
 } from "./local-content.js";
+import { DesktopLocalWorkerController } from "./local-worker-controller.js";
 import { MacOSWorkerCompanion } from "./macos-worker-companion.js";
+import { NativeServerController } from "./native-server.js";
+import { DesktopNavigationMenuController } from "./navigation-menu.js";
 import {
   DESKTOP_CONFIGURE_SERVER_CHANNEL,
   DESKTOP_CONNECTION_STATE_CHANNEL,
   DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL,
   DESKTOP_LOCAL_WORKER_STATE_CHANNEL,
+  DESKTOP_NAVIGATION_MENU_STATE_CHANNEL,
   DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL,
   DESKTOP_SAVE_SETUP_PLAN_CHANNEL,
+  DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL,
   DESKTOP_SETUP_LOCAL_WORKER_CHANNEL,
   DESKTOP_SETUP_PLAN_STATE_CHANNEL,
+  DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL,
+  DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL,
 } from "./runtime-contract.js";
-import { proxyDesktopServerRequest } from "./server-proxy.js";
-import { FileDesktopSetupPlanStore } from "./setup-plan.js";
-import { DesktopSetupPlanController } from "./setup-plan-controller.js";
 import {
   createDesktopWebPreferences,
   DESKTOP_PERMISSION_DECISION,
   DESKTOP_WINDOW_OPEN_DECISION,
 } from "./security-policy.js";
+import { proxyDesktopServerRequest } from "./server-proxy.js";
+import { FileDesktopSetupPlanStore } from "./setup-plan.js";
+import { DesktopSetupPlanController } from "./setup-plan-controller.js";
+import { SidebarMaterialController } from "./sidebar-material.js";
 
+let nativeServer: NativeServerController | undefined;
+let quitting = false;
 let mainWindow: BrowserWindow | undefined;
 let desktopSession: Session | undefined;
+let sidebarMaterial: SidebarMaterialController | undefined;
+let navigationMenu: DesktopNavigationMenuController | undefined;
 
 // Every renderer is sandboxed globally before Electron creates a process.
 app.enableSandbox();
+// A profile owns one bootstrap transaction and one local database supervisor.
+const ownsInstance = app.requestSingleInstanceLock();
+if (!ownsInstance) app.quit();
+app.on("second-instance", () => {
+  if (mainWindow?.isMinimized()) mainWindow.restore();
+  mainWindow?.show();
+  mainWindow?.focus();
+});
 protocol.registerSchemesAsPrivileged([
   {
     scheme: DESKTOP_SCHEME,
@@ -83,6 +106,28 @@ function registerDesktopIpc(
   setupPlanController: DesktopSetupPlanController,
   localWorkerController: DesktopLocalWorkerController,
 ): void {
+  ipcMain.removeHandler(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL);
+  ipcMain.handle(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL, (event, value: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    if (!navigationMenu) throw new Error("Desktop navigation menu is unavailable.");
+    navigationMenu.update(value);
+  });
+  ipcMain.removeHandler(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL);
+  ipcMain.removeHandler(DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL);
+  ipcMain.handle(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL, (event, enabled: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return sidebarMaterial?.setEnabled(enabled) ?? { status: "unavailable" };
+  });
+  ipcMain.handle(DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL, (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
+      throw new Error("Desktop IPC sender is not allowed.");
+    }
+    return sidebarMaterial?.refresh() ?? { status: "unavailable" };
+  });
   ipcMain.removeHandler(DESKTOP_CONNECTION_STATE_CHANNEL);
   ipcMain.removeHandler(DESKTOP_CONFIGURE_SERVER_CHANNEL);
   ipcMain.removeHandler(DESKTOP_SETUP_PLAN_STATE_CHANNEL);
@@ -109,11 +154,13 @@ function registerDesktopIpc(
     }
     return setupPlanController.getState();
   });
-  ipcMain.handle(DESKTOP_SAVE_SETUP_PLAN_CHANNEL, (event, plan: unknown) => {
+  ipcMain.handle(DESKTOP_SAVE_SETUP_PLAN_CHANNEL, async (event, plan: unknown) => {
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
       throw new Error("Desktop IPC sender is not allowed.");
     }
-    return setupPlanController.save(plan);
+    const result = await setupPlanController.save(plan);
+    if (result.status === "configured" && result.plan.mode !== "host") await nativeServer?.stop();
+    return result;
   });
   ipcMain.handle(DESKTOP_LOCAL_WORKER_STATE_CHANNEL, (event) => {
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents)) {
@@ -142,10 +189,16 @@ function registerDesktopIpc(
 }
 
 async function createMainWindow(activeSession: Session): Promise<void> {
+  // Match the renderer's light palette; this is app-local and leaves macOS settings intact.
+  nativeTheme.themeSource = "light";
   const preloadPath = join(app.getAppPath(), "dist", "preload.cjs");
   const window = new BrowserWindow({
+    // Preserve native macOS controls while letting the sidebar extend into window chrome.
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 20, y: 20 } }
+      : {}),
     autoHideMenuBar: true,
-    backgroundColor: "#f7f7f5",
+    backgroundColor: "#ffffff",
     height: 840,
     icon: desktopWindowIconPath({
       appPath: app.getAppPath(),
@@ -164,9 +217,37 @@ async function createMainWindow(activeSession: Session): Promise<void> {
   });
 
   mainWindow = window;
+  navigationMenu?.reset();
+  window.on("focus", () => navigationMenu?.refresh());
+  window.on("blur", () => navigationMenu?.refresh());
+  window.webContents.on("did-start-navigation", (details) => {
+    if (details.isMainFrame) navigationMenu?.reset();
+  });
+  window.webContents.on("did-finish-load", () => navigationMenu?.refresh());
+  window.webContents.on("render-process-gone", () => navigationMenu?.reset());
+  const material = new SidebarMaterialController({
+    platform: process.platform,
+    window,
+    accessibility: () => ({
+      reducedTransparency: nativeTheme.prefersReducedTransparency,
+      highContrast: nativeTheme.shouldUseHighContrastColors,
+    }),
+    changed: (state) => {
+      if (!window.isDestroyed()) {
+        window.webContents.send(DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL, state);
+      }
+    },
+  });
+  sidebarMaterial = material;
+  const refreshMaterial = () => material.refresh();
+  nativeTheme.on("updated", refreshMaterial);
+  window.on("focus", refreshMaterial);
   window.once("ready-to-show", () => window.show());
   window.once("closed", () => {
+    nativeTheme.removeListener("updated", refreshMaterial);
+    if (sidebarMaterial === material) sidebarMaterial = undefined;
     if (mainWindow === window) mainWindow = undefined;
+    navigationMenu?.reset();
   });
   await window.loadURL(DESKTOP_ENTRY_URL);
 }
@@ -187,6 +268,7 @@ async function startDesktop(): Promise<void> {
         ],
       }),
     confirmServer: async (serverUrl) => {
+      if (nativeServer?.owns(serverUrl)) return true;
       const window = mainWindow;
       if (window === undefined || window.isDestroyed()) {
         throw new Error("Desktop confirmation window is unavailable.");
@@ -205,6 +287,94 @@ async function startDesktop(): Promise<void> {
     },
     fetch: (input, init) => activeSession.fetch(input, init),
     store: new FileDesktopConnectionStore(join(app.getPath("userData"), "openbot", "server.json")),
+  });
+  const nativeRuntimeRoot = app.isPackaged
+    ? join(process.resourcesPath, "native-runtime")
+    : join(app.getAppPath(), "native-runtime");
+  nativeServer = new NativeServerController({
+    runtimeRoot: nativeRuntimeRoot,
+    dataRoot: join(app.getPath("userData"), "openbot", "local-server"),
+    platform: process.platform,
+    encrypt: (value) => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error("Keychain is unavailable.");
+      return safeStorage.encryptString(value).toString("base64");
+    },
+    decrypt: (value) => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error("Keychain is unavailable.");
+      return safeStorage.decryptString(Buffer.from(value, "base64"));
+    },
+    launchServer: async (env) => {
+      const child = utilityProcess.fork(join(nativeRuntimeRoot, "apps/server/dist/index.js"), [], {
+        env,
+        cwd: nativeRuntimeRoot,
+        stdio: "ignore",
+        serviceName: "OpenBot Server",
+      });
+      let alive = true;
+      child.once("exit", () => {
+        alive = false;
+      });
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          child.kill();
+          reject(new Error("Server startup timed out."));
+        }, 30_000);
+        child.once("exit", () => {
+          clearTimeout(timer);
+          reject(new Error("Server exited before readiness."));
+        });
+        child.on("message", (message: unknown) => {
+          if (
+            typeof message === "object" &&
+            message !== null &&
+            "type" in message &&
+            "port" in message &&
+            message.type === "openbot-server-ready" &&
+            message.port === Number(env.OPENBOT_PORT)
+          ) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      });
+      return {
+        isAlive: () => alive,
+        stop: async () => {
+          if (!alive) return;
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(() => {
+              if (alive && child.pid !== undefined) {
+                try {
+                  process.kill(child.pid, "SIGKILL");
+                } catch {
+                  /* Child already exited. */
+                }
+              }
+              resolve();
+            }, 12_000);
+            child.once("exit", () => {
+              clearTimeout(timer);
+              resolve();
+            });
+            child.kill();
+          });
+        },
+      };
+    },
+    connect: async (serverUrl, ownerPassword) => {
+      const connected = await connectionController.configure(serverUrl);
+      if (connected.status !== "configured") throw new Error("Local Server not ready.");
+      const response = await activeSession.fetch(`${serverUrl}/api/v1/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        redirect: "error",
+        headers: { "Content-Type": "application/json", Origin: serverUrl },
+        body: JSON.stringify({ password: ownerPassword }),
+        signal: AbortSignal.timeout(5000),
+      });
+      await response.body?.cancel();
+      if (!response.ok) throw new Error("Local session could not be created.");
+    },
   });
   const setupPlanController = new DesktopSetupPlanController(
     new FileDesktopSetupPlanStore(join(app.getPath("userData"), "openbot", "setup-plan.json")),
@@ -241,8 +411,31 @@ async function startDesktop(): Promise<void> {
     if (!assetPath) return new Response("Not found", { status: 404 });
     return net.fetch(pathToFileURL(assetPath).toString());
   });
+  ipcMain.handle("openbot:native-server-state", (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
+      throw new Error("Untrusted sender.");
+    return nativeServer?.getState();
+  });
+  ipcMain.handle("openbot:install-native-server", (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
+      throw new Error("Untrusted sender.");
+    const plan = setupPlanController.getState();
+    if (plan.status !== "configured" || plan.plan.mode !== "host")
+      throw new Error("Service role required.");
+    return nativeServer?.start();
+  });
   desktopSession = activeSession;
   registerDesktopIpc(connectionController, setupPlanController, localWorkerController);
+  navigationMenu = new DesktopNavigationMenuController({
+    appName: app.name,
+    platform: process.platform,
+    getWindow: () => mainWindow,
+    install: (template) => {
+      const menu = Menu.buildFromTemplate(template);
+      Menu.setApplicationMenu(menu);
+      return menu;
+    },
+  });
   await createMainWindow(activeSession);
 }
 
@@ -262,13 +455,20 @@ app.on("activate", () => {
   }
 });
 
+app.on("before-quit", (event) => {
+  if (quitting || nativeServer === undefined) return;
+  event.preventDefault();
+  quitting = true;
+  void nativeServer.stop().finally(() => app.quit());
+});
+
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
 void app
   .whenReady()
-  .then(startDesktop)
+  .then(() => (ownsInstance ? startDesktop() : undefined))
   .catch((cause: unknown) => {
     console.error("OpenBot Desktop failed closed during startup.", cause);
     app.exit(1);

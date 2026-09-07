@@ -60,7 +60,32 @@ export type DesktopLocalWorkerOperationResult =
         | "native_failed";
     }>;
 
+export type DesktopSidebarMaterialState = Readonly<{
+  status: "enabled" | "disabled" | "reduced" | "unsupported" | "unavailable";
+}>;
+
+export type DesktopNavigationCommand =
+  | "new-conversation"
+  | "open-settings"
+  | "go-back"
+  | "go-forward"
+  | "toggle-sidebar"
+  | "toggle-details";
+export interface DesktopNavigationMenuState {
+  workspaceReady: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  settingsAvailable: boolean;
+}
 export interface OpenBotDesktopBridge {
+  onNavigationCommand?(listener: (command: DesktopNavigationCommand) => void): () => void;
+  updateNavigationMenuState?(state: DesktopNavigationMenuState): Promise<void>;
+  setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;
+  getSidebarMaterialState?(): Promise<DesktopSidebarMaterialState>;
+  onSidebarMaterialChanged?(listener: (state: DesktopSidebarMaterialState) => void): () => void;
+  getNativeServerState?(): Promise<NativeServerState>;
+  installNativeServer?(): Promise<NativeServerState>;
+  getRuntimeInfo?(): Readonly<{ kind: "desktop"; platform: string; shellVersion: string }>;
   getConnectionState(): Promise<DesktopConnectionState>;
   configureServer(serverUrl: string): Promise<ConfigureDesktopServerResult>;
   getSetupPlanState(): Promise<DesktopSetupPlanState>;
@@ -95,3 +120,12 @@ export function getOpenBotDesktopBridge(): OpenBotDesktopBridge | undefined {
   }
   return bridge;
 }
+
+export type NativeServerState =
+  | Readonly<{ status: "idle" }>
+  | Readonly<{ status: "installing"; step: "checking" | "database" | "server" | "connecting" }>
+  | Readonly<{ status: "ready"; serverUrl: string }>
+  | Readonly<{
+      status: "failed";
+      code: "unsupported_platform" | "installation_failed" | "service_stopped" | "stopping";
+    }>;

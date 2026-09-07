@@ -1,53 +1,101 @@
-import type { ApprovalDecision, ExecutionNode, WorkspaceSnapshot } from "@openbot/domain";
+import type {
+  ApprovalDecision,
+  Artifact,
+  ExecutionNode,
+  Run,
+  RunProgress,
+  WorkspaceSnapshot,
+} from "@openbot/domain";
 import type { RealtimeConnectionState } from "../api";
+import "../context-rail.css";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { ApprovalCard } from "./ApprovalCard";
-import { NodeIcon } from "./Icons";
+import { CheckIcon, NodeIcon } from "./Icons";
 
 export function ContextRail({
   realtimeState,
+  selectedChannelId,
   workspace,
   onDecideApproval,
   onInspectRun,
 }: {
   realtimeState: RealtimeConnectionState;
+  selectedChannelId?: string | undefined;
   workspace: WorkspaceSnapshot;
   onDecideApproval(approvalId: string, decision: ApprovalDecision): Promise<void>;
   onInspectRun(runId: string): void;
 }) {
-  const activeRuns = workspace.runs.filter(isActiveRun);
-  const pendingApprovals = workspace.approvals.filter((approval) => approval.status === "pending");
-  const recentResults = workspace.runs
-    .filter((run) => run.status === "completed" || run.status === "failed")
-    .slice(0, 2);
+  const scopedRuns = workspace.runs.filter(
+    (run) => selectedChannelId === undefined || run.channelId === selectedChannelId,
+  );
+  const runById = new Map(workspace.runs.map((run) => [run.id, run]));
+  const activeRuns = scopedRuns
+    .filter(isActiveRun)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const completedCount = workspace.runs.filter((run) => run.status === "completed").length;
+  const workspaceActiveCount = workspace.runs.filter(isActiveRun).length;
+  const pendingApprovals = workspace.approvals.filter((approval) => {
+    if (approval.status !== "pending") return false;
+    if (selectedChannelId === undefined) return true;
+    if (approval.channelId !== selectedChannelId) return false;
+    // Approvals may outlive the bounded recent-run snapshot; a known conflict is not shown.
+    const run = runById.get(approval.runId);
+    return run === undefined || run.channelId === selectedChannelId;
+  });
+  const recentResults = scopedRuns
+    .filter((run) => !isActiveRun(run))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .slice(0, 3);
   const botById = new Map(workspace.bots.map((bot) => [bot.id, bot]));
   const channelById = new Map(workspace.channels.map((channel) => [channel.id, channel]));
   const nodeById = new Map(workspace.nodes.map((node) => [node.id, node]));
-  return (
-    <aside className="context-rail" aria-label="运行状态">
-      <div className="rail-title">
-        <h2>运行状态</h2>
-        <span className={`realtime-state ${realtimeState}`}>
-          <i />
-          {realtimeState === "live" ? "实时" : realtimeState === "retrying" ? "重连中" : "连接中"}
-        </span>
-      </div>
-      <dl className="stat-grid">
-        <Metric label="频道" value={workspace.counts.channels} />
-        <Metric label="Bots" value={workspace.counts.bots} />
-        <Metric label="在线节点" value={workspace.counts.connectedNodes} />
-      </dl>
+  const latestProgress = new Map<string, RunProgress>();
+  for (const progress of workspace.progress) {
+    const run = runById.get(progress.runId);
+    if (run === undefined || run.channelId !== progress.channelId) continue;
+    const previous = latestProgress.get(progress.runId);
+    if (previous === undefined || progress.createdAt > previous.createdAt) {
+      latestProgress.set(progress.runId, progress);
+    }
+  }
+  const latestArtifact = new Map<string, Artifact>();
+  for (const artifact of workspace.artifacts) {
+    const previous = latestArtifact.get(artifact.runId);
+    if (previous === undefined || artifact.createdAt > previous.createdAt) {
+      latestArtifact.set(artifact.runId, artifact);
+    }
+  }
+  const hasActivity = pendingApprovals.length > 0 || scopedRuns.length > 0;
 
-      <section className="rail-section attention">
-        <h3>需要处理{pendingApprovals.length > 0 ? ` · ${pendingApprovals.length}` : ""}</h3>
-        {pendingApprovals.length === 0 ? (
-          <div className="attention-empty">
-            <span className="attention-symbol" aria-hidden="true">
-              ⌑
-            </span>
-            <p>暂无待处理事项</p>
+  return (
+    <aside
+      className="context-rail usage-rail"
+      aria-label={selectedChannelId === undefined ? "工作区任务与详情" : "频道任务与详情"}
+    >
+      <header className="usage-rail-header">
+        <h2>{selectedChannelId === undefined ? "工作区动态" : "频道动态"}</h2>
+        <span className={`usage-rail-connection ${realtimeState}`}>
+          <i aria-hidden="true" />
+          {realtimeState === "live"
+            ? "已同步"
+            : realtimeState === "retrying"
+              ? "重新连接中"
+              : "连接中"}
+        </span>
+      </header>
+      {selectedChannelId !== undefined ? (
+        <p className="usage-rail-scope" title={channelById.get(selectedChannelId)?.name}>
+          {channelById.get(selectedChannelId)?.name ?? "当前频道"}
+          <span>{scopedRuns.length} 条最近任务记录</span>
+        </p>
+      ) : null}
+
+      {pendingApprovals.length > 0 ? (
+        <section className="usage-rail-section" aria-label="需要确认的操作">
+          <div className="usage-rail-section-heading">
+            <h3>需要确认</h3>
+            <span className="usage-rail-attention-count">{pendingApprovals.length}</span>
           </div>
-        ) : (
           <div className="approval-list">
             {pendingApprovals.map((approval) => (
               <ApprovalCard
@@ -59,77 +107,110 @@ export function ContextRail({
               />
             ))}
           </div>
-        )}
-      </section>
-
-      <section className="rail-section runs-section">
-        <h3>当前任务</h3>
-        {activeRuns.length === 0 ? (
-          <p className="rail-empty">暂无执行中的任务</p>
-        ) : (
-          activeRuns.slice(0, 4).map((run) => {
-            const bot = botById.get(run.botId);
-            const node = run.nodeId === undefined ? undefined : nodeById.get(run.nodeId);
-            return (
-              <button
-                className="rail-run"
-                type="button"
-                onClick={() => onInspectRun(run.id)}
-                key={run.id}
-              >
-                <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
-                <strong>{run.title}</strong>
-                <small>
-                  {bot?.name ?? "未知 Bot"} · {node?.name ?? "等待节点"}
-                </small>
-              </button>
-            );
-          })
-        )}
-      </section>
-
-      {recentResults.length > 0 ? (
-        <section className="rail-section result-section">
-          <h3>最近结果</h3>
-          {recentResults.map((run) => {
-            const artifact = workspace.artifacts.find((item) => item.runId === run.id);
-            return (
-              <article className="rail-result" key={run.id}>
-                <button type="button" onClick={() => onInspectRun(run.id)}>
-                  <span className={`run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
-                  <strong>{run.title}</strong>
-                  <p>{run.errorMessage ?? run.resultSummary ?? "任务已结束。"}</p>
-                </button>
-                {artifact ? (
-                  <a
-                    href={`/api/v1/artifacts/${artifact.id}/content`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    查看截图
-                  </a>
-                ) : null}
-              </article>
-            );
-          })}
         </section>
       ) : null}
 
-      <section className="rail-section nodes-section">
-        <h3>电脑</h3>
-        {workspace.nodes.length === 0 ? (
-          <div className="node-row offline">
-            <span className="status-dot" />
-            <NodeIcon />
-            <div>
-              <strong>没有在线节点</strong>
-              <small>启动 OpenBot Node 后会显示在这里</small>
-            </div>
+      {activeRuns.length > 0 ? (
+        <section className="usage-rail-section" aria-label="当前任务">
+          <div className="usage-rail-section-heading">
+            <h3>进行中</h3>
+            {activeRuns.length > 4 ? <span>显示最近 4 条</span> : null}
           </div>
-        ) : (
-          workspace.nodes.map((node) => <NodeRow node={node} key={node.id} />)
-        )}
+          <div className="usage-rail-run-list">
+            {activeRuns.slice(0, 4).map((run) => {
+              const bot = botById.get(run.botId);
+              const node = run.nodeId === undefined ? undefined : nodeById.get(run.nodeId);
+              return (
+                <RunRow
+                  run={run}
+                  detail={
+                    latestProgress.get(run.id)?.message ??
+                    `${bot?.name ?? "未知 Bot"} · ${node?.name ?? "等待分配电脑"}`
+                  }
+                  onInspect={onInspectRun}
+                  key={run.id}
+                />
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {recentResults.length > 0 ? (
+        <section className="usage-rail-section" aria-label="最近结果">
+          <div className="usage-rail-section-heading">
+            <h3>最近结果</h3>
+          </div>
+          <div className="usage-rail-run-list">
+            {recentResults.map((run) => {
+              const artifact = latestArtifact.get(run.id);
+              return (
+                <div className="usage-rail-result" key={run.id}>
+                  <RunRow
+                    run={run}
+                    detail={run.errorMessage ?? run.resultSummary ?? botById.get(run.botId)?.name}
+                    onInspect={onInspectRun}
+                  />
+                  {artifact ? (
+                    <a
+                      href={`/api/v1/artifacts/${encodeURIComponent(artifact.id)}/content`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={artifact.name}
+                    >
+                      查看附件：{artifact.name} <span aria-hidden="true">↗</span>
+                    </a>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {!hasActivity ? (
+        <div className="usage-rail-empty-state">
+          <CheckIcon />
+          <p>{selectedChannelId === undefined ? "暂无任务动态" : "这个频道暂无任务动态"}</p>
+          <span>任务进度与需要确认的操作会显示在这里。</span>
+        </div>
+      ) : null}
+
+      <section className="usage-rail-tokens" aria-label="Token 用量">
+        <h3>Token 用量</h3>
+        <p className="usage-rail-unavailable">暂无用量记录</p>
+        <p className="usage-rail-caption">当前服务尚未提供模型用量数据</p>
       </section>
+
+      <details className="usage-rail-workspace-overview">
+        <summary>工作区概览</summary>
+        <section className="usage-rail-section" aria-label="最近任务统计">
+          <div className="usage-rail-section-heading">
+            <h3>最近任务</h3>
+            <span>{workspace.runs.length} 条记录</span>
+          </div>
+          <dl className="usage-rail-task-metrics">
+            <Metric label="进行中" value={workspaceActiveCount} />
+            <Metric label="已完成" value={completedCount} />
+            <Metric label="记录数" value={workspace.runs.length} />
+          </dl>
+          <p className="usage-rail-caption">统计范围为当前已加载的工作区任务记录</p>
+        </section>
+        <section className="usage-rail-section usage-rail-computers" aria-label="工作电脑">
+          <div className="usage-rail-section-heading">
+            <h3>工作电脑</h3>
+            <span>{workspace.nodes.length} 台已连接</span>
+          </div>
+          {workspace.nodes.length === 0 ? (
+            <div className="usage-rail-no-computer">
+              <NodeIcon />
+              <p>尚未连接工作电脑</p>
+            </div>
+          ) : (
+            workspace.nodes.map((node) => <NodeRow node={node} key={node.id} />)
+          )}
+        </section>
+      </details>
     </aside>
   );
 }
@@ -143,19 +224,45 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
+function RunRow({
+  run,
+  detail,
+  onInspect,
+}: {
+  run: Run;
+  detail: string | undefined;
+  onInspect(runId: string): void;
+}) {
+  return (
+    <button
+      className="usage-rail-run"
+      type="button"
+      onClick={() => onInspect(run.id)}
+      aria-label={`查看任务：${run.title}`}
+    >
+      <span className={`usage-rail-run-dot ${run.status}`} aria-hidden="true" />
+      <span className="usage-rail-run-copy">
+        <strong>{run.title}</strong>
+        {detail ? <small>{detail}</small> : null}
+      </span>
+      <span className={`usage-rail-run-status ${run.status}`}>{runStatusLabel(run.status)}</span>
+    </button>
+  );
+}
+
 function NodeRow({ node }: { node: ExecutionNode }) {
   return (
-    <div className="node-row">
-      <span className="status-dot online" />
-      <NodeIcon />
+    <div className="usage-rail-computer">
+      <span className="usage-rail-computer-icon">
+        <NodeIcon />
+      </span>
       <div>
         <strong>{node.name}</strong>
         <small>
-          {node.platform} · {node.activeRunIds.length}/{node.maxConcurrentRuns} 任务 ·{" "}
-          {node.capabilities.length} 项能力
+          {node.platform} · {node.activeRunIds.length}/{node.maxConcurrentRuns} 任务
         </small>
       </div>
-      <em>在线</em>
+      <span className="usage-rail-online" role="img" aria-label="在线" />
     </div>
   );
 }

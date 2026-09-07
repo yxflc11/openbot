@@ -10,12 +10,15 @@
     "build": "npm run build:renderer && npm run build:main",
     "build:main": "tsc -p tsconfig.json",
     "build:renderer": "npm run build:desktop --workspace @openbot/web",
-    "package": "npm run build && node scripts/package.mjs",
+    "package": "npm run build && npm run prepare:native && node scripts/package.mjs",
+    "package:preview": "npm run build && npm run prepare:native && node scripts/package.mjs --preview",
     "start": "npm run build && electron .",
     "test": "vitest run src scripts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepare:native": "turbo run build --filter=@openbot/server && node scripts/prepare-native-server.mjs"
   },
   "dependencies": {
+    "postgres": "3.4.9",
     "write-file-atomic": "8.0.0"
   },
   "devDependencies": {
@@ -25,5 +28,9 @@
     "@openbot/web": "0.0.0",
     "@types/write-file-atomic": "4.0.3",
     "electron": "44.2.0"
+  },
+  "optionalDependencies": {
+    "@embedded-postgres/darwin-arm64": "17.10.0-beta.17",
+    "@embedded-postgres/darwin-x64": "17.10.0-beta.17"
   }
 }

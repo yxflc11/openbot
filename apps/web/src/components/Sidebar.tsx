@@ -1,14 +1,30 @@
 import type { Bot, Channel, Run } from "@openbot/domain";
 import { useState } from "react";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
-import { BotIcon, HashIcon, NodeIcon, PlusIcon } from "./Icons";
+import {
+  AutomationIcon,
+  BotIcon,
+  ComposeIcon,
+  HashIcon,
+  NodeIcon,
+  PlusIcon,
+  SearchIcon,
+  SettingsIcon,
+  SkillIcon,
+} from "./Icons";
+import { OpenBotMark } from "./OpenBotMark";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
+  destination?: "chat" | "automations" | "skills";
+  onAutomations?: (() => void) | undefined;
+  onSkills?: (() => void) | undefined;
   bots: Bot[];
   channels: Channel[];
   runs: Run[];
   ownerName: string;
+  onHome?: (() => void) | undefined;
+  onSettings?: (() => void) | undefined;
   selectedChannelId?: string | undefined;
   selectedBotId?: string | undefined;
   onSelectChannel(channelId: string): void;
@@ -20,10 +36,15 @@ interface SidebarProps {
 }
 
 export function Sidebar({
+  destination,
+  onAutomations,
+  onSkills,
   bots,
   channels,
   runs,
   ownerName,
+  onSettings,
+  onHome,
   selectedChannelId,
   selectedBotId,
   onSelectChannel,
@@ -33,6 +54,12 @@ export function Sidebar({
   onManageNodes,
   onLogout,
 }: SidebarProps) {
+  const [query, setQuery] = useState("");
+  const term = query.trim().toLocaleLowerCase();
+  const filteredChannels = channels.filter((channel) =>
+    `${channel.name} ${channel.description}`.toLocaleLowerCase().includes(term),
+  );
+  const filteredBots = bots.filter((bot) => bot.name.toLocaleLowerCase().includes(term));
   const activeRunByBot = indexActiveRunsByBot(runs);
   const [logoutError, setLogoutError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -51,35 +78,96 @@ export function Sidebar({
 
   return (
     <aside className="sidebar" aria-label="主导航">
-      <a className="brand" href="/" aria-label="OpenBot 首页">
+      <a
+        className="brand"
+        href="/"
+        aria-label="OpenBot 首页"
+        onClick={
+          onHome
+            ? (event) => {
+                event.preventDefault();
+                onHome();
+              }
+            : undefined
+        }
+      >
+        <OpenBotMark />
         OpenBot
       </a>
 
+      <search className="sidebar-search" aria-label="搜索工作空间">
+        <SearchIcon />
+        <input
+          aria-label="搜索频道或 Bot"
+          type="search"
+          placeholder="搜索频道或 Bot"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </search>
+      <nav className="workspace-actions" aria-label="工作空间操作">
+        <button type="button" onClick={onCreateChannel}>
+          <ComposeIcon />
+          <span>新建对话</span>
+          <PlusIcon />
+        </button>
+        {onAutomations && (
+          <button
+            type="button"
+            onClick={onAutomations}
+            aria-current={destination === "automations" ? "page" : undefined}
+          >
+            <AutomationIcon />
+            <span>自动任务</span>
+          </button>
+        )}
+        {onSkills && (
+          <button
+            type="button"
+            onClick={onSkills}
+            aria-current={destination === "skills" ? "page" : undefined}
+          >
+            <SkillIcon />
+            <span>技能广场</span>
+          </button>
+        )}
+        <button type="button" onClick={onManageNodes}>
+          <NodeIcon />
+          <span>工作电脑</span>
+        </button>
+      </nav>
       <div className="sidebar-body">
         <SidebarSection title="频道" onAdd={onCreateChannel} addLabel="创建频道">
-          {channels.length === 0 ? (
-            <SidebarEmpty>还没有频道</SidebarEmpty>
+          {filteredChannels.length === 0 ? (
+            <SidebarEmpty>{term ? "没有匹配的频道" : "还没有频道"}</SidebarEmpty>
           ) : (
-            channels.map((channel) => (
+            filteredChannels.map((channel) => (
               <button
-                className={`sidebar-row ${selectedChannelId === channel.id ? "selected" : ""}`}
+                aria-current={selectedChannelId === channel.id ? "page" : undefined}
+                className={`sidebar-row channel-list-row ${selectedChannelId === channel.id ? "selected" : ""}`}
                 key={channel.id}
                 onClick={() => onSelectChannel(channel.id)}
                 type="button"
               >
-                <HashIcon />
-                <span>{channel.name}</span>
-                <small>{channel.botIds.length}</small>
+                <span className="channel-list-avatar">
+                  <HashIcon />
+                </span>
+                <span className="channel-list-copy">
+                  <strong>{channel.name}</strong>
+                  <small>
+                    {channel.description || `${channel.botIds.length} 名 Bot · 开始对话`}
+                  </small>
+                </span>
               </button>
             ))
           )}
         </SidebarSection>
 
         <SidebarSection title="Bots" onAdd={onCreateBot} addLabel="创建 Bot">
-          {bots.length === 0 ? (
-            <SidebarEmpty>还没有 Bot</SidebarEmpty>
+          {filteredBots.length === 0 ? (
+            <SidebarEmpty>{term ? "没有匹配的 Bot" : "还没有 Bot"}</SidebarEmpty>
           ) : (
-            bots.map((bot) => {
+            filteredBots.map((bot) => {
               const run = activeRunByBot.get(bot.id);
               return (
                 <button
@@ -102,31 +190,19 @@ export function Sidebar({
             })
           )}
         </SidebarSection>
-
-        <nav className="system-nav" aria-label="系统功能">
-          <button type="button">
-            <span className="system-nav-icon">◷</span>例行任务
-          </button>
-          <button type="button">
-            <span className="system-nav-icon">⌁</span>技能
-          </button>
-          <button type="button" onClick={onManageNodes}>
-            <span className="system-nav-icon">
-              <NodeIcon />
-            </span>
-            节点
-          </button>
-          <button type="button">
-            <span className="system-nav-icon">◇</span>审计
-          </button>
-        </nav>
       </div>
 
+      {onSettings ? (
+        <button className="sidebar-settings" type="button" onClick={onSettings}>
+          <SettingsIcon />
+          <span>账号与设置</span>
+        </button>
+      ) : null}
       <footer className="sidebar-owner">
         <span>
           <strong>{ownerName}</strong>
           <small className={logoutError ? "warning" : ""} role={logoutError ? "alert" : undefined}>
-            {logoutError ? "退出失败，请重试" : "本地 Owner"}
+            {logoutError ? "退出失败，请重试" : "工作空间所有者"}
           </small>
         </span>
         <button type="button" disabled={loggingOut} onClick={() => void handleLogout()}>

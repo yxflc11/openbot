@@ -1,0 +1,211 @@
+import type { CreateMessageInput, Message, Run, SubmitTaskResult } from "@openbot/domain";
+import { mergeRuns } from "./run-state";
+
+export interface ConversationDraft {
+  text: string;
+  targetBotId: string;
+  replyTo?: Message | undefined;
+  revision: number;
+}
+
+export interface ConversationSnapshot {
+  draft: ConversationDraft;
+  messages: Message[];
+  runs: Run[];
+  loading: boolean;
+  loadError?: string | undefined;
+  sendError?: string | undefined;
+  sending: boolean;
+  capacityError?: string | undefined;
+}
+
+export interface ConversationScroll {
+  top: number;
+  atBottom: boolean;
+}
+
+export interface ConversationChannel {
+  getSnapshot(): ConversationSnapshot;
+  subscribe(listener: () => void): () => void;
+  edit(update: Partial<Pick<ConversationDraft, "text" | "targetBotId" | "replyTo">>): void;
+  merge(messages: Message[], runs?: Run[]): void;
+  loaded(error?: string): void;
+  scroll: ConversationScroll;
+  send(
+    submit: (input: CreateMessageInput) => Promise<SubmitTaskResult>,
+  ): Promise<SubmitTaskResult | undefined>;
+}
+
+export interface ConversationSession {
+  channel(id: string, defaultTarget?: string): ConversationChannel;
+  dispose(): void;
+}
+
+/** This workspace-lifetime cache contains no authority and never writes transcripts to disk. */
+export function createConversationSession(): ConversationSession {
+  const channels = new Map<
+    string,
+    { value: ConversationChannel; retained(): boolean; dispose(): void }
+  >();
+  let overflow: { id: string; value: ConversationChannel; dispose(): void } | undefined;
+  let disposed = false;
+  let pendingCount = 0;
+  return {
+    dispose() {
+      disposed = true;
+      for (const entry of channels.values()) entry.dispose();
+      channels.clear();
+      overflow?.dispose();
+      overflow = undefined;
+    },
+    channel(id, defaultTarget = "") {
+      if (disposed) throw new Error("此工作空间会话已结束。");
+      const existing = channels.get(id);
+      if (existing) {
+        channels.delete(id);
+        channels.set(id, existing);
+        return existing.value;
+      }
+      if (overflow?.id === id) {
+        const canRetain = Array.from(channels).some(([, item]) => !item.retained());
+        if (!canRetain) return overflow.value;
+        overflow.dispose();
+        overflow = undefined;
+      }
+      let capacityError: string | undefined;
+      if (channels.size >= 32) {
+        const disposable = Array.from(channels).find(([, item]) => !item.retained());
+        if (disposable) {
+          disposable[1].dispose();
+          channels.delete(disposable[0]);
+        } else
+          capacityError =
+            "已保留 32 个频道的草稿。请先发送或清空其他频道的草稿，再返回这里起草消息。";
+      }
+      const listeners = new Set<() => void>();
+      let closed = false;
+      let pending: Promise<SubmitTaskResult | undefined> | undefined;
+      let state: ConversationSnapshot = {
+        draft: { text: "", targetBotId: defaultTarget, revision: 0 },
+        messages: [],
+        runs: [],
+        loading: true,
+        sending: false,
+        capacityError,
+      };
+      const publish = (update: Partial<ConversationSnapshot>) => {
+        if (disposed || closed) return;
+        state = { ...state, ...update };
+        for (const listener of listeners) listener();
+      };
+      const value: ConversationChannel = {
+        getSnapshot: () => state,
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        edit(update) {
+          if (disposed || closed || capacityError) return;
+          const draft = { ...state.draft, ...update, revision: state.draft.revision + 1 };
+          draft.text = draft.text.slice(0, 8000);
+          publish({ draft });
+        },
+        merge(messages, runs = []) {
+          if (disposed || closed) return;
+          const byId = new Map(state.messages.map((message) => [message.id, message]));
+          for (const message of messages)
+            if (message.channelId === id) byId.set(message.id, message);
+          publish({
+            messages: Array.from(byId.values())
+              .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+              .slice(-200),
+            runs: mergeRuns(
+              state.runs,
+              runs.filter((run) => run.channelId === id),
+            ),
+          });
+        },
+        loaded(error) {
+          publish({ loading: false, loadError: error });
+        },
+        scroll: { top: 0, atBottom: true },
+        send(submit) {
+          if (disposed || closed || capacityError) return Promise.resolve(undefined);
+          if (pending) return pending;
+          const sent = state.draft;
+          if (!sent.text.trim() || !sent.targetBotId) return Promise.resolve(undefined);
+          if (pendingCount >= 8) {
+            publish({ sendError: "已有多条消息正在发送，请稍候再试。" });
+            return Promise.resolve(undefined);
+          }
+          pendingCount += 1;
+          publish({ sending: true, sendError: undefined });
+          // Capture the draft revision and channel before crossing the asynchronous Server boundary.
+          pending = Promise.resolve()
+            .then(() =>
+              disposed || closed
+                ? undefined
+                : submit({
+                    content: sent.text.trim(),
+                    botId: sent.targetBotId,
+                    ...(sent.replyTo ? { replyToMessageId: sent.replyTo.id } : {}),
+                  }),
+            )
+            .then((result) => {
+              if (disposed || closed || !result) return undefined;
+              if (result.message.channelId !== id || result.run.channelId !== id) {
+                throw new Error("服务返回了不匹配的频道。");
+              }
+              value.merge([result.message], [result.run]);
+              if (state.draft.revision === sent.revision) {
+                publish({
+                  draft: {
+                    ...state.draft,
+                    text: "",
+                    replyTo: undefined,
+                    revision: sent.revision + 1,
+                  },
+                });
+              }
+              return result;
+            })
+            .catch((cause: unknown) => {
+              const detail = cause instanceof Error ? cause.message : "网络连接未完成。";
+              publish({ sendError: `${detail} 请检查频道记录后再重试；草稿已保留。` });
+              return undefined;
+            })
+            .finally(() => {
+              pending = undefined;
+              pendingCount -= 1;
+              publish({ sending: false });
+            });
+          return pending;
+        },
+      };
+      const entry = {
+        value,
+        retained: () =>
+          pending !== undefined ||
+          listeners.size > 0 ||
+          state.draft.text.length > 0 ||
+          state.draft.replyTo !== undefined,
+        dispose() {
+          closed = true;
+          state = {
+            draft: { text: "", targetBotId: "", revision: 0 },
+            messages: [],
+            runs: [],
+            loading: false,
+            sending: false,
+          };
+          listeners.clear();
+        },
+      };
+      if (capacityError) {
+        overflow?.dispose();
+        overflow = { id, value, dispose: entry.dispose };
+      } else channels.set(id, entry);
+      return value;
+    },
+  };
+}

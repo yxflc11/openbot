@@ -69,7 +69,40 @@ export const DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL = "openbot:desktop-enable-local
 export const DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL =
   "openbot:desktop-open-local-worker-settings";
 
+export type DesktopSidebarMaterialState = Readonly<{
+  status: "enabled" | "disabled" | "reduced" | "unsupported" | "unavailable";
+}>;
+
+export const DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL = "openbot:set-sidebar-translucency";
+export const DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL = "openbot:sidebar-material-state";
+export const DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL = "openbot:sidebar-material-changed";
+
+export type DesktopNavigationCommand =
+  | "new-conversation"
+  | "open-settings"
+  | "go-back"
+  | "go-forward"
+  | "toggle-sidebar"
+  | "toggle-details";
+
+export type DesktopNavigationMenuState = Readonly<{
+  workspaceReady: boolean;
+  settingsAvailable: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+}>;
+
+export const DESKTOP_NAVIGATION_COMMAND_CHANNEL = "openbot:navigation-command";
+export const DESKTOP_NAVIGATION_MENU_STATE_CHANNEL = "openbot:navigation-menu-state";
+
 export interface OpenBotDesktopBridge {
+  onNavigationCommand?(listener: (command: DesktopNavigationCommand) => void): () => void;
+  updateNavigationMenuState?(state: DesktopNavigationMenuState): Promise<void>;
+  setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;
+  getSidebarMaterialState?(): Promise<DesktopSidebarMaterialState>;
+  onSidebarMaterialChanged?(listener: (state: DesktopSidebarMaterialState) => void): () => void;
+  getNativeServerState?(): Promise<NativeServerState>;
+  installNativeServer?(): Promise<NativeServerState>;
   getRuntimeInfo(): DesktopRuntimeInfo;
   getConnectionState(): Promise<DesktopConnectionState>;
   configureServer(serverUrl: string): Promise<ConfigureDesktopServerResult>;
@@ -93,3 +126,12 @@ export function createDesktopRuntimeInfo(
   }
   return Object.freeze({ kind: "desktop", platform, shellVersion });
 }
+
+export type NativeServerState =
+  | Readonly<{ status: "idle" }>
+  | Readonly<{ status: "installing"; step: "checking" | "database" | "server" | "connecting" }>
+  | Readonly<{ status: "ready"; serverUrl: string }>
+  | Readonly<{
+      status: "failed";
+      code: "unsupported_platform" | "installation_failed" | "service_stopped" | "stopping";
+    }>;

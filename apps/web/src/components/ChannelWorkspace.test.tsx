@@ -1,0 +1,324 @@
+// @vitest-environment jsdom
+import type { Bot, Channel, Message, Run, SubmitTaskResult } from "@openbot/domain";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createMessage, listMessages, listRuns, subscribeToChannelEvents } from "../api";
+import { createConversationSession } from "../conversation-session";
+import { deferred, interact, renderComponent } from "../test/render-component";
+import { ChannelWorkspace } from "./ChannelWorkspace";
+
+vi.mock("../api", () => ({
+  createMessage: vi.fn(),
+  listMessages: vi.fn(),
+  listRuns: vi.fn(),
+  subscribeToChannelEvents: vi.fn(() => vi.fn()),
+}));
+const bot: Bot = {
+  id: "bot-a",
+  name: "Assistant",
+  role: "Research",
+  status: "idle",
+  computerProfile: "none",
+  createdAt: "2026-09-05T00:00:00Z",
+};
+const callbacks = {
+  onJoin: vi.fn(async () => undefined),
+  onInspectRun: vi.fn(),
+  onOpenBot: vi.fn(),
+  onFrame: vi.fn(),
+  onProgress: vi.fn(),
+  onRun: vi.fn(),
+};
+const channel = (id: string): Channel => ({
+  id,
+  name: `Channel ${id}`,
+  description: "",
+  botIds: [bot.id],
+  createdAt: bot.createdAt,
+});
+const message = (channelId: string, content = "Saved message"): Message => ({
+  id: `message-${channelId}-${content}`,
+  channelId,
+  authorType: "human",
+  content,
+  createdAt: bot.createdAt,
+});
+const result = (channelId: string): SubmitTaskResult => {
+  const run: Run = {
+    id: `run-${channelId}`,
+    channelId,
+    botId: bot.id,
+    executionProfile: "none",
+    instruction: "sent",
+    title: "sent",
+    status: "queued",
+    createdAt: bot.createdAt,
+    updatedAt: bot.createdAt,
+  };
+  return { message: message(channelId), run };
+};
+function view(id: string, session = createConversationSession()) {
+  return (
+    <ChannelWorkspace
+      key={id}
+      globalHeader
+      channel={channel(id)}
+      session={session}
+      bots={[bot]}
+      artifacts={[]}
+      progress={[]}
+      {...callbacks}
+    />
+  );
+}
+async function typeText(container: HTMLElement, value: string) {
+  const input = container.querySelector("textarea") as HTMLTextAreaElement;
+  await interact(() => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(
+      input,
+      value,
+    );
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+async function submit(container: HTMLElement) {
+  await interact(() =>
+    container
+      .querySelector("form")
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+  );
+}
+function lastHandlers() {
+  const call = vi.mocked(subscribeToChannelEvents).mock.calls.at(-1);
+  if (!call) throw new Error("No subscription");
+  return call[1];
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(listMessages).mockResolvedValue([]);
+  vi.mocked(listRuns).mockResolvedValue([]);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("ChannelWorkspace continuity", () => {
+  it("preserves newer draft after send, switches to an independent channel and restores results on return", async () => {
+    const session = createConversationSession();
+    const response = deferred<SubmitTaskResult>();
+    vi.mocked(createMessage).mockReturnValue(response.promise);
+    const first = await renderComponent(view("a", session));
+    await typeText(first.container, "first draft");
+    await submit(first.container);
+    await typeText(first.container, "next draft");
+    await first.unmount();
+    const second = await renderComponent(view("b", session));
+    expect((second.container.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+    await typeText(second.container, "B draft");
+    await interact(() => response.resolve(result("a")));
+    expect(second.container.textContent).not.toContain("Saved message");
+    expect((second.container.querySelector("textarea") as HTMLTextAreaElement).value).toBe(
+      "B draft",
+    );
+    expect(callbacks.onRun).not.toHaveBeenCalled();
+    await second.unmount();
+    const restored = await renderComponent(view("a", session));
+    expect((restored.container.querySelector("textarea") as HTMLTextAreaElement).value).toBe(
+      "next draft",
+    );
+    expect(restored.container.textContent).toContain("Saved message");
+    expect(vi.mocked(createMessage)).toHaveBeenCalledTimes(1);
+    await restored.unmount();
+  });
+  it("ignores late reads and callbacks after unmount, even when the transport ignores abort", async () => {
+    const session = createConversationSession();
+    const read = deferred<Message[]>();
+    vi.mocked(listMessages).mockReturnValueOnce(read.promise);
+    const first = await renderComponent(view("a", session));
+    const stale = lastHandlers();
+    await first.unmount();
+    const next = await renderComponent(view("b", session));
+    await interact(() => {
+      stale.onMessage(message("a", "stale event"));
+      stale.onRun(result("a").run, []);
+      read.resolve([message("a", "stale read")]);
+    });
+    expect(session.channel("a").getSnapshot().messages).toHaveLength(0);
+    expect(next.container.textContent).not.toContain("stale");
+    expect(callbacks.onRun).not.toHaveBeenCalled();
+    await next.unmount();
+  });
+  it("keeps the send failure visible after a successful reconnect read", async () => {
+    vi.mocked(listMessages).mockRejectedValueOnce(new Error("History unavailable"));
+    vi.mocked(createMessage).mockRejectedValueOnce(new Error("Send unavailable"));
+    const rendered = await renderComponent(view("a"));
+    expect(rendered.container.querySelector(".conversation-load-error")?.textContent).toContain(
+      "History unavailable",
+    );
+    await typeText(rendered.container, "keep draft");
+    await submit(rendered.container);
+    await interact(() => lastHandlers().onReady());
+    expect(rendered.container.querySelector(".conversation-load-error")).toBeNull();
+    expect(rendered.container.querySelector(".composer-error")?.textContent).toContain(
+      "Send unavailable",
+    );
+    expect((rendered.container.querySelector("textarea") as HTMLTextAreaElement).value).toBe(
+      "keep draft",
+    );
+    await rendered.unmount();
+  });
+  it("does not treat composition, Shift+Enter or Alt+Enter as submission", async () => {
+    const rendered = await renderComponent(view("a"));
+    const form = rendered.container.querySelector("form") as HTMLFormElement;
+    const request = vi.spyOn(form, "requestSubmit").mockImplementation(() => undefined);
+    const input = rendered.container.querySelector("textarea") as HTMLTextAreaElement;
+    for (const flags of [
+      { isComposing: true },
+      { shiftKey: true },
+      { altKey: true },
+      { keyCode: 229 },
+    ]) {
+      await interact(() =>
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, ...flags }),
+        ),
+      );
+    }
+    expect(request).not.toHaveBeenCalled();
+    await interact(() =>
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    await rendered.unmount();
+  });
+  it("preserves a reading position when new messages arrive and offers an explicit jump", async () => {
+    const session = createConversationSession();
+    session.channel("a", bot.id).merge([message("a")]);
+    const rendered = await renderComponent(view("a", session));
+    const log = rendered.container.querySelector('[role="log"]') as HTMLDivElement;
+    Object.defineProperties(log, {
+      scrollHeight: { configurable: true, value: 1200 },
+      clientHeight: { configurable: true, value: 400 },
+    });
+    await interact(() => {
+      log.scrollTop = 140;
+      log.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+    await interact(() => lastHandlers().onMessage(message("a", "new message")));
+    expect(log.scrollTop).toBe(140);
+    const latest = rendered.container.querySelector(".conversation-latest") as HTMLButtonElement;
+    expect(latest).not.toBeNull();
+    await interact(() => latest.click());
+    expect(session.channel("a").scroll.atBottom).toBe(true);
+    expect(log.scrollTop).toBe(1200);
+    expect(rendered.container.querySelector(".conversation-latest")).toBeNull();
+    await rendered.unmount();
+  });
+  it("does not save hidden geometry and restores the reading position when settings closes", async () => {
+    const observers = new Map<Element, () => void>();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe(target: Element) {
+          observers.set(target, this.callback);
+        }
+        disconnect() {}
+      },
+    );
+    const session = createConversationSession();
+    session.channel("a", bot.id).merge([message("a")]);
+    const rendered = await renderComponent(view("a", session));
+    const log = rendered.container.querySelector('[role="log"]') as HTMLDivElement;
+    let height = 400;
+    Object.defineProperties(log, {
+      scrollHeight: { configurable: true, get: () => (height === 0 ? 0 : 1400) },
+      clientHeight: { configurable: true, get: () => height },
+    });
+    await interact(() => observers.get(log)?.());
+    await interact(() => {
+      log.scrollTop = 170;
+      log.dispatchEvent(new Event("scroll"));
+    });
+    await interact(() => {
+      height = 0;
+      observers.get(log)?.();
+      log.scrollTop = 0;
+      log.dispatchEvent(new Event("scroll"));
+    });
+    await interact(() => lastHandlers().onMessage(message("a", "arrived while hidden")));
+    expect(session.channel("a").scroll).toEqual({ top: 170, atBottom: false });
+    await interact(() => {
+      height = 400;
+      observers.get(log)?.();
+    });
+    expect(log.scrollTop).toBe(170);
+    await rendered.unmount();
+  });
+  it("follows the latest messages through viewport resize without mistaking layout scroll for user intent", async () => {
+    const observers = new Map<Element, () => void>();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe(target: Element) {
+          observers.set(target, this.callback);
+        }
+        disconnect() {}
+      },
+    );
+    const session = createConversationSession();
+    session.channel("a", bot.id).merge([message("a")]);
+    const rendered = await renderComponent(view("a", session));
+    const log = rendered.container.querySelector('[role="log"]') as HTMLDivElement;
+    let width = 900;
+    let height = 700;
+    let content = 1300;
+    let top = 0;
+    Object.defineProperties(log, {
+      clientWidth: { configurable: true, get: () => width },
+      clientHeight: { configurable: true, get: () => height },
+      scrollHeight: { configurable: true, get: () => content },
+      scrollTop: {
+        configurable: true,
+        get: () => top,
+        set: (value: number) => {
+          top = Math.max(0, Math.min(value, content - height));
+        },
+      },
+    });
+    await interact(() => observers.get(log)?.());
+    expect(log.scrollTop).toBe(600);
+    await interact(() => {
+      width = 520;
+      height = 400;
+      content = 1900;
+      log.scrollTop = 0;
+      log.dispatchEvent(new Event("scroll"));
+    });
+    expect(session.channel("a").scroll.atBottom).toBe(true);
+    await interact(() => observers.get(log)?.());
+    expect(log.scrollTop).toBe(1500);
+    expect(rendered.container.querySelector(".conversation-latest")).toBeNull();
+    await interact(() => {
+      log.scrollTop = 170;
+      log.dispatchEvent(new Event("scroll"));
+    });
+    await interact(() => {
+      width = 840;
+      height = 600;
+      content = 1400;
+      observers.get(log)?.();
+    });
+    expect(log.scrollTop).toBe(170);
+    expect(session.channel("a").scroll.atBottom).toBe(false);
+    expect(rendered.container.querySelector(".conversation-latest")).not.toBeNull();
+    await rendered.unmount();
+  });
+});

@@ -32,7 +32,7 @@ describe("Desktop application connection gate", () => {
 
     try {
       await settleEffects();
-      expect(rendered.container.textContent).toContain("选择安装方式");
+      expect(rendered.container.textContent).toContain("开始使用 OpenBot");
       expect(fetcher).not.toHaveBeenCalled();
       const mode = rendered.container.querySelector("#desktop-mode-client");
       const setupForm = rendered.container.querySelector("form");
@@ -49,7 +49,7 @@ describe("Desktop application connection gate", () => {
         plannedWorkerCount: 0,
         localWorker: false,
       });
-      expect(rendered.container.textContent).toContain("连接你的 Server");
+      expect(rendered.container.textContent).toContain("连接服务电脑");
       expect(fetcher).not.toHaveBeenCalled();
 
       const input = rendered.container.querySelector("#desktop-server-url");
@@ -69,6 +69,58 @@ describe("Desktop application connection gate", () => {
         expect.objectContaining({ credentials: "include" }),
       );
       expect(rendered.container.textContent).toContain("进入 OpenBot");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+
+  it("installs a service computer before authentication and then asks for a model", async () => {
+    let complete: ((state: { status: "ready"; serverUrl: string }) => void) | undefined;
+    const install = vi.fn(
+      () =>
+        new Promise<{ status: "ready"; serverUrl: string }>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const fetcher = vi.fn(async (url: string) =>
+      url === "/api/v1/auth/session"
+        ? Response.json({
+            authenticated: true,
+            expiresAt: "2999-01-01T00:00:00.000Z",
+            owner: { id: "owner", name: "Owner" },
+          })
+        : Response.json({ status: "unconfigured", revision: null }),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    window.openbotDesktop = {
+      getConnectionState: vi.fn(async () => ({ status: "unconfigured" })),
+      configureServer: vi.fn(),
+      getSetupPlanState: vi.fn(async () => ({ status: "unconfigured" })),
+      saveSetupPlan: vi.fn(async (plan) => ({ status: "configured", plan })),
+      getLocalWorkerState: vi.fn(async () => ({ status: "not-selected" })),
+      setupLocalWorker: vi.fn(),
+      enableLocalWorker: vi.fn(),
+      openLocalWorkerSettings: vi.fn(),
+      installNativeServer: install,
+      getRuntimeInfo: () => ({ kind: "desktop", platform: "darwin", shellVersion: "44.2.0" }),
+      getNativeServerState: vi.fn(async () => ({ status: "installing", step: "database" })),
+    };
+    const rendered = await renderComponent(<App />);
+    try {
+      await settleEffects();
+      await interact(() =>
+        rendered.container
+          .querySelector("form")
+          ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+      );
+      await settleEffects();
+      expect(install).toHaveBeenCalledOnce();
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(rendered.container.textContent).toContain("正在准备你的 OpenBot");
+      await interact(() => complete?.({ status: "ready", serverUrl: "http://127.0.0.1:45678" }));
+      await settleEffects();
+      expect(rendered.container.textContent).toContain("为 Bot 配置模型");
+      expect(window.openbotDesktop.configureServer).not.toHaveBeenCalled();
     } finally {
       await rendered.unmount();
     }
@@ -105,7 +157,7 @@ describe("Desktop application connection gate", () => {
       );
       if (changeButton === undefined) throw new Error("Change Server button not found.");
       await interact(() => changeButton.click());
-      expect(rendered.container.textContent).toContain("连接你的 Server");
+      expect(rendered.container.textContent).toContain("连接服务电脑");
       const input = rendered.container.querySelector("#desktop-server-url");
       expect(input).toBeInstanceOf(HTMLInputElement);
       expect((input as HTMLInputElement).value).toBe("https://openbot.example");

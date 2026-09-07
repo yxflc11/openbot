@@ -1,13 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import { join, resolve } from "node:path";
+import { FuseV1Options, FuseVersion } from "@electron/fuses";
+import { describe, expect, it } from "vitest";
 import {
   createDesktopFuseConfig,
-  desktopMacOSWorkerCompanionSource,
   DESKTOP_ICON_RESOURCE_NAME,
   DESKTOP_MACOS_WORKER_COMPANION_NAME,
+  DESKTOP_PACKAGE_IDENTITY,
+  DESKTOP_PREVIEW_IDENTITY,
   DESKTOP_RUNTIME_DEPENDENCIES,
   DESKTOP_WINDOWS_METADATA,
+  desktopMacOSWorkerCompanionSource,
+  desktopPackagedManifest,
+  desktopPackageIdentity,
   packagedAsarPath,
   packagedDesktopMacOSWorkerCompanion,
   packagedDesktopResource,
@@ -18,6 +22,54 @@ import {
 
 describe("Desktop package source policy", () => {
   const appRoot = resolve("workspace", "apps", "desktop");
+
+  it("selects only an explicit fixed Preview identity and preserves the production manifest", () => {
+    const manifest = { name: "@openbot/desktop", version: "0.0.0", main: "dist/main.js" };
+    expect(desktopPackageIdentity([])).toBe(DESKTOP_PACKAGE_IDENTITY);
+    expect(desktopPackageIdentity(["--preview"])).toBe(DESKTOP_PREVIEW_IDENTITY);
+    expect(desktopPackagedManifest(manifest, DESKTOP_PACKAGE_IDENTITY)).toBe(manifest);
+    expect(desktopPackagedManifest(manifest, DESKTOP_PREVIEW_IDENTITY)).toEqual({
+      ...manifest,
+      name: "openbot-preview",
+      productName: "OpenBot Preview",
+    });
+    expect(manifest).not.toHaveProperty("productName");
+    expect(manifest.name).toBe("@openbot/desktop");
+    expect(DESKTOP_PREVIEW_IDENTITY.appBundleId).not.toBe(DESKTOP_PACKAGE_IDENTITY.appBundleId);
+    expect(DESKTOP_PREVIEW_IDENTITY.executableName).not.toBe(
+      DESKTOP_PACKAGE_IDENTITY.executableName,
+    );
+    expect(() => desktopPackagedManifest(manifest, {})).toThrow(/identity/u);
+    for (const args of [["--profile=/Applications"], ["--preview", "--preview"], ["--Preview"]]) {
+      expect(() => desktopPackageIdentity(args)).toThrow(/only/u);
+    }
+  });
+
+  it("keeps Preview resources under its own app and excludes shared Worker services", () => {
+    const root = "/tmp/preview/OpenBot Preview-darwin-arm64";
+    const identity = DESKTOP_PREVIEW_IDENTITY;
+    expect(packagedElectronTarget(root, "darwin", identity)).toBe(
+      join(root, "OpenBot Preview.app"),
+    );
+    expect(packagedElectronTarget(root, "win32", identity)).toBe(join(root, "OpenBot Preview.exe"));
+    expect(packagedElectronTarget(root, "linux", identity)).toBe(join(root, "OpenBot Preview"));
+    const resources = join(root, "OpenBot Preview.app", "Contents", "Resources");
+    expect(packagedAsarPath(root, "darwin", identity)).toBe(join(resources, "app.asar"));
+    expect(packagedDesktopResource(root, "darwin", "native-runtime", identity)).toBe(
+      join(resources, "native-runtime"),
+    );
+    expect(packagedDesktopMacOSWorkerCompanion(root, "darwin", identity)).toBe(
+      join(resources, DESKTOP_MACOS_WORKER_COMPANION_NAME),
+    );
+    expect(desktopMacOSWorkerCompanionSource(undefined, "darwin", identity)).toBeUndefined();
+    expect(() =>
+      desktopMacOSWorkerCompanionSource(
+        resolve("workspace", DESKTOP_MACOS_WORKER_COMPANION_NAME),
+        "darwin",
+        identity,
+      ),
+    ).toThrow(/production Worker/u);
+  });
 
   it.each([
     ["package.json", false],
@@ -114,6 +166,7 @@ describe("Desktop package source policy", () => {
 
   it("pins and validates the exact packaged runtime dependency closure", () => {
     expect(DESKTOP_RUNTIME_DEPENDENCIES).toEqual({
+      postgres: "3.4.9",
       "signal-exit": "4.1.0",
       "write-file-atomic": "8.0.0",
     });
@@ -121,6 +174,8 @@ describe("Desktop package source policy", () => {
       "/dist/main.js",
       "/dist/preload.cjs",
       "/dist/renderer/index.html",
+      "/node_modules/postgres/package.json",
+      "/node_modules/postgres/src/index.js",
       "/node_modules/signal-exit/dist/cjs/index.js",
       "/node_modules/signal-exit/package.json",
       "/node_modules/write-file-atomic/lib/index.js",

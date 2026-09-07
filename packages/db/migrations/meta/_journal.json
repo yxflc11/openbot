@@ -127,6 +127,13 @@
       "when": 1789881600000,
       "tag": "0017_request_throttle_buckets",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789968000000,
+      "tag": "0018_automations",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,313 @@
+/* One window-aligned toolbar owns navigation and inspector controls on every destination. */
+.app-shell.desktop-workspace {
+  --workspace-sidebar-size: 248px;
+  --workspace-details-size: 288px;
+  --workspace-navigation-size: 248px;
+  --workspace-toolbar-height: 56px;
+  display: grid;
+  grid-template-columns: var(--workspace-sidebar-size) minmax(0, 1fr) var(--workspace-details-size);
+  grid-template-rows: var(--workspace-toolbar-height) minmax(0, 1fr);
+  padding: 0;
+  gap: 0;
+  height: 100dvh;
+  min-height: 0;
+  background: #fff;
+}
+.app-shell.desktop-workspace.without-context {
+  --workspace-details-size: 0px;
+}
+.app-shell.desktop-workspace.without-sidebar {
+  --workspace-sidebar-size: 0px;
+  --workspace-navigation-size: 216px;
+}
+.workspace-preserved[hidden] {
+  display: none;
+}
+.desktop-workspace .workspace-toolbar {
+  grid-area: 1 / 1 / 2 / -1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  height: var(--workspace-toolbar-height);
+  border-bottom: 1px solid #e9ebee;
+  z-index: 5;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.toolbar-navigation {
+  width: var(--workspace-navigation-size);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 14px;
+}
+:root[data-desktop="darwin"] .toolbar-navigation {
+  padding-left: 104px;
+}
+.workspace-toolbar .icon-button {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 5px;
+  border: 0;
+  border-radius: 7px;
+  color: #737b83;
+  background: transparent;
+}
+.workspace-toolbar .icon-button:hover {
+  background: #e9edf1;
+  color: #242c35;
+}
+.workspace-toolbar .icon-button:disabled {
+  opacity: 0.35;
+  background: transparent;
+}
+.workspace-toolbar .icon-button svg {
+  width: 19px;
+  height: 19px;
+}
+.workspace-toolbar .icon-button[aria-expanded="true"] {
+  color: #394550;
+  background: transparent;
+}
+.workspace-toolbar button,
+.workspace-toolbar summary,
+.workspace-toolbar select,
+.workspace-toolbar input {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.toolbar-context {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+  gap: 16px;
+  padding: 0 18px;
+}
+.toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.toolbar-title > svg {
+  flex-shrink: 0;
+  color: #4d5964;
+}
+.toolbar-title h1 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 620;
+  margin: 0;
+}
+.toolbar-layout {
+  margin-left: auto;
+  flex: 0 0 52px;
+  padding-right: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.desktop-workspace .workspace-sidebar {
+  grid-area: 2 / 1;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid #e9ebee;
+}
+.workspace-sidebar[hidden] {
+  display: none;
+}
+.app-shell.desktop-workspace .sidebar {
+  width: 100%;
+  height: 100%;
+  padding: 22px 14px 16px;
+  border: 0;
+  border-radius: 0;
+  background: #f8f9fb;
+}
+:root[data-desktop="darwin"] .app-shell.desktop-workspace .sidebar {
+  padding-top: 22px;
+}
+:root[data-desktop="darwin"] .app-shell.desktop-workspace .sidebar::before {
+  display: none;
+}
+.desktop-workspace .sidebar .brand {
+  margin: 0 8px 22px;
+  font-size: 24px;
+}
+.desktop-workspace .sidebar-search {
+  margin-bottom: 16px;
+  background: #ffffff6b;
+}
+.desktop-workspace .workspace-actions {
+  margin-bottom: 12px;
+}
+.desktop-workspace .workspace-actions button {
+  min-height: 39px;
+  font-size: 13px;
+}
+.app-shell.desktop-workspace > .workspace-main,
+.app-shell.desktop-workspace > .workspace-destination {
+  grid-area: 2 / 2;
+  height: 100%;
+  min-height: 0;
+  border-radius: 0;
+  background: #fff;
+}
+.app-shell.desktop-workspace .workspace-details {
+  grid-area: 2 / 3;
+  height: 100%;
+  overflow: auto;
+  background: #fbfcfd;
+  border-left: 1px solid #eef0f2;
+}
+.app-shell.desktop-workspace .workspace-details .context-rail {
+  height: auto;
+  min-height: 100%;
+  background: transparent;
+  padding-top: 24px;
+}
+.desktop-workspace .destination-header,
+.desktop-workspace .empty-workspace-header {
+  display: none;
+}
+.app-shell.desktop-workspace .channel-workspace {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+}
+.app-shell.desktop-workspace .channel-conversation {
+  flex: 1;
+  min-height: 0;
+  border-radius: 0;
+  background: #fff;
+}
+.app-shell.desktop-workspace .workspace-welcome {
+  flex: 1;
+  border: 0;
+  background: #fff;
+}
+.app-shell.desktop-workspace .message-list {
+  padding: 30px max(24px, calc((100% - 840px) / 2));
+  background: #fff;
+}
+.app-shell.desktop-workspace .message-content {
+  box-shadow: none;
+}
+.app-shell.desktop-workspace .message-row.bot .message-content,
+.app-shell.desktop-workspace .message-row.system .message-content {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+}
+.app-shell.desktop-workspace .message-row.human .message-content {
+  background: #f1f3f5;
+  border: 0;
+  border-radius: 17px;
+}
+.app-shell.desktop-workspace .message-content time,
+.app-shell.desktop-workspace .message-actions button {
+  font-size: 11px;
+}
+.app-shell.desktop-workspace .message-content > header strong {
+  color: #3a4753;
+  font-size: 12px;
+}
+.app-shell.desktop-workspace .message-composer {
+  max-width: 840px;
+  width: calc(100% - 48px);
+  margin: 0 auto 22px;
+  border-radius: 20px;
+  border: 1px solid #e0e4e8;
+  padding: 14px 16px 12px;
+  background: #fff;
+  box-shadow: 0 3px 18px #15273b08;
+}
+.app-shell.desktop-workspace .message-composer:focus-within {
+  border-color: #aab7c4;
+  box-shadow: 0 3px 18px #15273b08;
+}
+:root[data-sidebar-material="enabled"] .app-shell.desktop-workspace {
+  background: linear-gradient(
+    to right,
+    transparent var(--workspace-sidebar-size),
+    #fff var(--workspace-sidebar-size)
+  );
+}
+:root[data-sidebar-material="enabled"] .app-shell.desktop-workspace .sidebar {
+  background: #ffffff40;
+}
+:root[data-sidebar-material="enabled"] .desktop-workspace .toolbar-navigation {
+  background: transparent;
+}
+@media (max-width: 1100px) and (min-width: 761px) {
+  .app-shell.desktop-workspace {
+    --workspace-sidebar-size: 220px;
+    --workspace-navigation-size: 220px;
+    --workspace-details-size: 252px;
+  }
+  .app-shell.desktop-workspace.without-context {
+    --workspace-details-size: 0px;
+  }
+  .app-shell.desktop-workspace.without-sidebar {
+    --workspace-sidebar-size: 0px;
+    --workspace-navigation-size: 216px;
+  }
+  .toolbar-context {
+    padding-inline: 14px;
+    gap: 10px;
+  }
+  .app-shell.desktop-workspace .message-list {
+    padding: 24px 20px;
+  }
+  .app-shell.desktop-workspace .message-composer {
+    width: calc(100% - 32px);
+    margin-bottom: 16px;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell.desktop-workspace,
+  .app-shell.desktop-workspace.without-sidebar,
+  .app-shell.desktop-workspace.without-context {
+    --workspace-sidebar-size: 0px;
+    --workspace-details-size: 0px;
+    --workspace-navigation-size: 0px;
+    --workspace-toolbar-height: 52px;
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+  .desktop-workspace .channel-members-popover {
+    position: fixed;
+    top: 60px;
+    left: 14px;
+    right: auto;
+  }
+  .desktop-workspace .mobile-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .desktop-workspace .toolbar-navigation,
+  .desktop-workspace .toolbar-layout,
+  .desktop-workspace .workspace-sidebar,
+  .desktop-workspace .workspace-details {
+    display: none;
+  }
+  .app-shell.desktop-workspace > .workspace-main,
+  .app-shell.desktop-workspace > .workspace-destination {
+    height: calc(100dvh - 114px);
+  }
+  .app-shell.desktop-workspace .message-list {
+    padding: 20px 14px;
+  }
+  .app-shell.desktop-workspace .message-composer {
+    width: calc(100% - 24px);
+    margin-bottom: 12px;
+    padding: 12px;
+  }
+  .toolbar-title h1 {
+    font-size: 14px;
+  }
+}

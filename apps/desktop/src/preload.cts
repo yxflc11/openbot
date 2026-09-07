@@ -1,4 +1,9 @@
-import type { OpenBotDesktopBridge } from "./runtime-contract.js";
+import type {
+  DesktopNavigationCommand,
+  DesktopNavigationMenuState,
+  DesktopSidebarMaterialState,
+  OpenBotDesktopBridge,
+} from "./runtime-contract.js";
 
 const { contextBridge, ipcRenderer } = require("electron") as typeof import("electron");
 const DESKTOP_CONNECTION_STATE_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_CONNECTION_STATE_CHANNEL =
@@ -18,6 +23,17 @@ const DESKTOP_ENABLE_LOCAL_WORKER_CHANNEL: typeof import("./runtime-contract.js"
 const DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_OPEN_LOCAL_WORKER_SETTINGS_CHANNEL =
   "openbot:desktop-open-local-worker-settings";
 
+const DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL =
+  "openbot:set-sidebar-translucency";
+const DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL =
+  "openbot:sidebar-material-state";
+const DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL =
+  "openbot:sidebar-material-changed";
+const DESKTOP_NAVIGATION_COMMAND_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_NAVIGATION_COMMAND_CHANNEL =
+  "openbot:navigation-command";
+const DESKTOP_NAVIGATION_MENU_STATE_CHANNEL: typeof import("./runtime-contract.js").DESKTOP_NAVIGATION_MENU_STATE_CHANNEL =
+  "openbot:navigation-menu-state";
+
 const shellVersion = process.versions.electron;
 if (shellVersion === undefined || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(shellVersion)) {
   throw new Error("Electron version is invalid.");
@@ -30,6 +46,40 @@ const runtimeInfo = Object.freeze({
 });
 const bridge: OpenBotDesktopBridge = Object.freeze({
   getRuntimeInfo: () => runtimeInfo,
+  onNavigationCommand: (listener: (command: DesktopNavigationCommand) => void) => {
+    if (typeof listener !== "function") return () => {};
+    const handleCommand = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      if (isNavigationCommand(value)) listener(value);
+    };
+    ipcRenderer.on(DESKTOP_NAVIGATION_COMMAND_CHANNEL, handleCommand);
+    return () => ipcRenderer.removeListener(DESKTOP_NAVIGATION_COMMAND_CHANNEL, handleCommand);
+  },
+  updateNavigationMenuState: (state: DesktopNavigationMenuState) => {
+    if (!isNavigationMenuState(state)) {
+      return Promise.reject(new TypeError("Desktop navigation menu state is invalid."));
+    }
+    return ipcRenderer.invoke(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL, {
+      workspaceReady: state.workspaceReady,
+      settingsAvailable: state.settingsAvailable,
+      canGoBack: state.canGoBack,
+      canGoForward: state.canGoForward,
+    });
+  },
+  setSidebarTranslucency: (enabled: boolean) => {
+    if (typeof enabled !== "boolean") return Promise.resolve({ status: "unavailable" });
+    return ipcRenderer.invoke(DESKTOP_SET_SIDEBAR_TRANSLUCENCY_CHANNEL, enabled);
+  },
+  getSidebarMaterialState: () => ipcRenderer.invoke(DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL),
+  onSidebarMaterialChanged: (listener: (state: DesktopSidebarMaterialState) => void) => {
+    if (typeof listener !== "function") return () => {};
+    const handleChange = (_event: Electron.IpcRendererEvent, value: unknown) => {
+      if (isSidebarMaterialState(value)) listener({ status: value.status });
+    };
+    ipcRenderer.on(DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL, handleChange);
+    return () => ipcRenderer.removeListener(DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL, handleChange);
+  },
+  getNativeServerState: () => ipcRenderer.invoke("openbot:native-server-state"),
+  installNativeServer: () => ipcRenderer.invoke("openbot:install-native-server"),
   getConnectionState: () => ipcRenderer.invoke(DESKTOP_CONNECTION_STATE_CHANNEL),
   configureServer: (serverUrl: string) => {
     if (typeof serverUrl !== "string" || serverUrl.length === 0 || serverUrl.length > 2_048) {
@@ -82,5 +132,43 @@ function isBoundedNodeId(value: unknown): value is string {
     value.length >= 1 &&
     value.length <= 128 &&
     /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(value)
+  );
+}
+
+function isSidebarMaterialState(value: unknown): value is DesktopSidebarMaterialState {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const state = value as Record<string, unknown>;
+  return (
+    Object.keys(state).length === 1 &&
+    typeof state.status === "string" &&
+    ["enabled", "disabled", "reduced", "unsupported", "unavailable"].includes(state.status)
+  );
+}
+
+function isNavigationCommand(value: unknown): value is DesktopNavigationCommand {
+  return (
+    typeof value === "string" &&
+    [
+      "new-conversation",
+      "open-settings",
+      "go-back",
+      "go-forward",
+      "toggle-sidebar",
+      "toggle-details",
+    ].includes(value)
+  );
+}
+
+function isNavigationMenuState(value: unknown): value is DesktopNavigationMenuState {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const state = value as Record<string, unknown>;
+  const keys = Object.keys(state);
+  return (
+    keys.length === 4 &&
+    keys.every(
+      (key) =>
+        ["workspaceReady", "settingsAvailable", "canGoBack", "canGoForward"].includes(key) &&
+        typeof state[key] === "boolean",
+    )
   );
 }

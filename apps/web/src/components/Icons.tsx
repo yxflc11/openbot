@@ -78,3 +78,86 @@ export function CheckIcon() {
     </Icon>
   );
 }
+
+export function SearchIcon() {
+  return (
+    <Icon>
+      <circle cx="10.5" cy="10.5" r="6.5" {...strokeProps} />
+      <path d="m16 16 4 4" {...strokeProps} />
+    </Icon>
+  );
+}
+export function ComposeIcon() {
+  return (
+    <Icon>
+      <path
+        d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M15 4l5 5M10 14l1-5 7-7 5 5-7 7-5 1Z"
+        {...strokeProps}
+      />
+    </Icon>
+  );
+}
+export function SettingsIcon() {
+  return (
+    <Icon>
+      <path d="M4 7h16M4 17h16" {...strokeProps} />
+      <circle cx="9" cy="7" r="3" fill="var(--panel)" {...strokeProps} />
+      <circle cx="16" cy="17" r="3" fill="var(--panel)" {...strokeProps} />
+    </Icon>
+  );
+}
+export function SendIcon() {
+  return (
+    <Icon>
+      <path d="m4 11 16-7-7 16-2-7-7-2ZM11 13l9-9" {...strokeProps} />
+    </Icon>
+  );
+}
+
+export function PanelRightIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="4" width="18" height="16" rx="3" {...strokeProps} />
+      <path d="M16 4v16" {...strokeProps} />
+    </Icon>
+  );
+}
+export function AutomationIcon() {
+  return (
+    <Icon>
+      <circle cx="12" cy="13" r="8" {...strokeProps} />
+      <path d="M12 9v4l3 2M5 3 2 6M19 3l3 3M8 2h8" {...strokeProps} />
+    </Icon>
+  );
+}
+export function SkillIcon() {
+  return (
+    <Icon>
+      <path d="m14 3 7 7-7 7-7-7 7-7ZM6 12l-3 3 6 6 3-3" {...strokeProps} />
+      <path d="m14 8 2 2-2 2-2-2 2-2Z" {...strokeProps} />
+    </Icon>
+  );
+}
+
+export function PanelLeftIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="4" width="18" height="16" rx="3" {...strokeProps} />
+      <path d="M8 4v16" {...strokeProps} />
+    </Icon>
+  );
+}
+export function BackIcon() {
+  return (
+    <Icon>
+      <path d="m14 5-7 7 7 7M7 12h14" {...strokeProps} />
+    </Icon>
+  );
+}
+export function ForwardIcon() {
+  return (
+    <Icon>
+      <path d="m10 5 7 7-7 7M17 12H3" {...strokeProps} />
+    </Icon>
+  );
+}

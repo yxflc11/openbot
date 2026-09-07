@@ -80,6 +80,11 @@ export const serverEnvSchema = z
     OPENBOT_OBJECT_STORE_PATH: z.string().default("./data/objects"),
     OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: z.string().trim().min(1).optional(),
     OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: z.string().trim().min(1).optional(),
+    OPENBOT_MODEL_SETTINGS_PATH: z.string().trim().min(1).optional(),
+    OPENBOT_MODEL_ENCRYPTION_KEY: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .optional(),
     OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
     OPENBOT_TRUSTED_PROXY_ADDRESS: z.preprocess(
       (value) => (value === "" ? undefined : value),
@@ -91,6 +96,16 @@ export const serverEnvSchema = z
     ),
   })
   .superRefine((value, context) => {
+    if (
+      (value.OPENBOT_MODEL_SETTINGS_PATH === undefined) !==
+      (value.OPENBOT_MODEL_ENCRYPTION_KEY === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Model settings path and encryption key must be configured together.",
+        path: ["OPENBOT_MODEL_SETTINGS_PATH"],
+      });
+    }
     let hasRemoteOrigin = false;
     for (const origin of value.OPENBOT_ALLOWED_ORIGINS) {
       const url = new URL(origin);
