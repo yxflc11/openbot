@@ -193,13 +193,16 @@ describe("macOS Host Node credential store", () => {
   });
 });
 
-describe("bounded credential helper", () => {
+// Hosted runners may take over a second to start Node and drain its pipes under parallel load.
+// Keep real-process fixtures within the existing helper ceiling; allow the harness time to observe it.
+const helperFixtureTimeoutMs = 5_000;
+describe("bounded credential helper", { timeout: 10_000 }, () => {
   it("sends bounded input over stdin and captures output", async () => {
     const result = await runCredentialHelper({
       executable: process.execPath,
       arguments: ["-e", "process.stdin.pipe(process.stdout)"],
       input: "test-input",
-      timeoutMs: 1_000,
+      timeoutMs: helperFixtureTimeoutMs,
       maximumBytes: 64,
     });
     expect(result).toMatchObject({ exitCode: 0, signal: null });
@@ -207,15 +210,17 @@ describe("bounded credential helper", () => {
     expect(result.stderr).toHaveLength(0);
   });
 
-  it("fails closed when the executable is missing, times out, or exceeds output bounds", async () => {
+  it("fails closed when the executable is missing", async () => {
     await expect(
       runCredentialHelper({
         executable: "openbot-definitely-missing-secret-tool",
         arguments: [],
-        timeoutMs: 100,
+        timeoutMs: helperFixtureTimeoutMs,
         maximumBytes: 64,
       }),
     ).rejects.toThrow("helper is unavailable");
+  });
+  it("fails closed when the helper times out", async () => {
     await expect(
       runCredentialHelper({
         executable: process.execPath,
@@ -224,11 +229,13 @@ describe("bounded credential helper", () => {
         maximumBytes: 64,
       }),
     ).rejects.toThrow("timed out");
+  });
+  it("fails closed when helper output exceeds its bound", async () => {
     await expect(
       runCredentialHelper({
         executable: process.execPath,
         arguments: ["-e", "process.stdout.write('x'.repeat(65))"],
-        timeoutMs: 1_000,
+        timeoutMs: helperFixtureTimeoutMs,
         maximumBytes: 64,
       }),
     ).rejects.toThrow("4 KiB limit");
