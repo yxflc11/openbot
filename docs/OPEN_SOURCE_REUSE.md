@@ -256,3 +256,7 @@ Every non-trivial feature pull request must link its research note or ADR and an
 - Which version and license were reviewed?
 - Was any source copied or substantially adapted, and where is its notice?
 - How does the change fail closed if the upstream is missing, incompatible, or compromised?
+
+## Reviewed memory in native tasks
+
+Reuse review complete: retain PostgreSQL, Owner memory lifecycle and sensitive-text scanning; add a default-off model-use flag, successful-task proposals and transactional review. Preserve Hermes Agent inspiration. No copied source or new dependency; no executable-skill or autonomous-learning claim. [Research](research/agent-reviewed-knowledge.md).

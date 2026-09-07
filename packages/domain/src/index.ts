@@ -168,6 +168,7 @@ export interface EmployeeMemory {
   sensitivity: EmployeeMemorySensitivity;
   portability: EmployeeMemoryPortability;
   provenance: Record<string, unknown>;
+  modelUseEnabled?: boolean | undefined;
   revision: number;
   createdAt: string;
   updatedAt: string;
@@ -178,7 +179,8 @@ export type EmployeeMemoryChangedField =
   | "title"
   | "content"
   | "sensitivity"
-  | "portability";
+  | "portability"
+  | "modelUseEnabled";
 
 /** Content-free, append-only audit metadata for one Owner memory mutation. */
 export interface EmployeeMemoryEvent {
@@ -198,6 +200,7 @@ export interface CreateEmployeeMemoryInput {
   content: string;
   sensitivity: EmployeeMemorySensitivity;
   portability: Exclude<EmployeeMemoryPortability, "included">;
+  modelUseEnabled?: boolean | undefined;
 }
 
 export interface UpdateEmployeeMemoryInput {
@@ -207,6 +210,7 @@ export interface UpdateEmployeeMemoryInput {
   content?: string | undefined;
   sensitivity?: EmployeeMemorySensitivity | undefined;
   portability?: Exclude<EmployeeMemoryPortability, "included"> | undefined;
+  modelUseEnabled?: boolean | undefined;
 }
 
 export interface DeleteEmployeeMemoryInput {
@@ -281,7 +285,8 @@ export type EmployeeProfileSection =
   | "memory"
   | "records"
   | "configuration"
-  | "portability";
+  | "portability"
+  | "modelUseEnabled";
 
 export type EmployeeExportFindingCode =
   | "credential-like-content"
@@ -679,3 +684,25 @@ export interface SubmitTaskResult {
   message: Message;
   run: Run;
 }
+
+/** A model-authored proposal is never active memory before an Owner review. */
+export interface KnowledgeProposalDraft {
+  kind: "semantic" | "episodic" | "procedural";
+  title: string;
+  content: string;
+}
+export interface KnowledgeProposal extends KnowledgeProposalDraft {
+  id: string;
+  botId: string;
+  sourceRunId: string;
+  createdAt: string;
+}
+export type ReviewKnowledgeProposalInput =
+  | { decision: "reject"; ownerReviewed: true }
+  | {
+      decision: "accept";
+      ownerReviewed: true;
+      title: string;
+      content: string;
+      modelUseEnabled: boolean;
+    };

@@ -44,6 +44,8 @@ and records the profile revision it used. Profile content does not grant tools o
 | `read_channel_context` | At most 12 messages, bounded text, only the current task's channel and no messages created after the task |
 | `read_task_status` | At most 8 task titles/statuses in that channel, no tasks created after this task |
 | `read_public_page` | Read one of at most 3 explicit task URLs by index; 15 seconds, 512 KiB input, 6,000 UTF-8 bytes of extracted text |
+| `read_employee_memory` | Frozen snapshot of up to 8 explicitly model-enabled memories for this Bot; 2,000 UTF-8 bytes per body and 10 KiB projection, with IDs/revisions/truncation |
+| `propose_memory` | One bounded candidate lesson per successful task; no active-memory change until Owner review |
 | `write_report` | Prepare at most 2 Markdown files; 24 KiB authored text and 32 KiB including Server source provenance |
 | Authority | Strict schemas; Server binds channel/Bot and URL list from the claimed Run and rechecks membership and Run state. No model-selected URL or filesystem path |
 | Iteration | At most 5 model steps, 8 executed tools and 1,024 output tokens per step; no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
@@ -65,7 +67,7 @@ cancelled Run. Credential rejection, rate limits, unavailable providers, changed
 scope, tool failures and execution limits have fixed actionable failure messages. No automatic retry
 is performed. See [execution experience research](research/agent-execution-experience.md).
 
-The tools do not expose memory, executable skills, shell, local files/PDFs, arbitrary URLs, computer input, external
+The tools do not expose unshared memory, executable skills, shell, local files/PDFs, arbitrary URLs, computer input, external
 messages or approval decisions. Existing Worker-profile tasks keep their existing dispatcher and
 approval path. A native task requiring an unavailable action should explain that limitation.
 Hermes/Pi/OpenClaw delegation, browser observe/act tools and arbitrary desktop control remain future
@@ -85,3 +87,25 @@ Report tests cover transactional publication, rollback, source provenance and au
 These fixtures make no paid requests and do not certify live model availability, output quality or
 real-device desktop control. See the [research record](research/native-agent-loop.md) and
 [source/report research](research/agent-research-artifacts.md) and [execution plan](EXECUTION_PLAN.md).
+
+## Reviewed memory loop
+
+Ask the Bot to retain a reusable lesson after a task. It may call `propose_memory` once; the lesson
+is stored as pending only when the task completes. Open **Employee → Memory → Candidate lessons**
+(UI: **员工 → 记忆 → 候选经验**) and refresh to read the source task, full title and body. Edit it,
+then accept or reject. The model-use checkbox is off by default: accepting alone saves an internal,
+non-portable Owner memory. Explicitly enable model use to make it available to this Bot's later tasks.
+Existing memories also have this separate opt-in in their editor. Confidential/restricted entries and
+secret references cannot be shared. Old records remain off after migration.
+
+`read_employee_memory` retrieves a bounded recent snapshot, not semantic search or FTS. Each task
+records only retrieved IDs/revisions in audit; source Run IDs accompany reviewed proposals. Later
+model steps and final publication recheck those revisions and permissions. Disabling, deleting or
+editing a used record stops further use of the stale snapshot; content already sent upstream cannot
+be recalled. Pending proposals never enter retrieval. Each Bot can have at most 50 pending lessons;
+review the queue before creating more. Acceptance/rejection is serialized and cannot duplicate memory.
+Rejected text is removed; accepted text lives in the Owner memory, not the proposal audit.
+
+This is an experimental reviewed-memory loop inspired by Hermes Agent, not autonomous skill learning.
+Executable SKILL.md loading, semantic/FTS retrieval, background consolidation, retention schedules and
+cross-session user modelling remain future work. See [research](research/agent-reviewed-knowledge.md).

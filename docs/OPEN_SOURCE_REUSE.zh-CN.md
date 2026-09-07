@@ -205,3 +205,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 每个非简单功能 PR 都要链接调研记录或 ADR，并回答：评估了什么上游或标准；为什么选择依赖、
 适配、fork 或本地差集；审查了哪个版本和许可证；是否复制/实质改编源码及其 NOTICE 在哪里；
 当上游缺失、不兼容或被攻破时如何 fail closed。
+
+## 已审核记忆参与原生任务
+
+已完成复用审查：沿用 PostgreSQL、Owner 记忆生命周期和敏感文本扫描，仅增加默认关闭的模型使用开关、成功任务候选经验及事务审阅。Hermes Agent 的启发归属保留；未复制源码、未新增依赖，不宣称可执行技能或自主学习。 [Research](research/agent-reviewed-knowledge.md).

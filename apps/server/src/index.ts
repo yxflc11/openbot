@@ -17,6 +17,7 @@ import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { PostgresAgentStore } from "./postgres-agent-store.js";
 import { PostgresAutomationStore } from "./postgres-automation-store.js";
+import { PostgresKnowledgeStore } from "./postgres-knowledge-store.js";
 import { PostgresNodeIdentityStore } from "./postgres-node-identity-store.js";
 import { PostgresRequestThrottleStore } from "./postgres-request-throttle-store.js";
 import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
@@ -120,6 +121,7 @@ const automationScheduler = new AutomationScheduler(
     ),
 );
 const app = createApp({
+  knowledge: new PostgresKnowledgeStore(database.db),
   cancelNativeRun: async (runId) => {
     const run = await nativeStore.cancel(runId);
     nativeAgent?.cancel(runId);

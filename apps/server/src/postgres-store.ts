@@ -1,4 +1,3 @@
-import { runModelUsageSchema } from "./agent-observations.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   approvals as approvalsTable,
@@ -56,6 +55,7 @@ import type {
 } from "@openbot/domain";
 import type { RunFailureCode } from "@openbot/protocol";
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { runModelUsageSchema } from "./agent-observations.js";
 import type {
   ActivateEmployeeImportCommand,
   ArtifactRecord,
@@ -991,6 +991,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           sensitivity: normalizedInput.sensitivity,
           portability: normalizedInput.portability,
           provenance: { source: "owner", actor: "owner" },
+          modelUseEnabled: normalizedInput.modelUseEnabled ?? false,
           revision: 1,
           createdAt: now,
           updatedAt: now,
@@ -1006,7 +1007,14 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           memoryId,
           action: "created",
           revision: 1,
-          changedFields: ["kind", "title", "content", "sensitivity", "portability"],
+          changedFields: [
+            "kind",
+            "title",
+            "content",
+            "sensitivity",
+            "portability",
+            ...(normalizedInput.modelUseEnabled === undefined ? [] : ["modelUseEnabled"]),
+          ],
           actor: "owner",
           createdAt: now,
         })
@@ -1041,6 +1049,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         content: input.content ?? current.content,
         sensitivity: input.sensitivity ?? (current.sensitivity as EmployeeMemory["sensitivity"]),
         portability: input.portability ?? (current.portability as EmployeeMemory["portability"]),
+        modelUseEnabled: input.modelUseEnabled ?? current.modelUseEnabled,
       });
       validateEmployeeMemoryPolicy(next);
       const changedFields = employeeMemoryChangedFields(current, next);
@@ -1901,6 +1910,7 @@ function toEmployeeMemory(row: typeof employeeMemories.$inferSelect): EmployeeMe
     sensitivity: row.sensitivity as EmployeeMemory["sensitivity"],
     portability: row.portability as EmployeeMemory["portability"],
     provenance: asRecord(row.provenance),
+    modelUseEnabled: row.modelUseEnabled,
     revision: row.revision,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -1916,7 +1926,9 @@ function toEmployeeMemoryEvent(row: typeof employeeMemoryEvents.$inferSelect): E
     revision: row.revision,
     changedFields: toStringArray(row.changedFields).filter(
       (field): field is EmployeeMemoryEvent["changedFields"][number] =>
-        ["kind", "title", "content", "sensitivity", "portability"].includes(field),
+        ["kind", "title", "content", "sensitivity", "portability", "modelUseEnabled"].includes(
+          field,
+        ),
     ),
     actor: "owner",
     createdAt: row.createdAt.toISOString(),
@@ -1925,7 +1937,10 @@ function toEmployeeMemoryEvent(row: typeof employeeMemoryEvents.$inferSelect): E
 
 function employeeMemoryChangedFields(
   current: typeof employeeMemories.$inferSelect,
-  next: Pick<EmployeeMemory, "kind" | "title" | "content" | "sensitivity" | "portability">,
+  next: Pick<
+    EmployeeMemory,
+    "kind" | "title" | "content" | "sensitivity" | "portability" | "modelUseEnabled"
+  >,
 ): EmployeeMemoryEvent["changedFields"] {
   const fields: EmployeeMemoryEvent["changedFields"] = [];
   if (current.kind !== next.kind) fields.push("kind");
@@ -1933,12 +1948,24 @@ function employeeMemoryChangedFields(
   if (current.content !== next.content) fields.push("content");
   if (current.sensitivity !== next.sensitivity) fields.push("sensitivity");
   if (current.portability !== next.portability) fields.push("portability");
+  if (current.modelUseEnabled !== (next.modelUseEnabled ?? false)) fields.push("modelUseEnabled");
   return fields;
 }
 
-function validateEmployeeMemoryPolicy(
-  memory: Pick<EmployeeMemory, "kind" | "title" | "content" | "sensitivity" | "portability">,
+export function validateEmployeeMemoryPolicy(
+  memory: Pick<
+    EmployeeMemory,
+    "kind" | "title" | "content" | "sensitivity" | "portability" | "modelUseEnabled"
+  >,
 ): void {
+  if (
+    memory.modelUseEnabled &&
+    (memory.kind === "secret-reference" || !["public", "internal"].includes(memory.sensitivity))
+  ) {
+    throw new StoreValidationError(
+      "Only public or internal non-secret memory can be shared with the model.",
+    );
+  }
   if (memory.title.length === 0 || memory.title.length > 160) {
     throw new StoreValidationError("Memory title must contain between 1 and 160 characters.");
   }
@@ -1969,7 +1996,10 @@ function validateEmployeeMemoryPolicy(
 }
 
 function normalizeEmployeeMemory<
-  T extends Pick<EmployeeMemory, "kind" | "title" | "content" | "sensitivity" | "portability">,
+  T extends Pick<
+    EmployeeMemory,
+    "kind" | "title" | "content" | "sensitivity" | "portability" | "modelUseEnabled"
+  >,
 >(memory: T): T {
   return { ...memory, title: memory.title.trim(), content: memory.content.trim() };
 }

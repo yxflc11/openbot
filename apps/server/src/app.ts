@@ -39,7 +39,8 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
-import { z, type ZodType } from "zod";
+import { type ZodType, z } from "zod";
+import { reviewKnowledgeProposalSchema } from "./agent-knowledge.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import {
   type AutomationStore,
@@ -75,12 +76,14 @@ import {
   LoginRateLimitedError,
   type OwnerAuthService,
 } from "./owner-auth.js";
+import type { PostgresKnowledgeStore } from "./postgres-knowledge-store.js";
 import { RealtimeEventBuffer } from "./realtime-event-buffer.js";
 import type { RequestThrottle } from "./request-throttle.js";
 import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  knowledge?: Pick<PostgresKnowledgeStore, "list" | "review">;
   cancelNativeRun?: (runId: string) => Promise<Run>;
   automations?: AutomationStore;
   modelSettings?: ModelSettingsService;
@@ -668,6 +671,27 @@ export function createApp(dependencies: AppDependencies) {
       input,
     );
     publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);
+    return context.json(result);
+  });
+
+  app.get("/api/v1/bots/:botId/knowledge-proposals", async (context) => {
+    if (!dependencies.knowledge)
+      return context.json({ error: "Knowledge review is unavailable." }, 503);
+    return context.json({
+      proposals: await dependencies.knowledge.list(context.req.param("botId")),
+    });
+  });
+  app.post("/api/v1/bots/:botId/knowledge-proposals/:proposalId/review", async (context) => {
+    if (!dependencies.knowledge)
+      return context.json({ error: "Knowledge review is unavailable." }, 503);
+    const input = await parseRequest(context.req.raw, reviewKnowledgeProposalSchema, 16 * 1024);
+    const botId = context.req.param("botId");
+    const result = await dependencies.knowledge.review(
+      botId,
+      context.req.param("proposalId"),
+      input,
+    );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
     return context.json(result);
   });
 

@@ -22,9 +22,11 @@ import type {
   EmployeeProfileSection,
   EmployeeSkillMutationResult,
   ExecutionNode,
+  KnowledgeProposal,
   Message,
   NodeEnrollmentToken,
   NodeIdentitySummary,
+  ReviewKnowledgeProposalInput,
   Run,
   RunFrame,
   RunProgress,
@@ -991,4 +993,25 @@ export function saveModelSettings(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function getKnowledgeProposals(botId: string): Promise<KnowledgeProposal[]> {
+  const result = await request<{ proposals: KnowledgeProposal[] }>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/knowledge-proposals`,
+  );
+  return result.proposals;
+}
+export async function reviewKnowledgeProposal(
+  botId: string,
+  proposalId: string,
+  input: ReviewKnowledgeProposalInput,
+): Promise<{ proposalId: string; decision: string; memoryId: string | null }> {
+  return request(
+    `/api/v1/bots/${encodeURIComponent(botId)}/knowledge-proposals/${encodeURIComponent(proposalId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }

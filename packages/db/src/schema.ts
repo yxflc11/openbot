@@ -212,6 +212,7 @@ export const employeeMemories = pgTable(
     sensitivity: text("sensitivity").notNull().default("internal"),
     portability: text("portability").notNull().default("owner-selectable"),
     provenance: jsonb("provenance").notNull().default({}),
+    modelUseEnabled: boolean("model_use_enabled").notNull().default(false),
     revision: integer("revision").notNull().default(1),
     ...timestamps,
   },
@@ -232,6 +233,10 @@ export const employeeMemories = pgTable(
     check("employee_memories_title_not_blank", sql`length(btrim(${table.title})) > 0`),
     check("employee_memories_content_not_blank", sql`length(btrim(${table.content})) > 0`),
     check("employee_memories_revision_valid", sql`${table.revision} >= 1`),
+    check(
+      "employee_memories_model_use_safe",
+      sql`NOT ${table.modelUseEnabled} OR (${table.kind} <> 'secret-reference' AND ${table.sensitivity} IN ('public', 'internal'))`,
+    ),
   ],
 );
 
@@ -589,6 +594,46 @@ export const automations = pgTable(
     check(
       "automations_outcome_valid",
       sql`${table.lastOutcome} IN ('submitted', 'skipped_active', 'target_unavailable')`,
+    ),
+  ],
+);
+
+export const knowledgeProposals = pgTable(
+  "knowledge_proposals",
+  {
+    id: text("id").primaryKey(),
+    botId: text("bot_id")
+      .notNull()
+      .references(() => bots.id, { onDelete: "cascade" }),
+    sourceRunId: text("source_run_id")
+      .notNull()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    status: text("status").notNull().default("pending"),
+    memoryId: text("memory_id"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("knowledge_proposals_run_idx").on(table.sourceRunId),
+    index("knowledge_proposals_bot_status_idx").on(table.botId, table.status, table.createdAt),
+    check(
+      "knowledge_proposals_kind_valid",
+      sql`${table.kind} IN ('semantic', 'episodic', 'procedural')`,
+    ),
+    check(
+      "knowledge_proposals_status_valid",
+      sql`${table.status} IN ('pending', 'accepted', 'rejected')`,
+    ),
+    check(
+      "knowledge_proposals_pending_bounded",
+      sql`${table.status} <> 'pending' OR (length(btrim(${table.title})) BETWEEN 1 AND 160 AND length(btrim(${table.content})) BETWEEN 1 AND 2000 AND octet_length(${table.content}) <= 8000)`,
+    ),
+    check(
+      "knowledge_proposals_review_valid",
+      sql`(${table.status} = 'pending' AND ${table.reviewedAt} IS NULL AND ${table.memoryId} IS NULL) OR (${table.status} = 'accepted' AND ${table.reviewedAt} IS NOT NULL AND ${table.memoryId} IS NOT NULL) OR (${table.status} = 'rejected' AND ${table.reviewedAt} IS NOT NULL AND ${table.memoryId} IS NULL)`,
     ),
   ],
 );

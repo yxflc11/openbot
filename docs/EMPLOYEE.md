@@ -132,7 +132,7 @@ is not retained in that event.
 Memory titles and content pass the same credential/private-key scanner used by Employee export.
 `secret-reference` stores only an opaque vault reference, is always `restricted`, and is never
 portable. Machine-local paths remain valid in local-only memories. Models and Worker Hosts cannot
-call the Owner lifecycle, autonomous writes and retrieval are disabled, and
+call the Owner lifecycle. Native tasks may propose reviewed lessons and retrieve only explicitly model-enabled memory; autonomous active-memory writes remain disabled, and
 `openbot.employee/v1` still exports zero memories.
 
 ## Copy, export, and transfer
@@ -199,7 +199,7 @@ The receiving owner must explicitly bind it to a Worker Host and grant a local p
 2. **Evolution ledger:** append-only events generated from existing Bot, Run, and skill changes.
 3. **Skill registry:** versioned records and a read-only dependency graph.
 4. **Memory controls:** Owner-managed typed memories, sensitivity, revision-safe editing, deletion,
-   and content-free audit are implemented; retention, search, and autonomous proposals are next.
+   and content-free audit are implemented, with default-off model sharing and Owner-reviewed task proposals; retention and semantic/full-text search remain future work.
 5. **Portable templates:** safe export/import without private memory or authority.
 6. **Selective clones:** owner-reviewed memories and local re-identification.
 7. **Authenticated transfer:** signed ownership handoff, source revocation, and import receipts.
@@ -259,7 +259,7 @@ publisher identity, automatic revocation distribution, native keyring/KMS custod
 installation, selective-memory cloning, or ownership transfer. See the
 [signing runbook](EMPLOYEE_SIGNING.md). The skill learning/verification workflow currently covers
 metadata review only. Autonomous skill proposals, executable Agent Skills archives, full-diff
-review, memory retrieval and retention, autonomous memory proposals, selective cloning, and
+review, semantic/full-text retrieval and retention, autonomous active-memory writes, selective cloning, and
 authenticated ownership transfer are not implemented yet. Their data and authority boundaries are defined here
 so contributors can add them without coupling employee knowledge to Worker Host access.
 

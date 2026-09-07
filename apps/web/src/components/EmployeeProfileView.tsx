@@ -9,6 +9,7 @@ import {
 import { runStatusLabel } from "../run-state";
 import { EmployeeEvolutionArchive } from "./EmployeeEvolutionArchive";
 import { EmployeeSkillReview } from "./EmployeeSkillReview";
+import { KnowledgeReviewPanel } from "./KnowledgeReviewPanel";
 import { OpenBotMark } from "./OpenBotMark";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -277,8 +278,13 @@ export function EmployeeMemoryPanel({
   return (
     <ProfileSection
       title="记忆"
-      description="由你查看和维护；模型不能直接写入，任何记忆都不会进入当前员工模板。"
+      description="只有明确允许的记忆才会用于模型任务；候选经验须经你审阅。记忆不会进入当前员工模板。"
     >
+      <KnowledgeReviewPanel
+        key={profile.employee.id}
+        botId={profile.employee.id}
+        onChanged={onProfileChanged}
+      />
       <div className="employee-memory-toolbar">
         <p>
           共 {profile.memories.length} 条 · 生命周期记录 {profile.memoryEvents.length} 条
@@ -328,8 +334,14 @@ export function EmployeeMemoryPanel({
                   <p>{memory.content}</p>
                   <small>
                     {memoryKindLabel(memory.kind)} · {memorySensitivityLabel(memory.sensitivity)} ·{" "}
-                    {memoryPortabilityLabel(memory.portability)} · 修订 {memory.revision}
+                    {memoryPortabilityLabel(memory.portability)} · 修订 {memory.revision} ·{" "}
+                    {memory.modelUseEnabled ? "允许模型使用" : "仅供你查看"}
                   </small>
+                  {typeof memory.provenance.sourceRunId === "string" ? (
+                    <small className="knowledge-source">
+                      来源任务：{memory.provenance.sourceRunId}
+                    </small>
+                  ) : null}
                 </div>
                 <div className="employee-memory-actions">
                   {confirming ? (
@@ -402,6 +414,7 @@ const emptyMemoryDraft: CreateEmployeeMemoryInput = {
   content: "",
   sensitivity: "internal",
   portability: "owner-selectable",
+  modelUseEnabled: false,
 };
 
 function EmployeeMemoryEditor({
@@ -424,6 +437,7 @@ function EmployeeMemoryEditor({
           content: memory.content,
           sensitivity: memory.sensitivity,
           portability: memory.portability === "included" ? "owner-selectable" : memory.portability,
+          modelUseEnabled: memory.modelUseEnabled ?? false,
         },
   );
   const [saving, setSaving] = useState(false);
@@ -473,7 +487,7 @@ function EmployeeMemoryEditor({
                 ...current,
                 kind,
                 ...(kind === "secret-reference"
-                  ? { sensitivity: "restricted", portability: "never" }
+                  ? { sensitivity: "restricted", portability: "never", modelUseEnabled: false }
                   : {}),
               }));
             }}
@@ -495,6 +509,9 @@ function EmployeeMemoryEditor({
               setDraft((current) => ({
                 ...current,
                 sensitivity: event.target.value as CreateEmployeeMemoryInput["sensitivity"],
+                modelUseEnabled:
+                  ["public", "internal"].includes(event.target.value) &&
+                  current.modelUseEnabled === true,
               }))
             }
           >
@@ -552,6 +569,20 @@ function EmployeeMemoryEditor({
           {error}
         </p>
       ) : null}
+      <label className="memory-model-use">
+        <input
+          type="checkbox"
+          checked={draft.modelUseEnabled ?? false}
+          disabled={
+            saving || secretReference || !["public", "internal"].includes(draft.sensitivity)
+          }
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, modelUseEnabled: event.target.checked }))
+          }
+        />
+        <span>允许此员工后续任务将这条记忆发送给配置的模型</span>
+      </label>
+      <small>机密、受限和密钥引用不能启用。关闭后停止后续读取，已发送的内容无法撤回。</small>
       <footer className="employee-memory-editor-actions">
         <button className="primary-button" type="submit" disabled={saving}>
           {saving ? "保存中…" : "保存记忆"}
@@ -931,6 +962,7 @@ function memoryFieldLabel(field: EmployeeProfile["memoryEvents"][number]["change
     content: "内容",
     sensitivity: "敏感级别",
     portability: "迁移策略",
+    modelUseEnabled: "模型使用",
   }[field];
 }
 

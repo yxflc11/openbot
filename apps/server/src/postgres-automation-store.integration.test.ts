@@ -5,12 +5,13 @@ import { join } from "node:path";
 import { createDatabase } from "@openbot/db";
 import { MockLanguageModelV4 } from "ai/test";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { FileArtifactStorage } from "./artifact-storage.js";
+import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { ModelSettingsService } from "./model-settings.js";
 import { NativeAgentRunner } from "./native-agent.js";
 import { PostgresAgentStore } from "./postgres-agent-store.js";
 import { PostgresAutomationStore } from "./postgres-automation-store.js";
+import { PostgresKnowledgeStore } from "./postgres-knowledge-store.js";
 import { PostgresControlPlaneStore } from "./postgres-store.js";
 
 const databaseUrl = process.env.OPENBOT_AUTOMATION_TEST_DATABASE_URL;
@@ -613,5 +614,218 @@ describe.skipIf(!databaseUrl)("PostgreSQL automation transaction", () => {
       await runner.stop();
       await rm(directory, { recursive: true, force: true });
     }
+  });
+  async function knowledgeTask(content = "Retain a reusable lesson") {
+    if (!database) throw new Error("Missing disposable database.");
+    const native = new PostgresAgentStore(database.db);
+    const control = new PostgresControlPlaneStore(database.db);
+    const task = await control.submitTask("test-channel", { content, botId: "test-bot" });
+    const active = await native.claim(task.run, "2000-01-01T00:00:00Z");
+    if (!active) throw new Error("Task claim failed.");
+    return { native, control, active, knowledge: new PostgresKnowledgeStore(database.db) };
+  }
+  const lesson = {
+    kind: "procedural" as const,
+    title: "Cite evidence",
+    content: "Separate facts from inference and retain source URLs.",
+  };
+
+  it("keeps legacy memory private, rejects secret sharing and isolates the assigned Bot", async () => {
+    if (!database) return;
+    const { native, control, active } = await knowledgeTask();
+    const privateMemory = await control.createEmployeeMemory("test-bot", {
+      kind: "semantic",
+      title: "Private",
+      content: "Owner only",
+      sensitivity: "internal",
+      portability: "never",
+    });
+    expect(privateMemory.memory.modelUseEnabled).toBe(false);
+    expect((await native.knowledge(active)).memories).toEqual([]);
+    await expect(
+      control.updateEmployeeMemory("test-bot", privateMemory.memory.id, {
+        expectedRevision: 1,
+        modelUseEnabled: true,
+        sensitivity: "confidential",
+      }),
+    ).rejects.toThrow(/Only public/);
+    const shared = await control.updateEmployeeMemory("test-bot", privateMemory.memory.id, {
+      expectedRevision: 1,
+      modelUseEnabled: true,
+    });
+    await database.client`insert into bots (id,name,role) values ('other-bot','Other','Other')`;
+    await control.createEmployeeMemory("other-bot", {
+      kind: "semantic",
+      title: "Other secret",
+      content: "Other Bot context",
+      sensitivity: "internal",
+      portability: "never",
+      modelUseEnabled: true,
+    });
+    expect((await native.knowledge(active)).memories).toEqual([
+      expect.objectContaining({ id: shared.memory.id, revision: 2, content: "Owner only" }),
+    ]);
+    expect(shared.event.changedFields).toEqual(["modelUseEnabled"]);
+    await native.assertKnowledge(active, [{ id: shared.memory.id, revision: 2 }]);
+    await expect(
+      native.assertKnowledge({ ...active, botId: "other-bot" }, [
+        { id: shared.memory.id, revision: 2 },
+      ]),
+    ).rejects.toThrow();
+  });
+
+  it("keeps a completed-task proposal inactive until Owner review and explicit sharing, with source provenance", async () => {
+    if (!database) return;
+    const first = await knowledgeTask();
+    await first.native.complete(first.active, "Proposed for review", [], lesson);
+    const [proposal] = await first.knowledge.list("test-bot");
+    if (!proposal) throw new Error("Proposal missing.");
+    expect(proposal).toMatchObject({ ...lesson, sourceRunId: first.active.id });
+    const next = await knowledgeTask("Use approved knowledge");
+    expect((await next.native.knowledge(next.active)).memories).toEqual([]);
+    const accepted = await first.knowledge.review("test-bot", proposal.id, {
+      decision: "accept",
+      ownerReviewed: true,
+      title: "Reviewed evidence",
+      content: "Use sources and label inference.",
+      modelUseEnabled: false,
+    });
+    expect((await next.native.knowledge(next.active)).memories).toEqual([]);
+    if (!accepted.memoryId) throw new Error("Memory missing.");
+    const profile = await next.control.getEmployeeProfile("test-bot");
+    expect(profile.memories[0]).toMatchObject({
+      id: accepted.memoryId,
+      title: "Reviewed evidence",
+      content: "Use sources and label inference.",
+      provenance: { sourceRunId: first.active.id, proposalId: proposal.id, actor: "owner" },
+      modelUseEnabled: false,
+    });
+    await next.control.updateEmployeeMemory("test-bot", accepted.memoryId, {
+      expectedRevision: 1,
+      modelUseEnabled: true,
+    });
+    const snapshot = await next.native.knowledge(next.active);
+    expect(snapshot.memories).toEqual([
+      expect.objectContaining({
+        id: accepted.memoryId,
+        revision: 2,
+        sourceRunId: first.active.id,
+        content: "Use sources and label inference.",
+      }),
+    ]);
+    await next.native.complete(
+      next.active,
+      "Used reviewed evidence",
+      [],
+      undefined,
+      snapshot.memories,
+    );
+    const audits =
+      await database.client`select type,payload from run_events where run_id=${next.active.id} and type='KNOWLEDGE_READ'`;
+    expect(JSON.stringify(audits)).not.toContain("Use sources");
+    expect(JSON.stringify(audits)).toContain(accepted.memoryId);
+    expect(await first.knowledge.list("test-bot")).toEqual([]);
+  });
+
+  it("serializes competing reviews into exactly one memory and one content-free decision", async () => {
+    if (!database || !peer) return;
+    const { native, active, knowledge } = await knowledgeTask();
+    await native.complete(active, "Done", [], lesson);
+    const [proposal] = await knowledge.list("test-bot");
+    if (!proposal) throw new Error("Missing proposal.");
+    const input = {
+      decision: "accept" as const,
+      ownerReviewed: true as const,
+      title: lesson.title,
+      content: lesson.content,
+      modelUseEnabled: true,
+    };
+    const outcomes = await Promise.allSettled([
+      knowledge.review("test-bot", proposal.id, input),
+      new PostgresKnowledgeStore(peer.db).review("test-bot", proposal.id, input),
+    ]);
+    expect(outcomes.filter((item) => item.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((item) => item.status === "rejected")).toHaveLength(1);
+    const memories = await database.client`select id from employee_memories`;
+    expect(memories).toHaveLength(1);
+    const events =
+      await database.client`select payload from run_events where type='KNOWLEDGE_PROPOSAL_REVIEWED'`;
+    expect(events).toHaveLength(1);
+    expect(JSON.stringify(events)).not.toContain(lesson.content);
+    const [row] =
+      await database.client`select title,content,status from knowledge_proposals where id=${proposal.id}`;
+    expect(row).toEqual({ title: "", content: "", status: "accepted" });
+  });
+
+  it("rejects cross-Bot review and removes rejected candidate text without creating memory", async () => {
+    if (!database) return;
+    const { native, active, knowledge } = await knowledgeTask();
+    await native.complete(active, "Done", [], lesson);
+    const [proposal] = await knowledge.list("test-bot");
+    if (!proposal) throw new Error("Missing proposal.");
+    await expect(
+      knowledge.review("other-bot", proposal.id, { decision: "reject", ownerReviewed: true }),
+    ).rejects.toThrow(/not found/);
+    await knowledge.review("test-bot", proposal.id, { decision: "reject", ownerReviewed: true });
+    await expect(
+      knowledge.review("test-bot", proposal.id, { decision: "reject", ownerReviewed: true }),
+    ).rejects.toThrow(/already/);
+    expect(await database.client`select id from employee_memories`).toHaveLength(0);
+    expect(
+      (await database.client`select title,content,status from knowledge_proposals`)[0],
+    ).toEqual({ title: "", content: "", status: "rejected" });
+  });
+
+  it("publishes no proposal after cancellation and no reply after memory sharing is revoked", async () => {
+    if (!database) return;
+    const first = await knowledgeTask();
+    await first.native.cancel(first.active.id);
+    await expect(first.native.complete(first.active, "Late result", [], lesson)).rejects.toThrow();
+    expect(await first.knowledge.list("test-bot")).toEqual([]);
+    const next = await knowledgeTask();
+    const memory = await next.control.createEmployeeMemory("test-bot", {
+      kind: "semantic",
+      title: "Shared",
+      content: "Shared fact",
+      sensitivity: "internal",
+      portability: "never",
+      modelUseEnabled: true,
+    });
+    const snapshot = await next.native.knowledge(next.active);
+    await next.control.updateEmployeeMemory("test-bot", memory.memory.id, {
+      expectedRevision: 1,
+      modelUseEnabled: false,
+    });
+    await expect(
+      next.native.complete(next.active, "Late result", [], lesson, snapshot.memories),
+    ).rejects.toMatchObject({ code: "scope_revoked" });
+    expect(
+      await database.client`select id from messages where run_id=${next.active.id} and author_type='bot'`,
+    ).toHaveLength(0);
+    expect(await next.knowledge.list("test-bot")).toEqual([]);
+    expect(
+      (await database.client`select status from runs where id=${next.active.id}`)[0]?.status,
+    ).toBe("running");
+  });
+
+  it("caps pending lessons transactionally without losing the completed history", async () => {
+    if (!database) return;
+    for (let index = 0; index < 50; index++) {
+      const task = await knowledgeTask(`Lesson ${index}`);
+      await task.native.complete(task.active, "Done", [], { ...lesson, title: `Lesson ${index}` });
+    }
+    const overflow = await knowledgeTask("Overflow");
+    await expect(
+      overflow.native.complete(overflow.active, "Done", [], lesson),
+    ).rejects.toMatchObject({ code: "task_limit" });
+    expect(await overflow.knowledge.list("test-bot")).toHaveLength(50);
+    expect(
+      (
+        await database.client`select count(*)::integer as count from runs where status='completed'`
+      )[0]?.count,
+    ).toBe(50);
+    expect(
+      await database.client`select id from messages where run_id=${overflow.active.id} and author_type='bot'`,
+    ).toHaveLength(0);
   });
 });

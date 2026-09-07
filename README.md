@@ -89,9 +89,9 @@ enter a trusted HTTPS Server origin and sign in as its Owner. See
 | --- | --- | --- |
 | Desktop and Web | Channels, Bots, approvals, task inspector, shared back/forward navigation, native menus, conversation draft/scroll restoration, skills gallery and persistent interface preferences | Notifications, localization polish and broader accessibility/device evidence |
 | Local macOS services | App-owned PostgreSQL and Server, encrypted bootstrap, restart with retained data, explicit remote-client switching | Cross-platform guided services, authenticated remote sharing, backup, upgrades and login-service recovery |
-| Models / native Agent | Owner opt-in, encrypted OpenAI/Anthropic settings, bounded model/tool/observation loop, scoped channel reads and durable Bot replies | Live model evidence, broader governed tools and external-agent adapters |
+| Models / native Agent | Owner opt-in, encrypted OpenAI/Anthropic settings, bounded model/tool/observation loop, scoped channel/source reads, downloadable Markdown reports, durable replies, stop/resubmit and recorded model usage | Live model evidence, broader governed tools and external-agent adapters |
 | Automatic tasks | PostgreSQL schedules, pause/resume/delete, bounded intervals, one due occurrence after downtime and existing authorized task routing | Multi-Server coordination and additional schedule semantics |
-| Employee profile | Role/biography editing, dated evolution archive, reviewed skills, typed Owner-managed memory, review-bound export/import and experimental DSSE signing | Autonomous learning, executable skills, selective cloning and public trust distribution |
+| Employee profile | Role/biography editing, dated evolution archive, reviewed skills, typed Owner-managed memory, reviewed task lessons with explicit model sharing, review-bound export/import and experimental DSSE signing | Autonomous learning, executable skills, selective cloning and public trust distribution |
 | Worker protocol | Outbound connections, one-time pairing, revocation, versioned capability routing, progress, frames and artifacts | Proof-of-possession identity, complete service/device conformance and signed distribution |
 | Computer execution | Read-only Docker/browser URL-to-screenshot flow | Safe interaction, native desktop Providers, signed single-use leases and exclusive takeover |
 

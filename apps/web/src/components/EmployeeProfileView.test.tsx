@@ -67,7 +67,7 @@ describe("EmployeeProfileView", () => {
     );
 
     expect(html).toContain("添加记忆");
-    expect(html).toContain("模型不能直接写入");
+    expect(html).toContain("候选经验须经你审阅");
     expect(html).toContain("不会进入当前员工模板");
   });
 

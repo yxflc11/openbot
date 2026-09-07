@@ -81,6 +81,103 @@ function fixture() {
   };
 }
 describe("native Agent loop", () => {
+  it("reads a frozen Owner-enabled snapshot and prepares one proposal without modifying active memory", async () => {
+    const f = fixture();
+    f.store.knowledge = vi.fn(async () => ({
+      memories: [
+        {
+          id: "memory-1",
+          revision: 2,
+          kind: "procedural",
+          title: "Evidence",
+          content: "Separate facts from inference",
+          truncated: false,
+        },
+      ],
+      truncated: false,
+    }));
+    f.store.assertKnowledge = vi.fn(async () => {});
+    const proposal = {
+      kind: "procedural",
+      title: "Cite sources",
+      content: "Retain the source URL.",
+    };
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        calls("read_employee_memory"),
+        calls("read_employee_memory"),
+        calls("propose_memory", JSON.stringify(proposal)),
+        answer(),
+      ],
+    });
+    const result = await executeAgentRun({ ...f, model });
+    expect(f.store.knowledge).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain(
+      "Separate facts from inference",
+    );
+    expect(result).toMatchObject({
+      proposal,
+      knowledgeReferences: [{ id: "memory-1", revision: 2 }],
+    });
+    expect(f.store.complete).not.toHaveBeenCalled();
+    expect(f.store.assertKnowledge).toHaveBeenCalledWith(run, [{ id: "memory-1", revision: 2 }]);
+  });
+  it("stops before another model step when retrieved knowledge is revoked", async () => {
+    const f = fixture();
+    f.store.knowledge = async () => ({
+      memories: [
+        {
+          id: "m",
+          revision: 1,
+          kind: "semantic",
+          title: "Fact",
+          content: "Fact",
+          truncated: false,
+        },
+      ],
+      truncated: false,
+    });
+    f.store.assertKnowledge = async (_run, refs) => {
+      if (refs.length) throw new Error("Revoked");
+    };
+    const model = new MockLanguageModelV4({
+      doGenerate: [calls("read_employee_memory"), answer()],
+    });
+    await expect(executeAgentRun({ ...f, model })).rejects.toThrow();
+    expect(model.doGenerateCalls).toHaveLength(1);
+  });
+  it("does not allow a model to self-approve, target another Bot or submit a second proposal", async () => {
+    for (const input of [
+      { kind: "semantic", title: "Fact", content: "A lesson", ownerReviewed: true },
+      { kind: "semantic", title: "Fact", content: "A lesson", botId: "other" },
+    ]) {
+      const f = fixture();
+      f.store.knowledge = async () => ({ memories: [], truncated: false });
+      f.store.assertKnowledge = async () => {};
+      await expect(
+        executeAgentRun({
+          ...f,
+          model: new MockLanguageModelV4({
+            doGenerate: [calls("propose_memory", JSON.stringify(input)), answer()],
+          }),
+        }),
+      ).rejects.toThrow();
+    }
+    const f = fixture();
+    f.store.knowledge = async () => ({ memories: [], truncated: false });
+    f.store.assertKnowledge = async () => {};
+    const call = calls(
+      "propose_memory",
+      JSON.stringify({ kind: "semantic", title: "Fact", content: "A lesson" }),
+    );
+    await expect(
+      executeAgentRun({
+        ...f,
+        model: new MockLanguageModelV4({ doGenerate: [call, call, answer()] }),
+      }),
+    ).rejects.toThrow();
+  });
+
   it("uses the assigned Bot profile and persists per-step provider counts", async () => {
     const f = fixture();
     const model = new MockLanguageModelV4({ doGenerate: [calls(), answer()] });

@@ -63,6 +63,47 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
+  it("requires Owner authentication, origin and explicit bounded review for knowledge proposals", async () => {
+    const knowledge = {
+      list: vi.fn(async () => []),
+      review: vi.fn(async () => ({ proposalId: "proposal", decision: "reject", memoryId: null })),
+    };
+    const app = createTestApp({ store: createTestStore(), knowledge });
+    const endpoint = "/api/v1/bots/bot/knowledge-proposals";
+    expect((await app.request(endpoint)).status).toBe(401);
+    const login = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Origin: testOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+    expect((await app.request(endpoint, { headers: { Cookie: cookie } })).status).toBe(200);
+    const post = (body: unknown, origin = testOrigin) =>
+      app.request(`${endpoint}/proposal/review`, {
+        method: "POST",
+        headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await post({ decision: "reject", ownerReviewed: false })).status).toBe(422);
+    expect(
+      (await post({ decision: "reject", ownerReviewed: true }, "https://other.example")).status,
+    ).toBe(403);
+    expect(
+      (await post({ decision: "accept", ownerReviewed: true, title: "Fact", content: "Fact" }))
+        .status,
+    ).toBe(422);
+    expect(knowledge.review).not.toHaveBeenCalled();
+    expect((await post({ decision: "reject", ownerReviewed: true })).status).toBe(200);
+    expect(knowledge.review).toHaveBeenCalledExactlyOnceWith("bot", "proposal", {
+      decision: "reject",
+      ownerReviewed: true,
+    });
+    knowledge.review.mockRejectedValueOnce(new StoreConflictError("Already reviewed."));
+    expect((await post({ decision: "reject", ownerReviewed: true })).status).toBe(409);
+    knowledge.review.mockRejectedValueOnce(new StoreNotFoundError("Not found."));
+    expect((await post({ decision: "reject", ownerReviewed: true })).status).toBe(404);
+  });
+
   it("authenticates a strict native task cancel command and maps conflicts without leaking errors", async () => {
     const cancelNativeRun = vi.fn(
       async (_id: string) => ({ id: "run-1", channelId: "channel-1", status: "cancelled" }) as Run,
@@ -2040,6 +2081,7 @@ function createCompatibleBrowserNode(): ExecutionNode {
 }
 
 function createTestApp({
+  knowledge,
   cancelNativeRun,
   automations,
   store,
@@ -2058,6 +2100,7 @@ function createTestApp({
   remoteAddress = "127.0.0.1",
   trustedProxyAddress,
 }: {
+  knowledge?: Parameters<typeof createApp>[0]["knowledge"];
   cancelNativeRun?: Parameters<typeof createApp>[0]["cancelNativeRun"];
   automations?: Parameters<typeof createApp>[0]["automations"];
   store: ControlPlaneStore;
@@ -2087,6 +2130,7 @@ function createTestApp({
     requestThrottle,
   );
   return createApp({
+    ...(knowledge === undefined ? {} : { knowledge }),
     ...(cancelNativeRun === undefined ? {} : { cancelNativeRun }),
     ...(automations === undefined ? {} : { automations }),
     allowedOrigins: [testOrigin],

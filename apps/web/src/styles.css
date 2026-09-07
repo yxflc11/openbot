@@ -5371,3 +5371,62 @@ select:focus-visible {
   font-size: 12px;
   line-height: 1.6;
 }
+
+.knowledge-review-panel {
+  margin-bottom: 24px;
+  padding: 20px;
+  border: 1px solid var(--border-subtle, #dededb);
+  border-radius: 14px;
+}
+.knowledge-review-panel > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.knowledge-review-panel h3 {
+  margin: 0 0 8px;
+}
+.knowledge-review-panel p,
+.knowledge-proposal small {
+  color: var(--text-secondary, #73736e);
+  line-height: 1.6;
+}
+.knowledge-proposal {
+  border-top: 1px solid var(--border-subtle, #dededb);
+  padding-top: 20px;
+  margin-top: 20px;
+}
+.knowledge-proposal textarea {
+  min-height: 130px;
+}
+.knowledge-proposal-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.form-grid .memory-model-use {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+}
+.memory-model-use input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  flex: 0 0 16px;
+  margin-top: 3px;
+}
+.knowledge-source {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  display: block;
+}
+@media (max-width: 640px) {
+  .knowledge-review-panel {
+    padding: 14px;
+  }
+  .knowledge-review-panel > header {
+    flex-direction: column;
+  }
+}

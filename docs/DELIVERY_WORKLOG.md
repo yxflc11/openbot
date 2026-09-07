@@ -9,7 +9,7 @@ validation; elapsed time alone is not evidence of completion.
 | 1 | Download, install, model setup | Durable versioned downloads, install path, persistent model configuration | Local checks and all 9 hosted jobs passed; public release pending |
 | 2 | Useful tool task and file delivery | Scoped source reading produces a downloadable report | Implemented; full check, 12 PostgreSQL tests and actual browser download passed |
 | 3 | Execution experience | Bot context, understandable execution state, stop/recovery and usage bounds | Implemented; full check, 16 database tests and actual browser stop/resubmit/usage passed |
-| 4 | Knowledge in execution | Reviewed skills/memory influence tasks, with provenance and review boundaries | Pending |
+| 4 | Knowledge in execution | Reviewed skills/memory influence tasks, with provenance and review boundaries | Reviewed-memory loop implemented; executable skill bodies remain pending |
 | 5 | Broader ecosystem | Messaging, isolated delegation, more execution environments | Pending; ordered after core journey |
 
 ## Evidence journal
@@ -63,3 +63,10 @@ provider evidence, and package builds distinct from real-device certification.
   literal with runtime construction and rewrote the two unmerged P2 commits without relaxing the
   scanner. Full offline historical scan passed; commit 268063c passed all 9 hosted CI jobs in
   run 34149581888.
+
+- 18:02–18:29 UTC: added explicit default-off model sharing, bounded frozen memory snapshots,
+  successful-task candidate lessons, Owner edit/accept/reject and source/revision audit. Full check
+  passed; all 273 Server tests passed with 22 real PostgreSQL integration cases enabled. Actual
+  browser verified proposal editing, acceptance, next-task use, private/revoked exclusion, reload
+  and desktop/narrow layouts, zero page errors. No live paid model calls or autonomous skill claim.
+- P3 commit 4a39d5c passed all 9 hosted CI jobs in run 34149990564.

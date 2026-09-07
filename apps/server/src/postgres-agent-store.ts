@@ -3,22 +3,31 @@ import {
   artifacts as artifactsTable,
   bots,
   channelBots,
+  employeeMemories,
+  knowledgeProposals,
   messages,
   runEvents,
   runs,
 } from "@openbot/db";
-import type { Run, RunModelUsage, RunProgress } from "@openbot/domain";
-import { and, asc, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
-import type { AgentRunStore } from "./native-agent.js";
-import type { PersistedArtifact } from "./artifact-storage.js";
+import type { KnowledgeProposalDraft, Run, RunModelUsage, RunProgress } from "@openbot/domain";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import {
+  type AgentKnowledge,
+  boundedKnowledgeText,
+  type KnowledgeReference,
+  validateKnowledgeProposal,
+} from "./agent-knowledge.js";
 import {
   NativeExecutionError,
   type NativeFailureCode,
   nativeFailureMessages,
   runModelUsageSchema,
 } from "./agent-observations.js";
+import type { PersistedArtifact } from "./artifact-storage.js";
 import { StoreConflictError, StoreNotFoundError } from "./control-plane-store.js";
+import type { AgentRunStore } from "./native-agent.js";
 import { toMessage, toRun } from "./postgres-store.js";
+import { scanSensitiveText } from "./sensitive-content.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
 const running = (run: Run) =>
@@ -131,6 +140,95 @@ export class PostgresAgentStore implements AgentRunStore {
     if (!profile) throw new NativeExecutionError("scope_revoked");
     return profile;
   }
+  async knowledge(run: Run): Promise<AgentKnowledge> {
+    await this.assertScope(run);
+    return this.db.transaction(async (tx) => {
+      const [active] = await tx.select({ id: runs.id }).from(runs).where(running(run)).for("share");
+      if (!active) throw new NativeExecutionError("scope_revoked");
+      const rows = await tx
+        .select()
+        .from(employeeMemories)
+        .where(
+          and(
+            eq(employeeMemories.botId, run.botId),
+            eq(employeeMemories.modelUseEnabled, true),
+            inArray(employeeMemories.sensitivity, ["public", "internal"]),
+            inArray(employeeMemories.kind, ["working", "semantic", "episodic", "procedural"]),
+          ),
+        )
+        .orderBy(desc(employeeMemories.updatedAt), desc(employeeMemories.id))
+        .limit(9)
+        .for("share");
+      const memories: AgentKnowledge["memories"] = [];
+      let truncated = rows.length > 8;
+      for (const row of rows.slice(0, 8)) {
+        if (
+          scanSensitiveText(`${row.title}\n${row.content}`, "memory", { portable: false }).length
+        ) {
+          truncated = true;
+          continue;
+        }
+        const item = {
+          id: row.id,
+          revision: row.revision,
+          kind: row.kind,
+          title: boundedKnowledgeText(row.title, 640),
+          content: boundedKnowledgeText(row.content, 2000),
+          truncated: Buffer.byteLength(row.content) > 2000,
+          ...(row.provenance &&
+          typeof row.provenance === "object" &&
+          "sourceRunId" in row.provenance &&
+          typeof row.provenance.sourceRunId === "string" &&
+          row.provenance.sourceRunId.length <= 64
+            ? { sourceRunId: row.provenance.sourceRunId }
+            : {}),
+        };
+        if (Buffer.byteLength(JSON.stringify([...memories, item])) > 10 * 1024) {
+          truncated = true;
+          break;
+        }
+        memories.push(item);
+      }
+      await tx.insert(runEvents).values({
+        id: randomUUID(),
+        runId: run.id,
+        channelId: run.channelId,
+        botId: run.botId,
+        type: "KNOWLEDGE_READ",
+        payload: {
+          executor: "native-agent",
+          memories: memories.map(({ id, revision }) => ({ id, revision })),
+          truncated,
+        },
+      });
+      return { memories, truncated };
+    });
+  }
+  async assertKnowledge(run: Run, references: KnowledgeReference[]): Promise<void> {
+    if (!references.length) return;
+    if (references.length > 8) throw new NativeExecutionError("task_limit");
+    const rows = await this.db
+      .select({ id: employeeMemories.id, revision: employeeMemories.revision })
+      .from(employeeMemories)
+      .where(
+        and(
+          eq(employeeMemories.botId, run.botId),
+          eq(employeeMemories.modelUseEnabled, true),
+          inArray(
+            employeeMemories.id,
+            references.map((item) => item.id),
+          ),
+          inArray(employeeMemories.sensitivity, ["public", "internal"]),
+          inArray(employeeMemories.kind, ["working", "semantic", "episodic", "procedural"]),
+        ),
+      );
+    if (
+      references.some(
+        (ref) => !rows.some((row) => row.id === ref.id && row.revision === ref.revision),
+      )
+    )
+      throw new NativeExecutionError("scope_revoked");
+  }
   async usage(run: Run, input: RunModelUsage): Promise<Run> {
     const usage = runModelUsageSchema.parse(input);
     return this.db.transaction(async (tx) => {
@@ -145,16 +243,14 @@ export class PostgresAgentStore implements AgentRunStore {
         )
         .returning();
       if (!row) throw new NativeExecutionError("scope_revoked");
-      await tx
-        .insert(runEvents)
-        .values({
-          id: randomUUID(),
-          runId: run.id,
-          channelId: run.channelId,
-          botId: run.botId,
-          type: "MODEL_USAGE_RECORDED",
-          payload: { executor: "native-agent", ...usage },
-        });
+      await tx.insert(runEvents).values({
+        id: randomUUID(),
+        runId: run.id,
+        channelId: run.channelId,
+        botId: run.botId,
+        type: "MODEL_USAGE_RECORDED",
+        payload: { executor: "native-agent", ...usage },
+      });
       return toRun(row);
     });
   }
@@ -173,16 +269,14 @@ export class PostgresAgentStore implements AgentRunStore {
         .where(eq(runs.id, row.id))
         .returning();
       if (!cancelled) throw new Error("Cancellation was not persisted.");
-      await tx
-        .insert(runEvents)
-        .values({
-          id: randomUUID(),
-          runId: row.id,
-          channelId: row.channelId,
-          botId: row.botId,
-          type: "RUN_CANCELLED",
-          payload: { executor: "native-agent", actor: "owner" },
-        });
+      await tx.insert(runEvents).values({
+        id: randomUUID(),
+        runId: row.id,
+        channelId: row.channelId,
+        botId: row.botId,
+        type: "RUN_CANCELLED",
+        payload: { executor: "native-agent", actor: "owner" },
+      });
       return toRun(cancelled);
     });
   }
@@ -249,7 +343,16 @@ export class PostgresAgentStore implements AgentRunStore {
       };
     });
   }
-  async complete(run: Run, text: string, artifacts: PersistedArtifact[] = []) {
+  async complete(
+    run: Run,
+    text: string,
+    artifacts: PersistedArtifact[] = [],
+    proposalInput?: KnowledgeProposalDraft,
+    references: KnowledgeReference[] = [],
+  ) {
+    if (references.length > 8) throw new NativeExecutionError("task_limit");
+    const proposal =
+      proposalInput === undefined ? undefined : validateKnowledgeProposal(proposalInput);
     if (!text.trim() || text.length > 8000) throw new Error("Invalid final answer.");
     if (
       artifacts.length > 2 ||
@@ -272,6 +375,31 @@ export class PostgresAgentStore implements AgentRunStore {
         .where(running(run))
         .returning();
       if (!row) throw new Error("Run is no longer active.");
+      if (references.length) {
+        const memories = await tx
+          .select({ id: employeeMemories.id, revision: employeeMemories.revision })
+          .from(employeeMemories)
+          .where(
+            and(
+              eq(employeeMemories.botId, run.botId),
+              eq(employeeMemories.modelUseEnabled, true),
+              inArray(
+                employeeMemories.id,
+                references.map((ref) => ref.id),
+              ),
+              inArray(employeeMemories.sensitivity, ["public", "internal"]),
+              inArray(employeeMemories.kind, ["working", "semantic", "episodic", "procedural"]),
+            ),
+          )
+          .for("share");
+        if (
+          references.some(
+            (ref) =>
+              !memories.some((memory) => memory.id === ref.id && memory.revision === ref.revision),
+          )
+        )
+          throw new NativeExecutionError("scope_revoked");
+      }
       const [message] = await tx
         .insert(messages)
         .values({
@@ -286,6 +414,34 @@ export class PostgresAgentStore implements AgentRunStore {
         })
         .returning();
       if (!message) throw new Error("Reply was not persisted.");
+      if (proposal) {
+        // Serialize the per-Bot pending cap across concurrent channels before inserting a proposal.
+        await tx.select({ id: bots.id }).from(bots).where(eq(bots.id, run.botId)).for("update");
+        const pending = await tx
+          .select({ id: knowledgeProposals.id })
+          .from(knowledgeProposals)
+          .where(
+            and(eq(knowledgeProposals.botId, run.botId), eq(knowledgeProposals.status, "pending")),
+          )
+          .limit(50);
+        if (pending.length >= 50) throw new NativeExecutionError("task_limit");
+        const proposalId = randomUUID();
+        await tx.insert(knowledgeProposals).values({
+          id: proposalId,
+          botId: run.botId,
+          sourceRunId: run.id,
+          ...proposal,
+          createdAt: now,
+        });
+        await tx.insert(runEvents).values({
+          id: randomUUID(),
+          runId: run.id,
+          botId: run.botId,
+          channelId: run.channelId,
+          type: "KNOWLEDGE_PROPOSED",
+          payload: { executor: "native-agent", proposalId },
+        });
+      }
       if (artifacts.length) {
         await tx.insert(artifactsTable).values(
           artifacts.map((record) => ({
