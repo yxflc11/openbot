@@ -15,6 +15,7 @@ export function ModelSettingsScreen({
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [agentEnabled, setAgentEnabled] = useState(false);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -25,6 +26,7 @@ export function ModelSettingsScreen({
       if (next.status === "configured") {
         setProvider(next.provider);
         setModel(next.model);
+        setAgentEnabled(next.agentEnabled ?? false);
       }
       setError(undefined);
       setApiKey("");
@@ -44,6 +46,7 @@ export function ModelSettingsScreen({
     try {
       const next = await saveModelSettings({
         provider,
+        agentEnabled,
         model: model.trim(),
         apiKey,
         revision: snapshot.revision,
@@ -127,6 +130,19 @@ export function ModelSettingsScreen({
             <p className="connection-hint">
               {provider === "openai" ? "api.openai.com" : "api.anthropic.com"} ·
               密钥加密保存在你的服务电脑上。
+            </p>
+            <label className="model-agent-option">
+              <input
+                type="checkbox"
+                checked={agentEnabled}
+                onChange={(event) => setAgentEnabled(event.target.checked)}
+                disabled={busy || !snapshot}
+              />
+              启用原生 Agent
+            </label>
+            <p className="connection-hint">
+              启用后，新建的无电脑任务会将任务内容和按需读取的当前频道上下文发送给所选模型， 由 Bot
+              调用只读工具并回复，可能产生 API 费用。
             </p>
             <button
               type="submit"

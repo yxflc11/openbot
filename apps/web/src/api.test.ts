@@ -231,3 +231,20 @@ function exportPreview() {
     hostAuthority: "none" as const,
   };
 }
+
+describe("native Agent progress", () => {
+  it("accepts a Server-owned progress event without inventing a Node and rejects cross-channel data", async () => {
+    const { isRunProgressProjection } = await import("./api");
+    const progress = {
+      id: "event",
+      runId: "run",
+      channelId: "channel",
+      stage: "planning",
+      message: "Model step 1.",
+      createdAt: "2026-09-07T00:00:00Z",
+    };
+    expect(isRunProgressProjection(progress, "channel")).toBe(true);
+    expect(isRunProgressProjection(progress, "other")).toBe(false);
+    expect(isRunProgressProjection({ ...progress, nodeId: 42 }, "channel")).toBe(false);
+  });
+});

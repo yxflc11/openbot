@@ -73,13 +73,14 @@ macOS はローカルサービス作成または接続を選択でき、Windows/
 | --- | --- | --- |
 | Desktop / Web | チャンネル、Bot、承認、タスク表示、戻る/進む、ネイティブメニュー、下書き・スクロール復元、スキル一覧、設定保存 | 通知、ローカライズ、実機・アクセシビリティ検証 |
 | macOS サービス | アプリ所有の PostgreSQL/Server、暗号化ブートストラップ、データ保持再起動、接続モード切替 | 他 OS、認証付きリモート共有、バックアップ、更新、ログインサービス |
-| モデル | Owner 限定 OpenAI/Anthropic メタデータ検証と暗号化モデル設定 | 推論ループと外部 Agent アダプター。キーの保存では返信を生成しません |
+| モデル / native Agent | Owner の明示的な有効化、暗号化設定、モデル・ツール・観察ループ、現在のチャンネルの読み取りと Bot 返信 | 実モデルの検証、追加ツール、外部 Agent アダプター |
 | 自動タスク | PostgreSQL 永続化、一時停止/再開/削除、制限付き間隔、停止後の最大 1 回投入、既存認可ルート | 複数 Server 調整と追加のスケジュール形式 |
 | 社員 | プロフィール、進化履歴、スキル審査、Owner 管理メモリ、審査に紐付く移行、実験的 DSSE 署名 | 自律学習、実行可能スキル、選択的複製、公開信頼 |
 | Worker | 外向き接続、単回ペアリング、失効、能力バージョン、進捗、画像、成果物 | 所有証明、完全な実機検証、署名配布 |
 | コンピューター実行 | Docker/browser の URL スクリーンショット | 安全な入力、ネイティブ Provider、単回署名 lease、排他的引継ぎ |
 
-調整 Agent の推論ループ、Hermes/Pi/OpenClaw アダプター、プラグイン導入、任意デスクトップ制御は未実装です。
+[Native Agent](docs/NATIVE_AGENT.md) は明示的な有効化後に作成した `none` タスクを処理します。
+Hermes/Pi/OpenClaw アダプター、プラグイン導入、任意デスクトップ制御は未実装です。
 Cua、Lume、coder は拡張境界で、オフィス可視化は延期中です。
 社員の進化・学習は [Hermes Agent の learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)
 に着想を得ています。OpenBot 独自の発明とは主張しません。

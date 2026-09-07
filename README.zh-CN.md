@@ -75,13 +75,14 @@ Windows、Linux 提供连接流程。远程连接需输入可信的 HTTPS Server
 | --- | --- | --- |
 | Desktop 与 Web | 频道、Bot、审批、任务检查器、统一前进/后退导航、原生菜单、对话草稿与滚动恢复、技能库、持久化界面偏好 | 通知、本地化完善和更多无障碍/设备验证 |
 | macOS 本地服务 | 应用自有 PostgreSQL 与 Server、加密初始化身份、保留数据重启、显式切换远程客户端 | 跨平台服务引导、经认证的远程共享、备份、升级与登录服务恢复 |
-| 模型 | Owner 专属 OpenAI/Anthropic 元数据验证与加密默认模型设置 | Agent 推理循环和有界外部 Agent 适配器；保存密钥不会生成回复 |
+| 模型 / 原生 Agent | Owner 明确启用、加密 OpenAI/Anthropic 配置、有界模型/工具/观察循环、当前频道读取和持久化 Bot 回复 | 真实模型验证、更多受控工具和外部 Agent 适配器 |
 | 自动任务 | PostgreSQL 定时记录、暂停/恢复/删除、有界间隔、停机后最多补交一次到期任务、复用授权路由 | 多 Server 协调和更多调度语义 |
 | 员工档案 | 职责/简介编辑、带日期进化档案、技能审核、Owner 管理的类型化记忆、绑定审核的导出/导入与实验性 DSSE 签名 | 自主学习、可执行技能、选择性复制和公开信任分发 |
 | Worker 协议 | 出站连接、一次性配对、吊销、带版本能力路由、进度、画面和产物 | 持有证明身份、完整服务/设备一致性与签名分发 |
 | 电脑执行 | 只读 Docker/browser URL 截图流程 | 安全交互、原生桌面 Provider、签名单次 lease 和独占接管 |
 
-OpenBot 尚未提供原生协调 Agent 的推理循环、Hermes/Pi/OpenClaw 运行时适配器、插件安装生命周期
+[原生 Agent](docs/NATIVE_AGENT.zh-CN.md) 在 Owner 明确启用后执行新建的 `none` 配置任务。
+OpenBot 尚未提供 Hermes/Pi/OpenClaw 运行时适配器、插件安装生命周期
 或任意桌面控制。Cua、Lume、coder 仍是扩展边界。可选办公室可视化继续延后。
 
 员工进化和学习方向明确受到
@@ -114,7 +115,7 @@ Server 主机也可运行 `npm run node:enrollment-token -- local-development-no
 `OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS=false`，再在频道发送明确的公网 URL 获取截图。
 
 容器部署见 [Server 容器](docs/SERVER_CONTAINER.zh-CN.md)。定时工作见
-[自动任务](docs/AUTOMATIONS.zh-CN.md)：Server 必须持续运行，定时记录不增加权限，也不提供推理引擎。
+[自动任务](docs/AUTOMATIONS.zh-CN.md)：Server 必须持续运行，定时记录不增加权限；原生执行需单独[启用 Agent](docs/NATIVE_AGENT.zh-CN.md)。
 
 ## 安全与架构
 

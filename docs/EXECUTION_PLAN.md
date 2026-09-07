@@ -13,6 +13,30 @@ The Server remains the only authority for Employee identity, authorization, rout
 audit. Worker Hosts, Providers, models, webpages, imported skills, and messages remain untrusted.
 The office visualization remains a deferred optional plugin.
 
+## Native Agent loop — current delivery objective
+
+The immediate user goal is a working native Agent, not only orchestration infrastructure. Before
+expanding executable skills or desktop authority, deliver the Server-owned cycle:
+
+```text
+channel task -> claim Run -> model plans/selects tool -> Server checks scope
+                              ^                          |
+                              +---- bounded observation <- read-only tool
+                              |
+                         final Bot reply / explicit failure
+```
+
+| ID | Status | Deliverable | Exit gate |
+| --- | --- | --- | --- |
+| A0 | Implemented and locally verified | Reuse the pinned released Agent SDK and existing OpenAI/Anthropic settings | [Research](research/native-agent-loop.md), exact dependencies/licenses, Owner opt-in and no historical task replay |
+| A1 | Implemented and locally verified | Real model/tool/observation iteration with current-channel read tools | Real SDK multi-step HTTP fixtures; strict tool scope; step/time/token/output limits; no raw reasoning or secrets in progress |
+| A2 | Implemented and locally verified | Durable Run lifecycle and visible Bot results | Atomic claim/completion, same-channel serialization, restart interruption, settings-change/shutdown abort and PostgreSQL tests |
+| A3 | Implemented; hosted CI required before merge | Deliver through shared Desktop/Web and GitHub | UI opt-in, bilingual docs, full check and Windows/macOS/Linux package CI; live paid-provider evidence explicitly distinguished from hermetic tests |
+
+The initial loop serves `none` computer-profile Bots. Existing Worker execution remains separate;
+this goal does not authorize new desktop writes, memory retrieval, executable skills or external
+Agent delegation. The trust/distribution waves below continue with their existing acceptance gates.
+
 ## Why the order matters
 
 ```text

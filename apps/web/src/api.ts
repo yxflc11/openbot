@@ -690,7 +690,7 @@ function isArtifactProjection(value: unknown): value is Artifact {
   );
 }
 
-function isRunProgressProjection(value: unknown, channelId: string): value is RunProgress {
+export function isRunProgressProjection(value: unknown, channelId: string): value is RunProgress {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -700,8 +700,7 @@ function isRunProgressProjection(value: unknown, channelId: string): value is Ru
     typeof value.runId === "string" &&
     "channelId" in value &&
     value.channelId === channelId &&
-    "nodeId" in value &&
-    typeof value.nodeId === "string" &&
+    (!("nodeId" in value) || typeof value.nodeId === "string") &&
     "stage" in value &&
     typeof value.stage === "string" &&
     "message" in value &&
@@ -961,11 +960,18 @@ function isMessageCreatedEvent(
 export type ModelSettingsSummary =
   | { status: "unavailable" }
   | { status: "unconfigured"; revision: null }
-  | { status: "configured"; provider: "openai" | "anthropic"; model: string; revision: string };
+  | {
+      status: "configured";
+      provider: "openai" | "anthropic";
+      model: string;
+      revision: string;
+      agentEnabled?: boolean;
+    };
 export function getModelSettings(): Promise<ModelSettingsSummary> {
   return request<ModelSettingsSummary>("/api/v1/settings/model");
 }
 export function saveModelSettings(input: {
+  agentEnabled: boolean;
   provider: "openai" | "anthropic";
   model: string;
   apiKey: string;

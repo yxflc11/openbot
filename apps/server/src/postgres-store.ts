@@ -1726,7 +1726,9 @@ function toBot(row: typeof bots.$inferSelect | typeof bots.$inferInsert): Bot {
   };
 }
 
-function toMessage(row: typeof messages.$inferSelect | typeof messages.$inferInsert): Message {
+export function toMessage(
+  row: typeof messages.$inferSelect | typeof messages.$inferInsert,
+): Message {
   return {
     id: row.id,
     channelId: row.channelId,
@@ -1768,7 +1770,7 @@ function toBotAppearance(value: unknown): Bot["appearance"] {
   };
 }
 
-function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
+export function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
   return {
     id: row.id,
     channelId: row.channelId,
@@ -1822,7 +1824,6 @@ function toRunProgress(row: typeof runEvents.$inferSelect): RunProgress[] {
   if (
     row.runId === null ||
     row.channelId === null ||
-    row.nodeId === null ||
     typeof payload.stage !== "string" ||
     typeof payload.message !== "string"
   ) {
@@ -1833,7 +1834,7 @@ function toRunProgress(row: typeof runEvents.$inferSelect): RunProgress[] {
       id: row.id,
       runId: row.runId,
       channelId: row.channelId,
-      nodeId: row.nodeId,
+      ...(row.nodeId === null ? {} : { nodeId: row.nodeId }),
       stage: payload.stage,
       message: payload.message,
       createdAt: row.createdAt.toISOString(),

@@ -20,13 +20,24 @@ export const modelSettingsInputSchema = z
       .max(512)
       .regex(/^[\x21-\x7e]+$/u),
     revision: z.string().uuid().nullable(),
+    agentEnabled: z.boolean().default(false),
   })
   .strict();
 type ModelInput = z.infer<typeof modelSettingsInputSchema>;
-const retainedSchema = modelSettingsInputSchema.extend({ revision: z.string().uuid() });
+const retainedSchema = modelSettingsInputSchema.extend({
+  revision: z.string().uuid(),
+  agentEnabledAt: z.string().datetime().nullable().default(null),
+});
+export type AgentModelSettings = z.infer<typeof retainedSchema>;
 export type ModelSettingsSummary =
   | { status: "unconfigured"; revision: null }
-  | { status: "configured"; provider: ModelInput["provider"]; model: string; revision: string };
+  | {
+      status: "configured";
+      provider: ModelInput["provider"];
+      model: string;
+      revision: string;
+      agentEnabled: boolean;
+    };
 export class ModelSettingsError extends Error {
   constructor(
     readonly code:
@@ -44,6 +55,18 @@ export class ModelSettingsError extends Error {
 /** Owner-only Server storage. Neither keys nor provider response bodies leave this boundary. */
 export class ModelSettingsService {
   #busy = false;
+  readonly #listeners = new Set<() => void>();
+  onChange(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => {
+      this.#listeners.delete(listener);
+    };
+  }
+  /** Internal inference boundary; never serialize this credential-bearing value to clients. */
+  async agentSettings(): Promise<AgentModelSettings | undefined> {
+    const current = await this.#read();
+    return current?.agentEnabled && current.agentEnabledAt ? current : undefined;
+  }
   readonly #key: Buffer;
   constructor(
     readonly path: string,
@@ -61,10 +84,11 @@ export class ModelSettingsService {
           provider: current.provider,
           model: current.model,
           revision: current.revision,
+          agentEnabled: current.agentEnabled,
         }
       : { status: "unconfigured", revision: null };
   }
-  async save(value: ModelInput): Promise<ModelSettingsSummary> {
+  async save(value: z.input<typeof modelSettingsInputSchema>): Promise<ModelSettingsSummary> {
     const input = modelSettingsInputSchema.parse(value);
     if (this.#busy) throw new ModelSettingsError("busy");
     this.#busy = true;
@@ -72,7 +96,13 @@ export class ModelSettingsService {
       const current = await this.#read();
       if ((current?.revision ?? null) !== input.revision) throw new ModelSettingsError("conflict");
       await this.#verify(input);
-      const stored = { ...input, revision: randomUUID() };
+      const stored = {
+        ...input,
+        revision: randomUUID(),
+        agentEnabledAt: input.agentEnabled
+          ? ((current?.agentEnabled ? current.agentEnabledAt : null) ?? new Date().toISOString())
+          : null,
+      };
       const nonce = randomBytes(12);
       const cipher = createCipheriv("aes-256-gcm", this.#key, nonce);
       cipher.setAAD(Buffer.from("openbot.model-settings/v1"));
@@ -86,6 +116,7 @@ export class ModelSettingsService {
       try {
         await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
         await writeFileAtomic(this.path, envelope, { mode: 0o600 });
+        for (const listener of this.#listeners) listener();
         return await this.summary();
       } catch {
         throw new ModelSettingsError("storage_unavailable");

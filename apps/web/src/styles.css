@@ -5218,12 +5218,14 @@ select:focus-visible {
   font-weight: 650;
   margin-bottom: 12px;
 }
+.login-card .model-agent-option,
 .login-card .model-provider-options label {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
 }
+.login-card .model-agent-option input,
 .login-card .model-provider-options input {
   width: 16px;
   height: 16px;

@@ -78,13 +78,14 @@ Veja o fluxo e o ciclo dos dados em [Desktop setup](docs/DESKTOP_ONBOARDING.md).
 | --- | --- | --- |
 | Desktop / Web | Canais, Bots, aprovações, inspetor, voltar/avançar, menus nativos, restauração de rascunhos e rolagem, galeria de skills e preferências persistentes | Notificações, localização e evidência adicional de acessibilidade/dispositivos |
 | Serviços macOS | PostgreSQL/Server próprios do app, bootstrap criptografado, reinício preservando dados e troca para cliente remoto | Outros sistemas, compartilhamento remoto autenticado, backup, upgrades e serviço de login |
-| Modelos | Validação de metadados OpenAI/Anthropic exclusiva do Owner e configuração padrão criptografada | Loop de inferência e adaptadores externos; salvar uma chave não gera respostas |
+| Modelos / Agent nativo | Ativação explícita pelo Owner, configuração criptografada, ciclo modelo/ferramenta/observação, leituras do canal e respostas persistentes | Evidência com modelos reais, mais ferramentas controladas e adaptadores externos |
 | Tarefas automáticas | Persistência PostgreSQL, pausar/retomar/excluir, intervalos limitados, no máximo uma ocorrência após indisponibilidade e roteamento autorizado existente | Coordenação entre Servers e outras formas de agendamento |
 | Funcionários | Perfil, evolução datada, revisão de skills, memória gerida pelo Owner, importação/exportação vinculada à revisão e assinatura DSSE experimental | Aprendizado autônomo, skills executáveis, clonagem seletiva e confiança pública |
 | Worker | Conexões de saída, pareamento único, revogação, capacidades versionadas, progresso, imagens e artefatos | Prova de posse, conformidade completa em dispositivos e distribuição assinada |
 | Execução | Captura de URL pelo Docker/browser, somente leitura | Interação segura, Providers nativos, leases assinados de uso único e tomada de controle exclusiva |
 
-Ainda não há loop de inferência do agente coordenador, adaptadores Hermes/Pi/OpenClaw, ciclo de
+O [Agent nativo](docs/NATIVE_AGENT.md) executa novas tarefas de perfil `none` após ativação explícita.
+Ainda não há adaptadores Hermes/Pi/OpenClaw, ciclo de
 instalação de plugins ou controle arbitrário do desktop. Cua, Lume e coder são fronteiras de extensão;
 a visualização de escritório continua adiada.
 A evolução e o aprendizado dos funcionários são explicitamente inspirados no
