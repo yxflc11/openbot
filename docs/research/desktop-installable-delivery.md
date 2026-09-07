@@ -108,3 +108,14 @@ cancellation before headers and during a stalled response body; no public asset 
 
 - Public release publication and signing credentials are not assumed. Build reviewable artifacts
   first and record exactly which stage has passed.
+
+## curl unknown-length transfer boundary
+
+Final installer-document review confirmed from the official
+[curl max-filesize documentation](https://curl.se/docs/manpage.html#--max-filesize) and
+[8.4.0 changelog](https://curl.se/ch/8.4.0.html) that releases before 8.4.0 do not enforce this limit
+when response length is unknown. Select the existing released tool's fixed behavior: require curl
+8.4.0 (tag object `817204c6e41f66dafbaa704d67f828a4288b3577`, curl license) or newer before network/staging, rather than add a custom shell stream limiter or claim older
+versions are bounded. Older systems can use the documented native-asset download path. No source
+copied, new dependency or operating-system change. Test rejected/malformed versions before any
+network call and retain minimum-version fixtures in both Bash native lanes.

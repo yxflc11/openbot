@@ -30,6 +30,8 @@ they are not a substitute for a publisher signature. Read the script first if re
 environment. Both scripts use the fixed OpenBot GitHub repository and retain operating-system
 trust checks. They never enable inference or enroll a Worker.
 
+The macOS/Linux command bootstrap requires curl 8.4.0 or newer so unknown-length downloads are also bounded. Older or unrecognized versions stop before network access; use the native installer download table instead.
+
 macOS arm64 or Linux x64 (example version; it must have been published):
 
 ```bash

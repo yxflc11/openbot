@@ -24,6 +24,13 @@ case "$(uname -s)-$(uname -m)" in
   *) echo 'Unsupported target. Use the Windows PowerShell installer or the documented downloads.' >&2; exit 1 ;;
 esac
 command -v curl >/dev/null
+# Older curl only enforces max-filesize when Content-Length is known before transfer.
+curl_version="$(curl --version | awk 'NR == 1 { print $2 }')"
+if [[ ! "$curl_version" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] ||
+   (( 10#${BASH_REMATCH[1]} < 8 || (10#${BASH_REMATCH[1]} == 8 && 10#${BASH_REMATCH[2]} < 4) )); then
+  echo 'Command installation requires curl 8.4.0 or newer for bounded downloads. Use the documented native installer download instead.' >&2
+  exit 1
+fi
 if command -v shasum >/dev/null; then
   hash_command=(shasum -a 256)
 elif command -v sha256sum >/dev/null; then

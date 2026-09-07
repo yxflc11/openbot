@@ -39,7 +39,7 @@ test("shell bootstrap refuses altered downloads and cleans staging before any in
   const commands = {
     id: "#!/bin/sh\necho 1000\n",
     uname: '#!/bin/sh\nif [ "$1" = "-s" ]; then echo Linux; else echo x86_64; fi\n',
-    curl: `#!/bin/bash\nset -eu\nwhile [[ "$#" -gt 0 ]]; do\n if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi\ndone\ncase "$out" in\n */SHA256SUMS) printf '%s  %s\\n' '${"a".repeat(64)}' 'openbot-desktop-0.1.0-alpha.2-linux-x64.AppImage' > "$out";;\n *) printf 'altered installer' > "$out";;\nesac\n`,
+    curl: `#!/bin/bash\nset -eu\nif [[ "$1" == "--version" ]]; then echo 'curl 8.4.0'; exit 0; fi\nwhile [[ "$#" -gt 0 ]]; do\n if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi\ndone\ncase "$out" in\n */SHA256SUMS) printf '%s  %s\\n' '${"a".repeat(64)}' 'openbot-desktop-0.1.0-alpha.2-linux-x64.AppImage' > "$out";;\n *) printf 'altered installer' > "$out";;\nesac\n`,
   };
   for (const [name, body] of Object.entries(commands))
     await writeFile(join(directory, name), body, { mode: 0o755 });
@@ -103,7 +103,7 @@ test("Linux installation recovers from copy failure and retains a concurrent des
   const files = {
     id: "#!/bin/sh\necho 1000\n",
     uname: '#!/bin/sh\nif [ "$1" = "-s" ]; then echo Linux; else echo x86_64; fi\n',
-    curl: `#!/bin/bash\nset -eu\nwhile [[ "$#" -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done\ncase "$out" in */SHA256SUMS) printf '%s  %s\\n' '${digest}' 'openbot-desktop-0.1.0-alpha.2-linux-x64.AppImage' > "$out";; *) printf '%s' '${bytes}' > "$out";; esac\n`,
+    curl: `#!/bin/bash\nset -eu\nif [[ "$1" == "--version" ]]; then echo 'curl 8.4.0'; exit 0; fi\nwhile [[ "$#" -gt 0 ]]; do if [[ "$1" == "--output" ]]; then out="$2"; shift 2; else shift; fi; done\ncase "$out" in */SHA256SUMS) printf '%s  %s\\n' '${digest}' 'openbot-desktop-0.1.0-alpha.2-linux-x64.AppImage' > "$out";; *) printf '%s' '${bytes}' > "$out";; esac\n`,
     install: "#!/bin/sh\nexit 1\n",
   };
   for (const [name, body] of Object.entries(files))
@@ -134,4 +134,31 @@ test("Linux installation recovers from copy failure and retains a concurrent des
   assert.match(raced.stderr, /Another installation appeared/);
   assert.equal(await readFile(join(target, "race"), "utf8"), "retained");
   assert.deepEqual(await readdir(parent), ["0.1.0-alpha.2"]);
+});
+
+test("shell bootstrap rejects curl without unknown-length bounds before network access", {
+  skip: process.platform === "win32",
+}, async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "openbot-curl-version-test-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, "id"), "#!/bin/sh\necho 1000\n", { mode: 0o755 });
+  await writeFile(
+    join(directory, "uname"),
+    '#!/bin/sh\nif [ "$1" = "-s" ]; then echo Linux; else echo x86_64; fi\n',
+    { mode: 0o755 },
+  );
+  for (const version of ["7.88.1", "8.3.0", "unrecognized", "999999999.0.0"]) {
+    await writeFile(
+      join(directory, "curl"),
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then echo 'curl ${version}'; else echo 'NETWORK_WAS_CALLED' >&2; exit 97; fi\n`,
+      { mode: 0o755 },
+    );
+    const result = spawnSync("bash", [script], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /requires curl 8\.4\.0 or newer/);
+    assert.doesNotMatch(result.stderr, /NETWORK_WAS_CALLED|unbound variable/);
+  }
 });

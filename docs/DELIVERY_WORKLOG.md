@@ -105,3 +105,11 @@ provider evidence, and package builds distinct from real-device certification.
 
 - Final runtime commit cb718fc passed all 9 hosted CI jobs in run 34155768881. Three installer
   artifacts and three portable-bundle artifacts are available, each retained for 14 days.
+
+- 19:38–19:49 UTC: downloaded all three final-runtime installer artifacts from CI 34155768881 and
+  verified all four native files against version, source commit, size and SHA-256. Final documentation
+  commit 688fefb passed all 9 jobs in CI 34156245222. Created and visually inspected a four-page PDF
+  plus Markdown report. Stopped the dedicated Server/PostgreSQL and removed 85 task-owned temporary
+  entries after retaining evidence. Installer review confirmed curl before 8.4 cannot bound unknown-
+  length bodies; added a pre-network minimum-version gate, explicit manual-download fallback and
+  rejected-version fixtures. Full repository check passed; no application runtime was changed.
