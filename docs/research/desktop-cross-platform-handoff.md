@@ -68,3 +68,8 @@ Windows filesystem semantics. The controller correctly rejected POSIX ownership/
 before reaching encryption. Keep that encryption prerequisite check explicitly POSIX-only and
 exercise pending-request deduplication on all three platforms without spoofing filesystem proof.
 Production directory checks and unsupported-platform rejection remain unchanged.
+
+The second Windows run passed tests and Electron packaging, then exposed GNU tar's interpretation
+of a drive-letter archive path as a remote host. Use a workspace-relative output filename on all
+platforms; do not pass a Windows drive prefix to tar or add a GNU-only flag to macOS bsdtar.
+This follows the official [tar file-name semantics](https://www.gnu.org/software/tar/manual/html_node/file.html).

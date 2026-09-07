@@ -131,8 +131,8 @@ jobs:
           arch="$(node -p 'process.arch')"
           bundle="OpenBot-$platform-$arch"
           archive="openbot-desktop-$platform-$arch-${{ github.sha }}.tar.gz"
-          tar -czf "$RUNNER_TEMP/$archive" -C apps/desktop/out "$bundle"
-          echo "OPENBOT_DESKTOP_ARCHIVE=$RUNNER_TEMP/$archive" >> "$GITHUB_ENV"
+          tar -czf "apps/desktop/out/$archive" -C apps/desktop/out "$bundle"
+          echo "OPENBOT_DESKTOP_ARCHIVE=apps/desktop/out/$archive" >> "$GITHUB_ENV"
       - name: Retain the unsigned Desktop development bundle for review
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
