@@ -8,6 +8,7 @@ import type { ModelSettingsService } from "./model-settings.js";
 import {
   type AgentRunStore,
   agentFetch,
+  agentModel,
   executeAgentRun,
   NativeAgentRunner,
 } from "./native-agent.js";
@@ -81,6 +82,94 @@ function fixture() {
   };
 }
 describe("native Agent loop", () => {
+  it("runs the released OpenRouter adapter with tool feedback, bounded routing and no raw reasoning persistence", async () => {
+    const f = fixture();
+    const requests: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
+    const fetcher: typeof fetch = async (url, init) => {
+      requests.push({
+        url: String(url),
+        headers: new Headers(init?.headers),
+        body: JSON.parse(String(init?.body)),
+      });
+      const first = requests.length === 1;
+      return Response.json({
+        id: `completion-${requests.length}`,
+        object: "chat.completion",
+        created: 1,
+        model: "fixture/model",
+        choices: [
+          {
+            index: 0,
+            finish_reason: first ? "tool_calls" : "stop",
+            message: first
+              ? {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "read",
+                      type: "function",
+                      function: { name: "read_channel_context", arguments: "{}" },
+                    },
+                  ],
+                }
+              : {
+                  role: "assistant",
+                  content: "The launch is Tuesday.",
+                  reasoning: "PRIVATE_REASONING_FIXTURE",
+                },
+          },
+        ],
+        usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
+      });
+    };
+    const model = agentModel(
+      {
+        provider: "openrouter",
+        model: "fixture/model",
+        apiKey: "fixture-key-not-real",
+        revision: "config",
+        agentEnabled: true,
+        agentEnabledAt: new Date().toISOString(),
+      },
+      fetcher,
+    );
+    const result = await executeAgentRun({
+      ...f,
+      model,
+      modelIdentity: { provider: "openrouter", model: "fixture/model" },
+    });
+    expect(result.text).toBe("The launch is Tuesday.");
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      expect(request.url).toBe("https://openrouter.ai/api/v1/chat/completions");
+      expect(request.headers.get("authorization")).toBe("Bearer fixture-key-not-real");
+      expect(request.body.provider).toEqual({
+        require_parameters: true,
+        allow_fallbacks: false,
+        data_collection: "deny",
+      });
+      expect(request.body).not.toHaveProperty("plugins");
+      expect(request.body).not.toHaveProperty("models");
+    }
+    expect(JSON.stringify(requests[1]?.body.messages)).toContain("The launch is Tuesday.");
+    expect(f.store.usage).toHaveBeenLastCalledWith(run, {
+      provider: "openrouter",
+      model: "fixture/model",
+      steps: 2,
+      inputTokens: 40,
+      outputTokens: 20,
+    });
+    expect(JSON.stringify(f.publish.mock.calls)).not.toContain("PRIVATE_REASONING_FIXTURE");
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_REASONING_FIXTURE");
+    await expect(
+      agentFetch("openrouter", fetcher)("https://openrouter.ai/api/v1/completions", {
+        method: "POST",
+      }),
+    ).rejects.toThrow(/endpoint/);
+    expect(requests).toHaveLength(2);
+  });
+
   it("reads a frozen Owner-enabled snapshot and prepares one proposal without modifying active memory", async () => {
     const f = fixture();
     f.store.knowledge = vi.fn(async () => ({

@@ -8,6 +8,7 @@ import type {
   RunModelUsage,
   RunProgress,
 } from "@openbot/domain";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { isStepCount, type LanguageModel, ToolLoopAgent, tool } from "ai";
 import { z } from "zod";
 import {
@@ -73,7 +74,9 @@ export function agentFetch(
   const endpoint =
     provider === "openai"
       ? "https://api.openai.com/v1/responses"
-      : "https://api.anthropic.com/v1/messages";
+      : provider === "anthropic"
+        ? "https://api.anthropic.com/v1/messages"
+        : "https://openrouter.ai/api/v1/chat/completions";
   return async (input, init) => {
     if (String(input) !== endpoint || init?.method !== "POST")
       throw new Error("Invalid model endpoint.");
@@ -124,8 +127,20 @@ export function agentFetch(
   };
 }
 
-export function agentModel(config: AgentModelSettings): LanguageModel {
-  const fetch = agentFetch(config.provider);
+export function agentModel(
+  config: AgentModelSettings,
+  fetcher: typeof globalThis.fetch = globalThis.fetch,
+): LanguageModel {
+  const fetch = agentFetch(config.provider, fetcher);
+  if (config.provider === "openrouter")
+    return createOpenRouter({
+      apiKey: config.apiKey,
+      fetch,
+      baseURL: "https://openrouter.ai/api/v1",
+      extraBody: {
+        provider: { require_parameters: true, allow_fallbacks: false, data_collection: "deny" },
+      },
+    }).chat(config.model);
   return config.provider === "openai"
     ? createOpenAI({ apiKey: config.apiKey, fetch }).responses(config.model)
     : createAnthropic({ apiKey: config.apiKey, fetch })(config.model);

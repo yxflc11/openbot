@@ -7,7 +7,7 @@ OpenBot 可以在 Server 中执行有界的“模型判断 → 调用工具 → 
 
 ## 使用
 
-1. 打开“设置 → 模型与 API”，选择 OpenAI 或 Anthropic，输入支持工具调用的模型 ID 和 API Key，
+1. 打开“设置 → 模型与 API”，选择 OpenAI、Anthropic 或 OpenRouter，输入支持工具调用的模型 ID 和 API Key，
    勾选“启用原生 Agent”，验证并保存。元数据验证通过不代表该模型一定支持生成接口或工具调用。
 2. 创建电脑配置为 `none`（不使用电脑）的 Bot，将其加入频道，选中它并发送新任务，
    例如“阅读当前频道，总结还没完成的任务”。
@@ -91,3 +91,15 @@ Hermes/Pi/OpenClaw 委派、浏览器观察/操作工具及任意桌面控制仍
 这是一条受 Hermes Agent 启发的实验性“候选经验 → 人工审阅 → 后续任务使用”路径。可执行
 SKILL.md、语义/全文检索、后台整理、保留策略、跨会话用户建模和自主技能学习尚未实现。
 参见[研究记录](research/agent-reviewed-knowledge.md)。
+
+## OpenRouter 多模型入口
+
+在模型设置选择 **OpenRouter**，填写其当前目录中的具体 `author/model` ID。验证只读取密钥和
+模型端点元数据，不生成回复；拒绝管理/配置型密钥、不匹配的模型 ID，以及已启用 Agent 但没有
+声明工具能力端点的模型。元数据验证不代表真实推理质量、账户余额或当前生成服务可用。
+
+Server 通过固定版本 @openrouter/ai-sdk-provider 3.0.0 调用固定聊天接口，要求支持所用参数，
+关闭自动提供商回退，并发送 data_collection=deny 路由要求。OpenRouter 会将任务内容转交所选
+模型提供商；这项请求策略不是第三方数据保留的独立认证。原有循环、输出、停止、记忆和用量
+限制继续生效，不开放网页插件、BYOK 注入、任意端点或自动模型选择。目前仍只保留一份 Server
+默认模型配置，多配置档案与每员工单独选模型尚未实现。参见[研究与兼容性限制](research/openrouter-model-entry.md)。

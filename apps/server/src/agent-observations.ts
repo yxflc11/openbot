@@ -4,12 +4,12 @@ import { z } from "zod";
 
 export const runModelUsageSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic"]),
+    provider: z.enum(["openai", "anthropic", "openrouter"]),
     model: z
       .string()
       .min(1)
       .max(128)
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*(?:\/[A-Za-z0-9][A-Za-z0-9._:-]*)?$/u),
     steps: z.number().int().min(1).max(5),
     inputTokens: z.number().int().min(0).max(1_000_000_000).nullable(),
     outputTokens: z.number().int().min(0).max(1_000_000_000).nullable(),

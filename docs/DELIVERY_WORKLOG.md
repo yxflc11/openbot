@@ -70,3 +70,10 @@ provider evidence, and package builds distinct from real-device certification.
   browser verified proposal editing, acceptance, next-task use, private/revoked exclusion, reload
   and desktop/narrow layouts, zero page errors. No live paid model calls or autonomous skill claim.
 - P3 commit 4a39d5c passed all 9 hosted CI jobs in run 34149990564.
+
+- 18:29–18:49 UTC: integrated pinned OpenRouter 3.0.0, metadata-only credential/model verification,
+  fixed routing restrictions and existing Agent lifecycle/usage. Added the missing Web model-settings
+  sidebar entry while preserving workspace drafts. Full check and zero-vulnerability production
+  audit passed; actual built Web/Server/database verified save/reload/secret-free summaries and
+  desktop/narrow layouts. Public model metadata returned HTTP 200; all inference remained fixtures.
+- P4 commit 74d7819 passed all 9 hosted CI jobs in run 34151847897.

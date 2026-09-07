@@ -5241,6 +5241,7 @@ select:focus-visible {
   white-space: nowrap;
 }
 .model-provider-options {
+  flex-wrap: wrap;
   border: 0;
   padding: 0;
   margin: 0 0 12px;

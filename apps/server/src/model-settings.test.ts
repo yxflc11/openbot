@@ -2,7 +2,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ModelSettingsService } from "./model-settings.js";
+import { ModelSettingsService, modelSettingsInputSchema } from "./model-settings.js";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -28,6 +28,115 @@ const input = {
   revision: null,
 };
 describe("Owner model settings", () => {
+  it("verifies an OpenRouter inference key and matching tool model without generating a completion", async () => {
+    const fetcher = vi.fn(async (url: string) =>
+      Response.json(
+        url.endsWith("/key")
+          ? { data: { is_management_key: false, is_provisioning_key: false } }
+          : { data: { id: "fixture/model", endpoints: [{ supported_parameters: ["tools"] }] } },
+      ),
+    );
+    const { service, path } = await fixture(fetcher);
+    const saved = await service.save({
+      ...input,
+      provider: "openrouter",
+      model: "fixture/model",
+      agentEnabled: true,
+    });
+    expect(saved).toMatchObject({
+      provider: "openrouter",
+      model: "fixture/model",
+      agentEnabled: true,
+    });
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "https://openrouter.ai/api/v1/key",
+      "https://openrouter.ai/api/v1/models/fixture/model/endpoints",
+    ]);
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        redirect: "manual",
+        headers: { Accept: "application/json", Authorization: `Bearer ${input.apiKey}` },
+      }),
+    );
+    expect(await readFile(path, "utf8")).not.toContain(input.apiKey);
+    expect(await new ModelSettingsService(path, "a".repeat(64)).summary()).toEqual(saved);
+  });
+  it("rejects management/provisioning keys before requesting model metadata", async () => {
+    for (const data of [
+      { is_management_key: true },
+      { is_management_key: false, is_provisioning_key: true },
+      {},
+    ]) {
+      const fetcher = vi.fn(async () => Response.json({ data }));
+      const { service } = await fixture(fetcher);
+      await expect(
+        service.save({ ...input, provider: "openrouter", model: "fixture/model" }),
+      ).rejects.toMatchObject({ code: "invalid_credentials" });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(await service.summary()).toEqual({ status: "unconfigured", revision: null });
+    }
+  });
+  it("rejects mismatched, unavailable and non-tool-capable OpenRouter models", async () => {
+    for (const data of [
+      { id: "other/model", endpoints: [{ supported_parameters: ["tools"] }] },
+      { id: "fixture/model", endpoints: [] },
+      { id: "fixture/model", endpoints: [{ supported_parameters: ["temperature"] }] },
+    ]) {
+      const fetcher = vi.fn(async (url: string) =>
+        Response.json(url.endsWith("/key") ? { data: { is_management_key: false } } : { data }),
+      );
+      const { service } = await fixture(fetcher);
+      await expect(
+        service.save({
+          ...input,
+          provider: "openrouter",
+          model: "fixture/model",
+          agentEnabled: true,
+        }),
+      ).rejects.toMatchObject({ code: "model_unavailable" });
+      expect(await service.summary()).toEqual({ status: "unconfigured", revision: null });
+    }
+  });
+  it("rejects model URL/path substitution and preserves direct-provider model syntax", () => {
+    for (const model of [
+      "https://other.example/x",
+      "a/../b",
+      "a//b",
+      "a/b?key=value",
+      "a/b#fragment",
+      "~openai/latest",
+      "a/b/c",
+      "a/%2f",
+    ]) {
+      expect(
+        modelSettingsInputSchema.safeParse({ ...input, provider: "openrouter", model }).success,
+      ).toBe(false);
+    }
+    expect(
+      modelSettingsInputSchema.safeParse({ ...input, provider: "openai", model: "a/b" }).success,
+    ).toBe(false);
+    expect(
+      modelSettingsInputSchema.safeParse({
+        ...input,
+        provider: "openrouter",
+        model: "fixture/model:free",
+      }).success,
+    ).toBe(true);
+  });
+  it("bounds OpenRouter metadata and refuses redirects with no stored key", async () => {
+    for (const response of [
+      new Response(null, { status: 302, headers: { location: "https://other.example" } }),
+      Response.json({ data: { padding: "x".repeat(33000) } }),
+    ]) {
+      const { service } = await fixture(vi.fn(async () => response));
+      await expect(
+        service.save({ ...input, provider: "openrouter", model: "fixture/model" }),
+      ).rejects.toMatchObject({ code: "provider_unavailable" });
+      expect(await service.summary()).toEqual({ status: "unconfigured", revision: null });
+    }
+  });
+
   it("requires explicit opt-in, preserves the eligibility boundary, and notifies on disable", async () => {
     const { service, path } = await fixture();
     expect(await service.agentSettings()).toBeUndefined();

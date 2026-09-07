@@ -260,3 +260,7 @@ Every non-trivial feature pull request must link its research note or ADR and an
 ## Reviewed memory in native tasks
 
 Reuse review complete: retain PostgreSQL, Owner memory lifecycle and sensitive-text scanning; add a default-off model-use flag, successful-task proposals and transactional review. Preserve Hermes Agent inspiration. No copied source or new dependency; no executable-skill or autonomous-learning claim. [Research](research/agent-reviewed-knowledge.md).
+
+## OpenRouter model entry
+
+Use released @openrouter/ai-sdk-provider 3.0.0 / c1ce69ab (Apache-2.0), with fixed endpoints, strict model IDs, metadata-only verification and explicit routing policy around the existing loop. No copied source or universal model claim. [Research](research/openrouter-model-entry.md).

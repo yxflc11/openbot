@@ -7,7 +7,7 @@ runs iteration; PostgreSQL remains the authority for tasks, channel membership, 
 
 ## Use it
 
-1. In **Settings → Models & API**, choose OpenAI or Anthropic, enter a model that supports tool
+1. In **Settings → Models & API**, choose OpenAI, Anthropic or OpenRouter, enter a model that supports tool
    calling and its API key, check **Enable native Agent**, then verify and save. The shared UI
    currently labels this option **启用原生 Agent**. Metadata validation alone does not prove that
    a model supports the generation endpoint or tools.
@@ -109,3 +109,18 @@ Rejected text is removed; accepted text lives in the Owner memory, not the propo
 This is an experimental reviewed-memory loop inspired by Hermes Agent, not autonomous skill learning.
 Executable SKILL.md loading, semantic/FTS retrieval, background consolidation, retention schedules and
 cross-session user modelling remain future work. See [research](research/agent-reviewed-knowledge.md).
+
+## OpenRouter models
+
+Select **OpenRouter** and enter an explicit `author/model` ID from its current catalog. Verification
+reads key and model-endpoint metadata without generating a completion. Management/provisioning keys,
+mismatched model IDs and Agent-enabled models without a declared tool-capable endpoint are rejected.
+Metadata validation does not certify model quality, account credit or generation availability.
+
+The Server uses @openrouter/ai-sdk-provider 3.0.0 against the fixed chat-completions endpoint. Routing
+requires supported parameters, disables automatic provider fallback and requests data_collection=deny.
+OpenRouter forwards task content to its selected model provider; the routing request is not independent
+certification of third-party retention. Existing loop, output, cancellation, memory and usage limits
+apply. No OpenRouter web plugins, BYOK injection, arbitrary endpoints or automatic model selection.
+One active Server model configuration is retained; multi-profile/per-Bot selection remains future work.
+See [research and known compatibility limits](research/openrouter-model-entry.md).

@@ -209,3 +209,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 ## 已审核记忆参与原生任务
 
 已完成复用审查：沿用 PostgreSQL、Owner 记忆生命周期和敏感文本扫描，仅增加默认关闭的模型使用开关、成功任务候选经验及事务审阅。Hermes Agent 的启发归属保留；未复制源码、未新增依赖，不宣称可执行技能或自主学习。 [Research](research/agent-reviewed-knowledge.md).
+
+## OpenRouter 模型入口
+
+复用已发布 @openrouter/ai-sdk-provider 3.0.0 / c1ce69ab（Apache-2.0），以固定端点、严格模型 ID、非推理元数据验证和明确路由策略适配现有循环。未复制源码，不宣称支持所有模型。 [Research](research/openrouter-model-entry.md).

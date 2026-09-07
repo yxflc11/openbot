@@ -25,10 +25,15 @@ and notices.
 - Vercel AI SDK `ai` 7.0.93, `@ai-sdk/openai` 4.0.60, `@ai-sdk/anthropic` 4.0.49,
   `@ai-sdk/provider` 4.0.10, `@ai-sdk/provider-utils` 5.0.36 and the SDK's transitive
   `@ai-sdk/gateway` 4.0.75 — Copyright 2023 Vercel, Inc.; Apache License 2.0.
-  The Server uses explicit OpenAI/Anthropic adapters, not the gateway. Package LICENSE files
+  The Server uses explicit OpenAI/Anthropic/OpenRouter adapters, not the AI SDK gateway. Package LICENSE files
   remain in the packaged production dependency tree. No upstream implementation was copied.
   See [Agent research](docs/research/native-agent-loop.md) and the
   [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+
+- `@openrouter/ai-sdk-provider` 3.0.0 — OpenRouter contributors; Apache License 2.0.
+  Selected release c1ce69ab9dfe9ca87a57e1db5faf35ee78f6fa1a; use the public chat adapter without
+  copied or modified upstream code. Its LICENSE remains in packaged production dependencies.
+  See [OpenRouter research](docs/research/openrouter-model-entry.md).
 
 No upstream source is copied into OpenBot. The following MIT license text is reproduced for the
 MIT-licensed dependencies listed above:
