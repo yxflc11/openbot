@@ -90,3 +90,5 @@ dependency notice/source review and signing/distribution review before publishin
 visible only to repository maintainers and is not a public download channel.
 
 The Windows command installer streams at most 16 KiB of checksums and 2 GiB of installer bytes, allowing at most five HTTPS redirects on approved GitHub release hosts. Cancellation, limits or failures remove partial downloads. Linux copies into a private sibling stage before publishing the version directory; failed copies are retryable and concurrent destinations are retained without overwrite or nesting.
+
+The Desktop main window owns one workspace and one channel event stream. Reload, channel replacement, Server switching and window closure abort obsolete streams so repeated navigation does not exhaust Server connection slots.

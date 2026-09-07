@@ -113,6 +113,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | CI 依赖与密钥扫描 | [TruffleHog `3.97.1` / `20652fbb`](https://github.com/trufflesecurity/trufflehog/tree/20652fbbdefffcdaa493a5bf57ab2ac6b1db715b)、[Gitleaks `v8.27.2` / `c7acf33`](https://github.com/gitleaks/gitleaks/tree/c7acf33) 与 [npm CLI `10.9.9` / `745d8d90`](https://github.com/npm/cli/tree/745d8d90b5403110d26ba332ba83d8c5a51f0578) | AGPL-3.0；MIT；Artistic-2.0 | 在 CI 中以只读、digest 固定容器运行 TruffleHog，并关闭验证与更新；它不链接也不随 OpenBot 分发。选择精确审查的 npm CLI，以 `npm ci --ignore-scripts` 校验并构建完整锁定树，再以失败关闭方式只审计生产依赖。Gitleaks 是备用静态候选，不采用其面向组织另行授权的官方 Action。见[调研证据](research/dev-001-short-term-hardening.md)。 |
 | 浏览器出站加固 | [OWASP SSRF Prevention Cheat Sheet `b8586414`](https://github.com/OWASP/CheatSheetSeries/blob/b8586414a5c47ae68911edb97d4e7b7bc6301035/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md) 与 [CopilotKit/OpenBot `agent-computer` `257c1280`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer) | 文档 CC BY-SA 4.0；MIT | 延期。当前 Docker Provider 的 DNS 预检无法约束另一个浏览器服务的重定向和真实连接。出站控制进入 `agent-computer` 或其网络命名空间前，该适配器仅可用于可信测试目标；不把更多应用层预检宣传成 SSRF 控制。见[调研证据](research/dev-001-short-term-hardening.md)。 |
 | 办公室可视化 | 项目所有者提供的腾讯 Marvis 产品图片 | 未找到可复用源码许可证 | 只作视觉启发，不引入 Marvis 代码或资源；办公室继续作为延期插件。 |
+| 桌面事件流生命周期 | Electron 44.2.0 / tag object `369b0d9d3afdd5b8c0bdb0ad42391443947a7424`；AbortController | MIT；Node.js license | 单窗口保留一条工作区与一条频道流；替换、导航、关闭时中止。重建响应不能依赖上游协议取消，无源码复制；[研究](research/desktop-stream-lifecycle.md)。 |
 
 ## 追溯覆盖图
 

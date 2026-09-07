@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  DesktopEventStreamLifecycle,
   MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES,
   parseDesktopApiRequestUrl,
   proxyDesktopServerRequest,
@@ -196,5 +197,58 @@ describe("Desktop Server proxy routing", () => {
 
     expect(response?.headers.get("x-request-id")).toBe("request-1");
     await expect(response?.text()).resolves.toBe("event: ready\ndata: {}\n\n");
+  });
+});
+
+describe("single-window event-stream lifecycle", () => {
+  const request = (path: string) =>
+    new Request(`openbot://app/api/v1/${path}`, {
+      headers: { accept: "text/event-stream" },
+    });
+  it("bounds repeated channel subscriptions without cancelling workspace or ordinary requests", async () => {
+    const lifecycle = new DesktopEventStreamLifecycle();
+    const signals: AbortSignal[] = [];
+    const fetcher = vi.fn(async (_input: string, init?: RequestInit) => {
+      signals.push(init?.signal as AbortSignal);
+      return new Response(new ReadableStream(), {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    await lifecycle.forward(request("workspace/events"), configured, fetcher);
+    for (let index = 0; index < 12; index++)
+      await lifecycle.forward(request(`channels/channel-${index}/events`), configured, fetcher);
+    expect(signals[0]?.aborted).toBe(false);
+    expect(signals.slice(1, -1).every((signal) => signal.aborted)).toBe(true);
+    expect(signals.at(-1)?.aborted).toBe(false);
+    await lifecycle.forward(new Request("openbot://app/api/v1/workspace"), configured, fetcher);
+    lifecycle.clear();
+    expect(signals.slice(0, -1).every((signal) => signal.aborted)).toBe(true);
+    expect(signals.at(-1)?.aborted).toBe(false);
+    lifecycle.clear();
+  });
+
+  it("does not let a late replaced-stream failure remove its successor", async () => {
+    const lifecycle = new DesktopEventStreamLifecycle();
+    let failFirst: ((response: Response) => void) | undefined;
+    const first = lifecycle.forward(
+      request("workspace/events"),
+      configured,
+      () =>
+        new Promise((resolve) => {
+          failFirst = resolve;
+        }),
+    );
+    let currentSignal: AbortSignal | undefined;
+    await lifecycle.forward(request("workspace/events"), configured, async (_input, init) => {
+      currentSignal = init?.signal ?? undefined;
+      return new Response(new ReadableStream(), {
+        headers: { "content-type": "text/event-stream" },
+      });
+    });
+    failFirst?.(new Response(null, { status: 503 }));
+    await first;
+    expect(currentSignal?.aborted).toBe(false);
+    lifecycle.clear();
+    expect(currentSignal?.aborted).toBe(true);
   });
 });

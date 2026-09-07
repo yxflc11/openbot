@@ -18,6 +18,47 @@ const exposedResponseHeaders = new Set([
 ]);
 const forbiddenCredentialHeaders = ["authorization", "cookie", "proxy-authorization"];
 
+/** The single Desktop window owns at most one workspace and one channel event stream. */
+export class DesktopEventStreamLifecycle {
+  readonly #streams = new Map<string, AbortController>();
+
+  async forward(
+    request: Request,
+    connection: DesktopConnectionState,
+    fetcher: DesktopServerFetcher,
+  ): Promise<Response | undefined> {
+    const path = parseDesktopApiRequestUrl(request.url)?.pathname;
+    const slot =
+      request.method === "GET" && request.headers.get("accept")?.includes("text/event-stream")
+        ? path === "/api/v1/workspace/events"
+          ? "workspace"
+          : /^\/api\/v1\/channels\/[^/]+\/events$/u.test(path ?? "")
+            ? "channel"
+            : undefined
+        : undefined;
+    if (!slot) return proxyDesktopServerRequest(request, connection, fetcher);
+    this.#streams.get(slot)?.abort();
+    const controller = new AbortController();
+    this.#streams.set(slot, controller);
+    const response = await proxyDesktopServerRequest(request, connection, (input, init) =>
+      fetcher(input, {
+        ...init,
+        signal: AbortSignal.any([controller.signal, ...(init?.signal ? [init.signal] : [])]),
+      }),
+    );
+    if (!response?.ok || !response.headers.get("content-type")?.includes("text/event-stream")) {
+      controller.abort();
+      if (this.#streams.get(slot) === controller) this.#streams.delete(slot);
+    }
+    return response;
+  }
+
+  clear(): void {
+    for (const controller of this.#streams.values()) controller.abort();
+    this.#streams.clear();
+  }
+}
+
 export async function proxyDesktopServerRequest(
   request: Request,
   connection: DesktopConnectionState,

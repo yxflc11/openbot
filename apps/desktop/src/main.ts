@@ -52,7 +52,7 @@ import {
   DESKTOP_PERMISSION_DECISION,
   DESKTOP_WINDOW_OPEN_DECISION,
 } from "./security-policy.js";
-import { proxyDesktopServerRequest } from "./server-proxy.js";
+import { DesktopEventStreamLifecycle } from "./server-proxy.js";
 import { FileDesktopSetupPlanStore } from "./setup-plan.js";
 import { DesktopSetupPlanController } from "./setup-plan-controller.js";
 import { SidebarMaterialController } from "./sidebar-material.js";
@@ -86,6 +86,8 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
+
+const eventStreams = new DesktopEventStreamLifecycle();
 
 function lockDownSession(desktopSession: Session): void {
   desktopSession.setPermissionCheckHandler(() => DESKTOP_PERMISSION_DECISION);
@@ -249,10 +251,16 @@ async function createMainWindow(activeSession: Session): Promise<void> {
   window.on("focus", () => navigationMenu?.refresh());
   window.on("blur", () => navigationMenu?.refresh());
   window.webContents.on("did-start-navigation", (details) => {
-    if (details.isMainFrame) navigationMenu?.reset();
+    if (details.isMainFrame) {
+      eventStreams.clear();
+      navigationMenu?.reset();
+    }
   });
   window.webContents.on("did-finish-load", () => navigationMenu?.refresh());
-  window.webContents.on("render-process-gone", () => navigationMenu?.reset());
+  window.webContents.on("render-process-gone", () => {
+    eventStreams.clear();
+    navigationMenu?.reset();
+  });
   const material = new SidebarMaterialController({
     platform: process.platform,
     window,
@@ -272,6 +280,7 @@ async function createMainWindow(activeSession: Session): Promise<void> {
   window.on("focus", refreshMaterial);
   window.once("ready-to-show", () => window.show());
   window.once("closed", () => {
+    eventStreams.clear();
     nativeTheme.removeListener("updated", refreshMaterial);
     if (sidebarMaterial === material) sidebarMaterial = undefined;
     if (mainWindow === window) mainWindow = undefined;
@@ -284,8 +293,9 @@ async function startDesktop(): Promise<void> {
   const activeSession = session.fromPartition("persist:openbot-desktop", { cache: true });
   const rendererRoot = join(app.getAppPath(), "dist", "renderer");
   const connectionController = new DesktopConnectionController({
-    clearSessionData: () =>
-      activeSession.clearData({
+    clearSessionData: () => {
+      eventStreams.clear();
+      return activeSession.clearData({
         dataTypes: [
           "cache",
           "cookies",
@@ -294,7 +304,8 @@ async function startDesktop(): Promise<void> {
           "localStorage",
           "serviceWorkers",
         ],
-      }),
+      });
+    },
     confirmServer: async (serverUrl) => {
       if (nativeServer?.owns(serverUrl)) return true;
       const window = mainWindow;
@@ -424,7 +435,7 @@ async function startDesktop(): Promise<void> {
   await Promise.all([connectionController.initialize(), setupPlanController.initialize()]);
   lockDownSession(activeSession);
   await activeSession.protocol.handle(DESKTOP_SCHEME, async (request) => {
-    const serverResponse = await proxyDesktopServerRequest(
+    const serverResponse = await eventStreams.forward(
       request,
       connectionController.getState(),
       (input, init) => activeSession.fetch(input, init),
@@ -484,6 +495,7 @@ app.on("activate", () => {
 });
 
 app.on("before-quit", (event) => {
+  eventStreams.clear();
   if (quitting || nativeServer === undefined) return;
   event.preventDefault();
   quitting = true;

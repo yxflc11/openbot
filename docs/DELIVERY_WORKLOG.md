@@ -92,3 +92,13 @@ provider evidence, and package builds distinct from real-device certification.
   tests, including Windows PowerShell and pwsh. Rebuilt the full local macOS DMG with all features;
   mount, ASAR, fuse and native-resource checks passed. This local build has no Worker companion;
   the native CI package builds and includes it.
+
+- 19:14–19:28 UTC: final packaged-ASAR QA reproduced an Electron SSE lifecycle issue after repeated
+  navigation: stale streams occupied connection slots and ordinary requests timed out. Reviewed
+  pinned Electron source and upstream issue 47097 before adding single-window stream ownership.
+  Full check passed. Rebuilt DMG/ASAR then passed the complete native memory-review/use/revoke flow,
+  four unique report tasks separated by reloads, exclusive report saving, OpenRouter save/reload,
+  four further reloads and zero page errors. QA overrides only the application identity/data path
+  and save-dialog selection while loading the built ASAR; it is not uninstrumented signed-app evidence.
+- Commit 3f8e38b passed all 9 hosted jobs in run 34154753020, including the explicit native bootstrap
+  lane (Windows PowerShell and pwsh). Stream-lifecycle commit verification follows separately.
