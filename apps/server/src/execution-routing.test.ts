@@ -40,6 +40,24 @@ const node = (overrides: Partial<ExecutionNode> = {}): ExecutionNode => ({
 });
 
 describe("execution routing", () => {
+  it("requires browser.input for explicit clicks and does not route them to observation-only Workers", () => {
+    const clicking = {
+      ...run,
+      instruction: 'Open https://example.com/ and click button "Preview"',
+    };
+    expect(selectExecutionNode(clicking, [node()])).toBeUndefined();
+    const capable = node();
+    capable.capabilityManifest.push({
+      id: "browser.input",
+      version: 1,
+      providerId: "docker",
+      constraints: { operation: "click" },
+    });
+    expect(
+      selectExecutionNode(clicking, [capable])?.requirements.capabilityManifest,
+    ).toContainEqual({ id: "browser.input", version: 1 });
+  });
+
   it("maps fixed profiles to legacy aliases and exact capability majors", () => {
     expect(requirementsForRun(run)).toEqual({
       capabilities: ["browser", "screenshot"],

@@ -55,7 +55,7 @@ routing tests alone never grants one of those labels.
 
 | Provider | Declaration | Routed | Integrated | Support claim |
 | --- | --- | --- | --- | --- |
-| Docker/browser adapter | Passes | Simulated Windows/macOS/Linux routes pass | Read-only navigate + PNG screenshot vertical slice | Pre-alpha development slice |
+| Docker/browser adapter | Passes | Simulated Windows/macOS/Linux routes pass | Navigate + PNG and opt-in reviewed single-button click on trusted test origins | Pre-alpha development slice |
 | Cua | Passes | macOS declaration scenario passes | Not implemented in this repository | None |
 | Lume | Passes | Requirements are defined | Not implemented in this repository | None |
 | Coder | Passes | Simulated Linux arm64 route passes | Not implemented in this repository | None |
@@ -173,3 +173,13 @@ The schema, builder, and standalone runner exist today and have hermetic negativ
 gap is to author Provider-specific scenario modules and execute them on controlled real Windows,
 macOS, and Linux devices. No real-device support claim exists until those reports are observed and
 reviewed.
+
+## Reviewed browser-click evidence
+
+The [controlled browser flow](CONTROLLED_BROWSER.md) was exercised on macOS arm64 with actual
+Server/PostgreSQL, enrolled Worker, pinned upstream agent-computer and its Chromium, using a local
+fixture. Rejection preserved the page; approval clicked the named button once and returned a PNG.
+Repeated navigation covers frame-qualified references. Web UI passed at 1280x900 and 390x844.
+The QA upstream bind-address patch is disclosed in [research](research/controlled-browser-click.md).
+This is experimental integration evidence, not native desktop input or Windows/Linux browser
+certification. Browser-side egress and general untrusted-site operation remain unimplemented.

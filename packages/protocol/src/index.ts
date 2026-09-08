@@ -1,3 +1,8 @@
+export {
+  hasBrowserClickIntent,
+  parseBrowserClickInstruction,
+  browserClickApprovalMatches,
+} from "./browser-click.js";
 import { z } from "zod";
 import { nodeArchitectureSchema, nodePlatformSchema, protocolVersion } from "./node-metadata.js";
 

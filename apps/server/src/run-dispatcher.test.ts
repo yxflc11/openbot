@@ -465,6 +465,39 @@ describe("run dispatcher", () => {
     await harness.dispatcher.stop();
   });
 
+  it.each(["matching", "wrong target", "wrong button", "missing run", "wrong profile"])(
+    "binds browser approval to the Server task: %s",
+    async (scenario) => {
+      const run = {
+        ...queuedRun(),
+        status: "running" as const,
+        nodeId: linuxNode.id,
+        instruction: 'Open https://example.test/ and click button "Preview"',
+      };
+      if (scenario === "wrong profile") run.executionProfile = "none";
+      const harness = createApprovalHarness(
+        undefined,
+        scenario === "missing run" ? undefined : run,
+      );
+      await harness.dispatcher.start();
+      harness.send({
+        action: "browser.click",
+        risk: "privileged",
+        target: scenario === "wrong target" ? "https://other.test/" : "https://example.test/",
+        beforeState: {
+          ref: "e7",
+          snapshotId: 3,
+          screenshotSha256: "0".repeat(64),
+          buttonName: scenario === "wrong button" ? "Delete" : "Preview",
+        },
+      });
+      await waitFor(() => harness.requestedRisks.length + harness.failedErrors.length === 1);
+      expect(harness.requestedRisks).toEqual(scenario === "matching" ? ["privileged"] : []);
+      expect(harness.failedErrors).toHaveLength(scenario === "matching" ? 0 : 1);
+      await harness.dispatcher.stop();
+    },
+  );
+
   it("rejects a Node risk below the Server policy minimum", async () => {
     const harness = createApprovalHarness([
       {
@@ -749,7 +782,10 @@ const artifactStorage = {
   async remove() {},
 };
 
-function createApprovalHarness(policyRules?: ConstructorParameters<typeof RunDispatcher>[6]) {
+function createApprovalHarness(
+  policyRules?: ConstructorParameters<typeof RunDispatcher>[6],
+  runningRun?: Run,
+) {
   let runHandler: ((node: ExecutionNode, message: NodeRunMessage) => void) | undefined;
   const requestedRisks: string[] = [];
   const failedErrors: string[] = [];
@@ -759,8 +795,8 @@ function createApprovalHarness(policyRules?: ConstructorParameters<typeof RunDis
       async listDispatchableRuns() {
         return [];
       },
-      async getRunningRunForNode() {
-        return undefined;
+      async getRunningRunForNode(runId, nodeId) {
+        return runningRun?.id === runId && runningRun?.nodeId === nodeId ? runningRun : undefined;
       },
       async appendRunProgress() {
         return undefined;
@@ -817,7 +853,12 @@ function createApprovalHarness(policyRules?: ConstructorParameters<typeof RunDis
     requestedRisks,
     failedErrors,
     cancelled,
-    send(input: { action: string; target: string; risk: "write" | "destructive" | "privileged" }) {
+    send(input: {
+      action: string;
+      target: string;
+      risk: "write" | "destructive" | "privileged";
+      beforeState?: Record<string, unknown>;
+    }) {
       runHandler?.(linuxNode, {
         type: "approval.request",
         protocolVersion,
@@ -828,7 +869,7 @@ function createApprovalHarness(policyRules?: ConstructorParameters<typeof RunDis
         target: input.target,
         summary: "Review the prepared action",
         risk: input.risk,
-        beforeState: {},
+        beforeState: input.beforeState ?? {},
         expiresInSeconds: 300,
         requestedAt: new Date().toISOString(),
       });

@@ -174,8 +174,42 @@ export const nodeEnvSchema = z
     OPENBOT_DOCKER_COMPUTER_URL: z.string().url().optional(),
     OPENBOT_DOCKER_COMPUTER_TOKEN: z.string().min(16).optional(),
     OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS: booleanSchema,
+    OPENBOT_DOCKER_INPUT_ORIGINS: z
+      .string()
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+      )
+      .pipe(
+        z
+          .array(
+            z
+              .string()
+              .url()
+              .refine((value) => {
+                const url = new URL(value);
+                return (
+                  url.origin === value &&
+                  !url.username &&
+                  !url.password &&
+                  (url.protocol === "https:" ||
+                    (url.protocol === "http:" && url.hostname === "127.0.0.1"))
+                );
+              }),
+          )
+          .max(10),
+      ),
   })
   .superRefine((value, context) => {
+    if (value.OPENBOT_DOCKER_INPUT_ORIGINS.length && !value.OPENBOT_DOCKER_COMPUTER_URL)
+      context.addIssue({
+        code: "custom",
+        message: "Browser input origins require a configured computer.",
+        path: ["OPENBOT_DOCKER_INPUT_ORIGINS"],
+      });
     if (
       value.OPENBOT_NODE_CREDENTIAL_STORE === "secret-service" &&
       value.OPENBOT_NODE_CREDENTIAL_PATH !== undefined

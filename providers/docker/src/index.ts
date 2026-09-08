@@ -1,6 +1,9 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { parseBrowserClickInstruction } from "@openbot/protocol";
 import type { ComputerProvider, ProviderArtifact, ProviderRunInput } from "@openbot/provider-sdk";
+import { computerRequest } from "./computer-request.js";
+import { reviewedClick } from "./reviewed-click.js";
 
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -9,6 +12,7 @@ export interface DockerProviderOptions {
   computerUrl: string;
   computerToken: string;
   allowPrivateHosts?: boolean;
+  inputOrigins?: string[];
   fetcher?: typeof fetch;
   resolveHost?: (hostname: string) => Promise<string[]>;
 }
@@ -16,6 +20,18 @@ export interface DockerProviderOptions {
 export function createDockerProvider(options: DockerProviderOptions): ComputerProvider {
   const fetcher = options.fetcher ?? fetch;
   const resolveHost = options.resolveHost ?? resolveHostname;
+  const inputOrigins = new Set(options.inputOrigins ?? []);
+  for (const origin of inputOrigins) {
+    const url = new URL(origin);
+    if (
+      url.origin !== origin ||
+      url.username ||
+      url.password ||
+      !(url.protocol === "https:" || (url.protocol === "http:" && url.hostname === "127.0.0.1"))
+    )
+      throw new Error("Browser input origins must be exact HTTPS or loopback origins.");
+  }
+  const activeBots = new Set<string>();
   const computerUrl = options.computerUrl.replace(/\/$/, "");
 
   return {
@@ -26,48 +42,112 @@ export function createDockerProvider(options: DockerProviderOptions): ComputerPr
     capabilityManifest: [
       { id: "browser.observe", version: 1, providerId: "docker", constraints: {} },
       { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
+      ...(inputOrigins.size
+        ? [
+            {
+              id: "browser.input" as const,
+              version: 1,
+              providerId: "docker",
+              constraints: { operation: "click", explicitOrigins: true, maxClicks: 1 },
+            },
+          ]
+        : []),
     ],
-    async execute(context, input, report, reportFrame) {
-      const target = extractNavigationTarget(input);
-      await assertNavigationAllowed(target, options.allowPrivateHosts === true, resolveHost);
+    async execute(context, input, report, reportFrame, requestApproval) {
+      if (activeBots.has(input.botId))
+        throw new Error("This Bot already has an active browser operation.");
+      activeBots.add(input.botId);
+      try {
+        const click = parseBrowserClickInstruction(input.instruction);
+        if (click && (!inputOrigins.has(new URL(click.target).origin) || !requestApproval))
+          throw new Error("Browser input is not configured for this exact origin.");
+        const target = extractNavigationTarget(input);
+        await assertNavigationAllowed(target, options.allowPrivateHosts === true, resolveHost);
 
-      report({ stage: "navigate", message: `正在打开 ${target.hostname}` });
-      const navigation = await computerRequest<NavigationResponse>(
-        fetcher,
-        `${computerUrl}/navigate`,
-        options.computerToken,
-        input.botId,
-        context.signal,
-        { method: "POST", body: JSON.stringify({ url: target.href }) },
-      );
-      if (typeof navigation.url !== "string" || typeof navigation.title !== "string") {
-        throw new Error("agent-computer returned an invalid navigation response.");
+        report({ stage: "navigate", message: `正在打开 ${target.hostname}` });
+        const navigation = await computerRequest<NavigationResponse>(
+          fetcher,
+          `${computerUrl}/navigate`,
+          options.computerToken,
+          input.botId,
+          context.signal,
+          { method: "POST", body: JSON.stringify({ url: target.href }) },
+        );
+        if (typeof navigation.url !== "string" || typeof navigation.title !== "string") {
+          throw new Error("agent-computer returned an invalid navigation response.");
+        }
+
+        report({ stage: "screenshot", message: "正在截取浏览器画面" });
+        const screenshot = await computerRequest<ScreenshotResponse>(
+          fetcher,
+          `${computerUrl}/screenshot`,
+          options.computerToken,
+          input.botId,
+          context.signal,
+        );
+        const artifact = screenshotArtifact(input, screenshot);
+        reportFrame?.({
+          mediaType: "image/png",
+          base64: artifact.base64,
+          ...(typeof screenshot.width === "number" ? { width: screenshot.width } : {}),
+          ...(typeof screenshot.height === "number" ? { height: screenshot.height } : {}),
+          capturedAt:
+            typeof screenshot.capturedAt === "string"
+              ? screenshot.capturedAt
+              : new Date().toISOString(),
+        });
+        if (click) {
+          if (navigation.url !== click.target || !requestApproval)
+            throw new Error("Navigation changed the approved target.");
+          report({ stage: "approval", message: `等待审核按钮：${click.buttonName}` });
+          await reviewedClick({
+            ...click,
+            signal: context.signal,
+            screenshot,
+            requestApproval,
+            request: (path, body) =>
+              computerRequest(
+                fetcher,
+                `${computerUrl}${path}`,
+                options.computerToken,
+                input.botId,
+                context.signal,
+                body === undefined ? {} : { method: "POST", body: JSON.stringify(body) },
+                path === "/screenshot" ? 8 * 1024 * 1024 : 256 * 1024,
+              ),
+          });
+          const after = await computerRequest<ScreenshotResponse>(
+            fetcher,
+            `${computerUrl}/screenshot`,
+            options.computerToken,
+            input.botId,
+            context.signal,
+          );
+          if (after.url !== click.target)
+            throw new Error("Browser moved after the click; inspect it before retrying.");
+          const finalArtifact = screenshotArtifact(input, after);
+          reportFrame?.({
+            mediaType: "image/png",
+            base64: finalArtifact.base64,
+            capturedAt: new Date().toISOString(),
+            ...(typeof after.width === "number" ? { width: after.width } : {}),
+            ...(typeof after.height === "number" ? { height: after.height } : {}),
+          });
+          report({ stage: "observed", message: "已执行一次批准的点击并取得结果画面。" });
+          return {
+            ok: true,
+            summary: `已按批准点击“${click.buttonName}”一次，结果画面已附上。`,
+            artifacts: [finalArtifact],
+          };
+        }
+        return {
+          ok: true,
+          summary: `已打开 ${navigation.title || navigation.url} 并截取画面。`,
+          artifacts: [artifact],
+        };
+      } finally {
+        activeBots.delete(input.botId);
       }
-
-      report({ stage: "screenshot", message: "正在截取浏览器画面" });
-      const screenshot = await computerRequest<ScreenshotResponse>(
-        fetcher,
-        `${computerUrl}/screenshot`,
-        options.computerToken,
-        input.botId,
-        context.signal,
-      );
-      const artifact = screenshotArtifact(input, screenshot);
-      reportFrame?.({
-        mediaType: "image/png",
-        base64: artifact.base64,
-        ...(typeof screenshot.width === "number" ? { width: screenshot.width } : {}),
-        ...(typeof screenshot.height === "number" ? { height: screenshot.height } : {}),
-        capturedAt:
-          typeof screenshot.capturedAt === "string"
-            ? screenshot.capturedAt
-            : new Date().toISOString(),
-      });
-      return {
-        ok: true,
-        summary: `已打开 ${navigation.title || navigation.url} 并截取画面。`,
-        artifacts: [artifact],
-      };
     },
   };
 }
@@ -149,35 +229,6 @@ function isPrivateAddress(address: string): boolean {
 
 async function resolveHostname(hostname: string): Promise<string[]> {
   return (await lookup(hostname, { all: true, verbatim: true })).map((entry) => entry.address);
-}
-
-async function computerRequest<T>(
-  fetcher: typeof fetch,
-  url: string,
-  token: string,
-  botId: string,
-  signal: AbortSignal,
-  init: RequestInit = {},
-): Promise<T> {
-  const response = await fetcher(url, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      "x-openbot-bot-id": botId,
-      "x-openbot-computer-token": token,
-      ...init.headers,
-    },
-    signal,
-  });
-  const body = (await response.json().catch(() => ({}))) as { error?: unknown };
-  if (!response.ok) {
-    throw new Error(
-      typeof body.error === "string"
-        ? `agent-computer: ${body.error}`
-        : `agent-computer returned ${response.status}.`,
-    );
-  }
-  return body as T;
 }
 
 function screenshotArtifact(

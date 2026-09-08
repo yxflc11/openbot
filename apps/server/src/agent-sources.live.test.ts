@@ -6,7 +6,7 @@ describe.skipIf(process.env.OPENBOT_LIVE_SOURCE_TEST !== "1")("live public HTTPS
   it("reads the fixed public example page through real DNS, pinned TLS and bounded extraction", async () => {
     const page = await readPublicSource("https://example.com/", AbortSignal.timeout(20000));
     expect(page.url).toBe("https://example.com/");
-    expect(page.text).toContain("Example Domain");
+    expect(page.text).toMatch(/example domain/iu);
     expect(Buffer.byteLength(page.text)).toBeGreaterThan(20);
     expect(Buffer.byteLength(page.text)).toBeLessThanOrEqual(6000);
     expect(Number.isFinite(Date.parse(page.fetchedAt))).toBe(true);

@@ -32,7 +32,7 @@ These rows audit the current code; they are not additional completed projects in
 | Skills and portability | Versioned metadata, controlled template import/export, single-file SKILL.md import, digest-bound full-text review, bounded native loading and revision-bound revocation | Scripts, referenced resources, content portability, skill dependencies in native execution and live model quality |
 | Messaging gateway | No Telegram/Discord/Slack/WhatsApp/Signal gateway adapter in the runtime | Start with one platform, bind identities and approvals to Server, then validate incoming-event idempotency and authorized replies |
 | Delegation and parallel agents | Native runner admits at most two runs; no isolated child-agent protocol | Parent/child authority, isolated context, cancellation, budgets, aggregation and recovery. Concurrent independent runs are not delegation. |
-| Computer interaction | `providers/docker/src/index.ts` implements explicit URL navigation plus PNG; `providers/cua`, `lume`, `coder` contain declarations without execute methods | Interactive tools, scoped single-use leases, approved side effects, exclusive takeover and real-device conformance |
+| Computer interaction | Explicit URL screenshots plus default-off, Server-reviewed single-button click on trusted test origins; see [controlled browser](CONTROLLED_BROWSER.md) | Browser-side egress, signed single-use leases, native input, global exclusive takeover and additional real-device conformance |
 | Additional environments | Existing Server containers and Worker routing; no SSH/Daytona/Modal/Singularity runtime adapters | Select an actual backend through the research/reuse process, then prove lifecycle, isolation and cleanup |
 | TUI and conversational recall | Web/Desktop channels and bounded recent context | Full terminal editing/commands, full-text or semantic recall, background consolidation and Honcho-style user modelling |
 | Training/research exports | Operational Run events and audit records | Deliberate redacted training trajectory export, replay/quality format and privacy/retention controls. Audit logs are not a training dataset. |
@@ -51,8 +51,8 @@ This milestone supplies a reviewed-memory loop, not full Hermes parity.
    network, then verify a source-backed report, cancellation and remembered lesson without fixtures.
 3. **Skill resources:** reviewed standalone instruction loading is implemented. Scripts, referenced
    resources and portable skill bodies need their own execution/containment review.
-4. **Controlled computer work:** choose one platform/provider and complete an approved interactive
-   task before widening platform claims. See [Provider conformance](PROVIDER_CONFORMANCE.md).
+4. **Controlled computer work:** the reviewed browser-click slice is implemented. Enforce browser
+   egress and validate additional devices before widening claims. See [Provider conformance](PROVIDER_CONFORMANCE.md).
 5. **Ecosystem:** add one messaging gateway, then delegation or another backend according to an
    actual user workflow. Preserve the explicit remaining scope instead of adding declaration-only adapters.
 

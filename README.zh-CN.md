@@ -21,8 +21,8 @@ Server 负责身份、路由、授权和审计。界面能显示桌面，并不�
 
 > [!WARNING]
 > OpenBot 仍处于 pre-alpha。Desktop 产物是未签名开发包，不是经过签名的公开安装器。
-> 当前电脑 Provider 只能打开明确的公网 URL 并返回截图；任意桌面点击、输入和无人值守表单提交
-> 尚未实现。不要连接支付方式、主账号或生产凭证。
+> 浏览器 Provider 可打开明确网址并返回截图，另有需明确启用并审批的实验性单按钮点击。
+> 原生桌面输入和无人值守表单尚未实现。不要连接支付方式、主账号或生产凭证。
 
 ## Windows、macOS 与 Linux Desktop
 
@@ -86,7 +86,7 @@ Windows、Linux 提供连接流程。远程连接需输入可信的 HTTPS Server
 | 自动任务 | PostgreSQL 定时记录、暂停/恢复/删除、有界间隔、停机后最多补交一次到期任务、复用授权路由 | 多 Server 协调和更多调度语义 |
 | 员工档案 | 职责/简介编辑、带日期进化档案、技能审核、Owner 管理的类型化记忆、任务经验审阅与明确模型使用开关、绑定审核的导出/导入与实验性 DSSE 签名 | 自主学习、可执行技能、选择性复制和公开信任分发 |
 | Worker 协议 | 出站连接、一次性配对、吊销、带版本能力路由、进度、画面和产物 | 持有证明身份、完整服务/设备一致性与签名分发 |
-| 电脑执行 | 只读 Docker/browser URL 截图流程 | 安全交互、原生桌面 Provider、签名单次 lease 和独占接管 |
+| 电脑执行 | URL 截图及可信测试站点的可选审核按钮点击 | 浏览器出口隔离、原生桌面 Provider、签名单次 lease 和独占接管 |
 
 [原生 Agent](docs/NATIVE_AGENT.zh-CN.md) 在 Owner 明确启用后执行新建的 `none` 配置任务。
 OpenBot 尚未提供 Hermes/Pi/OpenClaw 运行时适配器、插件安装生命周期
@@ -125,6 +125,8 @@ Server 主机也可运行 `npm run node:enrollment-token -- local-development-no
 
 容器部署见 [Server 容器](docs/SERVER_CONTAINER.zh-CN.md)。定时工作见
 [自动任务](docs/AUTOMATIONS.zh-CN.md)：Server 必须持续运行，定时记录不增加权限；原生执行需单独[启用 Agent](docs/NATIVE_AGENT.zh-CN.md)。
+
+默认关闭的交互流程见[审核后点击一次浏览器按钮](docs/CONTROLLED_BROWSER.zh-CN.md)。
 
 ## 安全与架构
 

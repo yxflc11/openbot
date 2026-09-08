@@ -276,3 +276,41 @@ describe("macOS Node service configuration", () => {
     }
   });
 });
+
+describe("browser input opt-in", () => {
+  const worker = { OPENBOT_NODE_ID: "test-worker", OPENBOT_NODE_CREDENTIAL: nodeCredential };
+  const computer = {
+    ...worker,
+    OPENBOT_DOCKER_COMPUTER_URL: "http://127.0.0.1:4198",
+    OPENBOT_DOCKER_COMPUTER_TOKEN: "isolated-fixture-token",
+  };
+  it("defaults off and requires a configured computer", () => {
+    expect(nodeEnvSchema.parse(worker).OPENBOT_DOCKER_INPUT_ORIGINS).toEqual([]);
+    expect(
+      nodeEnvSchema.safeParse({ ...worker, OPENBOT_DOCKER_INPUT_ORIGINS: "https://example.test" })
+        .success,
+    ).toBe(false);
+    expect(
+      nodeEnvSchema.parse({
+        ...computer,
+        OPENBOT_DOCKER_INPUT_ORIGINS: "https://example.test,http://127.0.0.1:4197",
+      }).OPENBOT_DOCKER_INPUT_ORIGINS,
+    ).toHaveLength(2);
+  });
+  it("rejects user information in an origin", () => {
+    const url = new URL("https://example.test");
+    url.username = "fixture-user";
+    url.password = "fixture-only";
+    expect(
+      nodeEnvSchema.safeParse({ ...computer, OPENBOT_DOCKER_INPUT_ORIGINS: url.href }).success,
+    ).toBe(false);
+  });
+  it.each(["http://remote.test", "https://example.test/path", "https://example.test/"])(
+    "rejects non-exact origins: %s",
+    (origin) => {
+      expect(
+        nodeEnvSchema.safeParse({ ...computer, OPENBOT_DOCKER_INPUT_ORIGINS: origin }).success,
+      ).toBe(false);
+    },
+  );
+});
