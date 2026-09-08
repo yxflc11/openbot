@@ -9,6 +9,21 @@ test("accepts the pinned required portable matrix", () => {
   assert.doesNotThrow(() => validateSecurityWorkflow(workflow));
 });
 
+test("requires exact finding review without excluding history or printing candidates", () => {
+  const review =
+    'node scripts/check-credential-findings.mjs "${RUNNER_TEMP}/trufflehog-results.jsonl" "$status"';
+  for (const changed of [
+    workflow.replace(review, "echo ignored"),
+    workflow.replace(review, `${review} || true`),
+    workflow.replace("--json --fail", "--fail"),
+    workflow.replace("git file:///repo", "git file:///repo --branch HEAD"),
+    workflow.replace("git file:///repo", "git file:///repo --exclude-paths tests"),
+    workflow.replace(review, `${review}\n          cat trufflehog-results.jsonl`),
+  ]) {
+    assert.throws(() => validateSecurityWorkflow(changed), /missing required|full history/);
+  }
+});
+
 test("requires the exact npm CLI and a clean lock tree before auditing", () => {
   assert.throws(
     () => validateSecurityWorkflow(workflow.replace("npm@10.9.9", "npm@latest")),

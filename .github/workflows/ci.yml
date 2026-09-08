@@ -32,22 +32,16 @@ jobs:
       - name: Scan Git history for credential patterns without verification or uploads
         shell: bash
         run: |
+          umask 077
           set +e
           docker run --rm --volume "${{ github.workspace }}:/repo:ro" \
             ghcr.io/trufflesecurity/trufflehog@sha256:deb2af10659a488a14d262a323addcde099d99827a1cf1dc4e93c17915c39f08 \
             --no-verification --results=unverified --filter-unverified --no-update \
-            --fail --fail-on-scan-errors git file:///repo \
-            >"${RUNNER_TEMP}/trufflehog-results.jsonl" 2>&1
+            --json --fail --fail-on-scan-errors git file:///repo \
+            >"${RUNNER_TEMP}/trufflehog-results.jsonl" 2>"${RUNNER_TEMP}/trufflehog-diagnostics.log"
           status=$?
           set -e
-          if [ "$status" -eq 183 ]; then
-            echo "::error::Credential-like content was detected. Inspect it locally; raw candidates are suppressed from CI logs."
-            exit 1
-          fi
-          if [ "$status" -ne 0 ]; then
-            echo "::error::The credential scanner failed closed with exit status $status."
-            exit "$status"
-          fi
+          node scripts/check-credential-findings.mjs "${RUNNER_TEMP}/trufflehog-results.jsonl" "$status"
 
   check:
     runs-on: ubuntu-latest

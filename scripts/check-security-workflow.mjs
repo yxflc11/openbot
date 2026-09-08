@@ -36,6 +36,10 @@ export function validateSecurityWorkflow(workflow) {
     'test "$(npm --version)" = "10.9.9"',
     "npm ci --ignore-scripts --audit=false",
     "npm audit --omit=dev --audit-level=high",
+    "umask 077",
+    "--json --fail --fail-on-scan-errors git file:///repo",
+    '>"${RUNNER_TEMP}/trufflehog-results.jsonl" 2>"${RUNNER_TEMP}/trufflehog-diagnostics.log"',
+    'node scripts/check-credential-findings.mjs "${RUNNER_TEMP}/trufflehog-results.jsonl" "$status"',
   ];
   for (const fragment of requiredSecurityFragments) {
     if (!securityJob.includes(fragment)) {
@@ -60,6 +64,15 @@ export function validateSecurityWorkflow(workflow) {
     /continue-on-error:|npm audit fix|(?:npm ci|npm audit)[^\n]*(?:\|\||;)\s*true/.test(securityJob)
   ) {
     throw new Error("CI dependency auditing must remain read-only and fail closed.");
+  }
+  if (
+    /--exclude-|--branch|--since-commit|check-credential-findings[^\n]*\|\||cat[^\n]*trufflehog-/.test(
+      securityJob,
+    )
+  ) {
+    throw new Error(
+      "Credential scanning must retain full history and fail closed without raw output.",
+    );
   }
 
   const portableJobStart = workflow.indexOf("\n  portable:\n");
