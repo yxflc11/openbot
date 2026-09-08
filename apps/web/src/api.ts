@@ -188,6 +188,20 @@ export async function deleteEmployeeMemory(
   );
 }
 
+export async function importEmployeeSkill(
+  botId: string,
+  input: { markdown: string; version: string; reason: string },
+): Promise<EmployeeSkillMutationResult> {
+  return request<EmployeeSkillMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/skills/import`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
 export async function updateEmployeeSkillState(
   botId: string,
   skillId: string,

@@ -1,3 +1,4 @@
+import { importSkillSchema, parseSkillDocument } from "./agent-skills.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   ApprovalResolution,
@@ -654,8 +655,28 @@ export function createApp(dependencies: AppDependencies) {
     return context.json(result);
   });
 
+  app.post("/api/v1/bots/:botId/skills/import", async (context) => {
+    const input = await parseRequest(context.req.raw, importSkillSchema, 32 * 1024);
+    const document = parseSkillDocument(input.markdown);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.createEmployeeSkill(botId, {
+      slug: document.name,
+      name: document.name,
+      description: document.description,
+      version: input.version,
+      source: "manual",
+      requiredCapabilities: [],
+      dependencySkillIds: [],
+      evidence: [],
+      reason: input.reason,
+      skillMarkdown: document.markdown,
+    });
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);
+    return context.json(result, 201);
+  });
+
   app.post("/api/v1/bots/:botId/skills", async (context) => {
-    const input = await parseRequest(context.req.raw, createEmployeeSkillInputSchema);
+    const input = await parseRequest(context.req.raw, createEmployeeSkillInputSchema, 32 * 1024);
     const botId = context.req.param("botId");
     const result = await dependencies.store.createEmployeeSkill(botId, input);
     publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);

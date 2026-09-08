@@ -1,3 +1,5 @@
+import type { SkillReference } from "./agent-skills.js";
+import { skillCatalog, assertSkillReferences, readSkillDocument } from "./postgres-agent-skills.js";
 import { randomUUID } from "node:crypto";
 import {
   artifacts as artifactsTable,
@@ -139,6 +141,31 @@ export class PostgresAgentStore implements AgentRunStore {
       .limit(1);
     if (!profile) throw new NativeExecutionError("scope_revoked");
     return profile;
+  }
+  async skills(run: Run) {
+    await this.assertScope(run);
+    return skillCatalog(this.db, run.botId);
+  }
+  async assertSkills(run: Run, references: SkillReference[]) {
+    await assertSkillReferences(this.db, run.botId, references);
+  }
+  async readSkill(run: Run, reference: SkillReference) {
+    return this.db.transaction(async (tx) => {
+      const [active] = await tx.select({ id: runs.id }).from(runs).where(running(run)).for("share");
+      if (!active) throw new NativeExecutionError("scope_revoked");
+      const document = await readSkillDocument(tx, run.botId, reference);
+      await tx
+        .insert(runEvents)
+        .values({
+          id: randomUUID(),
+          runId: run.id,
+          channelId: run.channelId,
+          botId: run.botId,
+          type: "SKILL_READ",
+          payload: { executor: "native-agent", ...reference },
+        });
+      return document;
+    });
   }
   async knowledge(run: Run): Promise<AgentKnowledge> {
     await this.assertScope(run);
@@ -349,6 +376,7 @@ export class PostgresAgentStore implements AgentRunStore {
     artifacts: PersistedArtifact[] = [],
     proposalInput?: KnowledgeProposalDraft,
     references: KnowledgeReference[] = [],
+    skillReferences: SkillReference[] = [],
   ) {
     if (references.length > 8) throw new NativeExecutionError("task_limit");
     const proposal =
@@ -375,6 +403,7 @@ export class PostgresAgentStore implements AgentRunStore {
         .where(running(run))
         .returning();
       if (!row) throw new Error("Run is no longer active.");
+      await assertSkillReferences(tx, run.botId, skillReferences);
       if (references.length) {
         const memories = await tx
           .select({ id: employeeMemories.id, revision: employeeMemories.revision })

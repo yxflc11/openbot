@@ -2,8 +2,10 @@
 
 [English](DELIVERY_STATUS.md) · [简体中文](DELIVERY_STATUS.zh-CN.md)
 
+Follow-up: [reviewed single-file skill instructions](REVIEWED_SKILLS.md) now support import, digest-bound Owner review, progressive native loading and revocation. Scripts and additional resources remain pending.
+
 This is the September 8, 2026 delivery branch status, not a public release announcement.
-[PR #19](https://github.com/yxflc11/openbot/pull/19) contains the changes. The
+[PR #19](https://github.com/yxflc11/openbot/pull/19) was merged; the skill-content follow-up builds on that main branch. The
 [work log](DELIVERY_WORKLOG.md) separates implementation, grouped checks, actual UI fixtures and
 remaining live/platform evidence. The older [roadmap](ROADMAP.md) describes earlier milestones.
 
@@ -17,7 +19,7 @@ remaining live/platform evidence. The older [roadmap](ROADMAP.md) describes earl
 | Agent work loop | Bot role context, bounded model/tool/observation iteration, scoped channel reads, durable reply and task state | Server/SDK/database tests and actual UI. The native loop does not currently call interactive Worker tools. |
 | Research/report delivery | Up to three task-supplied HTTPS URLs, bounded public text extraction, provenance-bearing Markdown, authenticated download and exclusive native save | Real UI/Server/database/disk with deterministic source/model fixtures. Local proxy DNS maps public sites to a reserved range; successful real public source reading is unverified here. No general web search, PDF or arbitrary filesystem access. |
 | Execution control | Durable native task stop, explicit new-task resubmission, reported token counts and categorized failures | Cancellation/publication database races and real UI passed. No checkpoint resume, token streaming, model billing or Worker cancellation claim. |
-| Reviewed knowledge | Candidate lesson from a successful task, Owner edit/accept/reject, explicit default-off sharing, revision-bound memory use and revocation | Actual Desktop/Web review/use/revoke/reload; private and other-Bot memories excluded. No automatic active-memory approval or executable SKILL.md body loading. |
+| Reviewed knowledge | Candidate lesson from a successful task, Owner edit/accept/reject, explicit default-off sharing, revision-bound memory use and revocation | Actual Desktop/Web review/use/revoke/reload; private and other-Bot memories excluded. No automatic active-memory approval; reviewed skill instruction loading is now described separately below. |
 | Desktop continuity | Old event streams aborted on replacement, navigation, Server switch, renderer exit and close | Actual built ASAR completed four distinct report tasks with intervening reloads and four further reloads. QA uses isolated identity and save-dialog selection, not signed-app certification. |
 
 ## Existing capabilities and remaining Hermes comparison
@@ -27,7 +29,7 @@ These rows audit the current code; they are not additional completed projects in
 | Capability | Current code evidence | Remaining work |
 | --- | --- | --- |
 | Timed automation | `apps/server/src/automations.ts` and `postgres-automation-store.ts`: durable 15-minute to 7-day intervals, pause/resume/delete and due-task dispatch | Natural-language schedule creation, cron/timezone semantics, external message delivery and multi-Server coordination |
-| Skills and portability | `apps/server/src/employee-package.ts` and `packages/domain/src/index.ts`: versioned skill metadata/review/dependencies, controlled template import/export | Reviewed standard SKILL.md content loading, bounded invocation, provenance, revocation during execution and acceptance tasks |
+| Skills and portability | Versioned metadata, controlled template import/export, single-file SKILL.md import, digest-bound full-text review, bounded native loading and revision-bound revocation | Scripts, referenced resources, content portability, skill dependencies in native execution and live model quality |
 | Messaging gateway | No Telegram/Discord/Slack/WhatsApp/Signal gateway adapter in the runtime | Start with one platform, bind identities and approvals to Server, then validate incoming-event idempotency and authorized replies |
 | Delegation and parallel agents | Native runner admits at most two runs; no isolated child-agent protocol | Parent/child authority, isolated context, cancellation, budgets, aggregation and recovery. Concurrent independent runs are not delegation. |
 | Computer interaction | `providers/docker/src/index.ts` implements explicit URL navigation plus PNG; `providers/cua`, `lume`, `coder` contain declarations without execute methods | Interactive tools, scoped single-use leases, approved side effects, exclusive takeover and real-device conformance |
@@ -47,8 +49,8 @@ This milestone supplies a reviewed-memory loop, not full Hermes parity.
    Until then, retain the explicit development-artifact download path.
 2. **Live useful work:** validate a real supported provider and public HTTPS sources in a suitable
    network, then verify a source-backed report, cancellation and remembered lesson without fixtures.
-3. **Executable skills:** implement reviewed content loading and bounded invocation before calling
-   the skill library an execution library. Reuse the existing review/revocation authority.
+3. **Skill resources:** reviewed standalone instruction loading is implemented. Scripts, referenced
+   resources and portable skill bodies need their own execution/containment review.
 4. **Controlled computer work:** choose one platform/provider and complete an approved interactive
    task before widening platform claims. See [Provider conformance](PROVIDER_CONFORMANCE.md).
 5. **Ecosystem:** add one messaging gateway, then delegation or another backend according to an

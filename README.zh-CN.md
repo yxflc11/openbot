@@ -167,3 +167,5 @@ Node 凭证仍是 bearer secret；配对不代表持有证明或 mTLS。
 采用 [MIT License](LICENSE)，上游声明保存在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 `OpenBot` 是工作名称，已有包括 CopilotKit/OpenBot 在内的其他项目使用；稳定发布前需要选定
 可区分的名称。本项目与 xAI、腾讯、CopilotKit、OpenClaw 或其他参考项目不存在隶属关系。
+
+现在可以通过 [SKILL.md 导入与 Owner 全文审核](docs/REVIEWED_SKILLS.zh-CN.md)，让 Agent 按需使用技能指令流程。

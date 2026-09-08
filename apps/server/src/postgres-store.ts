@@ -1,3 +1,4 @@
+import { parseSkillDocument } from "./agent-skills.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   approvals as approvalsTable,
@@ -722,6 +723,18 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     botId: string,
     input: CreateEmployeeSkillInput,
   ): Promise<EmployeeSkillMutationResult> {
+    const document =
+      input.skillMarkdown === undefined ? undefined : parseSkillDocument(input.skillMarkdown);
+    if (
+      document &&
+      (document.name !== input.slug ||
+        document.description !== input.description ||
+        input.requiredCapabilities.length ||
+        input.dependencySkillIds.length)
+    )
+      throw new StoreValidationError(
+        "Skill content must match its metadata and use only existing native tools without dependencies.",
+      );
     return this.#db.transaction(async (transaction) => {
       const botRows = await transaction
         .select({ id: bots.id })
@@ -764,6 +777,8 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           source: input.source,
           requiredCapabilities: input.requiredCapabilities,
           metadata: { format: "agentskills.io" },
+          skillMarkdown: document?.markdown ?? null,
+          contentSha256: document?.sha256 ?? null,
           createdAt: now,
           updatedAt: now,
         })
@@ -799,6 +814,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           .where(eq(skillDependencies.skillId, skillRow.id));
         const existingDependencies = dependencyRows.map((row) => row.id).sort();
         if (
+          skillRow.skillMarkdown !== (document?.markdown ?? null) ||
           skillRow.name !== input.name ||
           skillRow.description !== input.description ||
           skillRow.source !== input.source ||
@@ -882,6 +898,15 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         .limit(1);
       if (record === undefined) throw new StoreNotFoundError("Employee skill not found.");
 
+      if (
+        input.state === "verified" &&
+        record.skill.contentSha256 &&
+        input.reviewedContentSha256 !== record.skill.contentSha256
+      )
+        throw new StoreConflictError(
+          "Review the complete current SKILL.md and confirm its digest before enabling model use.",
+        );
+
       const currentState = record.assignment.state as EmployeeSkill["state"];
       if (!isEmployeeSkillTransitionAllowed(currentState, input.state)) {
         throw new StoreConflictError(
@@ -920,6 +945,9 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         .update(employeeSkills)
         .set({
           state: input.state,
+          revision: sql`${employeeSkills.revision} + 1`,
+          reviewedContentSha256:
+            input.state === "verified" ? (record.skill.contentSha256 ?? null) : null,
           confidence: input.state === "verified" ? input.confidence : record.assignment.confidence,
           evidence,
           updatedAt: now,
@@ -1895,6 +1923,15 @@ function toEmployeeSkill(
     requiredCapabilities: toStringArray(skill.requiredCapabilities),
     dependencyIds,
     evidence: toEvidenceReferences(assignment.evidence),
+    ...(skill.skillMarkdown && skill.contentSha256
+      ? {
+          skillMarkdown: skill.skillMarkdown,
+          contentSha256: skill.contentSha256,
+          modelUseEnabled:
+            assignment.state === "verified" &&
+            assignment.reviewedContentSha256 === skill.contentSha256,
+        }
+      : {}),
     acquiredAt: assignment.acquiredAt.toISOString(),
     updatedAt: assignment.updatedAt.toISOString(),
   };

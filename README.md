@@ -179,3 +179,5 @@ Start with [Product](docs/PRODUCT.md), [Architecture](docs/ARCHITECTURE.md),
 `OpenBot` is a working name already used by other projects, including CopilotKit/OpenBot; a distinct
 name is required before a stable release. This project is not affiliated with xAI, Tencent,
 CopilotKit, OpenClaw or other referenced projects.
+
+Reviewed instruction workflows are available through [SKILL.md import and Owner review](docs/REVIEWED_SKILLS.md).

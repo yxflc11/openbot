@@ -542,6 +542,11 @@ const employeeSkillReasonSchema = z.string().trim().min(1).max(1000);
 
 export const createEmployeeSkillInputSchema = z
   .object({
+    skillMarkdown: z
+      .string()
+      .min(1)
+      .max(12 * 1024)
+      .optional(),
     // `slug` is the interoperable Agent Skills name; the display name remains separate.
     slug: z
       .string()
@@ -585,6 +590,10 @@ export const updateEmployeeSkillStateInputSchema = z.discriminatedUnion("state",
   z
     .object({
       state: z.literal("verified"),
+      reviewedContentSha256: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/u)
+        .optional(),
       confidence: z.number().int().min(1).max(100),
       ...employeeSkillReviewFields,
     })

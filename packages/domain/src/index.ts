@@ -115,9 +115,14 @@ export interface EmployeeSkill {
   evidence: EmployeeEvidenceReference[];
   acquiredAt: string;
   updatedAt: string;
+  /** Immutable reviewed instruction file; portable packages still exclude this content. */
+  skillMarkdown?: string | undefined;
+  contentSha256?: string | undefined;
+  modelUseEnabled?: boolean | undefined;
 }
 
 export interface CreateEmployeeSkillInput {
+  skillMarkdown?: string | undefined;
   slug: string;
   name: string;
   description: string;
@@ -132,6 +137,7 @@ export interface CreateEmployeeSkillInput {
 export type UpdateEmployeeSkillStateInput =
   | {
       state: "verified";
+      reviewedContentSha256?: string | undefined;
       confidence: number;
       reason: string;
       evidence: EmployeeEvidenceReference[];

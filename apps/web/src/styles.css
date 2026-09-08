@@ -5431,3 +5431,30 @@ select:focus-visible {
     flex-direction: column;
   }
 }
+
+.employee-skill-import {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.employee-skill-import > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.employee-skill-document {
+  min-width: 0;
+}
+.employee-skill-document pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 400px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.employee-skill-document small {
+  overflow-wrap: anywhere;
+}

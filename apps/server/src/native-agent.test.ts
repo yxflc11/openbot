@@ -846,3 +846,71 @@ describe("official provider HTTP contracts", () => {
     ).rejects.toMatchObject({ code: "task_limit" });
   });
 });
+
+describe("reviewed skill tool integration", () => {
+  const descriptor = {
+    id: "669f3734-dd10-47f1-94a8-7e83bc1aa609",
+    name: "evidence-report",
+    description: "Use for reports",
+    version: "1.0.0",
+    revision: 2,
+    sha256: "a".repeat(64),
+  };
+  function skillFixture() {
+    const f = fixture();
+    f.store.skills = vi.fn(async () => ({ skills: [descriptor], truncated: false }));
+    f.store.readSkill = vi.fn(async () => ({
+      ...descriptor,
+      markdown: "Reviewed workflow: read evidence, then write the report.",
+    }));
+    f.store.assertSkills = vi.fn(async () => {});
+    return f;
+  }
+  it("discovers metadata first, reads full content through the scoped tool and returns publication references", async () => {
+    const f = skillFixture();
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce(calls("read_skill", JSON.stringify({ skillId: descriptor.id })))
+      .mockResolvedValueOnce(answer("Used the reviewed report workflow."));
+    const result = await executeAgentRun({
+      ...f,
+      model: new MockLanguageModelV4({ doGenerate: generate }),
+    });
+    expect(JSON.stringify(generate.mock.calls[0])).toContain("evidence-report");
+    expect(JSON.stringify(generate.mock.calls[0])).not.toContain("Reviewed workflow:");
+    expect(JSON.stringify(generate.mock.calls[1])).toContain("Reviewed workflow:");
+    expect(result.skillReferences).toEqual([
+      { id: descriptor.id, revision: 2, sha256: descriptor.sha256 },
+    ]);
+    expect(f.store.assertSkills).toHaveBeenLastCalledWith(run, result.skillReferences);
+  });
+  it("denies an unlisted skill before accessing the store", async () => {
+    const f = skillFixture();
+    const generate = vi
+      .fn()
+      .mockResolvedValue(
+        calls("read_skill", JSON.stringify({ skillId: "6b8c8307-530f-4f1e-9ae6-ef9a00b64d53" })),
+      );
+    await expect(
+      executeAgentRun({ ...f, model: new MockLanguageModelV4({ doGenerate: generate }) }),
+    ).rejects.toThrow();
+    expect(f.store.readSkill).not.toHaveBeenCalled();
+  });
+  it("rejects revocation after a model response without returning staged output", async () => {
+    const f = skillFixture();
+    let revoked = false;
+    f.store.assertSkills = async (_run, refs) => {
+      if (revoked && refs.length) throw new NativeExecutionError("scope_revoked");
+    };
+    const generate = vi
+      .fn()
+      .mockResolvedValueOnce(calls("read_skill", JSON.stringify({ skillId: descriptor.id })))
+      .mockImplementationOnce(async () => {
+        revoked = true;
+        return answer();
+      });
+    await expect(
+      executeAgentRun({ ...f, model: new MockLanguageModelV4({ doGenerate: generate }) }),
+    ).rejects.toMatchObject({ code: "scope_revoked" });
+  });
+});

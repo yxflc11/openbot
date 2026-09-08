@@ -136,3 +136,22 @@ runtime. See `docs/research/desktop-installable-delivery.md` for the installer-o
 
 Packages retain their upstream notices in the production dependency closure. No upstream source
 was copied or substantially adapted. See [research](docs/research/agent-research-artifacts.md).
+
+## YAML parser
+
+`yaml` 2.9.0 (commit `ddb21b04cb889722cec8f89dc1b67f19d62d7f7d`) is used unchanged
+for bounded Agent Skills frontmatter parsing. Its packaged LICENSE is retained.
+
+Copyright Eemeli Aro <eemeli@gmail.com>
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
