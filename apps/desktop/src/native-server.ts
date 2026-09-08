@@ -5,6 +5,7 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import postgresClient from "postgres";
+import { LocalSessionRecovery } from "./local-session-recovery.js";
 import { RestrictedJsonFile } from "./restricted-json-file.js";
 import type { NativeServerState } from "./runtime-contract.js";
 
@@ -25,6 +26,7 @@ export interface NativeServerOptions {
   decrypt(value: string): string;
   launchServer(env: Record<string, string>): Promise<ManagedServerProcess>;
   connect(serverUrl: string, ownerPassword: string): Promise<void>;
+  authenticate(serverUrl: string, ownerPassword: string): Promise<void>;
 }
 
 /** Owns only this app's cluster and child process. Renderer input cannot name paths or commands. */
@@ -36,6 +38,7 @@ export class NativeServerController {
   #server: ManagedServerProcess | undefined;
   #stopping = false;
   #ownedUrl: string | undefined;
+  readonly #sessionRecovery = new LocalSessionRecovery();
 
   constructor(options: NativeServerOptions) {
     this.#options = options;
@@ -48,6 +51,10 @@ export class NativeServerController {
   }
   owns(url: string): boolean {
     return this.#ownedUrl === url && this.#server?.isAlive() === true;
+  }
+
+  restoreSession(serverUrl: string) {
+    return this.#sessionRecovery.restore(serverUrl);
   }
 
   start(): Promise<NativeServerState> {
@@ -196,6 +203,12 @@ export class NativeServerController {
         return false;
       }
     });
+    const server = this.#server;
+    this.#sessionRecovery.bind(
+      url,
+      () => this.#options.authenticate(url, secrets.ownerPassword),
+      () => !this.#stopping && this.#server === server && this.owns(url),
+    );
     this.#state = { status: "ready", serverUrl: url };
     return this.getState();
   }
@@ -208,6 +221,7 @@ export class NativeServerController {
     this.#stopping = false;
   }
   async #stopChildren(): Promise<void> {
+    this.#sessionRecovery.clear();
     this.#ownedUrl = undefined;
     const server = this.#server;
     this.#server = undefined;

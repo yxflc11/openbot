@@ -21,6 +21,7 @@ async function options(): Promise<NativeServerOptions> {
     decrypt: vi.fn(),
     launchServer: vi.fn(),
     connect: vi.fn(),
+    authenticate: vi.fn(),
   };
 }
 async function fakeResources(opts: NativeServerOptions) {

@@ -214,3 +214,26 @@ public release; local functional tests alone are not a distribution-support clai
 
 Visual checks use isolated fixtures, never seeded data in a real profile. The office scene remains
 deferred; this workspace uses channel conversations.
+
+
+## Local session recovery
+
+The app-owned macOS Server creates and protects its own Owner identity. Desktop now restores that
+Server session after expiry, a 401 response, or returning to the app. The password remains in the
+main process; no credential is shown to the renderer. Reloading a live local Server also recovers the
+session without restarting the database. A failed operation is not automatically replayed.
+
+Explicit logout keeps this window logged out and shows **Re-enter** for local use. This is not an OS
+lock: launching the app again can authenticate its own Server. Remote clients and browser login keep
+the existing password and session-expiry rules. Recovery cannot target a remote or stopped Server.
+See [research and validation](research/desktop-local-session-recovery.md).
+
+The installed application is named **OpenBot**. An existing macOS Preview profile can be reused
+without changing its encryption namespace; its internal data-directory name remains unchanged.
+An already configured canonical OpenBot profile takes precedence. Only obsolete app bundles and
+installer files may be removed during the local update, not the active profile.
+
+macOS may ask for the login Keychain password when the updated application first reads the previous
+profile's encryption key. This is a system authorization, separate from the OpenBot Owner login.
+The local development build has no stable Developer ID signature, so repeated prompts across
+rebuilds are possible. The existing Keychain entry is retained to keep encrypted data readable.

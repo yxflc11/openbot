@@ -31,6 +31,7 @@ import {
 } from "./local-content.js";
 import { DesktopLocalWorkerController } from "./local-worker-controller.js";
 import { MacOSWorkerCompanion } from "./macos-worker-companion.js";
+import { desktopProfileCompatibility } from "./profile-compatibility.js";
 import { NativeServerController } from "./native-server.js";
 import { DesktopNavigationMenuController } from "./navigation-menu.js";
 import {
@@ -64,6 +65,17 @@ let mainWindow: BrowserWindow | undefined;
 let desktopSession: Session | undefined;
 let sidebarMaterial: SidebarMaterialController | undefined;
 let navigationMenu: DesktopNavigationMenuController | undefined;
+
+const compatibleProfile = desktopProfileCompatibility(
+  app.getPath("appData"),
+  process.platform,
+  app.name,
+);
+if (compatibleProfile) {
+  // Electron chooses its Keychain service before ready; the visible name is restored afterward.
+  app.setName(compatibleProfile.encryptionName);
+  app.setPath("userData", compatibleProfile.userData);
+}
 
 // Every renderer is sandboxed globally before Electron creates a process.
 app.enableSandbox();
@@ -290,6 +302,7 @@ async function createMainWindow(activeSession: Session): Promise<void> {
 }
 
 async function startDesktop(): Promise<void> {
+  if (compatibleProfile) app.setName("OpenBot");
   const activeSession = session.fromPartition("persist:openbot-desktop", { cache: true });
   const rendererRoot = join(app.getAppPath(), "dist", "renderer");
   const connectionController = new DesktopConnectionController({
@@ -400,21 +413,38 @@ async function startDesktop(): Promise<void> {
         },
       };
     },
+    authenticate: authenticateLocalServer,
     connect: async (serverUrl, ownerPassword) => {
       const connected = await connectionController.configure(serverUrl);
       if (connected.status !== "configured") throw new Error("Local Server not ready.");
-      const response = await activeSession.fetch(`${serverUrl}/api/v1/auth/login`, {
-        method: "POST",
-        credentials: "include",
-        redirect: "error",
-        headers: { "Content-Type": "application/json", Origin: serverUrl },
-        body: JSON.stringify({ password: ownerPassword }),
-        signal: AbortSignal.timeout(5000),
-      });
-      await response.body?.cancel();
-      if (!response.ok) throw new Error("Local session could not be created.");
+      await authenticateLocalServer(serverUrl, ownerPassword);
     },
   });
+  async function authenticateLocalServer(serverUrl: string, ownerPassword: string): Promise<void> {
+    const current = connectionController.getState();
+    if (
+      !nativeServer?.owns(serverUrl) ||
+      current.status !== "configured" ||
+      current.serverUrl !== serverUrl
+    )
+      throw new Error("Local Server connection changed.");
+    const response = await activeSession.fetch(`${serverUrl}/api/v1/auth/login`, {
+      method: "POST",
+      credentials: "include",
+      redirect: "error",
+      headers: { "Content-Type": "application/json", Origin: serverUrl },
+      body: JSON.stringify({ password: ownerPassword }),
+      signal: AbortSignal.timeout(5000),
+    });
+    await response.body?.cancel();
+    if (!response.ok) throw new Error("Local session could not be created.");
+    if (
+      !(await isDesktopSessionAuthenticated({ status: "configured", serverUrl }, (input, init) =>
+        activeSession.fetch(input, init),
+      ))
+    )
+      throw new Error("Local session could not be verified.");
+  }
   const setupPlanController = new DesktopSetupPlanController(
     new FileDesktopSetupPlanStore(join(app.getPath("userData"), "openbot", "setup-plan.json")),
   );
@@ -462,6 +492,28 @@ async function startDesktop(): Promise<void> {
     if (plan.status !== "configured" || plan.plan.mode !== "host")
       throw new Error("Service role required.");
     return nativeServer?.start();
+  });
+  ipcMain.handle("openbot:restore-local-session", async (event) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
+      throw new Error("Untrusted sender.");
+    const plan = setupPlanController.getState();
+    const connection = connectionController.getState();
+    if (
+      plan.status !== "configured" ||
+      plan.plan.mode !== "host" ||
+      connection.status !== "configured" ||
+      !nativeServer?.owns(connection.serverUrl)
+    )
+      return { status: "unavailable" };
+    const result = await nativeServer.restoreSession(connection.serverUrl);
+    const current = connectionController.getState();
+    const currentPlan = setupPlanController.getState();
+    return current.status === "configured" &&
+      current.serverUrl === connection.serverUrl &&
+      currentPlan.status === "configured" &&
+      currentPlan.plan.mode === "host"
+      ? result
+      : { status: "unavailable" };
   });
   desktopSession = activeSession;
   registerDesktopIpc(connectionController, setupPlanController, localWorkerController);

@@ -78,6 +78,7 @@ export interface DesktopNavigationMenuState {
   settingsAvailable: boolean;
 }
 export interface OpenBotDesktopBridge {
+  restoreLocalSession?(): Promise<Readonly<{ status: "restored" | "unavailable" }>>;
   saveReport?(
     artifactId: string,
   ): Promise<Readonly<{ status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" }>>;

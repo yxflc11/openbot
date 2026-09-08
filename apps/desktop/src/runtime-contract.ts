@@ -96,6 +96,7 @@ export const DESKTOP_NAVIGATION_COMMAND_CHANNEL = "openbot:navigation-command";
 export const DESKTOP_NAVIGATION_MENU_STATE_CHANNEL = "openbot:navigation-menu-state";
 
 export interface OpenBotDesktopBridge {
+  restoreLocalSession?(): Promise<Readonly<{ status: "restored" | "unavailable" }>>;
   saveReport?(
     artifactId: string,
   ): Promise<Readonly<{ status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" }>>;
