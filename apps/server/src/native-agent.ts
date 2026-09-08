@@ -1,5 +1,6 @@
 import type { AgentSkillCatalog, AgentSkillDocument, SkillReference } from "./agent-skills.js";
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createMoonshotAI } from "@ai-sdk/moonshotai";
 import { createOpenAI } from "@ai-sdk/openai";
 import type {
   Artifact,
@@ -78,11 +79,13 @@ export function agentFetch(
   fetcher: typeof fetch = fetch,
 ): typeof fetch {
   const endpoint =
-    provider === "openai"
-      ? "https://api.openai.com/v1/responses"
-      : provider === "anthropic"
-        ? "https://api.anthropic.com/v1/messages"
-        : "https://openrouter.ai/api/v1/chat/completions";
+    provider === "moonshot"
+      ? "https://api.moonshot.cn/v1/chat/completions"
+      : provider === "openai"
+        ? "https://api.openai.com/v1/responses"
+        : provider === "anthropic"
+          ? "https://api.anthropic.com/v1/messages"
+          : "https://openrouter.ai/api/v1/chat/completions";
   return async (input, init) => {
     if (String(input) !== endpoint || init?.method !== "POST")
       throw new Error("Invalid model endpoint.");
@@ -147,6 +150,12 @@ export function agentModel(
   fetcher: typeof globalThis.fetch = globalThis.fetch,
 ): LanguageModel {
   const fetch = agentFetch(config.provider, fetcher);
+  if (config.provider === "moonshot")
+    return createMoonshotAI({
+      apiKey: config.apiKey,
+      baseURL: "https://api.moonshot.cn/v1",
+      fetch,
+    })(config.model);
   if (config.provider === "openrouter")
     return createOpenRouter({
       apiKey: config.apiKey,
@@ -382,10 +391,15 @@ export async function executeAgentRun(options: {
         : {}),
     },
     stopWhen: isStepCount(5),
-    maxOutputTokens: 1024,
+    maxOutputTokens: options.modelIdentity.provider === "moonshot" ? 4096 : 1024,
     maxRetries: 0,
     telemetry: { isEnabled: false },
-    providerOptions: { openai: { store: false } },
+    providerOptions: {
+      openai: { store: false },
+      ...(options.modelIdentity.provider === "moonshot" && options.modelIdentity.model === "kimi-k3"
+        ? { moonshotai: { reasoningEffort: "low" } }
+        : {}),
+    },
     prepareStep: async ({ stepNumber }) => {
       if (stepFailure) throw stepFailure;
       if (toolFailed) throw new NativeExecutionError("tool_unavailable");

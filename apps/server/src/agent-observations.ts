@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const runModelUsageSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic", "openrouter"]),
+    provider: z.enum(["openai", "anthropic", "openrouter", "moonshot"]),
     model: z
       .string()
       .min(1)

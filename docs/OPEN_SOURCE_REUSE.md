@@ -269,3 +269,7 @@ Use released @openrouter/ai-sdk-provider 3.0.0 / c1ce69ab (Apache-2.0), with fix
 ## Reviewed skill content follow-up (2026-09-08)
 
 Reuse review complete: Agent Skills `69ef37e9424c0a7ea9dd2293b559e43ec8176379` and yaml 2.9.0 (`ddb21b04cb889722cec8f89dc1b67f19d62d7f7d`, ISC) supply the single-file format and parser. Extend existing immutable skill versions, Owner review and bounded native tools. Digest-bound verification, assignment revisions and publication checks retain Server authority. No source copied; no scripts, archives or referenced-resource execution. See [research](research/reviewed-skill-content.md).
+
+## Kimi desktop model
+
+Use released @ai-sdk/moonshotai 3.0.45 / 8a09c78c039e2c092468eaeff97faaabf3b77366 (Apache-2.0), with a fixed CN endpoint and existing encrypted Owner settings. No source copied. [Research](research/kimi-desktop-model.md).

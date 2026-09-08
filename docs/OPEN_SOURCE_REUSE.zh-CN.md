@@ -214,3 +214,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 ## OpenRouter 模型入口
 
 复用已发布 @openrouter/ai-sdk-provider 3.0.0 / c1ce69ab（Apache-2.0），以固定端点、严格模型 ID、非推理元数据验证和明确路由策略适配现有循环。未复制源码，不宣称支持所有模型。 [Research](research/openrouter-model-entry.md).
+
+## Kimi 桌面模型
+
+复用 @ai-sdk/moonshotai 3.0.45 / 8a09c78c039e2c092468eaeff97faaabf3b77366（Apache-2.0），固定国内接口，沿用加密的 Owner 配置；未复制上游源码。[研究](research/kimi-desktop-model.md)。

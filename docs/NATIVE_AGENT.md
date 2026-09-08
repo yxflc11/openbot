@@ -124,3 +124,7 @@ certification of third-party retention. Existing loop, output, cancellation, mem
 apply. No OpenRouter web plugins, BYOK injection, arbitrary endpoints or automatic model selection.
 One active Server model configuration is retained; multi-profile/per-Bot selection remains future work.
 See [research and known compatibility limits](research/openrouter-model-entry.md).
+
+## Kimi K3
+
+Desktop Settings → Model & API includes Kimi (Moonshot CN), default model `kimi-k3`. Enter the API key and enable the native Agent; the key is encrypted on the service computer and retained after restart. Verification checks the model list without generating content. K3 uses low reasoning effort and up to 4,096 output tokens per step (including reasoning), within the existing 90-second task deadline and five-step limit. Only newly created tasks for Bots without a computer run automatically. Existing queued tasks are not replayed. This integration does not add web search; source reading still requires explicit public URLs in the task.

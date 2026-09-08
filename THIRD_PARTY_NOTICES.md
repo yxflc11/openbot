@@ -22,10 +22,10 @@ and notices.
   License. This is the sole runtime dependency of `write-file-atomic` in the Desktop application
   ASAR.
 
-- Vercel AI SDK `ai` 7.0.93, `@ai-sdk/openai` 4.0.60, `@ai-sdk/anthropic` 4.0.49,
+- Vercel AI SDK `ai` 7.0.93, `@ai-sdk/openai` 4.0.60, `@ai-sdk/anthropic` 4.0.49, `@ai-sdk/moonshotai` 3.0.45,
   `@ai-sdk/provider` 4.0.10, `@ai-sdk/provider-utils` 5.0.36 and the SDK's transitive
   `@ai-sdk/gateway` 4.0.75 — Copyright 2023 Vercel, Inc.; Apache License 2.0.
-  The Server uses explicit OpenAI/Anthropic/OpenRouter adapters, not the AI SDK gateway. Package LICENSE files
+  The Server uses explicit OpenAI/Anthropic/OpenRouter/Moonshot adapters, not the AI SDK gateway. Package LICENSE files
   remain in the packaged production dependency tree. No upstream implementation was copied.
   See [Agent research](docs/research/native-agent-loop.md) and the
   [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).

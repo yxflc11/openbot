@@ -7,7 +7,7 @@ import { z } from "zod";
 
 export const modelSettingsInputSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic", "openrouter"]),
+    provider: z.enum(["openai", "anthropic", "openrouter", "moonshot"]),
     model: z
       .string()
       .trim()
@@ -242,20 +242,27 @@ export class ModelSettingsService {
   async #verify(input: ModelInput): Promise<void> {
     if (input.provider === "openrouter") return this.#verifyRouter(input);
     const origin =
-      input.provider === "openai" ? "https://api.openai.com" : "https://api.anthropic.com";
+      input.provider === "moonshot"
+        ? "https://api.moonshot.cn"
+        : input.provider === "openai"
+          ? "https://api.openai.com"
+          : "https://api.anthropic.com";
     const headers: Record<string, string> = { Accept: "application/json" };
-    if (input.provider === "openai") headers.Authorization = `Bearer ${input.apiKey}`;
+    if (input.provider !== "anthropic") headers.Authorization = `Bearer ${input.apiKey}`;
     else {
       headers["x-api-key"] = input.apiKey;
       headers["anthropic-version"] = "2023-06-01";
     }
     let response: Response | undefined;
     try {
-      response = await this.fetcher(`${origin}/v1/models/${encodeURIComponent(input.model)}`, {
-        headers,
-        redirect: "manual",
-        signal: AbortSignal.timeout(8000),
-      });
+      response = await this.fetcher(
+        `${origin}/v1/models${input.provider === "moonshot" ? "" : `/${encodeURIComponent(input.model)}`}`,
+        {
+          headers,
+          redirect: "manual",
+          signal: AbortSignal.timeout(8000),
+        },
+      );
       if (response.status === 401 || response.status === 403)
         throw new ModelSettingsError("invalid_credentials");
       if (response.status === 404) throw new ModelSettingsError("model_unavailable");
@@ -277,8 +284,15 @@ export class ModelSettingsService {
         await reader.cancel().catch(() => undefined);
         reader.releaseLock();
       }
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { id?: unknown };
-      if (typeof body.id !== "string" || body.id.length === 0 || body.id.length > 128)
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+        id?: unknown;
+        data?: { id?: unknown }[];
+      };
+      if (
+        input.provider === "moonshot"
+          ? !Array.isArray(body.data) || !body.data.some((model) => model?.id === input.model)
+          : typeof body.id !== "string" || body.id.length === 0 || body.id.length > 128
+      )
         throw new ModelSettingsError("model_unavailable");
     } catch (error) {
       if (error instanceof ModelSettingsError) throw error;

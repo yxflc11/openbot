@@ -987,7 +987,7 @@ export type ModelSettingsSummary =
   | { status: "unconfigured"; revision: null }
   | {
       status: "configured";
-      provider: "openai" | "anthropic" | "openrouter";
+      provider: "openai" | "anthropic" | "openrouter" | "moonshot";
       model: string;
       revision: string;
       agentEnabled?: boolean;
@@ -997,7 +997,7 @@ export function getModelSettings(): Promise<ModelSettingsSummary> {
 }
 export function saveModelSettings(input: {
   agentEnabled: boolean;
-  provider: "openai" | "anthropic" | "openrouter";
+  provider: "openai" | "anthropic" | "openrouter" | "moonshot";
   model: string;
   apiKey: string;
   revision: string | null;

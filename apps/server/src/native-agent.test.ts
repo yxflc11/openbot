@@ -83,6 +83,85 @@ function fixture() {
   };
 }
 describe("native Agent loop", () => {
+  it("runs the released K3 tool adapter with reasoning continuity and records only public output", async () => {
+    const f = fixture();
+    const bodies: Record<string, unknown>[] = [];
+    const fetcher: typeof fetch = async (url, init) => {
+      expect(String(url)).toBe("https://api.moonshot.cn/v1/chat/completions");
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer fixture-key-not-real");
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        id: "fixture",
+        model: "kimi-k3",
+        created: 1,
+        object: "chat.completion",
+        choices: [
+          {
+            index: 0,
+            finish_reason: bodies.length === 1 ? "tool_calls" : "stop",
+            message:
+              bodies.length === 1
+                ? {
+                    role: "assistant",
+                    content: null,
+                    reasoning_content: "PRIVATE_K3_REASONING",
+                    tool_calls: [
+                      {
+                        id: "call-1",
+                        type: "function",
+                        function: { name: "read_channel_context", arguments: "{}" },
+                      },
+                    ],
+                  }
+                : {
+                    role: "assistant",
+                    content: "The launch is Tuesday.",
+                    reasoning_content: "PRIVATE_K3_REASONING",
+                  },
+          },
+        ],
+        usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
+      });
+    };
+    const model = agentModel(
+      {
+        provider: "moonshot",
+        model: "kimi-k3",
+        apiKey: "fixture-key-not-real",
+        revision: "config",
+        agentEnabled: true,
+        agentEnabledAt: run.createdAt,
+      },
+      fetcher,
+    );
+    const result = await executeAgentRun({
+      ...f,
+      model,
+      modelIdentity: { provider: "moonshot", model: "kimi-k3" },
+    });
+    expect(result.text).toBe("The launch is Tuesday.");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toMatchObject({
+      model: "kimi-k3",
+      reasoning_effort: "low",
+      max_completion_tokens: 4096,
+    });
+    expect(JSON.stringify(bodies[1]?.messages)).toContain("PRIVATE_K3_REASONING");
+    expect(JSON.stringify(bodies[1]?.messages)).toContain("The launch is Tuesday.");
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_K3_REASONING");
+    expect(JSON.stringify(f.publish.mock.calls)).not.toContain("PRIVATE_K3_REASONING");
+    expect(f.store.usage).toHaveBeenLastCalledWith(
+      run,
+      expect.objectContaining({ provider: "moonshot", model: "kimi-k3", steps: 2 }),
+    );
+    await expect(
+      agentFetch("moonshot", fetcher)("https://api.moonshot.ai/v1/chat/completions", {
+        method: "POST",
+      }),
+    ).rejects.toThrow(/endpoint/);
+    expect(bodies).toHaveLength(2);
+  });
+
   it("runs the released OpenRouter adapter with tool feedback, bounded routing and no raw reasoning persistence", async () => {
     const f = fixture();
     const requests: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];

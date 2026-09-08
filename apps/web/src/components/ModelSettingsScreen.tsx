@@ -12,7 +12,9 @@ export function ModelSettingsScreen({
   onDone(): void;
 }) {
   const [snapshot, setSnapshot] = useState<ModelSettingsSummary>();
-  const [provider, setProvider] = useState<"openai" | "anthropic" | "openrouter">("openai");
+  const [provider, setProvider] = useState<"openai" | "anthropic" | "openrouter" | "moonshot">(
+    "openai",
+  );
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [agentEnabled, setAgentEnabled] = useState(false);
@@ -82,7 +84,7 @@ export function ModelSettingsScreen({
           <form onSubmit={submit}>
             <fieldset className="model-provider-options" disabled={busy || !snapshot}>
               <legend>模型服务</legend>
-              {(["openai", "anthropic", "openrouter"] as const).map((value) => (
+              {(["openai", "anthropic", "openrouter", "moonshot"] as const).map((value) => (
                 <label key={value}>
                   <input
                     type="radio"
@@ -90,11 +92,18 @@ export function ModelSettingsScreen({
                     checked={provider === value}
                     onChange={() => {
                       setProvider(value);
-                      setModel("");
+                      setModel(value === "moonshot" ? "kimi-k3" : "");
                       setApiKey("");
                     }}
                   />
-                  {{ openai: "OpenAI", anthropic: "Anthropic", openrouter: "OpenRouter" }[value]}
+                  {
+                    {
+                      openai: "OpenAI",
+                      anthropic: "Anthropic",
+                      openrouter: "OpenRouter",
+                      moonshot: "Kimi（月之暗面）",
+                    }[value]
+                  }
                 </label>
               ))}
             </fieldset>
@@ -137,6 +146,7 @@ export function ModelSettingsScreen({
                   openai: "api.openai.com",
                   anthropic: "api.anthropic.com",
                   openrouter: "openrouter.ai",
+                  moonshot: "api.moonshot.cn",
                 }[provider]
               }{" "}
               · 密钥加密保存在你的服务电脑上。
