@@ -1,6 +1,7 @@
 import type { ExecutionNode, Run } from "@openbot/domain";
 import {
   firstCapabilityRequirementMismatch,
+  hasBrowserClickIntent,
   type NodeCapability,
   type NodeCapabilityRequirement,
 } from "@openbot/protocol";
@@ -28,7 +29,14 @@ export type NodeCompatibilityResult =
     };
 
 export function requirementsForRun(run: Run): ExecutionRequirements | undefined {
-  return requirementsForExecutionProfile(run.executionProfile);
+  const requirements = requirementsForExecutionProfile(run.executionProfile);
+  if (
+    requirements &&
+    run.executionProfile === "docker-linux" &&
+    hasBrowserClickIntent(run.instruction)
+  )
+    requirements.capabilityManifest.push({ id: "browser.input", version: 1 });
+  return requirements;
 }
 
 export function requirementsForExecutionProfile(

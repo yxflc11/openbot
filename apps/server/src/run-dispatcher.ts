@@ -1,3 +1,4 @@
+import { browserClickApprovalMatches } from "@openbot/protocol";
 import type {
   ApprovalResolution,
   ExecutionNode,
@@ -349,17 +350,34 @@ export class RunDispatcher {
         return;
       }
       case "approval.request": {
+        const clickRun =
+          message.action === "browser.click"
+            ? await this.#store.getRunningRunForNode(message.runId, node.id)
+            : undefined;
+        const clickMatches =
+          message.action !== "browser.click" ||
+          Boolean(
+            clickRun &&
+              clickRun.executionProfile === "docker-linux" &&
+              browserClickApprovalMatches(
+                clickRun.instruction,
+                message.target,
+                message.beforeState,
+              ),
+          );
         const policy = evaluatePolicy(
           { action: message.action, target: message.target },
           this.#approvalPolicyRules,
         );
         if (
+          !clickMatches ||
           policy.effect !== "require_approval" ||
           policy.minimumRisk === undefined ||
           isRiskDowngrade(message.risk, policy.minimumRisk)
         ) {
-          const nodeReason =
-            policy.effect !== "require_approval"
+          const nodeReason = !clickMatches
+            ? "Browser approval does not match the Server task."
+            : policy.effect !== "require_approval"
               ? "Execution requested an action that Server policy does not permit."
               : "Execution reported a risk below the Server policy minimum.";
           const failure = publicRunFailure("approval_policy_denied");

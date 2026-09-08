@@ -63,6 +63,39 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
+  it("authenticates bounded single-file skill import and rejects malformed or extra content", async () => {
+    const store = createTestStore();
+    const imported = vi.spyOn(store, "createEmployeeSkill");
+    const app = createTestApp({ store });
+    const endpoint = "/api/v1/bots/bot/skills/import";
+    expect(
+      (await app.request(endpoint, { method: "POST", headers: { Origin: testOrigin } })).status,
+    ).toBe(401);
+    const login = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Origin: testOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const post = (body: unknown, origin = testOrigin) =>
+      app.request(endpoint, {
+        method: "POST",
+        headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const valid = {
+      markdown:
+        "---\nname: bounded-report\ndescription: Prepare a report\n---\nUse available tools.",
+      version: "1.0.0",
+      reason: "Import",
+    };
+    expect((await post(valid, "https://other.example")).status).toBe(403);
+    expect((await post({ ...valid, markdown: "not a skill" })).status).toBe(422);
+    expect((await post({ ...valid, scripts: [] })).status).toBe(422);
+    expect((await post({ ...valid, markdown: "x".repeat(40000) })).status).toBe(422);
+    expect(imported).not.toHaveBeenCalled();
+  });
+
   it("requires Owner authentication, origin and explicit bounded review for knowledge proposals", async () => {
     const knowledge = {
       list: vi.fn(async () => []),

@@ -39,6 +39,31 @@ const profile: EmployeeProfile = {
 };
 
 describe("EmployeeSkillReview", () => {
+  it("shows the complete immutable file as escaped text and distinguishes model enablement", () => {
+    const skill = profile.skills[0]!;
+    const html = renderToStaticMarkup(
+      <EmployeeSkillReview
+        profile={{
+          ...profile,
+          skills: [
+            {
+              ...skill,
+              skillMarkdown: "<script>unsafe()</script>\nReviewed full text",
+              contentSha256: "a".repeat(64),
+              modelUseEnabled: false,
+            },
+          ],
+        }}
+        onProfileChanged={async () => undefined}
+      />,
+    );
+    expect(html).toContain("导入 SKILL.md");
+    expect(html).toContain("SKILL.md 全文");
+    expect(html).toContain("未启用模型使用");
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>unsafe()");
+  });
+
   it("keeps lifecycle actions inside the Server-supported transition graph", () => {
     expect(allowedSkillReviewStates("candidate")).toEqual(["verified", "suspended", "revoked"]);
     expect(allowedSkillReviewStates("verified")).toEqual(["suspended", "revoked"]);

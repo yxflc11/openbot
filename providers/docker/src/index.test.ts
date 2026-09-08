@@ -22,6 +22,26 @@ const context = {
 };
 
 describe("CopilotKit agent-computer adapter", () => {
+  it("keeps interaction disabled unless its exact origin is configured", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const provider = createDockerProvider({
+      computerUrl: "http://127.0.0.1:4100",
+      computerToken: "fixture-computer-token",
+      fetcher,
+    });
+    await expect(
+      provider.execute?.(
+        context,
+        { ...input, instruction: 'https://example.com/ click button "Preview"' },
+        () => undefined,
+        undefined,
+        async () => ({ approvalId: "unused", status: "approved" }),
+      ),
+    ).rejects.toThrow(/not configured/);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(provider.capabilityManifest.some((item) => item.id === "browser.input")).toBe(false);
+  });
+
   it("navigates and returns a bounded PNG artifact", async () => {
     const fetcher = vi
       .fn<typeof fetch>()

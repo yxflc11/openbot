@@ -50,7 +50,7 @@ OpenBot 必须先有可执行证据，才会宣称某个平台或 Provider 已�
 
 | Provider | Declaration | Routed | Integrated | 当前声明 |
 | --- | --- | --- | --- | --- |
-| Docker/browser 适配器 | 通过 | Windows/macOS/Linux 模拟路由通过 | 只读打开 URL + PNG 截图垂直切片 | Pre-alpha 开发切片 |
+| Docker/browser 适配器 | 通过 | Windows/macOS/Linux 模拟路由通过 | 打开 URL + PNG，及可信测试站点的可选审核单按钮点击 | Pre-alpha 开发切片 |
 | Cua | 通过 | macOS 声明场景通过 | 本仓库尚未实现 | 无 |
 | Lume | 通过 | 已定义要求 | 本仓库尚未实现 | 无 |
 | Coder | 通过 | Linux arm64 模拟路由通过 | 本仓库尚未实现 | 无 |
@@ -157,3 +157,11 @@ npm run check
 schema、构建器和独立 runner 已经实现，并有密闭负向 fixture。下一步是编写 Provider 专属场景
 模块，并在受控的真实 Windows、macOS、Linux 设备上执行。观察并审核这些报告前，不存在任何
 真实设备支持声明。
+
+## 审核浏览器点击的证据
+
+[受控浏览器流程](CONTROLLED_BROWSER.zh-CN.md) 已在 macOS arm64 上，通过真实 Server/PostgreSQL、
+已登记 Worker、固定版本 agent-computer 及其 Chromium 验证本地夹具。
+拒绝时页面不变；批准时指定按钮点击一次并返回 PNG。重复导航覆盖带帧前缀的元素引用。
+Web 界面通过 1280x900 和 390x844 验收；测试上游的监听地址补丁已在[研究记录](research/controlled-browser-click.md)披露。
+这是实验集成证据，不等于原生桌面输入或 Windows/Linux 浏览器认证。浏览器出口限制和通用不可信站点操作仍未实现。

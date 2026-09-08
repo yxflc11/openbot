@@ -1,3 +1,4 @@
+import { EmployeeSkillImport } from "./EmployeeSkillImport";
 import type {
   EmployeeProfile,
   EmployeeSkill,
@@ -22,18 +23,11 @@ export function EmployeeSkillReview({
   profile: EmployeeProfile;
   onProfileChanged(): Promise<void>;
 }) {
-  if (profile.skills.length === 0) {
-    return (
-      <div className="employee-empty">
-        <strong>还没有技能</strong>
-        <p>学习到的技能会先以候选状态出现。</p>
-      </div>
-    );
-  }
-
   const skillsById = new Map(profile.skills.map((skill) => [skill.id, skill]));
   return (
     <div className="employee-skill-review-list">
+      <EmployeeSkillImport employeeId={profile.employee.id} onProfileChanged={onProfileChanged} />
+      {profile.skills.length === 0 ? <p>还没有技能。导入后会先以候选状态出现。</p> : null}
       {profile.skills.map((skill) => (
         <details className={`employee-skill-review ${skill.state}`} key={skill.id}>
           <summary>
@@ -91,7 +85,19 @@ export function EmployeeSkillReview({
               />
             </div>
 
+            {skill.skillMarkdown ? (
+              <section className="employee-skill-document">
+                <h3>SKILL.md 全文</h3>
+                <p>{skill.modelUseEnabled ? "已审核，Agent 可按需读取" : "未启用模型使用"}</p>
+                <pre>{skill.skillMarkdown}</pre>
+                <small>SHA-256: {skill.contentSha256}</small>
+              </section>
+            ) : (
+              <p>此记录只有技能说明，尚无可供 Agent 使用的正文。</p>
+            )}
+
             <SkillReviewForm
+              key={`${skill.id}:${skill.state}:${skill.contentSha256 ?? "metadata"}`}
               employeeId={profile.employee.id}
               skill={skill}
               onProfileChanged={onProfileChanged}
@@ -138,6 +144,7 @@ function SkillReviewForm({
   onProfileChanged(): Promise<void>;
 }) {
   const actions = allowedSkillReviewStates(skill.state);
+  const [contentReviewed, setContentReviewed] = useState(false);
   const [selectedState, setSelectedState] = useState<SkillReviewState>();
   const [confidence, setConfidence] = useState(skill.confidence > 0 ? skill.confidence : 80);
   const [reason, setReason] = useState("");
@@ -150,7 +157,11 @@ function SkillReviewForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (selectedState === undefined) return;
+    if (
+      selectedState === undefined ||
+      (selectedState === "verified" && skill.skillMarkdown && !contentReviewed)
+    )
+      return;
     setSaving(true);
     setError(undefined);
     try {
@@ -158,6 +169,7 @@ function SkillReviewForm({
         selectedState === "verified"
           ? {
               state: "verified",
+              ...(skill.contentSha256 ? { reviewedContentSha256: skill.contentSha256 } : {}),
               confidence,
               reason,
               evidence: [],
@@ -197,6 +209,7 @@ function SkillReviewForm({
             onClick={() => {
               setError(undefined);
               setSelectedState(state);
+              setContentReviewed(false);
             }}
             key={state}
           >
@@ -225,6 +238,17 @@ function SkillReviewForm({
               />
             </label>
           ) : null}
+          {selectedState === "verified" && skill.skillMarkdown ? (
+            <label>
+              <input
+                type="checkbox"
+                checked={contentReviewed}
+                required
+                onChange={(event) => setContentReviewed(event.target.checked)}
+              />
+              <span>我已核对上方完整正文，允许 Agent 将此版本发送给已配置模型并使用。</span>
+            </label>
+          ) : null}
           <label>
             <span>审核理由</span>
             <textarea
@@ -245,7 +269,10 @@ function SkillReviewForm({
             <button
               className={selectedState === "revoked" ? "skill-danger-button" : "primary-button"}
               type="submit"
-              disabled={saving}
+              disabled={
+                saving ||
+                (selectedState === "verified" && Boolean(skill.skillMarkdown) && !contentReviewed)
+              }
             >
               {saving ? "提交中…" : skillSubmitLabel(selectedState)}
             </button>

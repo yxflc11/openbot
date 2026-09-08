@@ -67,6 +67,7 @@ function riskLabel(risk: Approval["risk"]): string {
 
 function actionLabel(action: string): string {
   const labels: Record<string, string> = {
+    "browser.click": "点击这个按钮",
     "email.send": "发送这封邮件",
     "form.submit": "提交这张表单",
     "message.send": "发送这条消息",

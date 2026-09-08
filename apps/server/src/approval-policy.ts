@@ -6,6 +6,20 @@ import type { PolicyRisk, PolicyRule } from "@openbot/policy";
  */
 export const approvalPolicyRules = [
   {
+    id: "browser-click-https-v1",
+    action: "browser.click",
+    targetPrefix: "https://",
+    effect: "require_approval",
+    minimumRisk: "privileged",
+  },
+  {
+    id: "browser-click-loopback-test-v1",
+    action: "browser.click",
+    targetPrefix: "http://127.0.0.1:",
+    effect: "require_approval",
+    minimumRisk: "privileged",
+  },
+  {
     id: "browser-form-submit-v1",
     action: "form.submit",
     targetPrefix: "https://",

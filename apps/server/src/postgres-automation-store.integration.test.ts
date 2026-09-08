@@ -46,6 +46,130 @@ describe.skipIf(!databaseUrl)("PostgreSQL automation transaction", () => {
   afterAll(async () => {
     await Promise.all([database?.close(), peer?.close()]);
   });
+  async function skillTask() {
+    const context = await knowledgeTask("Use the reviewed skill");
+    const candidate = await context.control.createEmployeeSkill("test-bot", {
+      slug: "reviewed-report",
+      name: "Reviewed report",
+      description: "Prepare an evidence report",
+      version: "1.0.0",
+      source: "manual",
+      requiredCapabilities: [],
+      dependencySkillIds: [],
+      evidence: [],
+      reason: "Import",
+      skillMarkdown:
+        "---\nname: reviewed-report\ndescription: Prepare an evidence report\n---\nRead supplied sources before reporting.\n",
+    });
+    return { ...context, candidate };
+  }
+  const verifySkill = (sha256?: string) => ({
+    state: "verified" as const,
+    confidence: 90,
+    reason: "Reviewed entire file",
+    evidence: [],
+    ownerReviewed: true as const,
+    ...(sha256 ? { reviewedContentSha256: sha256 } : {}),
+  });
+  it("keeps skill contents pending until exact digest review and isolates other Bots", async () => {
+    if (!database) return;
+    const { native, active, control, candidate } = await skillTask();
+    expect((await native.skills(active)).skills).toEqual([]);
+    await expect(
+      control.updateEmployeeSkillState("test-bot", candidate.skill.id, verifySkill()),
+    ).rejects.toThrow(/complete current/);
+    await expect(
+      control.updateEmployeeSkillState("test-bot", candidate.skill.id, verifySkill("f".repeat(64))),
+    ).rejects.toThrow();
+    await control.updateEmployeeSkillState(
+      "test-bot",
+      candidate.skill.id,
+      verifySkill(candidate.skill.contentSha256),
+    );
+    const [reference] = (await native.skills(active)).skills;
+    if (!reference) throw Error("Missing verified skill");
+    expect((await native.readSkill(active, reference)).markdown).toBe(
+      candidate.skill.skillMarkdown,
+    );
+    await expect(native.readSkill({ ...active, botId: "other-bot" }, reference)).rejects.toThrow();
+    const events =
+      await database.client`select payload from run_events where run_id=${active.id} and type='SKILL_READ'`;
+    expect(events).toHaveLength(1);
+    expect(JSON.stringify(events)).not.toContain("Read supplied sources");
+    await native.complete(active, "Completed using reviewed skill", [], undefined, [], [reference]);
+    expect((await control.listRuns("test-channel"))[0]?.status).toBe("completed");
+  });
+  it("invalidates a loaded skill through pause/resume and atomically refuses publication", async () => {
+    if (!database) return;
+    const { native, active, control, candidate } = await skillTask();
+    await control.updateEmployeeSkillState(
+      "test-bot",
+      candidate.skill.id,
+      verifySkill(candidate.skill.contentSha256),
+    );
+    const [reference] = (await native.skills(active)).skills;
+    if (!reference) throw Error("Missing skill");
+    await native.readSkill(active, reference);
+    await control.updateEmployeeSkillState("test-bot", candidate.skill.id, {
+      state: "suspended",
+      reason: "Withdraw",
+      evidence: [],
+      ownerReviewed: true,
+    });
+    expect((await native.skills(active)).skills).toEqual([]);
+    await control.updateEmployeeSkillState(
+      "test-bot",
+      candidate.skill.id,
+      verifySkill(candidate.skill.contentSha256),
+    );
+    await expect(native.assertSkills(active, [reference])).rejects.toThrow();
+    await expect(
+      native.complete(active, "Must not publish", [], undefined, [], [reference]),
+    ).rejects.toThrow();
+    expect((await control.listRuns("test-channel"))[0]?.status).toBe("running");
+    const replies =
+      await database.client`select id from messages where run_id=${active.id} and author_type='bot'`;
+    expect(replies).toHaveLength(0);
+  });
+  it("makes skill versions immutable and never loads revoked contents", async () => {
+    if (!database) return;
+    const { native, active, control, candidate } = await skillTask();
+    await control.updateEmployeeSkillState(
+      "test-bot",
+      candidate.skill.id,
+      verifySkill(candidate.skill.contentSha256),
+    );
+    await control.updateEmployeeSkillState("test-bot", candidate.skill.id, {
+      state: "revoked",
+      reason: "Revoke",
+      evidence: [],
+      ownerReviewed: true,
+    });
+    expect((await native.skills(active)).skills).toEqual([]);
+    await expect(
+      control.updateEmployeeSkillState(
+        "test-bot",
+        candidate.skill.id,
+        verifySkill(candidate.skill.contentSha256),
+      ),
+    ).rejects.toThrow();
+    await database.client`insert into bots(id,name,role) values ('other-bot','Other','Assistant')`;
+    await expect(
+      control.createEmployeeSkill("other-bot", {
+        slug: "reviewed-report",
+        name: "Reviewed report",
+        description: "Prepare an evidence report",
+        version: "1.0.0",
+        source: "manual",
+        requiredCapabilities: [],
+        dependencySkillIds: [],
+        evidence: [],
+        reason: "Changed",
+        skillMarkdown: candidate.skill.skillMarkdown + "Changed",
+      }),
+    ).rejects.toThrow(/different definition/);
+  });
+
   const command = () => ({
     name: "Scheduled check",
     channelId: "test-channel",

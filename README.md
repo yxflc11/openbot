@@ -23,8 +23,8 @@ The app's ability to display a desktop does not grant permission to control it.
 
 > [!WARNING]
 > OpenBot is pre-alpha. Desktop artifacts are unsigned development bundles, not signed public
-> installers. The current computer Provider only opens an explicit public URL and returns a
-> screenshot; arbitrary desktop clicking, typing and unattended form submission are not implemented.
+> installers. The browser Provider opens explicit URLs and returns screenshots; an opt-in,
+> reviewed single-button click is experimental. Native desktop input and unattended forms are not implemented.
 > Do not connect payment methods, primary accounts or production credentials.
 
 ## Desktop on Windows, macOS and Linux
@@ -93,7 +93,7 @@ enter a trusted HTTPS Server origin and sign in as its Owner. See
 | Automatic tasks | PostgreSQL schedules, pause/resume/delete, bounded intervals, one due occurrence after downtime and existing authorized task routing | Multi-Server coordination and additional schedule semantics |
 | Employee profile | Role/biography editing, dated evolution archive, reviewed skills, typed Owner-managed memory, reviewed task lessons with explicit model sharing, review-bound export/import and experimental DSSE signing | Autonomous learning, executable skills, selective cloning and public trust distribution |
 | Worker protocol | Outbound connections, one-time pairing, revocation, versioned capability routing, progress, frames and artifacts | Proof-of-possession identity, complete service/device conformance and signed distribution |
-| Computer execution | Read-only Docker/browser URL-to-screenshot flow | Safe interaction, native desktop Providers, signed single-use leases and exclusive takeover |
+| Computer execution | URL screenshots and opt-in reviewed button click on trusted test origins | Browser egress isolation, native desktop Providers, signed single-use leases and exclusive takeover |
 
 The [native Agent](docs/NATIVE_AGENT.md) runs new `none`-profile tasks after explicit Owner opt-in.
 OpenBot does not yet provide Hermes/Pi/OpenClaw runtime
@@ -130,7 +130,8 @@ To enable the existing browser slice, run the pinned
 [CopilotKit/OpenBot agent-computer](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer)
 on Node loopback and configure `OPENBOT_DOCKER_COMPUTER_URL`,
 `OPENBOT_DOCKER_COMPUTER_TOKEN` and `OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS=false`.
-Send an explicit public URL in a channel to obtain a screenshot.
+Send an explicit public URL in a channel to obtain a screenshot. For the default-off interaction
+flow, see [one reviewed browser click](docs/CONTROLLED_BROWSER.md).
 
 For container deployment, see [Server container](docs/SERVER_CONTAINER.md). For scheduled work,
 see [Automations](docs/AUTOMATIONS.md): the Server must stay running; schedules confer no extra
@@ -179,3 +180,5 @@ Start with [Product](docs/PRODUCT.md), [Architecture](docs/ARCHITECTURE.md),
 `OpenBot` is a working name already used by other projects, including CopilotKit/OpenBot; a distinct
 name is required before a stable release. This project is not affiliated with xAI, Tencent,
 CopilotKit, OpenClaw or other referenced projects.
+
+Reviewed instruction workflows are available through [SKILL.md import and Owner review](docs/REVIEWED_SKILLS.md).
