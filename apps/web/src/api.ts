@@ -1,3 +1,4 @@
+import type { ModelProviderId } from "@openbot/domain";
 import type {
   Approval,
   ApprovalDecision,
@@ -987,7 +988,9 @@ export type ModelSettingsSummary =
   | { status: "unconfigured"; revision: null }
   | {
       status: "configured";
-      provider: "openai" | "anthropic" | "openrouter";
+      provider: ModelProviderId;
+      baseUrl?: string;
+      verification?: "metadata" | "not_checked";
       model: string;
       revision: string;
       agentEnabled?: boolean;
@@ -997,7 +1000,8 @@ export function getModelSettings(): Promise<ModelSettingsSummary> {
 }
 export function saveModelSettings(input: {
   agentEnabled: boolean;
-  provider: "openai" | "anthropic" | "openrouter";
+  provider: ModelProviderId;
+  baseUrl?: string;
   model: string;
   apiKey: string;
   revision: string | null;
@@ -1028,4 +1032,16 @@ export async function reviewKnowledgeProposal(
       body: JSON.stringify(input),
     },
   );
+}
+
+export function discoverModelSettings(
+  input: { provider: ModelProviderId; baseUrl: string; apiKey: string },
+  signal?: AbortSignal,
+): Promise<{ models: string[] }> {
+  return request("/api/v1/settings/model/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    ...(signal ? { signal } : {}),
+  });
 }

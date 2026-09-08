@@ -28,6 +28,37 @@ const input = {
   revision: null,
 };
 describe("Owner model settings", () => {
+  it("verifies K3 against Moonshot's exact model list and retains an encrypted key", async () => {
+    const fetcher = vi.fn(async () => Response.json({ data: [{ id: "kimi-k3" }] }));
+    const { service, path } = await fixture(fetcher);
+    const saved = await service.save({
+      ...input,
+      provider: "moonshot",
+      model: "kimi-k3",
+      agentEnabled: true,
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://api.moonshot.cn/v1/models",
+      expect.objectContaining({
+        redirect: "manual",
+        headers: expect.objectContaining({ Authorization: `Bearer ${input.apiKey}` }),
+      }),
+    );
+    expect(await readFile(path, "utf8")).not.toContain(input.apiKey);
+    const reopened = new ModelSettingsService(path, "a".repeat(64));
+    expect(await reopened.summary()).toEqual(saved);
+    expect(await reopened.agentSettings()).toMatchObject({
+      provider: "moonshot",
+      model: "kimi-k3",
+      apiKey: input.apiKey,
+    });
+    fetcher.mockResolvedValueOnce(Response.json({ data: [{ id: "other-model" }] }));
+    await expect(
+      service.save({ ...input, provider: "moonshot", model: "kimi-k3", revision: saved.revision }),
+    ).rejects.toMatchObject({ code: "model_unavailable" });
+    expect(await reopened.summary()).toEqual(saved);
+  });
+
   it("verifies an OpenRouter inference key and matching tool model without generating a completion", async () => {
     const fetcher = vi.fn(async (url: string) =>
       Response.json(

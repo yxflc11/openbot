@@ -64,6 +64,7 @@ import {
 } from "./employee-package.js";
 import {
   ModelSettingsError,
+  modelDiscoveryInputSchema,
   type ModelSettingsService,
   modelSettingsInputSchema,
 } from "./model-settings.js";
@@ -299,6 +300,19 @@ export function createApp(dependencies: AppDependencies) {
         );
       }
       return context.json({ error: "Model configuration could not be saved." }, 503);
+    }
+  });
+
+  app.post("/api/v1/settings/model/models", async (context) => {
+    if (!dependencies.modelSettings) return context.json({ error: "storage_unavailable" }, 503);
+    const input = await parseRequest(context.req.raw, modelDiscoveryInputSchema, 4096);
+    try {
+      return context.json({ models: await dependencies.modelSettings.discover(input) });
+    } catch (error) {
+      return context.json(
+        { error: error instanceof ModelSettingsError ? error.code : "provider_unavailable" },
+        422,
+      );
     }
   });
 

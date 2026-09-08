@@ -126,6 +126,64 @@ describe("Desktop application connection gate", () => {
     }
   });
 
+  it("recovers an expired local session instead of asking for the generated password", async () => {
+    let authenticated = false;
+    const restoreLocalSession = vi.fn(async () => {
+      authenticated = true;
+      return { status: "restored" as const };
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/api/v1/auth/session"
+          ? Response.json(
+              authenticated
+                ? {
+                    authenticated: true,
+                    expiresAt: "2999-01-01T00:00:00Z",
+                    owner: { id: "owner", name: "Owner" },
+                  }
+                : { authenticated: false },
+            )
+          : Response.json({ status: "unconfigured", revision: null }),
+      ),
+    );
+    window.openbotDesktop = {
+      getConnectionState: vi.fn(async () => ({
+        status: "configured",
+        serverUrl: "http://127.0.0.1:45678",
+      })),
+      configureServer: vi.fn(),
+      getSetupPlanState: vi.fn(async () => ({
+        status: "configured",
+        plan: { mode: "host", localWorker: false, plannedWorkerCount: 0 },
+      })),
+      saveSetupPlan: vi.fn(),
+      getLocalWorkerState: vi.fn(async () => ({ status: "not-selected" })),
+      setupLocalWorker: vi.fn(),
+      enableLocalWorker: vi.fn(),
+      openLocalWorkerSettings: vi.fn(),
+      installNativeServer: vi.fn(async () => ({
+        status: "ready",
+        serverUrl: "http://127.0.0.1:45678",
+      })),
+      getNativeServerState: vi.fn(async () => ({
+        status: "ready",
+        serverUrl: "http://127.0.0.1:45678",
+      })),
+      restoreLocalSession,
+    };
+    const rendered = await renderComponent(<App />);
+    try {
+      await settleEffects();
+      expect(restoreLocalSession).toHaveBeenCalledOnce();
+      expect(rendered.container.querySelector('#owner-password')).toBeNull();
+      expect(rendered.container.textContent).toContain("为 Bot 配置模型");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+
   it("offers the configured Server again after a connection failure", async () => {
     vi.stubGlobal(
       "fetch",

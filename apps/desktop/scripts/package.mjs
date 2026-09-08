@@ -116,7 +116,7 @@ const packagePaths = await packager({
       }
     },
   ],
-  executableName: identity.executableName,
+  executableName: process.platform === "darwin" ? identity.name : identity.executableName,
   ignore: (candidatePath) => shouldIgnoreDesktopSource(appRoot, candidatePath),
   icon: desktopIconBase,
   name: identity.name,

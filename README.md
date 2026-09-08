@@ -182,3 +182,14 @@ name is required before a stable release. This project is not affiliated with xA
 CopilotKit, OpenClaw or other referenced projects.
 
 Reviewed instruction workflows are available through [SKILL.md import and Owner review](docs/REVIEWED_SKILLS.md).
+
+### Desktop model providers
+
+Settings → Model API offers eleven provider presets: OpenAI, Anthropic, Google Gemini, DeepSeek,
+Kimi, OpenRouter, SiliconFlow, Alibaba Cloud Model Studio, Z.AI, MiniMax and Volcengine Ark.
+Choose the API-key region, select a suggested model or enter its ID, and save the encrypted default.
+Supported providers can fetch a bounded model list without generating paid content. Providers
+without a reviewed listing API explicitly save without online validation. Switching provider or
+region clears the key field. Existing Kimi settings and local data remain compatible. This Desktop
+uses one Server-owned default; per-Employee connections and arbitrary custom hosts are not added.
+See [integration research](docs/research/desktop-model-presets.md).

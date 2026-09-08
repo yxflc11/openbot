@@ -34,6 +34,14 @@ function preload() {
 }
 
 describe("sandboxed report save preload", () => {
+  it("exposes local recovery without forwarding a caller URL or credentials", async () => {
+    const { bridge, ipcRenderer } = preload();
+    await (bridge.restoreLocalSession as (...args: unknown[]) => Promise<unknown>)(
+      "https://other.test",
+      "fixture",
+    );
+    expect(ipcRenderer.invoke).toHaveBeenCalledExactlyOnceWith("openbot:restore-local-session");
+  });
   it("exposes a fixed report command and rejects paths, URLs and objects before IPC", async () => {
     const { bridge, ipcRenderer } = preload();
     const id = "6d472024-ae0c-43a8-8ff7-b583c8eccb26";

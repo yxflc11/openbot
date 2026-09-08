@@ -45,6 +45,7 @@ const runtimeInfo = Object.freeze({
   shellVersion,
 });
 const bridge: OpenBotDesktopBridge = Object.freeze({
+  restoreLocalSession: () => ipcRenderer.invoke("openbot:restore-local-session"),
   saveReport: (artifactId: string) => {
     if (
       typeof artifactId !== "string" ||

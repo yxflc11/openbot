@@ -51,6 +51,7 @@ import { OpenBotMark } from "./components/OpenBotMark";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
 import { SkillLibraryScreen } from "./components/SkillLibraryScreen";
+import { resolveAuthSession } from "./auth-session-recovery";
 import { createConversationSession } from "./conversation-session";
 import {
   type DesktopConnectionState,
@@ -98,17 +99,29 @@ export function App() {
   const [session, setSession] = useState<AuthSessionSnapshot>();
   const [sessionError, setSessionError] = useState<string>();
 
-  const refreshSession = useCallback(async (signal?: AbortSignal) => {
-    setSessionError(undefined);
-    try {
-      setSession(await getAuthSession(signal));
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === "AbortError") return;
-      setSessionError(
-        cause instanceof Error ? cause.message : "无法连接 OpenBot Server。请确认服务已启动。",
-      );
-    }
-  }, []);
+  const localHost =
+    desktopSetupPlan?.status === "configured" && desktopSetupPlan.plan.mode === "host";
+  const restoreLocalSession =
+    localHost && nativeReady ? desktopBridge?.restoreLocalSession : undefined;
+  const authRequest = useRef(0);
+  const explicitlyLoggedOut = useRef(false);
+  const refreshSession = useCallback(
+    async (signal?: AbortSignal) => {
+      const requestId = ++authRequest.current;
+      setSessionError(undefined);
+      try {
+        const next = await resolveAuthSession(getAuthSession, restoreLocalSession, signal);
+        if (!signal?.aborted && requestId === authRequest.current) setSession(next);
+      } catch (cause) {
+        if (signal?.aborted || requestId !== authRequest.current) return;
+        setSession(undefined);
+        setSessionError(
+          cause instanceof Error ? cause.message : "无法连接 OpenBot Server。请确认服务已启动。",
+        );
+      }
+    },
+    [restoreLocalSession],
+  );
 
   useEffect(() => {
     if (desktopBridge === undefined) return;
@@ -177,7 +190,29 @@ export function App() {
     };
   }, [nativeReady, session, modelChecked]);
 
-  useEffect(() => subscribeToUnauthorized(() => setSession({ authenticated: false })), []);
+  useEffect(
+    () =>
+      subscribeToUnauthorized(() => {
+        if (explicitlyLoggedOut.current) return;
+        if (restoreLocalSession) void refreshSession();
+        else setSession({ authenticated: false });
+      }),
+    [refreshSession, restoreLocalSession],
+  );
+
+  useEffect(() => {
+    if (!restoreLocalSession) return;
+    const foreground = () => {
+      if (document.visibilityState === "visible" && !explicitlyLoggedOut.current)
+        void refreshSession();
+    };
+    window.addEventListener("focus", foreground);
+    document.addEventListener("visibilitychange", foreground);
+    return () => {
+      window.removeEventListener("focus", foreground);
+      document.removeEventListener("visibilitychange", foreground);
+    };
+  }, [refreshSession, restoreLocalSession]);
 
   useEffect(() => {
     if (
@@ -209,16 +244,16 @@ export function App() {
   useEffect(() => {
     if (session?.authenticated !== true) return;
     const remainingMs = new Date(session.expiresAt).getTime() - Date.now();
-    if (remainingMs <= 0) {
-      setSession({ authenticated: false });
-      return;
-    }
     const timer = window.setTimeout(
-      () => setSession({ authenticated: false }),
-      Math.min(remainingMs, 2_147_483_647),
+      () => {
+        if (explicitlyLoggedOut.current) return;
+        if (restoreLocalSession) void refreshSession();
+        else setSession({ authenticated: false });
+      },
+      Math.max(1000, Math.min(remainingMs, 2_147_483_647)),
     );
     return () => window.clearTimeout(timer);
-  }, [session]);
+  }, [session, refreshSession, restoreLocalSession]);
 
   if (
     desktopBridge !== undefined &&
@@ -344,6 +379,29 @@ export function App() {
     );
   }
 
+  if (!session.authenticated && localHost) {
+    return (
+      <main className="login-screen">
+        <section className="login-card" aria-labelledby="local-session-title">
+          <OpenBotMark />
+          <h1 id="local-session-title">已退出本机工作区</h1>
+          <p className="login-copy">由这台电脑验证身份，无需输入密码。</p>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => {
+              explicitlyLoggedOut.current = false;
+              setSession(undefined);
+              void refreshSession();
+            }}
+          >
+            重新进入
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   if (!session.authenticated) {
     return <LoginScreen onLogin={async (password) => setSession(await login(password))} />;
   }
@@ -454,7 +512,14 @@ export function App() {
           ownerName={session.owner.name}
           onSettings={() => setShowSettings(true)}
           onLogout={async () => {
-            await logout();
+            explicitlyLoggedOut.current = true;
+            ++authRequest.current;
+            try {
+              await logout();
+            } catch (error) {
+              explicitlyLoggedOut.current = false;
+              throw error;
+            }
             setSession({ authenticated: false });
           }}
         />
