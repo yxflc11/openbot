@@ -220,3 +220,5 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 复用 @ai-sdk/moonshotai 3.0.45 / 8a09c78c039e2c092468eaeff97faaabf3b77366（Apache-2.0），固定国内接口，沿用加密的 Owner 配置；未复制上游源码。[研究](research/kimi-desktop-model.md)。
 
 Desktop 服务预设复用现有 AI SDK 适配器与 Owner 设置，见 [Desktop 接入审查](research/desktop-model-presets.md)和[服务商 API 调查](research/model-service-presets.zh-CN.md)。没有复制上游源码。
+
+Desktop 公开检索复用 ai 7.0.93 / `6359fd58fe68eaade096b5d923bac26de84ca3bd`、@ai-sdk/moonshotai 3.0.45 / `8a09c78c039e2c092468eaeff97faaabf3b77366`（Apache-2.0）、2026-09-08 审查的 Kimi Formula/Tavily 官方契约及现有 DNS 固定读取器。每任务最多四次联网调用，沿用原生 Run 权限、审计和截止时间。未复制上游源码，见[Desktop 联网工具调研](research/desktop-public-web-tools.zh-CN.md)。

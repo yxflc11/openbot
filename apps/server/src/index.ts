@@ -12,6 +12,7 @@ import { EmployeePublisherKeyring } from "./employee-publisher-keyring.js";
 import { closeHttpServer } from "./http-shutdown.js";
 import { bootstrapModelSettings } from "./model-settings-bootstrap.js";
 import { NativeAgentRunner } from "./native-agent.js";
+import { createNativeWebSearch } from "./native-web-tools.js";
 import { NodeIdentityService } from "./node-identity.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
@@ -85,6 +86,7 @@ const nativeAgent = modelSettings
       undefined,
       {
         artifacts: artifactStorage,
+        webSearch: (config) => createNativeWebSearch(config, { tavilyApiKey: env.TAVILY_API_KEY }),
         onUpdated: (run) => workspaceRealtime.publish({ type: "run.updated", run }),
         onCompleted: (run, artifacts) =>
           workspaceRealtime.publish({ type: "run.updated", run, artifacts }),
