@@ -21,6 +21,7 @@ import {
   type PreparedAction,
 } from "@openbot/provider-sdk";
 import WebSocket from "ws";
+import { BrowserCommandHost } from "./browser-host.js";
 import { FileNodeCredentialStore, type NodeCredentialStore } from "./credential-store.js";
 import { detectWorkerHost } from "./host.js";
 import {
@@ -38,6 +39,7 @@ export class OpenBotNodeClient {
   readonly #env: NodeEnv;
   readonly #providers: ComputerProvider[];
   readonly #credentialStore: NodeCredentialStore;
+  readonly #browserHost: BrowserCommandHost;
   #credential?: string;
   #socket?: WebSocket;
   #heartbeat?: NodeJS.Timeout;
@@ -67,6 +69,7 @@ export class OpenBotNodeClient {
     assertProviderDeclarations(providers);
     this.#providers = providers;
     this.#credentialStore = credentialStore;
+    this.#browserHost = new BrowserCommandHost(env.OPENBOT_NODE_ID, providers);
   }
 
   start(): void {
@@ -130,6 +133,14 @@ export class OpenBotNodeClient {
       }
 
       const message = parsed.data;
+      if (message.type === "browser.command") {
+        if (!authenticated) return;
+        void this.#browserHost.execute(message).then((result) => {
+          if (this.#socket === socket && socket.readyState === WebSocket.OPEN)
+            socket.send(JSON.stringify(result));
+        });
+        return;
+      }
       if (message.type === "server.ack") {
         if (!message.accepted) {
           if (!authenticated) authenticationRejected = true;
@@ -429,6 +440,7 @@ export class OpenBotNodeClient {
   }
 
   #abortExecutions(): void {
+    this.#browserHost.disconnect();
     for (const controller of this.#executions.values()) controller.abort();
     this.#executions.clear();
     for (const [requestId, waiter] of this.#approvalWaiters) {

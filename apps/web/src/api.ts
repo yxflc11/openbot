@@ -11,6 +11,7 @@ import type {
   CreateChannelInput,
   CreateEmployeeMemoryInput,
   CreateMessageInput,
+  CreateModelConnectionInput,
   DeleteEmployeeMemoryInput,
   EmployeeExportPreview,
   EmployeeImportActivationResult,
@@ -23,6 +24,8 @@ import type {
   EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
+  ModelConnection,
+  ModelServicesSnapshot,
   NodeEnrollmentToken,
   NodeIdentitySummary,
   Run,
@@ -30,8 +33,10 @@ import type {
   RunProgress,
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
+  UpdateEmployeeModelInput,
   UpdateEmployeeProfileDetailsInput,
   UpdateEmployeeSkillStateInput,
+  UpdateModelConnectionInput,
   WorkspaceRealtimeEvent,
   WorkspaceSnapshot,
 } from "@openbot/domain";
@@ -39,6 +44,30 @@ import type {
 interface ErrorPayload {
   error?: string;
   fields?: Record<string, string[]>;
+}
+
+export async function openBrowser(
+  botId: string,
+): Promise<import("@openbot/protocol").BrowserSessionView> {
+  return request(`/api/v1/bots/${encodeURIComponent(botId)}/browser`, { method: "POST" });
+}
+
+export async function browserCommand(
+  sessionId: string,
+  action: import("@openbot/protocol").BrowserAction,
+): Promise<import("@openbot/protocol").BrowserSessionView> {
+  return request(`/api/v1/browser-sessions/${encodeURIComponent(sessionId)}/commands`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(action),
+  });
+}
+
+export async function closeBrowser(sessionId: string): Promise<void> {
+  await request(`/api/v1/browser-sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+    keepalive: true,
+  });
 }
 
 export class ApiError extends Error {
@@ -81,6 +110,77 @@ export function subscribeToUnauthorized(handler: () => void): () => void {
 
 export async function getWorkspace(signal?: AbortSignal): Promise<WorkspaceSnapshot> {
   return request<WorkspaceSnapshot>("/api/v1/workspace", signal ? { signal } : undefined);
+}
+
+export async function getModelServices(signal?: AbortSignal): Promise<ModelServicesSnapshot> {
+  return request<ModelServicesSnapshot>("/api/v1/model-services", signal ? { signal } : undefined);
+}
+
+export async function createModelConnection(
+  input: CreateModelConnectionInput,
+): Promise<ModelConnection> {
+  const result = await request<{ connection: ModelConnection }>("/api/v1/model-connections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return result.connection;
+}
+
+export async function updateModelConnection(
+  connectionId: string,
+  input: UpdateModelConnectionInput,
+): Promise<ModelConnection> {
+  const result = await request<{ connection: ModelConnection }>(
+    `/api/v1/model-connections/${encodeURIComponent(connectionId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return result.connection;
+}
+
+export async function discoverConnectionModels(
+  connectionId: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const result = await request<{ models: string[] }>(
+    `/api/v1/model-connections/${encodeURIComponent(connectionId)}/models`,
+    { method: "POST", ...(signal ? { signal } : {}) },
+  );
+  return result.models;
+}
+
+export async function testModelConnection(
+  connectionId: string,
+  modelId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  await request<{ ok: true }>(
+    `/api/v1/model-connections/${encodeURIComponent(connectionId)}/test`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelId }),
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+export async function updateEmployeeModel(
+  botId: string,
+  input: UpdateEmployeeModelInput,
+): Promise<EmployeeProfileDetailsMutationResult> {
+  return request<EmployeeProfileDetailsMutationResult>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/model`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function listNodeIdentities(signal?: AbortSignal): Promise<NodeIdentitySummary[]> {

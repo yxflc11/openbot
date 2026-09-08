@@ -1,5 +1,10 @@
 import { z } from "zod";
+import { browserCommandSchema, browserResultSchema } from "./browser.js";
+import { modelSelectionSchema } from "./model-services.js";
 import { nodeArchitectureSchema, nodePlatformSchema, protocolVersion } from "./node-metadata.js";
+
+export * from "./browser.js";
+export * from "./model-services.js";
 
 export * from "./node-metadata.js";
 
@@ -58,6 +63,7 @@ export const nodeCapabilitySchema = z.enum([
 export type NodeCapability = z.infer<typeof nodeCapabilitySchema>;
 
 export const versionedCapabilityIdSchema = z.enum([
+  "browser.session",
   "browser.observe",
   "browser.input",
   "screen.capture",
@@ -333,6 +339,7 @@ export const runFailedSchema = z
   .strict();
 
 export const nodeMessageSchema = z.discriminatedUnion("type", [
+  browserResultSchema,
   nodeHelloSchema,
   nodeHeartbeatSchema,
   runAcceptSchema,
@@ -436,6 +443,7 @@ export const approvalResolvedSchema = z
   .strict();
 
 export const serverMessageSchema = z.discriminatedUnion("type", [
+  browserCommandSchema,
   serverAckSchema,
   runOfferSchema,
   runAssignedSchema,
@@ -485,6 +493,7 @@ export type RunEvent = z.infer<typeof runEventSchema>;
 
 export const computerProfileSchema = z.enum([
   "none",
+  "model",
   "docker-linux",
   "macos-cua",
   "lume-vm",
@@ -670,12 +679,23 @@ export const deleteEmployeeMemoryInputSchema = z
   })
   .strict();
 
-export const createBotInputSchema = z.object({
-  name: z.string().trim().min(1, "Bot name is required.").max(64),
-  role: z.string().trim().min(1, "Bot role is required.").max(160),
-  computerProfile: computerProfileSchema.default("none"),
-  appearance: botAppearanceSchema.optional(),
-});
+export const createBotInputSchema = z
+  .object({
+    name: z.string().trim().min(1, "Bot name is required.").max(64),
+    role: z.string().trim().min(1, "Bot role is required.").max(160),
+    computerProfile: computerProfileSchema.default("none"),
+    appearance: botAppearanceSchema.optional(),
+    model: modelSelectionSchema.optional(),
+  })
+  .superRefine((input, context) => {
+    if (input.model !== undefined && input.computerProfile !== "model") {
+      context.addIssue({
+        code: "custom",
+        path: ["model"],
+        message: "Only model Employees can select a model connection.",
+      });
+    }
+  });
 
 export const createChannelInputSchema = z.object({
   name: z.string().trim().min(1, "Channel name is required.").max(80),

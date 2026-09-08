@@ -8,6 +8,7 @@ import type {
 } from "@openbot/protocol";
 
 export type EntityId = string;
+export * from "./model-services.js";
 
 export type BotStatus =
   | "idle"
@@ -60,8 +61,9 @@ export interface Bot {
   name: string;
   role: string;
   status: BotStatus;
-  computerProfile: "none" | "docker-linux" | "macos-cua" | "lume-vm" | "coder";
+  computerProfile: "none" | "model" | "docker-linux" | "macos-cua" | "lume-vm" | "coder";
   appearance?: BotAppearance | undefined;
+  model?: import("./model-services.js").ModelSelection | undefined;
   createdAt: string;
 }
 
@@ -256,6 +258,7 @@ export interface EmployeeProfile {
   };
   configuration: {
     executionProfile: Bot["computerProfile"];
+    model?: import("./model-services.js").ModelSelection | undefined;
     portabilityFormat: "openbot.employee/v1";
   };
 }
@@ -466,6 +469,7 @@ export interface Run {
   sourceMessageId?: EntityId;
   nodeId?: EntityId;
   executionProfile: Bot["computerProfile"];
+  model?: import("./model-services.js").ModelSelection | undefined;
   instruction: string;
   title: string;
   status: RunStatus;
@@ -650,6 +654,7 @@ export interface CreateBotInput {
   role: string;
   computerProfile: Bot["computerProfile"];
   appearance?: BotAppearance | undefined;
+  model?: import("./model-services.js").ModelSelection | undefined;
 }
 
 export interface CreateChannelInput {

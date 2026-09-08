@@ -1,11 +1,60 @@
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createModelConnection,
+  discoverConnectionModels,
   downloadEmployeeTemplate,
+  getModelServices,
   isEmployeeProfileChangedEvent,
   updateEmployeeProfileDetails,
+  updateEmployeeModel,
+  updateModelConnection,
+  testModelConnection,
   updateEmployeeSkillState,
 } from "./api";
+
+describe("model services API", () => {
+  it("keeps model discovery separate from a paid inference test", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ models: ["vendor/model:version"] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await expect(discoverConnectionModels("account/1", controller.signal)).resolves.toEqual(["vendor/model:version"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/model-connections/account%2F1/models");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "POST", credentials: "include" });
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
+    await testModelConnection("account/1", "vendor/model:version");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/model-connections/account%2F1/test");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ modelId: "vendor/model:version" });
+  });
+
+  it("uses the public snapshot and revision-bound key rotation endpoints", async () => {
+    const snapshot = { presets: [], connections: [], customBaseUrls: [] };
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify(snapshot), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ connection: { id: "account-1" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ connection: { id: "account-1" } }), { status: 200 }));
+    await expect(getModelServices()).resolves.toEqual(snapshot);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/model-services");
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+    await createModelConnection({ name: "DeepSeek", presetId: "deepseek", baseUrl: "https://api.deepseek.com", apiKey: "test-only-key" });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/model-connections");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ name: "DeepSeek", presetId: "deepseek", baseUrl: "https://api.deepseek.com", apiKey: "test-only-key" });
+    await updateModelConnection("account-1", { expectedRevision: 4, enabled: false });
+    expect(fetchMock.mock.calls[2]?.[1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(fetchMock.mock.calls[2]?.[1]?.body))).toEqual({ expectedRevision: 4, enabled: false });
+  });
+
+  it.each([{ connectionId: "account-1", modelId: "vendor/model" }, null])("sends an explicit employee binding with its revision: %o", async (model) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ employee: {}, details: { revision: 3 } }), { status: 200 }));
+    await updateEmployeeModel("employee/1", { expectedRevision: 2, model });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/bots/employee%2F1/model");
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "PATCH", credentials: "include" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({ expectedRevision: 2, model });
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

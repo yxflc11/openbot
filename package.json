@@ -15,6 +15,9 @@
     "providers/*"
   ],
   "scripts": {
+    "browser:up": "docker compose --env-file .env -f deploy/browser/compose.yaml up -d",
+    "browser:stop": "docker compose --env-file .env -f deploy/browser/compose.yaml stop",
+    "browser:status": "docker compose --env-file .env -f deploy/browser/compose.yaml ps",
     "build": "turbo run build",
     "check": "npm run docs:check && npm run research:check && npm run migrations:check && npm run lint && npm run typecheck && npm run test && npm run build",
     "db:up": "docker compose --env-file .env -f deploy/server/compose.yaml up -d postgres",

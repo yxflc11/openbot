@@ -18,6 +18,20 @@ const timestamp = "2026-09-04T00:00:00.000Z";
 const packageId = "00000000-0000-4000-8000-000000000099";
 
 describe("employee template package", () => {
+  it("keeps a model template portable without requiring or granting a Worker Host", () => {
+    const profile = createProfile();
+    profile.employee.computerProfile = "model";
+    profile.configuration.executionProfile = "model";
+    profile.skills = [];
+    const { document } = buildEmployeeTemplate(profile, { generatedAt: timestamp, packageId });
+    const preview = inspectEmployeeTemplate(document, []);
+    expect(preview).toMatchObject({
+      recommendedExecutionProfile: "model",
+      blocked: false,
+      compatibility: { hostRequired: false, compatibleHosts: [] },
+      quarantine: { hostAuthority: "none", memoryCount: 0 },
+    });
+  });
   it("exports a new-identity template without memory, history, evidence ids, or authority", () => {
     const result = buildEmployeeTemplate(createProfile(), { generatedAt: timestamp, packageId });
     const parsed = employeeTemplatePackageSchema.parse(result.document);

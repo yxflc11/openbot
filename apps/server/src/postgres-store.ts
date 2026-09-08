@@ -1,4 +1,23 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  approvals as approvalsTable,
+  artifacts as artifactsTable,
+  bots,
+  channelBots,
+  channels,
+  employeeEvolutionEvents,
+  employeeImportReceipts,
+  employeeMemories,
+  employeeMemoryEvents,
+  employeeSkills,
+  messages,
+  modelConnections,
+  nodes,
+  runEvents,
+  runs,
+  skillDependencies,
+  skills,
+} from "@openbot/db";
 import type {
   Approval,
   ApprovalDecision,
@@ -28,35 +47,21 @@ import type {
   EmployeeSkillMutationResult,
   ExecutionNode,
   Message,
+  ModelSelection,
   Run,
   RunProgress,
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
+  UpdateEmployeeModelInput,
   UpdateEmployeeProfileDetailsInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
-import {
-  artifacts as artifactsTable,
-  approvals as approvalsTable,
-  bots,
-  channelBots,
-  channels,
-  employeeEvolutionEvents,
-  employeeImportReceipts,
-  employeeMemoryEvents,
-  employeeMemories,
-  employeeSkills,
-  messages,
-  nodes,
-  runEvents,
-  runs,
-  skillDependencies,
-  skills,
-} from "@openbot/db";
-import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { modelSelectionSchema } from "@openbot/protocol";
+import { and, asc, count, desc, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import type { BrowserAuditEvent } from "./browser-sessions.js";
 import type {
-  ArtifactRecord,
   ActivateEmployeeImportCommand,
+  ArtifactRecord,
   ControlPlaneStore,
   PersistedCounts,
   RequestApprovalInput,
@@ -67,8 +72,14 @@ import {
   StoreNotFoundError,
   StoreValidationError,
 } from "./control-plane-store.js";
-import { selectChannelAssignee } from "./task-routing.js";
+import {
+  type ModelChatInput,
+  maximumModelHistoryCharacters,
+  maximumModelReplyCharacters,
+} from "./model-client.js";
+import type { WebToolName, WebToolPhase } from "./model-web-tools.js";
 import { scanSensitiveText } from "./sensitive-content.js";
+import { selectChannelAssignee } from "./task-routing.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
 
@@ -123,6 +134,31 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   async listBots(): Promise<Bot[]> {
     const rows = await this.#db.select().from(bots).orderBy(desc(bots.createdAt));
     return rows.map(toBot);
+  }
+
+  async getBrowserNode(botId: string): Promise<string | undefined> {
+    const [event] = await this.#db
+      .select({ nodeId: runEvents.nodeId })
+      .from(runEvents)
+      .where(and(eq(runEvents.botId, botId), eq(runEvents.type, "BROWSER_OPENED")))
+      .orderBy(desc(runEvents.createdAt))
+      .limit(1);
+    return event?.nodeId ?? undefined;
+  }
+
+  async recordBrowserEvent(event: BrowserAuditEvent): Promise<void> {
+    await this.#db.insert(runEvents).values({
+      id: randomUUID(),
+      botId: event.botId,
+      nodeId: event.nodeId,
+      type: event.action === "open" ? "BROWSER_OPENED" : "BROWSER_COMMAND",
+      payload: {
+        actor: "owner",
+        requestId: event.requestId,
+        action: event.action,
+        phase: event.phase,
+      },
+    });
   }
 
   async getEmployeeProfile(botId: string): Promise<EmployeeProfile> {
@@ -239,6 +275,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       },
       configuration: {
         executionProfile: botRow.computerProfile as Bot["computerProfile"],
+        ...(toBot(botRow).model === undefined ? {} : { model: toBot(botRow).model }),
         portabilityFormat: "openbot.employee/v1",
       },
     };
@@ -311,6 +348,77 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           updatedAt: updated.updatedAt.toISOString(),
         },
         evolution: toEmployeeEvolutionEvent(evolution),
+      };
+    });
+  }
+
+  async updateEmployeeModel(
+    botId: string,
+    input: UpdateEmployeeModelInput,
+  ): Promise<EmployeeProfileDetailsMutationResult> {
+    const model = parseModelSelection(input.model);
+    return this.#db.transaction(async (transaction) => {
+      const [current] = await transaction.select().from(bots).where(eq(bots.id, botId)).limit(1);
+      if (current === undefined) throw new StoreNotFoundError("Bot not found.");
+      if (current.computerProfile !== "model")
+        throw new StoreValidationError("只有模型对话员工可以配置模型连接。");
+      if (current.profileRevision !== input.expectedRevision)
+        throw new StoreConflictError("员工配置已变化，请刷新后重新选择模型。");
+      const configuration = asRecord(current.configuration);
+      if (JSON.stringify(parseModelSelection(configuration.model)) === JSON.stringify(model))
+        throw new StoreValidationError("请选择不同的模型或连接。");
+      if (model !== undefined && model.connectionId !== "legacy-kimi") {
+        const [connection] = await transaction
+          .select({ enabled: modelConnections.enabled })
+          .from(modelConnections)
+          .where(eq(modelConnections.id, model.connectionId))
+          .for("share");
+        if (connection === undefined || !connection.enabled)
+          throw new StoreValidationError("模型连接不存在或已停用。");
+      }
+      const now = new Date();
+      const next = { ...configuration };
+      if (model === undefined) delete next.model;
+      else next.model = model;
+      const [updated] = await transaction
+        .update(bots)
+        .set({
+          configuration: next,
+          profileRevision: current.profileRevision + 1,
+          updatedAt: now,
+        })
+        .where(and(eq(bots.id, botId), eq(bots.profileRevision, input.expectedRevision)))
+        .returning();
+      if (updated === undefined) throw new StoreConflictError("员工配置已变化，请刷新后重试。");
+      const [evolution] = await transaction
+        .insert(employeeEvolutionEvents)
+        .values({
+          id: randomUUID(),
+          botId,
+          type: "configuration_changed",
+          title: "Employee model updated",
+          summary: "Owner updated the model connection and model selection.",
+          source: "manual",
+          evidence: [],
+          createdAt: now,
+        })
+        .returning();
+      if (evolution === undefined) throw new Error("Evolution event was not created.");
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        botId,
+        type: "EMPLOYEE_MODEL_UPDATED",
+        payload: { changedFields: ["model"], revision: updated.profileRevision },
+        createdAt: now,
+      });
+      return {
+        employee: toBot(updated),
+        evolution: toEmployeeEvolutionEvent(evolution),
+        details: {
+          description: updated.description,
+          revision: updated.profileRevision,
+          updatedAt: now.toISOString(),
+        },
       };
     });
   }
@@ -392,10 +500,123 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     const rows = await this.#db
       .select()
       .from(runs)
-      .where(and(eq(runs.status, "queued"), isNull(runs.nodeId), ne(runs.executionProfile, "none")))
+      .where(
+        and(
+          eq(runs.status, "queued"),
+          isNull(runs.nodeId),
+          ne(runs.executionProfile, "none"),
+          ne(runs.executionProfile, "model"),
+        ),
+      )
       .orderBy(asc(runs.createdAt), asc(runs.id))
       .limit(limit);
     return rows.map(toRun);
+  }
+
+  async listModelRuns(): Promise<Run[]> {
+    const rows = await this.#db
+      .select()
+      .from(runs)
+      .where(
+        and(eq(runs.status, "queued"), isNull(runs.nodeId), eq(runs.executionProfile, "model")),
+      )
+      .orderBy(asc(runs.createdAt), asc(runs.id))
+      .limit(50);
+    return rows.map(toRun);
+  }
+
+  async claimModelRun(runId: string): Promise<Run | undefined> {
+    return this.#db.transaction(async (transaction) => {
+      const [updated] = await transaction
+        .update(runs)
+        .set({ status: "running", updatedAt: new Date() })
+        .where(
+          and(
+            eq(runs.id, runId),
+            eq(runs.status, "queued"),
+            isNull(runs.nodeId),
+            eq(runs.executionProfile, "model"),
+          ),
+        )
+        .returning();
+      if (updated === undefined) return undefined;
+      await transaction.insert(runEvents).values({
+        id: randomUUID(),
+        runId,
+        channelId: updated.channelId,
+        botId: updated.botId,
+        type: "RUN_STARTED",
+        payload: { executionProfile: "model" },
+      });
+      return toRun(updated);
+    });
+  }
+
+  async getModelInput(run: Run): Promise<ModelChatInput> {
+    const [employee] = await this.#db
+      .select({ name: bots.name, role: bots.role })
+      .from(bots)
+      .where(eq(bots.id, run.botId))
+      .limit(1);
+    if (employee === undefined || run.executionProfile !== "model")
+      throw new StoreValidationError("Model Employee is unavailable.");
+    // Prior completed exchanges must belong to this exact Employee and channel. Other employees,
+    // private reasoning, skills, memories, and later requests never enter the model context.
+    const rows = await this.#db
+      .select({ instruction: runs.instruction, reply: runs.resultSummary })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.botId, run.botId),
+          eq(runs.channelId, run.channelId),
+          eq(runs.executionProfile, "model"),
+          eq(runs.status, "completed"),
+          ne(runs.id, run.id),
+          lte(runs.createdAt, new Date(run.createdAt)),
+        ),
+      )
+      .orderBy(desc(runs.createdAt), desc(runs.id))
+      .limit(10);
+    const history: ModelChatInput["history"] = [];
+    for (const row of rows) {
+      if (row.reply === null || row.reply.length > maximumModelReplyCharacters) continue;
+      const candidate = { instruction: row.instruction, reply: row.reply };
+      if (JSON.stringify([candidate, ...history]).length > maximumModelHistoryCharacters) break;
+      history.unshift(candidate);
+    }
+    return { ...employee, instruction: run.instruction, history };
+  }
+
+  async recordModelToolEvent(runId: string, name: WebToolName, phase: WebToolPhase): Promise<void> {
+    await this.#db.transaction(async (tx) => {
+      const [run] = await tx
+        .select()
+        .from(runs)
+        .where(
+          and(eq(runs.id, runId), eq(runs.status, "running"), eq(runs.executionProfile, "model")),
+        )
+        .for("update")
+        .limit(1);
+      if (!run) throw new StoreValidationError("Model Run is no longer active.");
+      await tx.insert(runEvents).values({
+        runId,
+        botId: run.botId,
+        id: randomUUID(),
+        channelId: run.channelId,
+        type: "MODEL_WEB_TOOL",
+        payload: { tool: name, phase },
+      });
+    });
+  }
+
+  async completeModelRun(runId: string, reply: string): Promise<RunCompletion | undefined> {
+    if (!reply.trim() || reply.length > maximumModelReplyCharacters)
+      throw new StoreValidationError("Invalid model reply.");
+    return this.#completeRun(runId, undefined, reply, []);
+  }
+
+  async failModelRun(runId: string, error: string): Promise<Run | undefined> {
+    return this.#failRun(runId, undefined, error);
   }
 
   async getRunningRunForNode(runId: string, nodeId: string): Promise<Run | undefined> {
@@ -421,6 +642,9 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   }
 
   async createBot(input: CreateBotInput): Promise<Bot> {
+    const model = parseModelSelection(input.model);
+    if (model !== undefined && input.computerProfile !== "model")
+      throw new StoreValidationError("Only model Employees can select a model connection.");
     const now = new Date();
     const bot = {
       id: randomUUID(),
@@ -428,13 +652,25 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       role: input.role,
       status: "idle" as const,
       computerProfile: input.computerProfile,
-      configuration: input.appearance === undefined ? {} : { appearance: input.appearance },
+      configuration: {
+        ...(input.appearance === undefined ? {} : { appearance: input.appearance }),
+        ...(model === undefined ? {} : { model }),
+      },
       createdAt: now,
       updatedAt: now,
     };
 
     try {
       await this.#db.transaction(async (transaction) => {
+        if (model !== undefined && model.connectionId !== "legacy-kimi") {
+          const [connection] = await transaction
+            .select({ enabled: modelConnections.enabled })
+            .from(modelConnections)
+            .where(eq(modelConnections.id, model.connectionId))
+            .for("share");
+          if (connection === undefined || !connection.enabled)
+            throw new StoreValidationError("模型连接不存在或已停用。");
+        }
         await transaction.insert(bots).values(bot);
         await transaction.insert(employeeEvolutionEvents).values({
           id: randomUUID(),
@@ -1219,6 +1455,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     };
     let selectedBotId: string | undefined;
     let selectedExecutionProfile: Bot["computerProfile"] | undefined;
+    let selectedModel: ModelSelection | undefined;
 
     // The source message, queued Run, and both audit events must become visible together.
     await this.#db.transaction(async (transaction) => {
@@ -1248,6 +1485,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           name: bots.name,
           role: bots.role,
           computerProfile: bots.computerProfile,
+          configuration: bots.configuration,
         })
         .from(channelBots)
         .innerJoin(bots, eq(channelBots.botId, bots.id))
@@ -1263,6 +1501,11 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       }
       selectedBotId = assignee.id;
       selectedExecutionProfile = assignee.computerProfile as Bot["computerProfile"];
+      // Snapshot the Owner's selection when the Run is queued. Later Employee edits affect new Runs.
+      selectedModel =
+        assignee.computerProfile === "model"
+          ? parseModelSelection(asRecord(assignee.configuration).model)
+          : undefined;
 
       await transaction.insert(messages).values(message);
       await transaction.insert(runs).values({
@@ -1271,6 +1514,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         botId: assignee.id,
         sourceMessageId: message.id,
         executionProfile: assignee.computerProfile,
+        modelSelection: selectedModel ?? null,
         instruction: input.content,
         title: taskTitle(input.content),
         status: "queued",
@@ -1310,6 +1554,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         botId: selectedBotId,
         sourceMessageId: message.id,
         executionProfile: selectedExecutionProfile,
+        ...(selectedModel === undefined ? {} : { model: selectedModel }),
         instruction: input.content,
         title: taskTitle(input.content),
         status: "queued",
@@ -1325,7 +1570,15 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       const [updated] = await transaction
         .update(runs)
         .set({ nodeId, status: "assigned", updatedAt: now })
-        .where(and(eq(runs.id, runId), eq(runs.status, "queued"), isNull(runs.nodeId)))
+        .where(
+          and(
+            eq(runs.id, runId),
+            eq(runs.status, "queued"),
+            isNull(runs.nodeId),
+            ne(runs.executionProfile, "model"),
+            ne(runs.executionProfile, "none"),
+          ),
+        )
         .returning();
       if (updated === undefined) return undefined;
 
@@ -1543,13 +1796,22 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     summary: string,
     artifacts: ArtifactRecord[],
   ): Promise<RunCompletion | undefined> {
+    return this.#completeRun(runId, nodeId, summary, artifacts);
+  }
+
+  async #completeRun(
+    runId: string,
+    nodeId: string | undefined,
+    summary: string,
+    artifacts: ArtifactRecord[],
+  ): Promise<RunCompletion | undefined> {
     const now = new Date();
     // Publish only after the terminal Run, Bot reply, artifacts, and audit events commit together.
     return this.#db.transaction(async (transaction) => {
       const [updated] = await transaction
         .update(runs)
         .set({ status: "completed", resultSummary: summary, errorMessage: null, updatedAt: now })
-        .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "running")))
+        .where(and(eq(runs.id, runId), runOwnerCondition(nodeId), eq(runs.status, "running")))
         .returning();
       if (updated === undefined) return undefined;
 
@@ -1612,12 +1874,20 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   }
 
   async failRun(runId: string, nodeId: string, error: string): Promise<Run | undefined> {
+    return this.#failRun(runId, nodeId, error);
+  }
+
+  async #failRun(
+    runId: string,
+    nodeId: string | undefined,
+    error: string,
+  ): Promise<Run | undefined> {
     const now = new Date();
     return this.#db.transaction(async (transaction) => {
       const [updated] = await transaction
         .update(runs)
         .set({ status: "failed", errorMessage: error, updatedAt: now })
-        .where(and(eq(runs.id, runId), eq(runs.nodeId, nodeId), eq(runs.status, "running")))
+        .where(and(eq(runs.id, runId), runOwnerCondition(nodeId), eq(runs.status, "running")))
         .returning();
       if (updated === undefined) return undefined;
       await transaction.insert(runEvents).values({
@@ -1796,9 +2066,17 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
   }
 }
 
+function parseModelSelection(value: unknown): ModelSelection | undefined {
+  if (value === undefined || value === null) return undefined;
+  const parsed = modelSelectionSchema.safeParse(value);
+  if (!parsed.success) throw new StoreValidationError("Stored model selection is invalid.");
+  return parsed.data;
+}
+
 function toBot(row: typeof bots.$inferSelect | typeof bots.$inferInsert): Bot {
   const configuration = asRecord(row.configuration);
   const appearance = toBotAppearance(configuration.appearance);
+  const model = parseModelSelection(configuration.model);
   return {
     id: row.id,
     name: row.name,
@@ -1806,6 +2084,7 @@ function toBot(row: typeof bots.$inferSelect | typeof bots.$inferInsert): Bot {
     status: row.status as Bot["status"],
     computerProfile: row.computerProfile as Bot["computerProfile"],
     ...(appearance === undefined ? {} : { appearance }),
+    ...(model === undefined ? {} : { model }),
     createdAt: (row.createdAt ?? new Date()).toISOString(),
   };
 }
@@ -1853,6 +2132,7 @@ function toBotAppearance(value: unknown): Bot["appearance"] {
 }
 
 function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
+  const model = parseModelSelection(row.modelSelection);
   return {
     id: row.id,
     channelId: row.channelId,
@@ -1862,6 +2142,7 @@ function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert): Run {
       : { sourceMessageId: row.sourceMessageId }),
     ...(row.nodeId === null || row.nodeId === undefined ? {} : { nodeId: row.nodeId }),
     executionProfile: row.executionProfile as Run["executionProfile"],
+    ...(model === undefined ? {} : { model }),
     instruction: row.instruction ?? row.title,
     title: row.title,
     status: row.status as Run["status"],
@@ -2195,6 +2476,13 @@ function toEmployeeImportReceipt(
     importedSkillCount: row.importedSkillCount,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+// Undefined ownership is allowed only inside the Server's model lifecycle, never Node messages.
+function runOwnerCondition(nodeId: string | undefined) {
+  return nodeId === undefined
+    ? and(isNull(runs.nodeId), eq(runs.executionProfile, "model"))
+    : and(eq(runs.nodeId, nodeId), ne(runs.executionProfile, "model"));
 }
 
 function translateDatabaseError(error: unknown, conflictMessage: string): never {

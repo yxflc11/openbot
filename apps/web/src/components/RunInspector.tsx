@@ -12,6 +12,7 @@ export function RunInspector({
   progress,
   run,
   onClose,
+  onOpenBrowser,
 }: {
   artifacts: Artifact[];
   bot: Bot | undefined;
@@ -20,6 +21,7 @@ export function RunInspector({
   progress: RunProgress[];
   run: Run;
   onClose(): void;
+  onOpenBrowser?(): void;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -58,6 +60,7 @@ export function RunInspector({
         </header>
 
         <div className="inspector-body">
+          {bot?.computerProfile === "docker-linux" && onOpenBrowser ? <button className="primary-button" type="button" onClick={onOpenBrowser}>打开员工浏览器</button> : null}
           {liveFrame ? (
             <section className="inspector-section live-frame-section">
               <header>

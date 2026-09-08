@@ -23,10 +23,16 @@
 | `POST` | `/api/v1/approvals/:approvalId/decision` | Owner 批准一次或拒绝一个待批动作 |
 | `GET` | `/api/v1/artifacts/:artifactId/content` | 鉴权读取任务产物；当前仅 PNG 截图 |
 | `GET` | `/api/v1/runs/:runId/frame` | 鉴权读取任务最新临时画面；不持久化 |
+| `GET` | `/api/v1/model-services` | 读取服务预设、安全连接元数据和已授权自定义地址 |
+| `POST` | `/api/v1/model-connections` | 保存加密模型连接，不调用推理 |
+| `PATCH` | `/api/v1/model-connections/:connectionId` | 按预期 revision 改名、轮换 Key 或启用/停用 |
+| `POST` | `/api/v1/model-connections/:connectionId/models` | 用 Server 保存的 Key 获取一页有界模型列表 |
+| `POST` | `/api/v1/model-connections/:connectionId/test` | 显式调用简短文本推理测试，可能产生服务商费用 |
 | `GET` | `/api/v1/bots` | Bot 名册 |
 | `POST` | `/api/v1/bots` | 创建 Bot |
 | `GET` | `/api/v1/bots/:botId/profile` | 读取数字员工档案、进化、技能、记忆与工作记录 |
 | `PATCH` | `/api/v1/bots/:botId/profile` | 按预期 revision 修改职责与简介 |
+| `PATCH` | `/api/v1/bots/:botId/model` | 按预期 revision 更换或清除已有模型员工的显式模型绑定 |
 | `POST` | `/api/v1/bots/:botId/memories` | 新增一条有界 Owner 记忆 |
 | `PATCH` | `/api/v1/bots/:botId/memories/:memoryId` | 按预期 revision 更新一条记忆 |
 | `DELETE` | `/api/v1/bots/:botId/memories/:memoryId` | 按预期 revision 删除一条已确认记忆 |
@@ -75,6 +81,78 @@ secret，不等于生产级持有证明身份。能力声明本身仍不授予�
 频道与工作区 SSE 每个订阅最多保留 128 个待发送投影。慢客户端达到上限后连接会被关闭，Web
 客户端重连并重新读取数据库权威快照；Server 不会静默丢弃某个事件后继续伪装为连续流。
 
+## Owner 管理模型服务
+
+以下路由均要求 Owner Session，POST/PATCH 还要求已授权 `Origin`。
+`GET /api/v1/model-services` 返回 `{ presets, connections, customBaseUrls }`。预设包含 `id`、
+`name`、`protocol`、已审查 `endpoints`、`suggestedModels`、`discovery`、`description` 和 `docsUrl`。
+当前包括 OpenAI、Anthropic、Gemini、DeepSeek、Kimi、OpenRouter、硅基流动、阿里云百炼、智谱/Z.AI、
+MiniMax、火山方舟 11 家服务，以及 `custom`。预设和列表不保证账号权限或文本推理可用性。
+
+安全连接投影包含 `id`、`name`、`presetId`、`baseUrl`、`protocol`、`enabled`、`hasApiKey`、`revision`、
+`source`、`createdAt` 和 `updatedAt`；环境连接还包含 `defaultModel`。所有响应均不返回 API Key
+或密文。存在 Server `MOONSHOT_*` 配置时，以 `source: "environment"`、ID `legacy-kimi` 表示
+只读环境连接；环境密钥不会复制进已保存连接表。
+
+`POST /api/v1/model-connections` 创建连接：
+
+```json
+{
+  "name": "DeepSeek main",
+  "presetId": "deepseek",
+  "baseUrl": "https://api.deepseek.com",
+  "apiKey": "your-provider-api-key"
+}
+```
+
+返回 `201 { "connection": ModelConnection }`。名称去除两端空白、非空且最多 80 字符；API Key
+去除两端空白后必须是非空、不含空格的可打印 ASCII，最多 2,048 字符。协议由 Server 根据预设
+决定。预设地址必须匹配已审查 URL；`custom` 必须匹配管理员配置的 `OPENBOT_MODEL_CUSTOM_BASE_URLS`
+逗号分隔精确 HTTPS 列表。比较前去除末尾斜杠，拒绝 URL 内嵌凭据、查询参数、fragment、HTTP
+和重定向；未知预设或未授权地址返回 `422`。保存不会调用推理，也不验证服务商凭据。
+
+`PATCH /api/v1/model-connections/:connectionId` 接受 `expectedRevision`，以及至少一个 `name`、
+`apiKey` 或 `enabled`，返回 `{ "connection": ModelConnection }`。例如
+`{ "expectedRevision": 1, "enabled": false }` 停用连接。省略 `apiKey` 保留原 Key，传入则轮换。
+旧 revision 返回 `409`。服务商、地址、协议创建后不可修改，环境连接只读；换地址需新建连接。
+当前没有 DELETE 路由。
+
+`POST /api/v1/model-connections/:connectionId/models` 无请求体，返回 `{ "models": string[] }`。
+它使用 Server 保存的 Key，只读取一页，上游响应最多 2 MiB，返回最多 256 个模型 ID。
+OpenRouter 请求筛选文本输出，硅基流动筛选 text/chat。本次尚未提供百炼、智谱/Z.AI 和方舟的
+自动模型发现。列表缺失、不完整或不支持时，可选建议 ID 或手动输入；ID 最多 256 字符，保留
+服务商前缀和 `/`、`:` 等分隔符。
+
+`POST /api/v1/model-connections/:connectionId/test` 接受 `{ "modelId": "deepseek-v4-flash" }`，
+会显式发送一条简短文本推理请求，可能产生服务商费用。成功返回 `{ "ok": true }`，生成回复不会
+返回或写入频道。保存连接和获取列表均不会自动触发测试。连接缺失、停用或未获授权时失败；
+上游错误会脱敏，推理不自动重试。
+
+API Key 经 AES-256-GCM 加密后保存在 PostgreSQL。独立 Server 密钥文件由
+`OPENBOT_MODEL_CREDENTIAL_KEY_PATH` 指定，默认 `./data/model-credentials.key`，相对于 Server
+工作目录。只有尚无已保存连接时，Server 才能自动创建 POSIX `0600` 密钥文件；已有连接但密钥
+丢失会阻止启动。备份数据库时须同时备份密钥文件；当前不是系统钥匙串或 KMS。审计不记录密钥或
+请求/回复正文。所有支持工具调用的模型都可通过 OpenAI 兼容或 Claude 原生续轮使用共享搜索/读取工具。
+Server 分别选择回答模型和检索服务：Tavily、明确配置的 Kimi 连接或已有默认 Kimi。
+Kimi 密文会先转成可读来源，再交给其他模型。每项任务在同一截止时间内最多调用四次工具。
+`MODEL_WEB_TOOL` 只记录工具名/阶段，私有状态仅留在内存，不新增电脑、推理持久化或自主记忆权限。
+
+### 修改已有员工的模型
+
+`PATCH /api/v1/bots/:botId/model` 仅适用于 `computerProfile: "model"` 员工：
+
+```json
+{
+  "expectedRevision": 1,
+  "model": { "connectionId": "saved-connection-id", "modelId": "deepseek-v4-pro" }
+}
+```
+
+使用员工档案的 `details.revision`，不是连接 revision。成功返回 `{ employee, details, evolution }`，
+递增该 revision，记录不含正文的配置变化并发布档案失效通知。旧 revision 返回 `409`；非模型员工、
+停用连接或未改变的选择返回 `422`；缺失连接返回 `404`。`model: null` 显式清除绑定并恢复未绑定的旧环境行为，
+不会停用员工。已有排队 Run 保持原快照；没有旧环境凭据时，后续未绑定模型 Run 会明确失败。
+
 ## 创建 Bot
 
 ```json
@@ -85,7 +163,25 @@ secret，不等于生产级持有证明身份。能力声明本身仍不授予�
 }
 ```
 
-`computerProfile` 只能是 `none`、`docker-linux`、`macos-cua`、`lume-vm` 或 `coder`。Bot 名称在当前本地工作区唯一。
+`computerProfile` 只能是 `none`、`model`、`docker-linux`、`macos-cua`、`lume-vm` 或 `coder`。Bot 名称在当前本地工作区唯一。
+
+显式 `model` 类型在 Server 执行文本对话，可附带模型选择：
+
+```json
+{
+  "name": "Researcher",
+  "role": "回答问题",
+  "computerProfile": "model",
+  "model": { "connectionId": "saved-connection-id", "modelId": "deepseek-v4-flash" }
+}
+```
+
+所选连接必须存在、已启用且地址获授权；仅 `computerProfile: "model"` 允许传入 `model` 字段。
+未绑定的模型员工继续使用 `MOONSHOT_*` 环境配置。Run 无需 `nodeId`，状态为 `queued` →
+`running` → `completed` 或 `failed`；Node 不能领取或结束这些任务。Run 排队时会固定连接 ID
+和模型 ID，后续员工配置修改不会改变它。已保存连接失败时不会静默切换到其他服务。
+成功时原子写入与源消息关联的 Bot 回复，沿用 SSE 发布已提交状态。Key 和私有推理不会返回或
+包含在员工包中。纯文本限制和密钥备份见[模型服务配置](../README.zh-CN.md#配置模型服务)。
 
 创建 Bot 时，Server 会在同一事务内写入一条不可变的 `created` 进化事件。Bot 是数字员工身份本身；系统不会建立第二套重复的 Employee 身份。
 
@@ -365,3 +461,9 @@ Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `p
 - `422`：输入字段或 roster 无效；
 - `404`：频道或 Bot 不存在；
 - `500`：未预期的 Server 错误，响应不会泄漏数据库细节。
+
+## 员工浏览器会话
+
+经过认证的浏览器会话 API 与按能力开启的 Node 消息见[员工浏览器](EMPLOYEE_BROWSER.zh-CN.md)。
+Owner 输入绑定独占且有期限的查看会话，命令正文和截图不保存为聊天消息。现有 Run 审批 API
+与直接人工浏览器控制保持独立。

@@ -44,12 +44,16 @@ describe("run dispatcher", () => {
     const runs = [run];
     const events: Run[] = [];
     const confirmed: string[] = [];
+    const offeredNodes: string[] = [];
     const gateway: NodeGateway = {
-      list: () => [linuxNode],
+      list: () => [{ ...linuxNode, id: "aaa-other-browser" }, linuxNode],
       onAvailable: () => () => undefined,
       onUnavailable: () => () => undefined,
       onRunMessage: () => () => undefined,
-      offerRun: async () => ({ status: "accepted" }),
+      offerRun: async (nodeId) => {
+        offeredNodes.push(nodeId);
+        return { status: "accepted" };
+      },
       confirmRun: (_nodeId, runId) => {
         confirmed.push(runId);
         return true;
@@ -59,6 +63,9 @@ describe("run dispatcher", () => {
       cancelRun: () => undefined,
     };
     const store = {
+      async getBrowserNode() {
+        return linuxNode.id;
+      },
       async listDispatchableRuns() {
         return runs.filter((item) => item.status === "queued");
       },
@@ -107,6 +114,7 @@ describe("run dispatcher", () => {
     await dispatcher.start();
 
     expect(run).toMatchObject({ status: "assigned", nodeId: "linux-node" });
+    expect(offeredNodes).toEqual(["linux-node"]);
     expect(confirmed).toEqual([run.id]);
     expect(events).toHaveLength(1);
     await dispatcher.stop();

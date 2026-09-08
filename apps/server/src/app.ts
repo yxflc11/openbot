@@ -13,24 +13,29 @@ import type {
 import {
   activateEmployeeImportInputSchema,
   approvalDecisionInputSchema,
+  browserActionSchema,
   createBotInputSchema,
   createChannelInputSchema,
   createEmployeeMemoryInputSchema,
   createEmployeeSkillInputSchema,
   createMessageInputSchema,
+  createModelConnectionInputSchema,
   createNodeEnrollmentTokenInputSchema,
+  type DsseEnvelope,
   deleteEmployeeMemoryInputSchema,
   dsseEnvelopeSchema,
-  exchangeNodeEnrollmentInputSchema,
+  type EmployeeTemplatePackage,
   employeeExportDownloadQuerySchema,
+  exchangeNodeEnrollmentInputSchema,
   joinChannelBotInputSchema,
   loginInputSchema,
+  testModelConnectionInputSchema,
   unsignedEmployeeTemplatePackageSchema,
   updateEmployeeMemoryInputSchema,
+  updateEmployeeModelInputSchema,
   updateEmployeeProfileDetailsInputSchema,
   updateEmployeeSkillStateInputSchema,
-  type DsseEnvelope,
-  type EmployeeTemplatePackage,
+  updateModelConnectionInputSchema,
 } from "@openbot/protocol";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -41,6 +46,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
 import type { ZodType } from "zod";
 import type { ArtifactStorage } from "./artifact-storage.js";
+import { BrowserSessionError, type BrowserSessions } from "./browser-sessions.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import {
   type ControlPlaneStore,
@@ -49,11 +55,13 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import {
-  employeeTemplatePackageDigest,
   type EmployeeTemplateEnvelopeVerification,
+  employeeTemplatePackageDigest,
   inspectEmployeeTemplate,
   prepareEmployeeTemplateExport,
 } from "./employee-package.js";
+import { ModelRequestError } from "./model-client.js";
+import type { ModelServices } from "./model-services.js";
 import {
   InvalidNodeEnrollmentError,
   NodeIdentityNotFoundError,
@@ -69,6 +77,11 @@ import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  modelServices?: Pick<
+    ModelServices,
+    "snapshot" | "create" | "update" | "validateSelection" | "discover" | "test"
+  >;
+  browserSessions?: Pick<BrowserSessions, "open" | "command" | "close">;
   allowedOrigins: string[];
   artifactStorage?: Pick<ArtifactStorage, "read">;
   auth: OwnerAuthService;
@@ -146,6 +159,42 @@ export function createApp(dependencies: AppDependencies) {
     return next();
   });
 
+  app.use(
+    "/api/v1/browser-sessions/*",
+    bodyLimit({
+      maxSize: 20_000,
+      onError: (context) => context.json({ error: "Browser request is too large." }, 413),
+    }),
+  );
+  app.post("/api/v1/bots/:botId/browser", async (context) => {
+    if (!dependencies.browserSessions) throw new BrowserSessionError("浏览器服务尚未配置。", 503);
+    const owner = createHash("sha256")
+      .update(getCookie(context, sessionCookie) ?? "")
+      .digest("hex");
+    return context.json(
+      await dependencies.browserSessions.open(context.req.param("botId"), owner),
+      201,
+    );
+  });
+  app.post("/api/v1/browser-sessions/:sessionId/commands", async (context) => {
+    if (!dependencies.browserSessions) throw new BrowserSessionError("浏览器服务尚未配置。", 503);
+    const action = await parseRequest(context.req.raw, browserActionSchema, 20_000);
+    const owner = createHash("sha256")
+      .update(getCookie(context, sessionCookie) ?? "")
+      .digest("hex");
+    return context.json(
+      await dependencies.browserSessions.command(context.req.param("sessionId"), owner, action),
+    );
+  });
+  app.delete("/api/v1/browser-sessions/:sessionId", (context) => {
+    if (!dependencies.browserSessions) throw new BrowserSessionError("浏览器服务尚未配置。", 503);
+    const owner = createHash("sha256")
+      .update(getCookie(context, sessionCookie) ?? "")
+      .digest("hex");
+    dependencies.browserSessions.close(context.req.param("sessionId"), owner);
+    return context.body(null, 204);
+  });
+
   app.get("/health", (context) =>
     context.json({
       ok: true,
@@ -202,6 +251,40 @@ export function createApp(dependencies: AppDependencies) {
     // the previous value so it cannot remain live until its next reconnect.
     dependencies.disconnectNode?.(result.nodeId);
     return context.json(result, 201);
+  });
+
+  app.get("/api/v1/model-services", async (context) =>
+    context.json(await requireModelServices().snapshot()),
+  );
+
+  app.post("/api/v1/model-connections", async (context) => {
+    const input = await parseRequest(context.req.raw, createModelConnectionInputSchema, 8192);
+    return context.json({ connection: await requireModelServices().create(input) }, 201);
+  });
+
+  app.patch("/api/v1/model-connections/:connectionId", async (context) => {
+    const input = await parseRequest(context.req.raw, updateModelConnectionInputSchema, 4096);
+    return context.json({
+      connection: await requireModelServices().update(context.req.param("connectionId"), input),
+    });
+  });
+
+  app.post("/api/v1/model-connections/:connectionId/models", async (context) => {
+    const models = await requireModelServices().discover(
+      context.req.param("connectionId"),
+      context.req.raw.signal,
+    );
+    return context.json({ models });
+  });
+
+  app.post("/api/v1/model-connections/:connectionId/test", async (context) => {
+    const input = await parseRequest(context.req.raw, testModelConnectionInputSchema, 1024);
+    await requireModelServices().test(
+      context.req.param("connectionId"),
+      input.modelId,
+      context.req.raw.signal,
+    );
+    return context.json({ ok: true });
   });
 
   app.get("/api/v1/bootstrap", async (context) => {
@@ -515,6 +598,19 @@ export function createApp(dependencies: AppDependencies) {
     return context.json(result);
   });
 
+  app.patch("/api/v1/bots/:botId/model", async (context) => {
+    const input = await parseRequest(context.req.raw, updateEmployeeModelInputSchema, 2048);
+    if (input.model !== null) await requireModelServices().validateSelection(input.model);
+    const botId = context.req.param("botId");
+    const result = await dependencies.store.updateEmployeeModel(botId, input);
+    publishEmployeeProfileChanged(workspaceRealtime, botId, [
+      "identity",
+      "configuration",
+      "evolution",
+    ]);
+    return context.json(result);
+  });
+
   app.post("/api/v1/bots/:botId/skills", async (context) => {
     const input = await parseRequest(context.req.raw, createEmployeeSkillInputSchema);
     const botId = context.req.param("botId");
@@ -694,6 +790,7 @@ export function createApp(dependencies: AppDependencies) {
 
   app.post("/api/v1/bots", async (context) => {
     const input = await parseRequest(context.req.raw, createBotInputSchema);
+    if (input.model !== undefined) await requireModelServices().validateSelection(input.model);
     const bot = await dependencies.store.createBot(input);
     publishEmployeeProfileChanged(workspaceRealtime, bot.id, [
       "identity",
@@ -748,6 +845,9 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   app.onError((error, context) => {
+    if (error instanceof ModelRequestError) return context.json({ error: error.message }, 502);
+    if (error instanceof BrowserSessionError)
+      return context.json({ error: error.message }, error.status);
     if (error instanceof StoreConflictError) {
       return context.json({ error: error.message }, 409);
     }
@@ -781,6 +881,12 @@ export function createApp(dependencies: AppDependencies) {
   });
 
   return app;
+
+  function requireModelServices() {
+    if (dependencies.modelServices === undefined)
+      throw new StoreValidationError("模型服务尚未配置。");
+    return dependencies.modelServices;
+  }
 
   function isTrustedOrigin(origin: string | undefined): boolean {
     return origin !== undefined && dependencies.allowedOrigins.includes(origin);

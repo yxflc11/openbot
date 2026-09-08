@@ -35,6 +35,10 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 
 | OpenBot 范围 | 调研来源 | 许可证 | 决定与现状 |
 | --- | --- | --- | --- |
+| Server 模型对话与服务连接 | [OpenAI Node SDK `7.10.0` / `c22b09bc`](https://github.com/openai/openai-node/tree/c22b09bc8bd5feed4ebd02b9f363a1a8b479b5ab)、[Anthropic SDK `0.124.0` / `ba14b1f4`](https://github.com/anthropics/anthropic-sdk-typescript/tree/ba14b1f4fdf2e840a7b32297965342a099f6201d) 和 11 家已审查服务 API 契约 | Apache-2.0；MIT；API 仅参考 | 复用发布 SDK 实现有界文本对话和单页模型发现，增加 Owner 管理预设/自定义地址授权与固定 Run 模型选择。Kimi 另提供已审查的公开搜索/读取工具；保持无自动付费重试和无私有推理持久化。未复制源码，见[连接调研](research/model-service-presets.zh-CN.md)与[原 Kimi 审查](research/kimi-model-chat.md)。 |
+| 模型公开联网检索 | OpenAI SDK `7.10.0` / `c22b09bc`；Kimi Formula v1，2026-09-08 检查 | Apache-2.0；托管 API | 复用官方搜索/读取公式，固定本地授权、四次调用上限和不含正文的审计。未复制源码，见[调研](research/model-web-search.zh-CN.md)。 |
+| 跨模型共享联网工具 | 已有 OpenAI `7.10.0`、Anthropic `0.124.0`；2026-09-08 检查 Tavily API 与 Kimi Formula | Apache-2.0；MIT；托管 API | 复用 SDK 续轮和统一有界授权；推理与检索凭据分离，跨模型只返回可读证据，保留无正文审计。未复制源码，见[调研](research/shared-model-web-tools.zh-CN.md)。 |
+| 模型凭据加密 | [NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final)、[Node `v26.8.1` crypto](https://github.com/nodejs/node/blob/v26.8.1/doc/api/crypto.md) 和已有 OpenSSH POSIX 权限审查 | 开放标准；MIT；BSD 风格参考 | 复用 Node AES-256-GCM，以随机 96 位 nonce、128 位 tag 和连接绑定 AAD 加密 PostgreSQL API Key。独立 POSIX `0600` 密钥文件须随数据库备份；已有连接但密钥丢失时失败关闭。没有本地密码算法、源码复制、系统钥匙串或 KMS，见[调研](research/model-service-presets.zh-CN.md)。 |
 | 员工进化与学习图谱 | [NousResearch/hermes-agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d)，重点参考 `agent/learning_graph.py` 的技能/记忆模型 | MIT | 采用“技能与记忆分离、学习技能保留来源和使用证据、个人页展示关系”的产品思想。OpenBot 的 TypeScript/PostgreSQL 实现为本地代码，没有复制 Hermes 源码。 |
 | 员工进化档案 | [Hermes Agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d)，重点参考 Desktop Star Map 的 `time-axis.ts` 与 `timeline.tsx` | MIT | 把真实日期旅程、稳定顺序和来源优先的交互适配到 OpenBot 已有的 Server 仅追加事件。使用原生 HTML 筛选/滑杆/列表，不采用 Hermes 文件系统权威、D3/Canvas 运行时或变化模型。未复制源码，见[调研证据](research/employee-evolution-archive.md)。 |
 | Owner 管理员工主页详情 | [Hermes Agent `63279301`](https://github.com/NousResearch/hermes-agent/tree/63279301bcbdc185c1b07b98a9312eb0c862f26d)，重点参考 `EditProfileDialog.tsx`、`profile-config.tsx`、profile 操作和 UI metadata CAS 测试；[Kubernetes `v1.36.2`](https://github.com/kubernetes/kubernetes/tree/v1.36.2) `resourceVersion` 更新语义 | MIT；Apache-2.0 | 采用显式暂存编辑、路由简介与旧写入者拒绝。复用 OpenBot 已有 Zod/Hono/PostgreSQL revision 变化路径，只增加职责/简介、无正文进化/SSE 元数据和简介随安全模板迁移。未复制上游源码，见[调研证据](research/owner-employee-profile-details.md)。 |
@@ -49,6 +53,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | 可迁移员工技能依赖闭包 | [Agent Skills `69ef37e9`](https://github.com/agentskills/agentskills/tree/69ef37e9424c0a7ea9dd2293b559e43ec8176379)、[Helm `v4.1.3`](https://github.com/helm/helm/blob/v4.1.3/internal/chart/v3/lint/rules/dependencies.go) 与 [OpenClaw `v2026.7.1-2`](https://github.com/openclaw/openclaw/tree/v2026.7.1-2) | Apache-2.0 代码 / CC-BY-4.0 文档；Apache-2.0；MIT | Agent Skills 尚无正式技能间依赖字段，因此 `dependencySlugs` 是明确的 OpenBot v1 扩展。采用 Helm 的包闭包 fail-closed 规则和 OpenClaw 不静默误报就绪的原则：已验证技能若依赖于导出集合之外就阻止下载。未复制上游源码，见[调研证据](research/portable-employee-skill-dependency-closure.md)。 |
 | 员工导出审核绑定 | [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html)、[RFC 6585](https://www.rfc-editor.org/rfc/rfc6585.html)、[Kubernetes `v1.36.2`](https://github.com/kubernetes/kubernetes/tree/v1.36.2)、[W3C Web Crypto Level 2](https://www.w3.org/TR/WebCryptoAPI/)、npm [`ssri` v14.0.0](https://github.com/npm/ssri/tree/v14.0.0) 与 [Hono `4.13.5` / `e2740d5a`](https://github.com/honojs/hono/blob/e2740d5a1bd0b4254e517e3af8b60789284bc7bd/src/middleware/etag/index.ts) | IETF Trust；Apache-2.0；W3C Software and Document License；ISC；MIT | 采用强 `ETag`/`If-Match`、`428`、不透明过期版本交互，以及浏览器原生 SHA-256 对实际响应字节复核。复用规范构建器；不新增 Hono 缓存中间件或面向 Node 的 `ssri`。未复制上游源码，见[调研证据](research/employee-export-review-binding.md)。 |
 | 浏览器电脑 | [CopilotKit/OpenBot `agent-computer` `257c1280`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer) | MIT | 通过薄 Provider 使用其 Token HTTP 接口，上游进程独立运行，不复制控制面。 |
+| 员工浏览器会话 | [CopilotKit/OpenBot `257c1280`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf)、Playwright 1.62.1、Bun 1.4.2 与 RFC 6455 | MIT；Apache-2.0；IETF Trust | 薄适配器复用持久配置和人工输入；Server 管理会话、独占接管、无正文审计及出站转发。运行时源码原样使用，改编的构建配方保留 MIT 归属和许可证。见[调研](research/employee-browser.zh-CN.md)。 |
 | 跨平台电脑操作 | [Cua `986b6f25`](https://github.com/trycua/cua/tree/986b6f257b1afddef0cbd4815bb2744eab7eadba) | MIT；可选组件另有许可证 | 计划用于 Windows、macOS、Linux Provider；未经独立分发审查不启用可选 AGPL 或模型组件。 |
 | Provider 一致性场景 | [MCP Conformance `74edef34`](https://github.com/modelcontextprotocol/conformance/tree/74edef34d674f563537be8c6587cebaa58e830ca) | 许可证迁移中：新代码 Apache-2.0，剩余历史代码 MIT，文档 CC-BY-4.0 | 采用具名可执行场景、按版本冻结要求、显式预期失败和连接两端分别检查的方式。OpenBot 使用本地 Vitest 编写自身协议 fixture，没有复制 MCP 代码或文档。 |
 | 平台合规声明 | [OCI runtime-spec `6999a89a`](https://github.com/opencontainers/runtime-spec/tree/6999a89a76a0329f440d5740497bedb9dd431297) | Apache-2.0 | 采用“合规必须绑定明确 OS/架构，任一必需行为失败就不能宣称支持”的原则。本切片不实现或复制 OCI runtime 契约。 |
@@ -88,11 +93,16 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | Provider SDK 与当前 Docker 浏览器适配器 | 已审查 | 已记录 CopilotKit/OpenBot `agent-computer`、Cua、MCP conformance、OCI 和平台声明等级；原生 Provider 只能按证据宣称。 |
 | GitHub 贡献与 CI | 已审查 | 复用 Issue Form 和 RFC/KEP 证据结构；现有 checkout/setup Action 已固定到审查过的 commit，并关闭 checkout 凭证持久化。 |
 | PostgreSQL store 与 migration 生命周期 | 已审查 | 已固定 Drizzle/Postgres.js/PostgreSQL 行为；journal 与数据库历史出现漂移时 fail closed，真实 PostgreSQL CI 覆盖首次并发 migration 和重复启动。 |
+| Server 模型连接、凭据和员工模型选择 | 已审查 | 已记录 11 家官方 API、OpenAI/Anthropic 固定 SDK、NIST/Node 加密和已有 POSIX 文件边界；单页列表最多 256 条/2 MiB，文本请求最多 256 KiB，Run 固定连接/模型且不静默回退。真实服务验证仅按已授权实测证据声明。 |
 | PostgreSQL 与 Artifact 备份/恢复 | 部分 | 已选择原生 `pg_dump`/`pg_restore` 配合 Artifact 快照，并提供双语运维说明；定时、加密、保留、异地适配器和可重复完整恢复工具仍需专项上游审查。 |
 | 多 Server 调度与事件分发 | 部分 | 已明确当前只支持单进程；增加第二个 Server 前必须先比较共享队列和事件系统。 |
 | 办公室可视化插件 | 延期 | 只有公开产品图，没有找到可复用源码许可证，本版本不继续扩展。 |
 
 ## 已落实的审查结果
+
+- Owner 可保存、轮换和停用加密模型连接，在创建或已有模型员工主页选择模型；地址和协议不可变。
+  保存不调用付费推理，模型发现有界，测试按钮显式调用。自定义地址只接受 Server 精确 HTTPS 授权列表。
+  环境 `legacy-kimi` 只读兼容已有未绑定员工，凭据和本地绑定不随员工包导出。
 
 - 技能名采用 Agent Skills 兼容的“小写、连字符、最多 64 字符”子集，简介上限为 1,024 字符。
 - 候选、已验证、暂停、撤销由 Server 明确管理，客户端不能直接创建已验证技能。

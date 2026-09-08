@@ -518,7 +518,7 @@ select:focus-visible {
 }
 .rail-result > button {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 6px 10px;
   width: 100%;
   padding: 0;

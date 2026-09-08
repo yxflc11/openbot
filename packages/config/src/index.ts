@@ -68,6 +68,68 @@ export const serverEnvSchema = z
     OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: z.string().trim().min(1).optional(),
     OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: z.string().trim().min(1).optional(),
     OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+    // Model credentials are consumed only by the Server, never by a browser or Worker Host.
+    MOONSHOT_API_KEY: z.preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+      z.string().trim().min(1).max(512).optional(),
+    ),
+    MOONSHOT_BASE_URL: z
+      .enum(["https://api.moonshot.cn/v1", "https://api.moonshot.ai/v1"])
+      .default("https://api.moonshot.cn/v1"),
+    MOONSHOT_MODEL: z
+      .string()
+      .regex(/^[a-zA-Z0-9._-]{1,128}$/)
+      .default("kimi-k3"),
+    MOONSHOT_REASONING_EFFORT: z.enum(["low", "high", "max"]).default("low"),
+    TAVILY_API_KEY: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().trim().min(1).max(2048).optional(),
+    ),
+    OPENBOT_WEB_SEARCH_CONNECTION_ID: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{1,64}$/)
+        .optional(),
+    ),
+    OPENBOT_WEB_SEARCH_MODEL: z.string().trim().min(1).max(256).default("kimi-k3"),
+    OPENBOT_MODEL_MAX_TOKENS: z.coerce.number().int().min(128).max(8192).default(4096),
+    OPENBOT_MODEL_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180_000).default(90_000),
+    OPENBOT_MODEL_MAX_CONCURRENT_RUNS: z.coerce.number().int().min(1).max(4).default(2),
+    OPENBOT_MODEL_CREDENTIAL_KEY_PATH: z
+      .string()
+      .trim()
+      .min(1)
+      .default("./data/model-credentials.key"),
+    OPENBOT_MODEL_CUSTOM_BASE_URLS: z
+      .string()
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((url) => url.trim().replace(/\/+$/, ""))
+          .filter(Boolean),
+      )
+      .pipe(
+        z
+          .array(
+            z
+              .string()
+              .url()
+              .max(2048)
+              .refine((value) => {
+                const url = new URL(value);
+                return (
+                  url.protocol === "https:" &&
+                  !url.username &&
+                  !url.password &&
+                  !url.search &&
+                  !url.hash
+                );
+              }, "Custom model endpoints must be HTTPS URLs without credentials, query, or fragment."),
+          )
+          .max(32),
+      ),
   })
   .superRefine((value, context) => {
     let hasRemoteOrigin = false;

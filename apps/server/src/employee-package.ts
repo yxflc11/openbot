@@ -535,7 +535,7 @@ export function inspectEmployeeTemplate(
     ]),
   ).sort();
   const hostRequired =
-    payload.configuration.recommendedExecutionProfile !== "none" ||
+    !["none", "model"].includes(payload.configuration.recommendedExecutionProfile) ||
     requiredForCompatibility.length > 0;
   const availableCapabilities = new Set(
     nodes.flatMap((node) => [

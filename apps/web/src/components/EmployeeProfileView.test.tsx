@@ -32,6 +32,25 @@ const profile: EmployeeProfile = {
 };
 
 describe("EmployeeProfileView", () => {
+  it("retains loaded profile content during refresh so editor state is not unmounted", () => {
+    const html = renderToStaticMarkup(
+      <EmployeeProfileView
+        profile={profile}
+        loading={true}
+        error={undefined}
+        onRetry={() => undefined}
+        onAssign={() => undefined}
+        onExport={() => undefined}
+        onProfileChanged={async () => undefined}
+      />,
+    );
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain("Coder");
+    expect(html).toContain("正在更新员工档案");
+    expect(html).not.toContain("employee-profile-loading");
+  });
+
   it("connects the active tab to a single labelled tab panel", () => {
     const html = renderToStaticMarkup(
       <EmployeeProfileView

@@ -23,8 +23,8 @@ OpenBot is inspired by the always-on, channel-based experience of products such 
 remaining self-hosted, provider-neutral, and designed for explicit human control.
 
 > [!WARNING]
-> OpenBot is pre-alpha software. The current computer provider is read-only and does **not** fill,
-> click, submit, or control production accounts. Do not connect payment methods, primary accounts,
+> OpenBot is pre-alpha software. Automated browser tasks remain read-only; the Owner can
+> explicitly take control and interact with the employee browser. Do not connect payment methods, primary accounts,
 > or production credentials. Read [Security](#security) before exposing a deployment.
 
 ## Why OpenBot
@@ -59,11 +59,12 @@ and back. The table deliberately separates working code from planned capabilitie
 | Control plane | Local Owner authentication, drift-checked PostgreSQL migrations, Bots, channels, membership, messages, runs, approvals, artifacts, Employee memory lifecycle, content-free multi-device profile invalidation, and audit events | Durable routines, memory retrieval/retention, automated recovery tooling, and multi-user trust |
 | Channel UI | Responsive channel-first Web UI, named Bot targeting, Bot-authored results, replies, rich text/tables, run inspector, approvals, Node management, bounded SSE with snapshot recovery, accessible employee tabs, and native modal focus handling | Installable PWA, notification delivery, real screen-reader/zoom evidence, and localization polish |
 | Bot identity | Five-layer composable appearance persisted with each Bot and reused across channels and the employee profile | More parts and community-created appearance packs |
-| Employee profile | Seven-view profile, revision-checked Owner editing for role and biography, Hermes-inspired dated evolution archive with filters and full evidence references, inspectable Owner skill review, Owner-managed typed memory with content-free audit, biography-preserving safe template export with exact reviewed-download binding, quarantined import, reviewed fresh-identity activation, and experimental DSSE signing | Display-name/model/host/appearance policy editors, memory retrieval/retention and autonomous proposals, native keyring/KMS and public trust adapters, executable Agent Skills bundles with full-diff review, selective cloning, registry distribution, and ownership transfer |
+| Employee profile | Seven-view profile, revision-checked Owner editing for role and biography, Hermes-inspired dated evolution archive with filters and full evidence references, inspectable Owner skill review, Owner-managed typed memory with content-free audit, biography-preserving safe template export with exact reviewed-download binding, quarantined import, reviewed fresh-identity activation, and experimental DSSE signing | Display-name/host/appearance policy editors, memory retrieval/retention and autonomous proposals, native keyring/KMS and public trust adapters, executable Agent Skills bundles with full-diff review, selective cloning, registry distribution, and ownership transfer |
 | Node protocol | Outbound WebSocket registration, Owner UI for one-time pairing/list/revoke, individually revocable credentials, heartbeat, capacity, exact capability-major routing, two-phase assignment, explicit start, progress, frames, completion, and disconnect recovery | Proof-of-possession identity, mTLS, rotation, replay protection, native keyring adapters, and real-device conformance reports |
-| Browser execution | Open an explicit public HTTP(S) URL through the pinned CopilotKit/OpenBot `agent-computer` boundary and return a bounded PNG screenshot | Observe/fill/act loop, continuous frames, safe form interaction, and retry semantics |
-| Human control | Persisted approval request/decision flow bound to Run, Node, action, target fingerprint, risk, and expiry | Single-use signed capability leases and exclusive remote takeover |
-| Providers | Functional read-only Docker/browser adapter; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
+| Browser execution | Explicit-URL screenshot Runs plus a built-in employee browser panel with persistent profiles, refreshed PNGs, navigation and human input | Autonomous observe/fill/act loop, video-rate frames, downloads and tab management |
+| Human control | Persisted Run approval decisions plus exclusive, expiring Owner browser control with content-free audit | Single-use signed automated capability leases and broader desktop takeover |
+| Providers | Functional Docker/browser adapter with read-only Runs and human control; typed Cua, Lume, and coder package boundaries | Portable browser plus Windows, macOS, Linux desktop, managed Android, and isolated coding providers |
+| Model chat | Owner-managed model connections with 11 provider presets, authorized custom endpoints, per-Employee model selection, encrypted API keys, bounded text replies, persisted Runs, and realtime updates; no Worker Host required | Token streaming and separately authorized tools |
 | Office view | Isolated `@openbot/office-plugin` package with no core-app dependency | Optional plugin lifecycle after the channel workflow is mature |
 
 ### What the current release does not claim
@@ -133,18 +134,104 @@ token from `.env` after the first successful start. The Node stores its new cred
 <http://localhost:5173>, sign in with `OPENBOT_OWNER_PASSWORD`, create a Bot and channel, then add
 the Bot to that channel. See [Node enrollment](docs/NODE_ENROLLMENT.md) before pairing a remote host.
 
-By default, the local Node honestly advertises no execution capability. Messages are still stored
-as queued Runs until a compatible provider is configured. Stop PostgreSQL with `npm run db:stop`.
+By default, the local Node honestly advertises no execution capability. Computer-profile messages
+remain queued until a compatible provider is configured. Model chat runs on the Server as described
+below. Stop PostgreSQL with `npm run db:stop`.
 Read [Database operations](docs/DATABASE.md) before upgrading, backing up, or restoring a deployment.
 To sign portable Employee templates, follow the experimental
 [Employee signing runbook](docs/EMPLOYEE_SIGNING.md); signing is disabled by default.
 
-### Enable the read-only browser slice
+### Configure model services
 
-Run the pinned
-[CopilotKit/OpenBot `agent-computer`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer)
-on the Node machine and keep it bound to loopback. Configure both values below with the same
-computer token, then restart the Node:
+Open **Model services / 模型服务** in the Web app, choose a provider and the region that issued your
+API key, name the connection, and save the key. Presets cover OpenAI, Anthropic/Claude, Google
+Gemini, DeepSeek, Kimi/Moonshot, OpenRouter, SiliconFlow, Alibaba Cloud Model Studio, Zhipu/Z.AI,
+MiniMax, and Volcengine Ark. The Server fills in the reviewed API endpoint and protocol.
+
+Saving a connection does not call paid inference. Fetch available models where supported, choose
+one of the suggested IDs, or enter a model ID manually. Discovery reads one page, shows at most
+256 IDs, and bounds the upstream response to 2 MiB; unavailable or incomplete lists always retain
+manual entry. Suggestions and discovery do not guarantee account access or text-model capability.
+**Test model / 测试模型** explicitly sends a short inference request and may incur provider charges.
+
+In **Create Bot**, choose the model-chat profile and select a connection and model. Existing
+model-chat Employees can change their selection in the profile. A channel Run snapshots its
+connection ID and model ID when queued; later Employee edits do not redirect that Run. A missing,
+disabled, or unauthorized saved connection fails visibly and never falls back to another provider.
+Connection endpoints and protocols are immutable: create a new connection to change them. Use
+`enabled` to disable a saved connection; there is no connection-delete operation.
+
+API keys are encrypted with AES-256-GCM in PostgreSQL. The Server automatically creates a separate
+local encryption key at `OPENBOT_MODEL_CREDENTIAL_KEY_PATH` (default `./data/model-credentials.key`,
+relative to the Server process working directory). **Back up this key file together with the database.**
+When saved connections already exist, a missing key stops Server startup instead of generating a
+replacement. The key file is restricted to POSIX `0600`; this is a filesystem key boundary, not a
+native OS keyring or KMS. API responses, Nodes, audit events, and Employee exports never receive
+connection secrets. Local connection bindings are also excluded from Employee exports.
+
+For another OpenAI-compatible service, the Server operator must authorize its exact HTTPS base
+URL in `.env` before the Owner can choose **Custom**:
+
+```dotenv
+OPENBOT_MODEL_CUSTOM_BASE_URLS=https://models.example.com/v1,https://gateway.example.com/api/v1
+```
+
+This comma-separated list is empty by default. Presets accept only reviewed endpoints; custom
+connections accept only this exact list, with trailing slashes normalized. URL credentials, query
+strings, fragments, plain HTTP, and redirects are rejected. The browser cannot authorize arbitrary
+outbound destinations.
+
+`OPENBOT_MODEL_MAX_TOKENS=4096`, `OPENBOT_MODEL_TIMEOUT_MS=90000`, and
+`OPENBOT_MODEL_MAX_CONCURRENT_RUNS=2` remain the Server defaults. No paid request is retried
+automatically. Each request quotes the current message and up to ten completed exchanges from
+that exact Employee and channel, with history capped at 24,000 serialized characters. Replies
+are capped at 16,000 characters and upstream chat responses at 256 KiB. Private reasoning is
+neither shown nor persisted. All tool-capable models now share public `web_search` and `fetch` through the Server. Both
+OpenAI-compatible and native Anthropic adapters handle full tool continuations, retaining opaque
+reasoning/signature state only in the current Run's memory. The selected model still writes the answer.
+
+Retrieval is configured separately, in this order:
+
+1. `TAVILY_API_KEY`: independent Tavily search and extraction, available to every configured model.
+2. `OPENBOT_WEB_SEARCH_CONNECTION_ID`: an explicitly selected, enabled official Kimi connection;
+   `OPENBOT_WEB_SEARCH_MODEL` defaults to `kimi-k3`.
+3. Existing `MOONSHOT_API_KEY`: reused automatically for shared retrieval. Native Kimi can use its
+   direct Formula path; other models receive a readable retrieval summary through a Kimi bridge.
+
+Without a retrieval service, other models remain text-only. No random saved account is selected.
+The bridge receives only the validated public tool request, not the Employee's chat history; Kimi
+ciphertext and retrieval credentials never go to the answering provider. Each bridge lookup uses
+at most one Formula execution and two Kimi completions, so its costs include retrieval and inference.
+The same four-tool-call budget and total Run timeout apply across providers. Public research needs
+no per-URL approval; failures are explicit, with no automatic paid retries. Audit records only tool
+names and phases. No computer actions, autonomous memory access or token streaming is added.
+
+Every registered provider preset has protocol contract coverage; individual model IDs must support
+function calling. Live-provider claims require an actual authorized test, not merely a compatible API.
+See [shared web tool research](docs/research/shared-model-web-tools.md).
+
+### Existing Kimi environment configuration
+
+Existing unbound model Employees remain compatible with the Server's Git-ignored `.env` settings:
+
+```dotenv
+MOONSHOT_API_KEY=<your-kimi-api-key>
+MOONSHOT_BASE_URL=https://api.moonshot.cn/v1
+MOONSHOT_MODEL=kimi-k3
+MOONSHOT_REASONING_EFFORT=low
+```
+
+Restart the Server after changes. When configured, this appears as the read-only `legacy-kimi`
+connection; edit it through Server configuration, not the API. Use the official China or global
+(`https://api.moonshot.ai/v1`) endpoint that matches the key. Environment keys are never copied
+into the saved connection store. Clearing an Employee's explicit binding restores this unbound
+behavior; without configured legacy credentials, subsequent model Runs fail visibly. Saved
+connection failures do not trigger this compatibility path.
+
+### Enable the employee browser
+
+Configure the following values on the Worker Host. The built-in runtime recipe uses the pinned
+CopilotKit/OpenBot `agent-computer` and binds its backend to loopback:
 
 ```dotenv
 OPENBOT_DOCKER_COMPUTER_URL=http://127.0.0.1:4100
@@ -152,7 +239,12 @@ OPENBOT_DOCKER_COMPUTER_TOKEN=<a-random-token-with-at-least-16-characters>
 OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS=false
 ```
 
-Send a channel message containing an explicit public URL, for example:
+Run `npm run browser:up`, then start the enrolled Node with `npm run dev:node`. Create an employee
+with the browser/Docker profile and choose **Open browser** on its profile. Take control to navigate,
+click or type, then return control to the employee. See [Employee browser](docs/EMPLOYEE_BROWSER.md)
+for setup, session behavior and current limits.
+
+The existing automated screenshot path accepts an explicit public URL, for example:
 
 ```text
 Open https://example.com and send me a screenshot.
@@ -212,7 +304,7 @@ outcomes rather than add an isolated demo.
 | --- | --- |
 | M0 — Local control plane | Channels, Bots, authentication, persistence, and audit run without a proprietary cloud service. The foundation is available today. |
 | M1 — Server/Node loop | A replaceable Node receives a browser task and returns progress and a screenshot. The read-only vertical slice is available; safe interaction remains active work. |
-| M2 — Remote control and approval | Mobile access, signed single-use approvals, notifications, and exclusive human takeover. Persisted approval decisions are available; leases and takeover are next. |
+| M2 — Remote control and approval | Mobile access, signed single-use approvals, notifications, and exclusive human takeover. Persisted approval decisions and exclusive browser takeover are available; signed automated leases remain next. |
 | M3 — Portable employees | Profile, evolution ledger, skill graph, typed memory, review-bound safe templates, and reviewed new-identity activation. |
 | M4 — Native Worker Hosts | Windows, macOS, and Linux Providers use one capability and approval contract. |
 | M5 — Multi-Bot operations | Structured handoffs, routines, durable queues, coder Providers, and authenticated employee transfer. |
@@ -264,7 +356,7 @@ packages/
   provider-sdk/        provider contracts
   office-plugin/       deferred optional visualization
 providers/
-  docker/              current read-only browser adapter
+  docker/              browser adapter with read-only Runs and human control
   cua/                 macOS extension boundary
   lume/                macOS VM extension boundary
   coder/               coding-agent extension boundary

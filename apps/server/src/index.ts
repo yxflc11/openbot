@@ -16,6 +16,11 @@ import { PostgresControlPlaneStore } from "./postgres-store.js";
 import { RunDispatcher } from "./run-dispatcher.js";
 import { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
+import { ModelServices } from "./model-services.js";
+import { ModelCredentialCipher } from "./model-credential-cipher.js";
+import { PostgresModelConnectionStore } from "./postgres-model-connection-store.js";
+import { ModelRunDispatcher } from "./model-run-dispatcher.js";
+import { BrowserSessions } from "./browser-sessions.js";
 
 const env = serverEnvSchema.parse(process.env);
 const HTTP_SHUTDOWN_GRACE_MS = 10_000;
@@ -37,6 +42,10 @@ const unsubscribeNodeEvents = [
   ),
 ];
 const store = new PostgresControlPlaneStore(database.db);
+const modelCipher = await ModelCredentialCipher.load(env.OPENBOT_MODEL_CREDENTIAL_KEY_PATH, {
+  allowCreate: !(await PostgresModelConnectionStore.hasAny(database.db)),
+});
+const modelServices = new ModelServices(env, new PostgresModelConnectionStore(database.db, modelCipher));
 const artifactStorage = new FileArtifactStorage(env.OPENBOT_OBJECT_STORE_PATH);
 const employeePublisher =
   env.OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH === undefined
@@ -55,16 +64,33 @@ const dispatcher = new RunDispatcher(
   workspaceRealtime,
 );
 await dispatcher.start();
+// Recovery above settles interrupted Runs before either scheduler starts new model work.
+const modelDispatcher = new ModelRunDispatcher(
+  store,
+  (run) => modelServices.resolve(run),
+  realtime,
+  workspaceRealtime,
+  env.OPENBOT_MODEL_MAX_CONCURRENT_RUNS,
+);
+await modelDispatcher.start();
 const auth = new OwnerAuthService(new PostgresOwnerSessionStore(database.db), {
   ownerName: env.OPENBOT_OWNER_NAME,
   ownerPassword: env.OPENBOT_OWNER_PASSWORD,
   sessionTtlMs: env.OPENBOT_SESSION_TTL_HOURS * 60 * 60 * 1000,
 });
+const browserSessions = new BrowserSessions(store, nodeRegistry, () => {
+  void dispatcher.dispatchQueued().catch(() => console.error("Browser release could not wake the task queue."));
+});
 const app = createApp({
+  modelServices,
+  browserSessions,
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,
   artifactStorage,
   auth,
-  dispatchRun: (run) => dispatcher.enqueue(run),
+  dispatchRun: (run) => {
+    if (run.executionProfile === "model") modelDispatcher.enqueue(run);
+    else dispatcher.enqueue(run);
+  },
   ...(employeePublisher === undefined ? {} : { employeePublisher }),
   disconnectNode: (nodeId) => nodeRegistry.disconnect(nodeId),
   listNodes: () => nodeRegistry.list(),
@@ -103,16 +129,23 @@ function shutdown(signal: string): Promise<void> {
 async function shutdownOnce(signal: string): Promise<void> {
   console.info(`Received ${signal}; shutting down.`);
   for (const unsubscribe of unsubscribeNodeEvents) unsubscribe();
+  browserSessions.stop();
 
   const httpDrain = closeHttpServer(httpServer, HTTP_SHUTDOWN_GRACE_MS);
   const dispatcherDrain = dispatcher.stop();
+  const modelDrain = modelDispatcher.stop();
   nodeRegistry.close();
 
-  const [dispatcherResult, httpResult] = await Promise.allSettled([dispatcherDrain, httpDrain]);
+  const [dispatcherResult, httpResult, modelResult] = await Promise.allSettled([
+    dispatcherDrain,
+    httpDrain,
+    modelDrain,
+  ]);
   const [databaseResult] = await Promise.allSettled([database.close()]);
 
   const errors: unknown[] = [];
   if (dispatcherResult.status === "rejected") errors.push(dispatcherResult.reason);
+  if (modelResult.status === "rejected") errors.push(modelResult.reason);
   if (httpResult.status === "rejected") {
     errors.push(httpResult.reason);
   } else if (httpResult.value.forced) {

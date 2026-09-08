@@ -1,14 +1,17 @@
-import type { CreateEmployeeMemoryInput, EmployeeMemory, EmployeeProfile } from "@openbot/domain";
+import type { CreateEmployeeMemoryInput, EmployeeMemory, EmployeeProfile, ModelSelection } from "@openbot/domain";
 import { type FormEvent, useId, useRef, useState } from "react";
 import {
   createEmployeeMemory,
   deleteEmployeeMemory,
+  getEmployeeProfile,
   updateEmployeeMemory,
+  updateEmployeeModel,
   updateEmployeeProfileDetails,
 } from "../api";
 import { runStatusLabel } from "../run-state";
 import { EmployeeEvolutionArchive } from "./EmployeeEvolutionArchive";
 import { EmployeeSkillReview } from "./EmployeeSkillReview";
+import { ModelSelector } from "./ModelSelector";
 import { RobotAvatar } from "./RobotAvatar";
 
 export type ProfileTab =
@@ -50,6 +53,9 @@ export function EmployeeProfileView({
   onAssign,
   onExport,
   onProfileChanged,
+  onOpenBrowser,
+  onManageModels,
+  modelServicesVersion,
 }: {
   profile: EmployeeProfile | undefined;
   loading: boolean;
@@ -58,12 +64,16 @@ export function EmployeeProfileView({
   onAssign(): void;
   onExport(): void;
   onProfileChanged(): Promise<void>;
+  onOpenBrowser?(): void;
+  onManageModels?: (() => void) | undefined;
+  modelServicesVersion?: number | undefined;
 }) {
   const [tab, setTab] = useState<ProfileTab>("overview");
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   const tabSetId = useId();
 
-  if (loading || profile === undefined) {
+  // Refreshes must preserve revision-bound editors and their local success/dirty state.
+  if (profile === undefined) {
     return (
       <main className="workspace-main employee-profile-loading">
         <span className="loading-mark">O</span>
@@ -80,18 +90,20 @@ export function EmployeeProfileView({
 
   const { employee } = profile;
   return (
-    <main className="workspace-main employee-profile">
+    <main className="workspace-main employee-profile" aria-busy={loading}>
       <header className="employee-profile-header">
         <RobotAvatar bot={employee} status={employee.status} className="employee-profile-avatar" />
         <div className="employee-profile-identity">
           <h1>{employee.name}</h1>
           <p>{employee.role}</p>
+          {loading ? <small className="model-help" role="status">正在更新员工档案…</small> : null}
           <span className={`employee-status ${employee.status}`}>
             <i />
             {employeeStatusLabel(employee.status)}
           </span>
         </div>
         <div className="employee-profile-actions">
+          {employee.computerProfile === "docker-linux" && onOpenBrowser ? <button className="secondary-button" type="button" onClick={onOpenBrowser}>打开浏览器</button> : null}
           <button className="primary-button" type="button" onClick={onAssign}>
             分配任务
           </button>
@@ -100,6 +112,8 @@ export function EmployeeProfileView({
           </button>
         </div>
       </header>
+
+      {error ? <div className="form-error" role="alert"><p>{error}</p><button className="secondary-button" type="button" onClick={onRetry}>重新加载</button></div> : null}
 
       <div className="employee-tabs" role="tablist" aria-label="员工档案页面">
         {tabs.map((item, index) => (
@@ -144,7 +158,7 @@ export function EmployeeProfileView({
         ) : null}
         {tab === "records" ? <Records profile={profile} /> : null}
         {tab === "configuration" ? (
-          <EmployeeProfileDetailsEditor profile={profile} onProfileChanged={onProfileChanged} />
+          <EmployeeProfileDetailsEditor profile={profile} onProfileChanged={onProfileChanged} onManageModels={onManageModels} modelServicesVersion={modelServicesVersion} />
         ) : null}
       </section>
     </main>
@@ -576,9 +590,13 @@ function Records({ profile }: { profile: EmployeeProfile }) {
 export function EmployeeProfileDetailsEditor({
   profile,
   onProfileChanged,
+  onManageModels,
+  modelServicesVersion,
 }: {
   profile: EmployeeProfile;
   onProfileChanged(): Promise<void>;
+  onManageModels?: (() => void) | undefined;
+  modelServicesVersion?: number | undefined;
 }) {
   const initialDetails = {
     role: profile.employee.role,
@@ -623,7 +641,7 @@ export function EmployeeProfileDetailsEditor({
   return (
     <ProfileSection
       title="配置"
-      description="编辑员工的说明性主页；电脑权限与执行配置仍由 Server 单独管理。"
+      description="编辑员工主页，选择模型对话使用的服务。"
     >
       <form className="employee-profile-details-form" onSubmit={(event) => void submit(event)}>
         <header>
@@ -662,7 +680,7 @@ export function EmployeeProfileDetailsEditor({
         ) : null}
         {serverChanged ? (
           <div className="employee-profile-stale" role="status">
-            <p>这名员工已在另一台设备更新。请加载 Server 最新值后再继续。</p>
+            <p>员工配置已更新。请加载最新值后再继续。</p>
             <button
               className="secondary-button"
               type="button"
@@ -693,6 +711,10 @@ export function EmployeeProfileDetailsEditor({
         </footer>
       </form>
 
+      {profile.employee.computerProfile === "model" ? (
+        <EmployeeModelEditor key={profile.employee.id} profile={profile} onProfileChanged={onProfileChanged} onManageModels={onManageModels} modelServicesVersion={modelServicesVersion} />
+      ) : null}
+
       <dl className="employee-config-list">
         <div>
           <dt>固定执行配置</dt>
@@ -708,6 +730,68 @@ export function EmployeeProfileDetailsEditor({
         </div>
       </dl>
     </ProfileSection>
+  );
+}
+
+export function EmployeeModelEditor({ profile, onProfileChanged, onManageModels, modelServicesVersion }: {
+  profile: EmployeeProfile;
+  onProfileChanged(): Promise<void>;
+  onManageModels?: (() => void) | undefined;
+  modelServicesVersion?: number | undefined;
+}) {
+  const [baseline, setBaseline] = useState({ revision: profile.details.revision, model: profile.configuration.model ?? null });
+  const [model, setModel] = useState<ModelSelection | null>(baseline.model);
+  const [valid, setValid] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+  const stale = profile.details.revision !== baseline.revision;
+  const changed = model?.connectionId !== baseline.model?.connectionId || model?.modelId.trim() !== baseline.model?.modelId;
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving || !valid || !changed || stale) return;
+    setSaving(true);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      const result = await updateEmployeeModel(profile.employee.id, {
+        expectedRevision: baseline.revision,
+        model: model ? { ...model, modelId: model.modelId.trim() } : null,
+      });
+      const nextModel = result.employee.model ?? null;
+      setBaseline({ revision: result.details.revision, model: nextModel });
+      setModel(nextModel);
+      setNotice("已更新模型。新任务将使用这个选择，已排队的任务保留原模型。");
+      await onProfileChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "无法保存模型，请重新加载后重试。");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <form className="employee-model-form" onSubmit={(event) => void save(event)}>
+      <h3>对话模型</h3>
+      <ModelSelector value={model} onChange={(value) => { setModel(value); setNotice(undefined); }} onValidityChange={setValid} onManageModels={onManageModels} refreshKey={modelServicesVersion} disabled={saving || stale} />
+      {stale ? <p className="model-help" role="status">员工配置已更新，加载最新值后继续。</p> : null}
+      {error ? <p className="model-inline-error" role="alert">{error}</p> : null}
+      {notice ? <p className="model-success" role="status">{notice}</p> : null}
+      <div className="model-actions">
+        <button className="primary-button" type="submit" disabled={saving || !valid || !changed || stale}>{saving ? "保存中…" : "保存模型"}</button>
+        {stale || error ? <button className="secondary-button" type="button" disabled={saving} onClick={async () => {
+          try {
+            const latest = await getEmployeeProfile(profile.employee.id);
+            const nextModel = latest.configuration.model ?? null;
+            setBaseline({ revision: latest.details.revision, model: nextModel });
+            setModel(nextModel);
+            setError(undefined);
+            await onProfileChanged();
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "重新加载失败。");
+          }
+        }}>加载最新值</button> : null}
+      </div>
+    </form>
   );
 }
 

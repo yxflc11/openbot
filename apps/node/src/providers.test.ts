@@ -39,6 +39,7 @@ describe("configured Node providers", () => {
     expect(availableCapabilities(providers)).toEqual(["browser", "screenshot"]);
     expect(availableCapabilityManifest(providers).map((item) => item.id)).toEqual([
       "browser.observe",
+      "browser.session",
       "screen.capture",
     ]);
     expect(providerForProfile(providers, "docker-linux")?.id).toBe("docker");

@@ -1,0 +1,27 @@
+name: openbot-browser
+
+services:
+  browser:
+    image: openbot-browser:257c1280
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    shm_size: 1gb
+    stop_grace_period: 30s
+    environment:
+      COMPUTER_TOKEN: ${OPENBOT_DOCKER_COMPUTER_TOKEN:?set OPENBOT_DOCKER_COMPUTER_TOKEN}
+      PROFILES_DIR: /profiles
+      WORKSPACE_DIR: /workspace
+      COMPUTER_MAX_BROWSERS: "4"
+      EGRESS_PROXY_DEFAULT: ${OPENBOT_BROWSER_EGRESS_PROXY:-}
+    ports:
+      - "127.0.0.1:4100:4100"
+    volumes:
+      - profiles:/profiles
+      - workspace:/workspace
+
+volumes:
+  profiles:
+  workspace:

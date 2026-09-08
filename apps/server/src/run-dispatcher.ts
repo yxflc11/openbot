@@ -31,7 +31,9 @@ type DispatchStore = Pick<
   | "startRun"
   | "upsertNode"
 > &
-  Partial<Pick<ControlPlaneStore, "requestApproval">>;
+  Partial<Pick<ControlPlaneStore, "requestApproval">> & {
+    getBrowserNode?(botId: string): Promise<string | undefined>;
+  };
 
 export interface NodeGateway {
   list(): ExecutionNode[];
@@ -131,7 +133,12 @@ export class RunDispatcher {
   }
 
   enqueue(run: Run): void {
-    if (run.status !== "queued" || run.executionProfile === "none") return;
+    if (
+      run.status !== "queued" ||
+      run.executionProfile === "none" ||
+      run.executionProfile === "model"
+    )
+      return;
     void this.dispatchQueued().catch(reportDispatchError);
   }
 
@@ -195,7 +202,14 @@ export class RunDispatcher {
   }
 
   async #offer(run: Run): Promise<void> {
-    const route = selectExecutionNode(run, this.#nodes.list());
+    const boundBrowserNode =
+      run.executionProfile === "docker-linux"
+        ? await this.#store.getBrowserNode?.(run.botId)
+        : undefined;
+    const candidates = this.#nodes
+      .list()
+      .filter((node) => boundBrowserNode === undefined || node.id === boundBrowserNode);
+    const route = selectExecutionNode(run, candidates);
     if (route === undefined) return;
     const { node, requirements } = route;
     const result = await this.#nodes.offerRun(node.id, {

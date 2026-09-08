@@ -8,7 +8,7 @@ import {
 export interface ExecutionRequirements {
   capabilities: NodeCapability[];
   capabilityManifest: NodeCapabilityRequirement[];
-  executionProfile: Exclude<Run["executionProfile"], "none">;
+  executionProfile: Exclude<Run["executionProfile"], "none" | "model">;
   platform?: ExecutionNode["platform"];
 }
 
@@ -72,6 +72,7 @@ export function requirementsForExecutionProfile(
         executionProfile: "coder",
       };
     case "none":
+    case "model":
       return undefined;
   }
 }

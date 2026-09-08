@@ -3,6 +3,8 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { ExecutionNode } from "@openbot/domain";
 import {
+  type BrowserCommand,
+  type BrowserResult,
   type NodeCapability,
   type NodeCapabilityRequirement,
   type NodeMessage,
@@ -75,6 +77,11 @@ export type NodeRunMessage = Extract<
 type NodeRunHandler = (node: ExecutionNode, message: NodeRunMessage) => void;
 
 export class NodeRegistry {
+  readonly #browserPaused = new Set<string>();
+  readonly #browserPending = new Map<
+    string,
+    { nodeId: string; sessionId: string; finish(result?: BrowserResult): void }
+  >();
   readonly #nodes = new Map<string, ConnectedNode>();
   readonly #identity: NodeCredentialVerifier;
   readonly #offerTimeoutMs: number;
@@ -102,6 +109,50 @@ export class NodeRegistry {
     return Array.from(this.#nodes.values(), ({ socket: _socket, ...node }) => node);
   }
 
+  setBrowserPaused(botId: string, paused: boolean): void {
+    if (paused) this.#browserPaused.add(botId);
+    else this.#browserPaused.delete(botId);
+  }
+
+  browserCommand(command: BrowserCommand): Promise<BrowserResult> {
+    const node = this.#nodes.get(command.nodeId);
+    if (
+      !node ||
+      node.socket.readyState !== WebSocket.OPEN ||
+      this.#browserPending.size >= 64 ||
+      !node.capabilityManifest.some(
+        (item) =>
+          item.id === "browser.session" && item.version === 1 && item.providerId === "docker",
+      )
+    ) {
+      return Promise.reject(new Error("Browser Node unavailable."));
+    }
+    return new Promise((resolve, reject) => {
+      const finish = (result?: BrowserResult) => {
+        if (!this.#browserPending.delete(command.requestId)) return;
+        clearTimeout(timer);
+        if (result) resolve(result);
+        else reject(new Error("Browser command delivery is uncertain."));
+      };
+      const timer = setTimeout(
+        () => finish(),
+        Math.max(1, Math.min(30_000, Date.parse(command.expiresAt) - Date.now())),
+      );
+      this.#browserPending.set(command.requestId, {
+        nodeId: command.nodeId,
+        sessionId: command.sessionId,
+        finish,
+      });
+      try {
+        node.socket.send(JSON.stringify(command), (error) => {
+          if (error) finish();
+        });
+      } catch {
+        finish();
+      }
+    });
+  }
+
   onAvailable(handler: NodeHandler): () => void {
     this.#availableHandlers.add(handler);
     return () => this.#availableHandlers.delete(handler);
@@ -123,6 +174,8 @@ export class NodeRegistry {
   }
 
   async offerRun(nodeId: string, input: RunOfferInput): Promise<RunOfferResult> {
+    if (this.#browserPaused.has(input.botId))
+      return { status: "unavailable", reason: "Employee browser is paused for human control." };
     const node = this.#nodes.get(nodeId);
     if (node === undefined || node.socket.readyState !== WebSocket.OPEN) {
       return { status: "unavailable", reason: "Node is not connected." };
@@ -419,6 +472,12 @@ export class NodeRegistry {
         }
 
         node.lastSeenAt = now;
+        if (message.type === "browser.result") {
+          const pending = this.#browserPending.get(message.requestId);
+          if (pending?.nodeId === node.id && pending.sessionId === message.sessionId)
+            pending.finish(message);
+          return;
+        }
         if (message.type === "node.heartbeat") {
           // Heartbeats report liveness. Only Server assignment methods may change capacity state.
           this.#emit(this.#updatedHandlers, node);
@@ -474,6 +533,7 @@ export class NodeRegistry {
   }
 
   close(): void {
+    for (const pending of this.#browserPending.values()) pending.finish();
     clearInterval(this.#livenessTimer);
     this.#livenessTimer = undefined;
     for (const pending of this.#pendingOffers.values()) {
@@ -494,6 +554,8 @@ export class NodeRegistry {
   }
 
   #disconnectNode(node: ConnectedNode, reason: string, emitUnavailable = true): void {
+    for (const pending of this.#browserPending.values())
+      if (pending.nodeId === node.id) pending.finish();
     if (this.#nodes.get(node.id)?.socket === node.socket) this.#nodes.delete(node.id);
     for (const pending of Array.from(this.#pendingOffers.values())) {
       if (pending.nodeId === node.id) pending.resolve({ status: "unavailable", reason });

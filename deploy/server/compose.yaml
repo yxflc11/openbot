@@ -36,11 +36,25 @@ services:
       OPENBOT_SECURE_COOKIES: ${OPENBOT_SECURE_COOKIES:-false}
       OPENBOT_ALLOWED_ORIGINS: ${OPENBOT_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       OPENBOT_OBJECT_STORE_PATH: /var/lib/openbot/objects
+      OPENBOT_MODEL_CREDENTIAL_KEY_PATH: /var/lib/openbot/model-credentials/key
+      OPENBOT_MODEL_CUSTOM_BASE_URLS: ${OPENBOT_MODEL_CUSTOM_BASE_URLS:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      MOONSHOT_BASE_URL: ${MOONSHOT_BASE_URL:-https://api.moonshot.cn/v1}
+      MOONSHOT_MODEL: ${MOONSHOT_MODEL:-kimi-k3}
+      MOONSHOT_REASONING_EFFORT: ${MOONSHOT_REASONING_EFFORT:-low}
+      OPENBOT_MODEL_MAX_TOKENS: ${OPENBOT_MODEL_MAX_TOKENS:-4096}
+      OPENBOT_MODEL_TIMEOUT_MS: ${OPENBOT_MODEL_TIMEOUT_MS:-90000}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      OPENBOT_WEB_SEARCH_CONNECTION_ID: ${OPENBOT_WEB_SEARCH_CONNECTION_ID:-}
+      OPENBOT_WEB_SEARCH_MODEL: ${OPENBOT_WEB_SEARCH_MODEL:-kimi-k3}
+      OPENBOT_MODEL_MAX_CONCURRENT_RUNS: ${OPENBOT_MODEL_MAX_CONCURRENT_RUNS:-2}
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
       - openbot-objects:/var/lib/openbot/objects
+      - openbot-model-credentials:/var/lib/openbot/model-credentials
 
 volumes:
   openbot-postgres:
   openbot-objects:
+  openbot-model-credentials:

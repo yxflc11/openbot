@@ -30,12 +30,14 @@ import { ChannelWorkspace } from "./components/ChannelWorkspace";
 import { ContextRail } from "./components/ContextRail";
 import { CreateBotDialog } from "./components/CreateBotDialog";
 import { CreateChannelDialog } from "./components/CreateChannelDialog";
+import { EmployeeBrowser } from "./components/EmployeeBrowser";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
 import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
+import { ModelConnectionsDialog } from "./components/ModelConnectionsDialog";
 import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { RunInspector } from "./components/RunInspector";
 import { Sidebar } from "./components/Sidebar";
@@ -128,6 +130,8 @@ function AuthenticatedWorkspace({
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
   const [selectedChannelId, setSelectedChannelId] = useState<string>();
   const [dialog, setDialog] = useState<Dialog>();
+  const [modelServicesOpen, setModelServicesOpen] = useState(false);
+  const [modelServicesVersion, setModelServicesVersion] = useState(0);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -135,6 +139,7 @@ function AuthenticatedWorkspace({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>();
   const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile>();
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
+  const [browserBotId, setBrowserBotId] = useState<string>();
   const [employeeProfileError, setEmployeeProfileError] = useState<string>();
   const selectedEmployeeIdRef = useRef<string | undefined>(undefined);
   const [employeeExportOpen, setEmployeeExportOpen] = useState(false);
@@ -407,6 +412,7 @@ function AuthenticatedWorkspace({
 
   const selectedChannel = workspace.channels.find((channel) => channel.id === selectedChannelId);
   const selectedRun = workspace.runs.find((run) => run.id === selectedRunId);
+  const browserBot = workspace.bots.find((bot) => bot.id === browserBotId);
 
   return (
     <div className="app-shell">
@@ -422,6 +428,7 @@ function AuthenticatedWorkspace({
         onCreateBot={() => setDialog("bot")}
         onCreateChannel={() => setDialog("channel")}
         onManageNodes={() => setDialog("node")}
+        onManageModels={() => setModelServicesOpen(true)}
         onLogout={onLogout}
       />
 
@@ -434,6 +441,9 @@ function AuthenticatedWorkspace({
           onAssign={() => assignEmployee(selectedEmployeeId)}
           onExport={() => setEmployeeExportOpen(true)}
           onProfileChanged={() => loadEmployeeProfile(selectedEmployeeId)}
+          onOpenBrowser={() => setBrowserBotId(selectedEmployeeId)}
+          onManageModels={() => setModelServicesOpen(true)}
+          modelServicesVersion={modelServicesVersion}
         />
       ) : selectedChannel ? (
         <ChannelWorkspace
@@ -487,6 +497,10 @@ function AuthenticatedWorkspace({
           setMobilePanel(undefined);
           setDialog("node");
         }}
+        onManageModels={() => {
+          setMobilePanel(undefined);
+          setModelServicesOpen(true);
+        }}
         onSelectChannel={selectChannel}
         onSelectBot={openEmployee}
       />
@@ -500,13 +514,23 @@ function AuthenticatedWorkspace({
           liveFrame={framesByRun.get(selectedRun.id)}
           run={selectedRun}
           onClose={closeInspector}
+          onOpenBrowser={() => {
+            setBrowserBotId(selectedRun.botId);
+            closeInspector();
+          }}
         />
+      ) : null}
+
+      {browserBot ? (
+        <EmployeeBrowser bot={browserBot} onClose={() => setBrowserBotId(undefined)} />
       ) : null}
 
       {dialog === "bot" ? (
         <CreateBotDialog
           onClose={() => setDialog(undefined)}
           onCreate={handleCreateBot}
+          onManageModels={() => setModelServicesOpen(true)}
+          modelServicesVersion={modelServicesVersion}
           onImport={() => {
             setDialog(undefined);
             setEmployeeImportOpen(true);
@@ -522,6 +546,12 @@ function AuthenticatedWorkspace({
       ) : null}
       {dialog === "node" ? (
         <NodeManagerDialog onlineNodes={workspace.nodes} onClose={() => setDialog(undefined)} />
+      ) : null}
+      {modelServicesOpen ? (
+        <ModelConnectionsDialog
+          onClose={() => setModelServicesOpen(false)}
+          onChanged={() => setModelServicesVersion((current) => current + 1)}
+        />
       ) : null}
       {employeeExportOpen && employeeProfile ? (
         <ExportEmployeeDialog

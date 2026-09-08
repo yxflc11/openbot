@@ -120,6 +120,20 @@
       "when": 1789795200000,
       "tag": "0016_employee_profile_details",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789881600000,
+      "tag": "0017_model_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789968000000,
+      "tag": "0018_model_services",
+      "breakpoints": true
     }
   ]
 }

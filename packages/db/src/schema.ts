@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   integer,
@@ -15,6 +16,32 @@ const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 };
+
+export const modelConnections = pgTable(
+  "model_connections",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    presetId: text("preset_id").notNull(),
+    baseUrl: text("base_url").notNull(),
+    protocol: text("protocol").notNull(),
+    encryptedApiKey: text("encrypted_api_key").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    revision: integer("revision").notNull().default(1),
+    ...timestamps,
+  },
+  (table) => [
+    check("model_connections_name_valid", sql`length(btrim(${table.name})) BETWEEN 1 AND 80`),
+    check("model_connections_preset_valid", sql`length(${table.presetId}) BETWEEN 1 AND 80`),
+    check("model_connections_url_valid", sql`length(${table.baseUrl}) BETWEEN 1 AND 2048`),
+    check(
+      "model_connections_protocol_valid",
+      sql`${table.protocol} IN ('openai-chat', 'anthropic-messages')`,
+    ),
+    check("model_connections_key_valid", sql`length(${table.encryptedApiKey}) BETWEEN 1 AND 5600`),
+    check("model_connections_revision_valid", sql`${table.revision} >= 1`),
+  ],
+);
 
 export const channels = pgTable(
   "channels",
@@ -399,6 +426,7 @@ export const runs = pgTable(
     }),
     nodeId: text("node_id").references(() => nodes.id),
     executionProfile: text("execution_profile").notNull().default("none"),
+    modelSelection: jsonb("model_selection").$type<{ connectionId: string; modelId: string }>(),
     instruction: text("instruction").notNull(),
     title: text("title").notNull(),
     status: text("status").notNull().default("queued"),
@@ -417,6 +445,11 @@ export const runs = pgTable(
       .where(
         sql`${table.status} = 'queued' AND ${table.nodeId} IS NULL AND ${table.executionProfile} <> 'none'`,
       ),
+    index("runs_model_queue_idx")
+      .on(table.createdAt, table.id)
+      .where(
+        sql`${table.status} = 'queued' AND ${table.nodeId} IS NULL AND ${table.executionProfile} = 'model'`,
+      ),
     uniqueIndex("runs_source_message_idx")
       .on(table.sourceMessageId)
       .where(sql`${table.sourceMessageId} IS NOT NULL`),
@@ -428,7 +461,19 @@ export const runs = pgTable(
     ),
     check(
       "runs_execution_profile_valid",
-      sql`${table.executionProfile} IN ('none', 'docker-linux', 'macos-cua', 'lume-vm', 'coder')`,
+      sql`${table.executionProfile} IN ('none', 'model', 'docker-linux', 'macos-cua', 'lume-vm', 'coder')`,
+    ),
+    check(
+      "runs_model_selection_valid",
+      sql`${table.modelSelection} IS NULL OR coalesce((
+        ${table.executionProfile} = 'model'
+        AND jsonb_typeof(${table.modelSelection}) = 'object'
+        AND ${table.modelSelection} - ARRAY['connectionId', 'modelId']::text[] = '{}'::jsonb
+        AND jsonb_typeof(${table.modelSelection}->'connectionId') = 'string'
+        AND jsonb_typeof(${table.modelSelection}->'modelId') = 'string'
+        AND length(${table.modelSelection}->>'connectionId') BETWEEN 1 AND 128
+        AND length(${table.modelSelection}->>'modelId') BETWEEN 1 AND 256
+      ), false)`,
     ),
   ],
 );

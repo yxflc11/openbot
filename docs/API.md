@@ -29,10 +29,16 @@ HTTPS for remote access.
 | `POST` | `/api/v1/approvals/:approvalId/decision` | Approve once or reject one pending action |
 | `GET` | `/api/v1/artifacts/:artifactId/content` | Read an authenticated artifact; currently PNG only |
 | `GET` | `/api/v1/runs/:runId/frame` | Read a Run's latest short-lived frame |
+| `GET` | `/api/v1/model-services` | Read provider presets, safe connection metadata, and authorized custom endpoints |
+| `POST` | `/api/v1/model-connections` | Save an encrypted model connection without inference |
+| `PATCH` | `/api/v1/model-connections/:connectionId` | Rename, rotate the API key, or enable/disable at an expected revision |
+| `POST` | `/api/v1/model-connections/:connectionId/models` | Fetch one bounded model-list page using the Server-held key |
+| `POST` | `/api/v1/model-connections/:connectionId/test` | Explicitly run a short text-inference test; may incur provider charges |
 | `GET` | `/api/v1/bots` | List Bots |
 | `POST` | `/api/v1/bots` | Create a Bot and its initial evolution event |
 | `GET` | `/api/v1/bots/:botId/profile` | Read the complete Employee profile projection |
 | `PATCH` | `/api/v1/bots/:botId/profile` | Update role and biography at an expected revision |
+| `PATCH` | `/api/v1/bots/:botId/model` | Change or clear an existing model Employee's explicit model binding at an expected revision |
 | `POST` | `/api/v1/bots/:botId/memories` | Create one bounded Owner memory |
 | `PATCH` | `/api/v1/bots/:botId/memories/:memoryId` | Update one memory at an expected revision |
 | `DELETE` | `/api/v1/bots/:botId/memories/:memoryId` | Delete one reviewed memory at an expected revision |
@@ -73,6 +79,91 @@ Channel and workspace SSE subscribers each have a 128-event pending bound. The S
 an overloaded subscriber; the Client reconnects and reloads the authoritative database snapshot
 instead of pretending a dropped stream is continuous.
 
+## Owner-managed model services
+
+All routes below require the Owner Session; POST/PATCH also require an allowed `Origin`.
+`GET /api/v1/model-services` returns `{ presets, connections, customBaseUrls }`. Presets include
+`id`, `name`, `protocol`, reviewed `endpoints`, `suggestedModels`, `discovery`, `description`, and
+`docsUrl`. The current 11 providers are OpenAI, Anthropic, Gemini, DeepSeek, Kimi, OpenRouter,
+SiliconFlow, Alibaba Cloud Model Studio, Zhipu/Z.AI, MiniMax, and Volcengine Ark, plus `custom`.
+Presets and discovered IDs do not guarantee account permissions or support for text inference.
+
+Connection projections contain `id`, `name`, `presetId`, `baseUrl`, `protocol`, `enabled`,
+`hasApiKey`, `revision`, `source`, `createdAt`, and `updatedAt`; an environment connection also
+provides `defaultModel`. No endpoint returns an API key or ciphertext. `source: "environment"`
+and ID `legacy-kimi` identify the read-only Server `MOONSHOT_*` configuration, when present.
+Environment secrets are not copied into the saved connection table.
+
+Create a connection with `POST /api/v1/model-connections`:
+
+```json
+{
+  "name": "DeepSeek main",
+  "presetId": "deepseek",
+  "baseUrl": "https://api.deepseek.com",
+  "apiKey": "your-provider-api-key"
+}
+```
+
+The response is `201 { "connection": ModelConnection }`. Names are trimmed, nonempty, and limited
+to 80 characters; API keys are trimmed, nonempty printable ASCII without spaces, up to 2,048
+characters. The Server selects the protocol from the preset. Preset endpoints must match reviewed
+URLs; `custom` endpoints must match `OPENBOT_MODEL_CUSTOM_BASE_URLS`, an operator-managed
+comma-separated exact HTTPS list. Trailing slashes are normalized. URL credentials, queries,
+fragments, HTTP, and redirects are rejected; unknown presets or unauthorized endpoints return `422`.
+Saving does not run inference or verify provider credentials.
+
+`PATCH /api/v1/model-connections/:connectionId` accepts `expectedRevision` plus one or more of
+`name`, `apiKey`, and `enabled`. It returns `{ "connection": ModelConnection }`. For example,
+`{ "expectedRevision": 1, "enabled": false }` disables the connection. Omit `apiKey` to preserve
+it; include it to rotate the credential. Stale revisions return `409`. Provider, endpoint, and
+protocol are immutable, and the environment connection is read-only. Create a new connection to
+change its endpoint. There is no DELETE route.
+
+`POST /api/v1/model-connections/:connectionId/models` has no body and returns `{ "models": string[] }`.
+It uses the Server-held key and fetches one page only, with a 2 MiB response-byte cap and at most
+256 model IDs returned. OpenRouter discovery requests text output; SiliconFlow requests text/chat.
+Discovery is unavailable for Model Studio, Zhipu/Z.AI, and Ark in this slice. If a list is missing,
+truncated, or unsupported, use a suggested or manually entered ID. IDs can be up to 256 characters
+and retain provider prefixes and separators such as `/` and `:`.
+
+`POST /api/v1/model-connections/:connectionId/test` accepts `{ "modelId": "deepseek-v4-flash" }`.
+It explicitly sends a short text-inference request and may incur provider charges. Success returns
+`{ "ok": true }`; the generated answer is not returned or added to a channel. Neither saving nor
+fetching a model list automatically runs this test. Missing, disabled, or unauthorized connections
+fail; provider errors are sanitized, and inference is never automatically retried.
+
+API keys are AES-256-GCM encrypted in PostgreSQL using a separate Server key file at
+`OPENBOT_MODEL_CREDENTIAL_KEY_PATH` (default `./data/model-credentials.key`, relative to the Server
+working directory). The Server creates this POSIX `0600` file automatically only when no saved
+connections exist. A missing key with existing connections stops startup. Back up the file with
+the database; it is not a native keyring/KMS. Audits exclude secrets and request/reply content.
+All tool-capable models can use shared public search/read tools through OpenAI-compatible or native
+Anthropic continuations. The Server selects retrieval separately: Tavily, an explicitly configured
+Kimi connection, or the existing legacy Kimi service. Kimi ciphertext is converted to readable
+source evidence before another model consumes it. Each Run permits four calls under one deadline.
+`MODEL_WEB_TOOL` records only tool/phase; private state remains in memory. No computer authority,
+reasoning persistence or autonomous memory access is added. See [setup](../README.md#configure-model-services).
+
+### Update an existing Employee's model
+
+`PATCH /api/v1/bots/:botId/model` applies only to `computerProfile: "model"` Employees:
+
+```json
+{
+  "expectedRevision": 1,
+  "model": { "connectionId": "saved-connection-id", "modelId": "deepseek-v4-pro" }
+}
+```
+
+Use the Employee profile's `details.revision`, not the connection revision. Success returns
+`{ employee, details, evolution }`, increments that revision, records a content-free configuration
+change, and publishes profile invalidation. Stale revisions return `409`; non-model Employees,
+disabled connections, and unchanged selections return `422`; missing connections return `404`. `model: null` explicitly clears
+the binding and restores the unbound legacy environment behavior; it does not disable the
+Employee. Already queued Runs retain their snapshot. Missing legacy credentials cause future
+unbound model Runs to fail visibly.
+
 ## Bots and Employee profiles
 
 Create a Bot:
@@ -85,9 +176,30 @@ Create a Bot:
 }
 ```
 
-`computerProfile` is one of `none`, `docker-linux`, `macos-cua`, `lume-vm`, or `coder`. Names are
+`computerProfile` is one of `none`, `model`, `docker-linux`, `macos-cua`, `lume-vm`, or `coder`. Names are
 unique in the local workspace. Creation writes the Bot and an immutable `created` evolution event
 in one transaction; a Bot is the Employee identity, not a second wrapper around one.
+
+The explicit `model` profile runs text chat on the Server with an optional selection:
+
+```json
+{
+  "name": "Researcher",
+  "role": "Answer questions",
+  "computerProfile": "model",
+  "model": { "connectionId": "saved-connection-id", "modelId": "deepseek-v4-flash" }
+}
+```
+
+The selected connection must exist, be enabled, and have an authorized endpoint. The `model` field
+is allowed only with `computerProfile: "model"`. Unbound model Employees retain the legacy
+`MOONSHOT_*` environment behavior. Runs transition `queued` → `running` → `completed` or `failed`
+without a `nodeId`; Nodes cannot claim or settle them. A Run snapshots the selected connection ID
+and model ID when queued; later Employee edits cannot change it. Saved connection failures never
+silently fall back to another service. Successful completion atomically persists one Bot-authored
+reply linked to the source message; existing SSE events publish committed state. Keys and private
+reasoning are not returned or included in Employee packages. See
+[model service setup](../README.md#configure-model-services) for text-only limits and key backup.
 
 `GET /api/v1/bots/:botId/profile` returns:
 
@@ -386,3 +498,10 @@ network. See [Node enrollment](NODE_ENROLLMENT.md).
 Error bodies include an `error` string. Schema failures may also include a bounded `fields` map.
 Clients must not retry `409` or `422` blindly: reload the authoritative state, show the change to
 the Owner, and ask for a new decision.
+
+## Employee browser sessions
+
+The authenticated browser session API and capability-gated Node messages are documented in
+[Employee browser](EMPLOYEE_BROWSER.md). Owner input is bound to an exclusive, expiring view-session
+grant. Browser command bodies and screenshots are not persisted as chat messages. The existing
+Run approval API remains separate from direct human browser control.

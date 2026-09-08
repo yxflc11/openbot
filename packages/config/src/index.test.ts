@@ -8,6 +8,33 @@ const nodeCredential = `obn_${"a".repeat(43)}`;
 const enrollmentToken = `obenr_${"b".repeat(43)}`;
 
 describe("server environment", () => {
+  it("requires explicit HTTPS authority for custom model endpoints", () => {
+    expect(serverEnvSchema.parse(required).OPENBOT_MODEL_CUSTOM_BASE_URLS).toEqual([]);
+    expect(serverEnvSchema.parse({ ...required,
+      OPENBOT_MODEL_CUSTOM_BASE_URLS: "https://gateway.example/v1/, https://other.example/api",
+    }).OPENBOT_MODEL_CUSTOM_BASE_URLS).toEqual(["https://gateway.example/v1", "https://other.example/api"]);
+    for (const endpoint of ["http://localhost/v1", "https://key@host.example", "https://host.example?key=secret"]) {
+      expect(serverEnvSchema.safeParse({ ...required, OPENBOT_MODEL_CUSTOM_BASE_URLS: endpoint }).success).toBe(false);
+    }
+  });
+  it("keeps model opt-in and bounds its endpoint and spending controls", () => {
+    expect(
+      serverEnvSchema.parse({ ...required, MOONSHOT_API_KEY: "" }).MOONSHOT_API_KEY,
+    ).toBeUndefined();
+    const model = serverEnvSchema.parse({ ...required, MOONSHOT_API_KEY: "test-key" });
+    expect(model.MOONSHOT_MODEL).toBe("kimi-k3");
+    for (const settings of [
+      { MOONSHOT_BASE_URL: "http://api.moonshot.cn/v1" },
+      { MOONSHOT_BASE_URL: "https://untrusted.example/v1" },
+      { OPENBOT_MODEL_MAX_TOKENS: 8193 },
+      { OPENBOT_MODEL_TIMEOUT_MS: 180001 },
+      { OPENBOT_MODEL_MAX_CONCURRENT_RUNS: 5 },
+    ])
+      expect(serverEnvSchema.safeParse({ ...required, ...settings }).success).toBe(false);
+    expect(
+      nodeEnvSchema.parse({ OPENBOT_NODE_ID: "test", MOONSHOT_API_KEY: "test-key" }),
+    ).not.toHaveProperty("MOONSHOT_API_KEY");
+  });
   it("normalizes local authentication settings", () => {
     const environment = serverEnvSchema.parse({
       ...required,

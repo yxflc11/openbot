@@ -56,6 +56,194 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
+  it("protects model credentials, validates bindings, and keeps inference an explicit action", async () => {
+    const store = createTestStore();
+    const connection = {
+      id: "saved-connection",
+      name: "DeepSeek",
+      presetId: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      protocol: "openai-chat" as const,
+      enabled: true,
+      hasApiKey: true,
+      revision: 1,
+      source: "saved" as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const modelServices = {
+      snapshot: vi.fn(async () => ({ presets: [], connections: [connection], customBaseUrls: [] })),
+      create: vi.fn(async () => connection),
+      update: vi.fn(async () => connection),
+      validateSelection: vi.fn(async () => undefined),
+      discover: vi.fn(async () => ["deepseek-v4-flash"]),
+      test: vi.fn(async () => undefined),
+    };
+    const app = createTestApp({ store, modelServices });
+    const create = {
+      name: "DeepSeek",
+      presetId: "deepseek",
+      baseUrl: connection.baseUrl,
+      apiKey: "secret-model-api-key",
+    };
+    for (const [path, method] of [
+      ["/api/v1/model-services", "GET"],
+      ["/api/v1/model-connections", "POST"],
+    ]) {
+      expect(
+        (await app.request(path as string, { method, headers: { Origin: testOrigin } })).status,
+      ).toBe(401);
+    }
+    const cookie = await login(app);
+    const headers = authenticatedHeaders(cookie);
+    expect(
+      (
+        await app.request("/api/v1/model-connections", {
+          method: "POST",
+          headers: { ...headers, Origin: "https://foreign.example" },
+          body: JSON.stringify(create),
+        })
+      ).status,
+    ).toBe(403);
+    const saved = await app.request("/api/v1/model-connections", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(create),
+    });
+    expect(saved.status).toBe(201);
+    expect(await saved.text()).not.toContain(create.apiKey);
+    expect(modelServices.test).not.toHaveBeenCalled();
+    const snapshot = await app.request("/api/v1/model-services", { headers });
+    expect(snapshot.headers.get("cache-control")).toBe("no-store");
+    expect(await snapshot.text()).not.toContain(create.apiKey);
+    expect(
+      (
+        await app.request("/api/v1/model-connections/saved-connection", {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ expectedRevision: 1, baseUrl: "https://other.example" }),
+        })
+      ).status,
+    ).toBe(422);
+    expect(
+      (
+        await app.request("/api/v1/model-connections/saved-connection/models", {
+          method: "POST",
+          headers,
+        })
+      ).status,
+    ).toBe(200);
+    expect(modelServices.test).not.toHaveBeenCalled();
+    expect(
+      (
+        await app.request("/api/v1/model-connections/saved-connection/test", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ modelId: "deepseek-v4-flash" }),
+        })
+      ).status,
+    ).toBe(200);
+    expect(modelServices.test).toHaveBeenCalledTimes(1);
+    const model = { connectionId: connection.id, modelId: "vendor/model:version" };
+    const bot = await store.createBot({
+      name: "New model employee",
+      role: "Assistant",
+      computerProfile: "model",
+    });
+    const updated = await app.request(`/api/v1/bots/${bot.id}/model`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ expectedRevision: 1, model }),
+    });
+    expect(updated.status).toBe(200);
+    expect(modelServices.validateSelection).toHaveBeenCalledWith(model);
+    expect((await updated.json()).employee.model).toEqual(model);
+    expect(
+      (
+        await app.request(`/api/v1/bots/${bot.id}/model`, {
+          method: "PATCH",
+          headers,
+          body: JSON.stringify({ expectedRevision: 1, model: null }),
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await app.request("/api/v1/bots", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: "Wrong profile",
+            role: "Assistant",
+            computerProfile: "docker-linux",
+            model,
+          }),
+        })
+      ).status,
+    ).toBe(422);
+  });
+  it("authenticates browser sessions, enforces Origin and bounds the control API", async () => {
+    const browserSessions = {
+      open: vi.fn(async () => ({ id: "browser-view" })),
+      command: vi.fn(async () => ({ id: "browser-view" })),
+      close: vi.fn(),
+    };
+    const app = createTestApp({
+      store: createTestStore(),
+      browserSessions: browserSessions as unknown as NonNullable<
+        Parameters<typeof createApp>[0]["browserSessions"]
+      >,
+    });
+    const route = "/api/v1/bots/test-bot/browser";
+    expect(
+      (await app.request(route, { method: "POST", headers: { Origin: testOrigin } })).status,
+    ).toBe(401);
+    const cookie = await login(app);
+    expect(
+      (
+        await app.request(route, {
+          method: "POST",
+          headers: { Cookie: cookie, Origin: "https://foreign.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (await app.request(route, { method: "POST", headers: authenticatedHeaders(cookie) })).status,
+    ).toBe(201);
+    expect(browserSessions.open).toHaveBeenCalledWith(
+      "test-bot",
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+    );
+    const path = "/api/v1/browser-sessions/browser-view/commands";
+    expect(
+      (
+        await app.request(path, {
+          method: "POST",
+          headers: authenticatedHeaders(cookie),
+          body: JSON.stringify({ kind: "eval", code: "secret" }),
+        })
+      ).status,
+    ).toBe(422);
+    expect(
+      (
+        await app.request(path, {
+          method: "POST",
+          headers: authenticatedHeaders(cookie),
+          body: JSON.stringify({ kind: "type", text: "x".repeat(21_000) }),
+        })
+      ).status,
+    ).toBe(413);
+    expect(browserSessions.command).not.toHaveBeenCalled();
+    expect(
+      (
+        await app.request(path, {
+          method: "POST",
+          headers: authenticatedHeaders(cookie),
+          body: JSON.stringify({ kind: "observe" }),
+        })
+      ).status,
+    ).toBe(200);
+  });
   it("reports M1 health", async () => {
     const app = createTestApp({ store: createTestStore() });
     const response = await app.request("/health");
@@ -1728,6 +1916,8 @@ function createCompatibleBrowserNode(): ExecutionNode {
 }
 
 function createTestApp({
+  modelServices,
+  browserSessions,
   store,
   dispatchRun,
   disconnectNode,
@@ -1741,6 +1931,8 @@ function createTestApp({
   workspaceRealtime,
   secureCookies = false,
 }: {
+  modelServices?: Parameters<typeof createApp>[0]["modelServices"];
+  browserSessions?: Parameters<typeof createApp>[0]["browserSessions"];
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
   disconnectNode?: (nodeId: string) => boolean;
@@ -1760,6 +1952,8 @@ function createTestApp({
     sessionTtlMs: 60_000,
   });
   return createApp({
+    ...(modelServices === undefined ? {} : { modelServices }),
+    ...(browserSessions === undefined ? {} : { browserSessions }),
     allowedOrigins: [testOrigin],
     auth,
     ...(dispatchRun === undefined ? {} : { dispatchRun }),
@@ -1941,6 +2135,32 @@ function createTestStore(): ControlPlaneStore {
     },
     async listBots() {
       return bots;
+    },
+    async updateEmployeeModel(botId, input) {
+      const employee = bots.find((bot) => bot.id === botId);
+      const details = profileDetails.get(botId);
+      if (employee === undefined || details === undefined)
+        throw new StoreNotFoundError("Bot not found.");
+      if (employee.computerProfile !== "model")
+        throw new StoreValidationError("Only model Employees can select a model.");
+      if (details.revision !== input.expectedRevision)
+        throw new StoreConflictError("Employee changed.");
+      if (input.model === null) delete employee.model;
+      else employee.model = input.model;
+      details.revision++;
+      details.updatedAt = new Date().toISOString();
+      const event: EmployeeEvolutionEvent = {
+        id: id(),
+        botId,
+        type: "configuration_changed",
+        title: "Employee model updated",
+        summary: "Owner updated the model selection.",
+        source: "manual",
+        evidence: [],
+        createdAt: details.updatedAt,
+      };
+      evolution.push(event);
+      return { employee, details, evolution: event };
     },
     async getEmployeeProfile(botId: string): Promise<EmployeeProfile> {
       const bot = bots.find((item) => item.id === botId);

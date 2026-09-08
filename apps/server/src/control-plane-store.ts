@@ -25,6 +25,7 @@ import type {
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
   UpdateEmployeeProfileDetailsInput,
+  UpdateEmployeeModelInput,
   UpdateEmployeeSkillStateInput,
 } from "@openbot/domain";
 import type { EmployeeTemplatePackage } from "@openbot/protocol";
@@ -75,6 +76,7 @@ export interface ControlPlaneStore {
     botId: string,
     input: UpdateEmployeeProfileDetailsInput,
   ): Promise<EmployeeProfileDetailsMutationResult>;
+  updateEmployeeModel(botId: string, input: UpdateEmployeeModelInput): Promise<EmployeeProfileDetailsMutationResult>;
   listMessages(channelId: string): Promise<Message[]>;
   listRuns(channelId?: string): Promise<Run[]>;
   listApprovals(): Promise<Approval[]>;

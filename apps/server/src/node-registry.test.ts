@@ -1,6 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { protocolVersion, type ServerMessage, serverMessageSchema } from "@openbot/protocol";
+import {
+  type BrowserCommand,
+  protocolVersion,
+  type ServerMessage,
+  serverMessageSchema,
+} from "@openbot/protocol";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import { NodeRegistry, type NodeRunMessage } from "./node-registry.js";
@@ -159,6 +165,97 @@ describe("node enrollment", () => {
     } finally {
       client.close();
       await once(client, "close");
+      registry.close();
+      server.close();
+      await once(server, "close");
+    }
+  });
+
+  it("correlates browser replies and refuses unsupported, expired or disconnected delivery", async () => {
+    const server = createServer();
+    const registry = new NodeRegistry(nodeIdentity());
+    registry.attach(server);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing test port.");
+    const client = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
+    const received: BrowserCommand[] = [];
+    client.on("message", (raw) => {
+      const message = serverMessageSchema.parse(JSON.parse(raw.toString()));
+      if (message.type === "browser.command") received.push(message);
+    });
+    const command = (): BrowserCommand => ({
+      type: "browser.command",
+      protocolVersion,
+      nodeId: "browser-node",
+      requestId: randomUUID(),
+      sessionId: randomUUID(),
+      botId: randomUUID(),
+      expiresAt: new Date(Date.now() + 1000).toISOString(),
+      action: { kind: "observe" },
+    });
+    try {
+      await once(client, "open");
+      client.send(JSON.stringify(nodeHello("browser-node")));
+      await waitFor(() => registry.list().length === 1);
+      await expect(registry.browserCommand(command())).rejects.toThrow("unavailable");
+      // A fresh authenticated connection must advertise the new capability explicitly.
+      client.close();
+      await once(client, "close");
+    } finally {
+      client.terminate();
+    }
+    const capable = new WebSocket(`ws://127.0.0.1:${address.port}/ws/nodes`);
+    capable.on("message", (raw) => {
+      const message = serverMessageSchema.parse(JSON.parse(raw.toString()));
+      if (message.type === "browser.command") received.push(message);
+    });
+    try {
+      await once(capable, "open");
+      const hello = nodeHello("browser-node");
+      capable.send(
+        JSON.stringify({
+          ...hello,
+          capabilityManifest: [
+            ...hello.capabilityManifest,
+            { id: "browser.session", version: 1, providerId: "docker", constraints: {} },
+          ],
+        }),
+      );
+      await waitFor(() => registry.list().length === 1);
+      const input = command();
+      let settled = false;
+      const pending = registry.browserCommand(input).finally(() => {
+        settled = true;
+      });
+      await waitFor(() => received.length === 1);
+      const result = {
+        type: "browser.result",
+        protocolVersion,
+        nodeId: input.nodeId,
+        requestId: input.requestId,
+        sessionId: input.sessionId,
+        ok: false,
+        error: "unavailable",
+      };
+      capable.send(JSON.stringify({ ...result, sessionId: randomUUID() }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(settled).toBe(false);
+      capable.send(JSON.stringify(result));
+      await expect(pending).resolves.toEqual(result);
+      const expiring = registry.browserCommand({
+        ...command(),
+        expiresAt: new Date(Date.now() + 30).toISOString(),
+      });
+      await expect(expiring).rejects.toThrow("uncertain");
+      const disconnected = expect(registry.browserCommand(command())).rejects.toThrow("uncertain");
+      const closed = once(capable, "close");
+      capable.close();
+      await disconnected;
+      await closed;
+    } finally {
+      capable.terminate();
       registry.close();
       server.close();
       await once(server, "close");

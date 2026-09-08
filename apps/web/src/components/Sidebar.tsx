@@ -16,6 +16,7 @@ interface SidebarProps {
   onCreateBot(): void;
   onCreateChannel(): void;
   onManageNodes(): void;
+  onManageModels(): void;
   onLogout(): Promise<void>;
 }
 
@@ -31,6 +32,7 @@ export function Sidebar({
   onCreateBot,
   onCreateChannel,
   onManageNodes,
+  onManageModels,
   onLogout,
 }: SidebarProps) {
   const activeRunByBot = indexActiveRunsByBot(runs);
@@ -104,6 +106,9 @@ export function Sidebar({
         </SidebarSection>
 
         <nav className="system-nav" aria-label="系统功能">
+          <button type="button" onClick={onManageModels}>
+            <span className="system-nav-icon">✧</span>模型服务
+          </button>
           <button type="button">
             <span className="system-nav-icon">◷</span>例行任务
           </button>

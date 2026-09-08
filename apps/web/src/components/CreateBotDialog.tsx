@@ -1,13 +1,15 @@
-import type { Bot, BotAppearance, CreateBotInput } from "@openbot/domain";
+import type { Bot, BotAppearance, CreateBotInput, ModelSelection } from "@openbot/domain";
 import { useState } from "react";
 import type { ApiError } from "../api";
 import { CloseIcon } from "./Icons";
+import { ModelSelector } from "./ModelSelector";
 import { defaultBotAppearance, RobotAvatar } from "./RobotAvatar";
 import { useModalDialog } from "./useModalDialog";
 
 const computerOptions: Array<{ value: Bot["computerProfile"]; label: string }> = [
+  { value: "model", label: "模型对话（无需电脑）" },
   { value: "none", label: "暂不绑定电脑" },
-  { value: "docker-linux", label: "Docker Linux" },
+  { value: "docker-linux", label: "员工浏览器 · Docker" },
   { value: "macos-cua", label: "macOS · Cua" },
   { value: "lume-vm", label: "Lume macOS VM" },
   { value: "coder", label: "Coder runtime" },
@@ -54,25 +56,32 @@ export function CreateBotDialog({
   onClose,
   onCreate,
   onImport,
+  onManageModels,
+  modelServicesVersion,
 }: {
   onClose(): void;
   onCreate(input: CreateBotInput): Promise<void>;
   onImport(): void;
+  onManageModels(): void;
+  modelServicesVersion: number;
 }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
-  const [computerProfile, setComputerProfile] = useState<Bot["computerProfile"]>("none");
+  const [computerProfile, setComputerProfile] = useState<Bot["computerProfile"]>("model");
   const [appearance, setAppearance] = useState<BotAppearance>(defaultBotAppearance);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [model, setModel] = useState<ModelSelection | null>(null);
+  const [modelValid, setModelValid] = useState(false);
   const { dialogRef, closeDialog } = useModalDialog(onClose);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (busy || (computerProfile === "model" && !modelValid)) return;
     setBusy(true);
     setError(undefined);
     try {
-      await onCreate({ name, role, computerProfile, appearance });
+      await onCreate({ name, role, computerProfile, appearance, ...(computerProfile === "model" && model ? { model } : {}) });
     } catch (cause) {
       setError((cause as ApiError).message ?? "无法创建 Bot。请稍后重试。");
     } finally {
@@ -167,7 +176,7 @@ export function CreateBotDialog({
               />
             </label>
             <label>
-              <span>电脑</span>
+              <span>工作方式</span>
               <select
                 value={computerProfile}
                 onChange={(event) =>
@@ -180,8 +189,15 @@ export function CreateBotDialog({
                   </option>
                 ))}
               </select>
-              <small>Bot 是员工，电脑只是可以替换的执行节点。</small>
+              <small>
+                {computerProfile === "model"
+                  ? "选择模型服务回复消息，无需连接电脑。"
+                  : "Bot 是员工，电脑只是可以替换的执行节点。"}
+              </small>
             </label>
+            {computerProfile === "model" ? (
+              <ModelSelector value={model} onChange={setModel} onManageModels={onManageModels} refreshKey={modelServicesVersion} onValidityChange={setModelValid} disabled={busy} />
+            ) : null}
           </div>
           {error ? (
             <p className="form-error" role="alert">
@@ -202,7 +218,7 @@ export function CreateBotDialog({
             <button className="secondary-button" type="button" onClick={closeDialog}>
               取消
             </button>
-            <button className="primary-button" type="submit" disabled={busy}>
+            <button className="primary-button" type="submit" disabled={busy || (computerProfile === "model" && !modelValid)}>
               {busy ? "创建中…" : "创建 Bot"}
             </button>
           </footer>

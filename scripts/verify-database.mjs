@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { verifyModelStore } from "./verify-model-store.mjs";
+import { verifyModelConnections } from "./verify-model-connections.mjs";
 
 const databaseUrl = process.env.OPENBOT_DATABASE_URL;
 if (databaseUrl === undefined) throw new Error("OPENBOT_DATABASE_URL is required.");
@@ -229,6 +231,8 @@ try {
   if (!replayed.replayed || replayed.employee.id !== activated.employee.id) {
     throw new Error("Reviewed Employee activation was not idempotent.");
   }
+  await verifyModelStore(first, second);
+  await verifyModelConnections(first, second);
   console.info(`Database verification passed with ${result.migrations} applied migrations.`);
 } finally {
   await Promise.allSettled([

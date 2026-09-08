@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import type { ComputerProvider, ProviderArtifact, ProviderRunInput } from "@openbot/provider-sdk";
+import { BrowserCoordinator } from "./browser.js";
 
 const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -17,6 +18,23 @@ export function createDockerProvider(options: DockerProviderOptions): ComputerPr
   const fetcher = options.fetcher ?? fetch;
   const resolveHost = options.resolveHost ?? resolveHostname;
   const computerUrl = options.computerUrl.replace(/\/$/, "");
+  const browser = new BrowserCoordinator(
+    (botId, path, signal, body) =>
+      computerRequest(
+        fetcher,
+        `${computerUrl}${path}`,
+        options.computerToken,
+        botId,
+        signal,
+        body === undefined ? {} : { method: "POST", body: JSON.stringify(body) },
+      ),
+    async (raw) => {
+      const target = new URL(raw);
+      if (!["https:", "http:"].includes(target.protocol) || target.username || target.password)
+        throw new Error("Only HTTP(S) URLs without credentials are allowed.");
+      await assertNavigationAllowed(target, options.allowPrivateHosts === true, resolveHost);
+    },
+  );
 
   return {
     id: "docker",
@@ -24,50 +42,54 @@ export function createDockerProvider(options: DockerProviderOptions): ComputerPr
     platforms: ["linux", "windows", "macos"],
     capabilities: ["browser", "screenshot"],
     capabilityManifest: [
+      { id: "browser.session", version: 1, providerId: "docker", constraints: {} },
       { id: "browser.observe", version: 1, providerId: "docker", constraints: {} },
       { id: "screen.capture", version: 1, providerId: "docker", constraints: {} },
     ],
+    browser: (command, signal) => browser.command(command, signal),
     async execute(context, input, report, reportFrame) {
-      const target = extractNavigationTarget(input);
-      await assertNavigationAllowed(target, options.allowPrivateHosts === true, resolveHost);
+      return browser.run(input.botId, context.signal, async () => {
+        const target = extractNavigationTarget(input);
+        await assertNavigationAllowed(target, options.allowPrivateHosts === true, resolveHost);
 
-      report({ stage: "navigate", message: `正在打开 ${target.hostname}` });
-      const navigation = await computerRequest<NavigationResponse>(
-        fetcher,
-        `${computerUrl}/navigate`,
-        options.computerToken,
-        input.botId,
-        context.signal,
-        { method: "POST", body: JSON.stringify({ url: target.href }) },
-      );
-      if (typeof navigation.url !== "string" || typeof navigation.title !== "string") {
-        throw new Error("agent-computer returned an invalid navigation response.");
-      }
+        report({ stage: "navigate", message: `正在打开 ${target.hostname}` });
+        const navigation = await computerRequest<NavigationResponse>(
+          fetcher,
+          `${computerUrl}/navigate`,
+          options.computerToken,
+          input.botId,
+          context.signal,
+          { method: "POST", body: JSON.stringify({ url: target.href }) },
+        );
+        if (typeof navigation.url !== "string" || typeof navigation.title !== "string") {
+          throw new Error("agent-computer returned an invalid navigation response.");
+        }
 
-      report({ stage: "screenshot", message: "正在截取浏览器画面" });
-      const screenshot = await computerRequest<ScreenshotResponse>(
-        fetcher,
-        `${computerUrl}/screenshot`,
-        options.computerToken,
-        input.botId,
-        context.signal,
-      );
-      const artifact = screenshotArtifact(input, screenshot);
-      reportFrame?.({
-        mediaType: "image/png",
-        base64: artifact.base64,
-        ...(typeof screenshot.width === "number" ? { width: screenshot.width } : {}),
-        ...(typeof screenshot.height === "number" ? { height: screenshot.height } : {}),
-        capturedAt:
-          typeof screenshot.capturedAt === "string"
-            ? screenshot.capturedAt
-            : new Date().toISOString(),
+        report({ stage: "screenshot", message: "正在截取浏览器画面" });
+        const screenshot = await computerRequest<ScreenshotResponse>(
+          fetcher,
+          `${computerUrl}/screenshot`,
+          options.computerToken,
+          input.botId,
+          context.signal,
+        );
+        const artifact = screenshotArtifact(input, screenshot);
+        reportFrame?.({
+          mediaType: "image/png",
+          base64: artifact.base64,
+          ...(typeof screenshot.width === "number" ? { width: screenshot.width } : {}),
+          ...(typeof screenshot.height === "number" ? { height: screenshot.height } : {}),
+          capturedAt:
+            typeof screenshot.capturedAt === "string"
+              ? screenshot.capturedAt
+              : new Date().toISOString(),
+        });
+        return {
+          ok: true,
+          summary: `已打开 ${navigation.title || navigation.url} 并截取画面。`,
+          artifacts: [artifact],
+        };
       });
-      return {
-        ok: true,
-        summary: `已打开 ${navigation.title || navigation.url} 并截取画面。`,
-        artifacts: [artifact],
-      };
     },
   };
 }
@@ -168,8 +190,24 @@ async function computerRequest<T>(
       ...init.headers,
     },
     signal,
+    redirect: "error",
   });
-  const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+  const reader = response.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (reader) {
+      const item = await reader.read();
+      if (item.done) break;
+      size += item.value.byteLength;
+      if (size > 7_100_000) throw new Error("agent-computer response exceeds the size limit.");
+      chunks.push(item.value);
+    }
+  } finally {
+    await reader?.cancel().catch(() => undefined);
+    reader?.releaseLock();
+  }
+  const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as { error?: unknown };
   if (!response.ok) {
     throw new Error(
       typeof body.error === "string"
