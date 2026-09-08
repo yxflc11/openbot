@@ -1,5 +1,16 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { getModelSettings, type ModelSettingsSummary, saveModelSettings } from "../api";
+import {
+  type ModelProviderId,
+  modelProviderPresets,
+  modelProviderPreset,
+  modelProviderBaseUrl,
+} from "@openbot/domain";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  discoverModelSettings,
+  getModelSettings,
+  type ModelSettingsSummary,
+  saveModelSettings,
+} from "../api";
 import { OpenBotMark } from "./OpenBotMark";
 
 export function ModelSettingsScreen({
@@ -12,9 +23,12 @@ export function ModelSettingsScreen({
   onDone(): void;
 }) {
   const [snapshot, setSnapshot] = useState<ModelSettingsSummary>();
-  const [provider, setProvider] = useState<"openai" | "anthropic" | "openrouter" | "moonshot">(
-    "openai",
-  );
+  const [provider, setProvider] = useState<ModelProviderId>("openai");
+  const [baseUrl, setBaseUrl] = useState(modelProviderBaseUrl("openai"));
+  const [models, setModels] = useState<string[]>();
+  const discovery = useRef<AbortController | null>(null);
+  useEffect(() => () => discovery.current?.abort(), []);
+  const preset = modelProviderPreset(provider);
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [agentEnabled, setAgentEnabled] = useState(false);
@@ -27,6 +41,8 @@ export function ModelSettingsScreen({
       setSnapshot(next);
       if (next.status === "configured") {
         setProvider(next.provider);
+        setBaseUrl(modelProviderBaseUrl(next.provider, next.baseUrl));
+        setModels(undefined);
         setModel(next.model);
         setAgentEnabled(next.agentEnabled ?? false);
       }
@@ -48,6 +64,7 @@ export function ModelSettingsScreen({
     try {
       const next = await saveModelSettings({
         provider,
+        baseUrl,
         agentEnabled,
         model: model.trim(),
         apiKey,
@@ -84,32 +101,52 @@ export function ModelSettingsScreen({
           <form onSubmit={submit}>
             <fieldset className="model-provider-options" disabled={busy || !snapshot}>
               <legend>模型服务</legend>
-              {(["openai", "anthropic", "openrouter", "moonshot"] as const).map((value) => (
-                <label key={value}>
+              {modelProviderPresets.map((item) => (
+                <label key={item.id}>
                   <input
                     type="radio"
                     name="model-provider"
-                    checked={provider === value}
+                    checked={provider === item.id}
                     onChange={() => {
-                      setProvider(value);
-                      setModel(value === "moonshot" ? "kimi-k3" : "");
+                      setProvider(item.id);
+                      setBaseUrl(modelProviderBaseUrl(item.id));
+                      setModel(
+                        item.id === "moonshot" ? "kimi-k3" : (item.suggestedModels[0] ?? ""),
+                      );
+                      setModels(undefined);
+                      setSaved(false);
+                      setError(undefined);
                       setApiKey("");
                     }}
                   />
-                  {
-                    {
-                      openai: "OpenAI",
-                      anthropic: "Anthropic",
-                      openrouter: "OpenRouter",
-                      moonshot: "Kimi（月之暗面）",
-                    }[value]
-                  }
+                  {providerLabel(item.id)}
                 </label>
               ))}
             </fieldset>
+            <label htmlFor="model-region">API 地址与区域</label>
+            <select
+              id="model-region"
+              value={baseUrl}
+              disabled={busy || !snapshot}
+              onChange={(event) => {
+                setBaseUrl(event.target.value);
+                setApiKey("");
+                setModels(undefined);
+                setSaved(false);
+                setError(undefined);
+              }}
+            >
+              {preset.endpoints.map((endpoint) => (
+                <option key={endpoint.baseUrl} value={endpoint.baseUrl}>
+                  {regionLabel(endpoint.name)}
+                </option>
+              ))}
+            </select>
+            <p className="connection-hint">{baseUrl}</p>
             <label htmlFor="model-name">模型名称</label>
             <input
               id="model-name"
+              list="model-suggestions"
               value={model}
               onChange={(event) => setModel(event.target.value)}
               maxLength={128}
@@ -123,6 +160,15 @@ export function ModelSettingsScreen({
               disabled={busy || !snapshot}
               required
             />
+            <datalist id="model-suggestions">
+              {(models ?? preset.suggestedModels).map((id) => (
+                <option key={id} value={id} />
+              ))}
+            </datalist>
+            <p className="connection-hint">
+              可选择常用模型或手填模型 ID，实际可用性以你的账户为准。
+              {provider === "ark" ? "火山方舟支持填写已开通的推理接入点 ID。" : ""}
+            </p>
             <label htmlFor="model-api-key">
               API Key{snapshot?.status === "configured" ? "（重新输入以更新）" : ""}
             </label>
@@ -141,16 +187,45 @@ export function ModelSettingsScreen({
               required
             />
             <p className="connection-hint">
-              {
-                {
-                  openai: "api.openai.com",
-                  anthropic: "api.anthropic.com",
-                  openrouter: "openrouter.ai",
-                  moonshot: "api.moonshot.cn",
-                }[provider]
-              }{" "}
-              · 密钥加密保存在你的服务电脑上。
+              密钥加密保存在你的服务电脑上，切换厂商或区域后需要重新输入。
             </p>
+            {preset.discovery ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={busy || !snapshot || apiKey.length < 16}
+                onClick={async () => {
+                  setBusy(true);
+                  setError(undefined);
+                  setSaved(false);
+                  const controller = new AbortController();
+                  discovery.current = controller;
+                  try {
+                    const result = await discoverModelSettings(
+                      { provider, baseUrl, apiKey },
+                      controller.signal,
+                    );
+                    setModels(result.models);
+                  } catch (cause) {
+                    if (!controller.signal.aborted)
+                      setError(modelError(cause instanceof Error ? cause.message : ""));
+                  } finally {
+                    if (!controller.signal.aborted) setBusy(false);
+                  }
+                }}
+              >
+                获取模型列表
+              </button>
+            ) : (
+              <p className="connection-hint">
+                此服务暂不支持模型列表验证。保存只检查配置格式，密钥与模型是否可调用将在任务运行时确认。
+              </p>
+            )}
+            {models ? (
+              <p className="connection-hint" role="status">
+                已读取 {models.length} 个模型，可在模型名称中选择。
+              </p>
+            ) : null}
             {provider === "openrouter" ? (
               <p className="connection-hint">
                 OpenRouter
@@ -175,7 +250,7 @@ export function ModelSettingsScreen({
               className="primary-button"
               disabled={busy || !snapshot || apiKey.length < 16 || !model.trim()}
             >
-              {busy ? "正在验证模型…" : "验证并保存"}
+              {busy ? "正在处理…" : preset.discovery ? "验证并保存" : "保存配置"}
             </button>
           </form>
         )}
@@ -196,7 +271,9 @@ export function ModelSettingsScreen({
         ) : null}
         {saved && (
           <p className="settings-success" role="status">
-            模型配置已验证并保存。
+            {snapshot?.status === "configured" && snapshot.verification === "not_checked"
+              ? "模型配置已保存，尚未在线验证。"
+              : "模型配置已验证并保存。"}
           </p>
         )}
         {!embedded && (
@@ -204,7 +281,7 @@ export function ModelSettingsScreen({
             {onboarding ? "稍后在设置中配置" : "返回设置"}
           </button>
         )}
-        <p className="login-note">验证只检查模型访问权限，不发送对话或生成内容。</p>
+        <p className="login-note">获取列表与保存不会发送对话或生成内容。</p>
       </section>
     </Container>
   );
@@ -219,4 +296,35 @@ function modelError(code: string): string {
     storage_unavailable: "无法安全保存模型配置，原设置未被替换。",
   };
   return messages[code] ?? "模型配置未保存，请检查服务连接后重试。";
+}
+
+function providerLabel(id: ModelProviderId): string {
+  const labels: Record<ModelProviderId, string> = {
+    openai: "OpenAI",
+    anthropic: "Anthropic",
+    gemini: "Google Gemini",
+    deepseek: "DeepSeek",
+    moonshot: "Kimi（月之暗面）",
+    openrouter: "OpenRouter",
+    siliconflow: "硅基流动",
+    dashscope: "阿里云百炼",
+    zai: "智谱 / Z.AI",
+    minimax: "MiniMax",
+    ark: "火山方舟",
+  };
+  return labels[id];
+}
+function regionLabel(name: string): string {
+  return (
+    (
+      {
+        China: "中国站",
+        Global: "国际站",
+        International: "国际站 / 新加坡",
+        US: "美国",
+        Beijing: "北京",
+        "Standard API": "标准 API",
+      } as Record<string, string>
+    )[name] ?? name
+  );
 }

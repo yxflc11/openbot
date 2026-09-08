@@ -202,6 +202,7 @@ describe("Desktop settings interactions", () => {
       expect(JSON.parse(call?.[1]?.body as string)).toEqual({
         agentEnabled: false,
         provider: "anthropic",
+        baseUrl: "https://api.anthropic.com",
         model: "available-model",
         apiKey: "test-key-for-ui-validation-only",
         revision: null,

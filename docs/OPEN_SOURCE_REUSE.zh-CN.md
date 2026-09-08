@@ -218,3 +218,5 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 ## Kimi 桌面模型
 
 复用 @ai-sdk/moonshotai 3.0.45 / 8a09c78c039e2c092468eaeff97faaabf3b77366（Apache-2.0），固定国内接口，沿用加密的 Owner 配置；未复制上游源码。[研究](research/kimi-desktop-model.md)。
+
+Desktop 服务预设复用现有 AI SDK 适配器与 Owner 设置，见 [Desktop 接入审查](research/desktop-model-presets.md)和[服务商 API 调查](research/model-service-presets.zh-CN.md)。没有复制上游源码。

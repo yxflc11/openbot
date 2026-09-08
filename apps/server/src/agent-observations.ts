@@ -1,10 +1,11 @@
+import { modelProviderIds } from "@openbot/domain";
 import type { RunModelUsage } from "@openbot/domain";
 import type { LanguageModelUsage } from "ai";
 import { z } from "zod";
 
 export const runModelUsageSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic", "openrouter", "moonshot"]),
+    provider: z.enum(modelProviderIds),
     model: z
       .string()
       .min(1)

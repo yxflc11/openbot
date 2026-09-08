@@ -1,3 +1,4 @@
+import { modelProviderBaseUrl } from "@openbot/domain";
 import type { AgentSkillCatalog, AgentSkillDocument, SkillReference } from "./agent-skills.js";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createMoonshotAI } from "@ai-sdk/moonshotai";
@@ -77,18 +78,19 @@ export interface NativeAgentOptions {
 export function agentFetch(
   provider: AgentModelSettings["provider"],
   fetcher: typeof fetch = fetch,
+  baseUrl?: string,
 ): typeof fetch {
-  const endpoint =
-    provider === "moonshot"
-      ? "https://api.moonshot.cn/v1/chat/completions"
-      : provider === "openai"
-        ? "https://api.openai.com/v1/responses"
-        : provider === "anthropic"
-          ? "https://api.anthropic.com/v1/messages"
-          : "https://openrouter.ai/api/v1/chat/completions";
+  const base = modelProviderBaseUrl(provider, baseUrl);
+  const endpoint = `${base}${provider === "openai" ? "/responses" : provider === "anthropic" ? "/v1/messages" : "/chat/completions"}`;
   return async (input, init) => {
     if (String(input) !== endpoint || init?.method !== "POST")
       throw new Error("Invalid model endpoint.");
+    if (provider === "deepseek" || provider === "minimax") {
+      const body = JSON.parse(String(init.body));
+      if (provider === "deepseek") body.thinking = { type: "disabled" };
+      else body.reasoning_split = true;
+      init = { ...init, body: JSON.stringify(body) };
+    }
     const signal = AbortSignal.any([
       ...(init.signal ? [init.signal] : []),
       AbortSignal.timeout(30_000),
@@ -125,7 +127,19 @@ export function agentFetch(
         if (size > 512 * 1024) throw new NativeExecutionError("task_limit");
         chunks.push(next.value);
       }
-      return new Response(Buffer.concat(chunks), {
+      const content = Buffer.concat(chunks);
+      if (provider === "minimax") {
+        const body = JSON.parse(content.toString("utf8"));
+        if (
+          body.choices?.some(
+            (choice: { message?: { content?: unknown } }) =>
+              typeof choice.message?.content === "string" &&
+              /<\/?think>/iu.test(choice.message.content),
+          )
+        )
+          throw new NativeExecutionError("model_unavailable");
+      }
+      return new Response(content, {
         status: response.status,
         headers: { "content-type": "application/json" },
       });
@@ -149,25 +163,30 @@ export function agentModel(
   config: AgentModelSettings,
   fetcher: typeof globalThis.fetch = globalThis.fetch,
 ): LanguageModel {
-  const fetch = agentFetch(config.provider, fetcher);
+  const baseURL = modelProviderBaseUrl(config.provider, config.baseUrl);
+  const fetch = agentFetch(config.provider, fetcher, baseURL);
   if (config.provider === "moonshot")
     return createMoonshotAI({
       apiKey: config.apiKey,
-      baseURL: "https://api.moonshot.cn/v1",
+      baseURL,
       fetch,
     })(config.model);
   if (config.provider === "openrouter")
     return createOpenRouter({
       apiKey: config.apiKey,
       fetch,
-      baseURL: "https://openrouter.ai/api/v1",
+      baseURL,
       extraBody: {
         provider: { require_parameters: true, allow_fallbacks: false, data_collection: "deny" },
       },
     }).chat(config.model);
-  return config.provider === "openai"
-    ? createOpenAI({ apiKey: config.apiKey, fetch }).responses(config.model)
-    : createAnthropic({ apiKey: config.apiKey, fetch })(config.model);
+  if (config.provider === "openai")
+    return createOpenAI({ apiKey: config.apiKey, baseURL, fetch }).responses(config.model);
+  if (config.provider === "anthropic")
+    return createAnthropic({ apiKey: config.apiKey, baseURL: `${baseURL}/v1`, fetch })(
+      config.model,
+    );
+  return createOpenAI({ apiKey: config.apiKey, baseURL, fetch }).chat(config.model);
 }
 
 /** The SDK owns iteration; tools remain bound to the claimed Run's Server authority. */

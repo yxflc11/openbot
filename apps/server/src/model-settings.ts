@@ -1,3 +1,4 @@
+import { modelProviderIds, modelProviderPreset, modelProviderBaseUrl } from "@openbot/domain";
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open } from "node:fs/promises";
@@ -7,13 +8,14 @@ import { z } from "zod";
 
 export const modelSettingsInputSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic", "openrouter", "moonshot"]),
+    provider: z.enum(modelProviderIds),
+    baseUrl: z.string().max(512).optional(),
     model: z
       .string()
       .trim()
       .min(1)
       .max(128)
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*(?:\/[A-Za-z0-9][A-Za-z0-9._:-]*)?$/u),
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:@+-]*(?:\/[A-Za-z0-9][A-Za-z0-9._:@+-]*)?$/u),
     apiKey: z
       .string()
       .min(16)
@@ -25,11 +27,48 @@ export const modelSettingsInputSchema = z
   .strict()
   .refine(
     (value) =>
-      value.provider === "openrouter" ? value.model.includes("/") : !value.model.includes("/"),
+      value.provider === "openrouter"
+        ? value.model.includes("/")
+        : ["openai", "anthropic", "moonshot", "deepseek"].includes(value.provider)
+          ? !value.model.includes("/")
+          : true,
     {
       message: "OpenRouter requires an author/model slug; direct providers use a model ID.",
       path: ["model"],
     },
+  )
+  .refine(
+    (value) => {
+      try {
+        modelProviderBaseUrl(value.provider, value.baseUrl);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "Endpoint must belong to the selected provider.", path: ["baseUrl"] },
+  );
+export const modelDiscoveryInputSchema = z
+  .object({
+    provider: z.enum(modelProviderIds),
+    baseUrl: z.string().max(512).optional(),
+    apiKey: z
+      .string()
+      .min(16)
+      .max(512)
+      .regex(/^[\x21-\x7e]+$/u),
+  })
+  .strict()
+  .refine(
+    (value) => {
+      try {
+        modelProviderBaseUrl(value.provider, value.baseUrl);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "Unapproved endpoint.", path: ["baseUrl"] },
   );
 type ModelInput = z.infer<typeof modelSettingsInputSchema>;
 const retainedSchema = modelSettingsInputSchema.safeExtend({
@@ -43,6 +82,8 @@ export type ModelSettingsSummary =
       status: "configured";
       provider: ModelInput["provider"];
       model: string;
+      baseUrl: string;
+      verification: "metadata" | "not_checked";
       revision: string;
       agentEnabled: boolean;
     };
@@ -91,6 +132,10 @@ export class ModelSettingsService {
           status: "configured",
           provider: current.provider,
           model: current.model,
+          baseUrl: modelProviderBaseUrl(current.provider, current.baseUrl),
+          verification: modelProviderPreset(current.provider).discovery
+            ? "metadata"
+            : "not_checked",
           revision: current.revision,
           agentEnabled: current.agentEnabled,
         }
@@ -241,65 +286,55 @@ export class ModelSettingsService {
   }
   async #verify(input: ModelInput): Promise<void> {
     if (input.provider === "openrouter") return this.#verifyRouter(input);
-    const origin =
-      input.provider === "moonshot"
-        ? "https://api.moonshot.cn"
-        : input.provider === "openai"
-          ? "https://api.openai.com"
-          : "https://api.anthropic.com";
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (input.provider !== "anthropic") headers.Authorization = `Bearer ${input.apiKey}`;
-    else {
-      headers["x-api-key"] = input.apiKey;
-      headers["anthropic-version"] = "2023-06-01";
+    const preset = modelProviderPreset(input.provider);
+    if (!preset.discovery) return;
+    if (input.provider !== "openai" && input.provider !== "anthropic") {
+      const models = await this.discover({ provider: input.provider, baseUrl: input.baseUrl, apiKey: input.apiKey });
+      if (!models.includes(input.model)) throw new ModelSettingsError("model_unavailable");
+      return;
     }
-    let response: Response | undefined;
-    try {
-      response = await this.fetcher(
-        `${origin}/v1/models${input.provider === "moonshot" ? "" : `/${encodeURIComponent(input.model)}`}`,
-        {
-          headers,
-          redirect: "manual",
-          signal: AbortSignal.timeout(8000),
-        },
-      );
-      if (response.status === 401 || response.status === 403)
-        throw new ModelSettingsError("invalid_credentials");
-      if (response.status === 404) throw new ModelSettingsError("model_unavailable");
-      if (!response.ok || !response.headers.get("content-type")?.includes("application/json"))
-        throw new ModelSettingsError("provider_unavailable");
-      const reader = response.body?.getReader();
-      if (!reader) throw new ModelSettingsError("provider_unavailable");
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      try {
-        while (true) {
-          const next = await reader.read();
-          if (next.done) break;
-          size += next.value.byteLength;
-          if (size > 32 * 1024) throw new ModelSettingsError("provider_unavailable");
-          chunks.push(next.value);
-        }
-      } finally {
-        await reader.cancel().catch(() => undefined);
-        reader.releaseLock();
-      }
-      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
-        id?: unknown;
-        data?: { id?: unknown }[];
-      };
-      if (
-        input.provider === "moonshot"
-          ? !Array.isArray(body.data) || !body.data.some((model) => model?.id === input.model)
-          : typeof body.id !== "string" || body.id.length === 0 || body.id.length > 128
-      )
-        throw new ModelSettingsError("model_unavailable");
-    } catch (error) {
-      if (error instanceof ModelSettingsError) throw error;
-      throw new ModelSettingsError("provider_unavailable");
-    } finally {
-      await response?.body?.cancel().catch(() => undefined);
-    }
+    const baseUrl = modelProviderBaseUrl(input.provider, input.baseUrl);
+    const headers = modelHeaders(input.provider, input.apiKey);
+    const body = await requestModelMetadata(
+      this.fetcher,
+      `${baseUrl}${input.provider === "anthropic" ? "/v1" : ""}/models/${encodeURIComponent(input.model)}`,
+      headers,
+      32 * 1024,
+    );
+    if (!body || typeof body !== "object" || !("id" in body) || body.id !== input.model)
+      throw new ModelSettingsError("model_unavailable");
+  }
+
+  async discover(value: z.input<typeof modelDiscoveryInputSchema>): Promise<string[]> {
+    const input = modelDiscoveryInputSchema.parse(value);
+    const preset = modelProviderPreset(input.provider);
+    if (!preset.discovery) throw new ModelSettingsError("model_unavailable");
+    const baseUrl = modelProviderBaseUrl(input.provider, input.baseUrl);
+    const query =
+      input.provider === "openrouter"
+        ? "?output_modalities=text"
+        : input.provider === "siliconflow"
+          ? "?type=text&sub_type=chat"
+          : "";
+    const body = await requestModelMetadata(
+      this.fetcher,
+      `${baseUrl}${input.provider === "anthropic" ? "/v1" : ""}/models${query}`,
+      modelHeaders(input.provider, input.apiKey),
+      2 * 1024 * 1024,
+    );
+    const parsed = z
+      .object({ data: z.array(z.object({ id: z.string().max(128) })) })
+      .safeParse(body);
+    if (!parsed.success) throw new ModelSettingsError("provider_unavailable");
+    return [
+      ...new Set(
+        parsed.data.data
+          .map((entry) => entry.id)
+          .filter((id) =>
+            /^[A-Za-z0-9][A-Za-z0-9._:@+-]*(?:\/[A-Za-z0-9][A-Za-z0-9._:@+-]*)?$/u.test(id),
+          ),
+      ),
+    ].slice(0, 256);
   }
 }
 
@@ -342,4 +377,10 @@ async function requestModelMetadata(
     await reader?.cancel().catch(() => undefined);
     reader?.releaseLock();
   }
+}
+
+function modelHeaders(provider: string, apiKey: string): Record<string, string> {
+  return provider === "anthropic"
+    ? { Accept: "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }
+    : { Accept: "application/json", Authorization: `Bearer ${apiKey}` };
 }

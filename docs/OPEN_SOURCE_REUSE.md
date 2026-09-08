@@ -273,3 +273,5 @@ Reuse review complete: Agent Skills `69ef37e9424c0a7ea9dd2293b559e43ec8176379` a
 ## Kimi desktop model
 
 Use released @ai-sdk/moonshotai 3.0.45 / 8a09c78c039e2c092468eaeff97faaabf3b77366 (Apache-2.0), with a fixed CN endpoint and existing encrypted Owner settings. No source copied. [Research](research/kimi-desktop-model.md).
+
+Desktop provider presets reuse the installed AI SDK adapters and Owner settings; see [Desktop integration review](research/desktop-model-presets.md) and [provider API evidence](research/model-service-presets.md). No upstream source copied.

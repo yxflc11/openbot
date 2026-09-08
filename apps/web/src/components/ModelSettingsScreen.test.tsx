@@ -103,3 +103,36 @@ describe("model Agent opt-in", () => {
     }
   });
 });
+
+it("offers eleven providers, fills the selected common model and clears keys on region changes", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ status: "unconfigured", revision: null })),
+  );
+  const view = await renderComponent(<ModelSettingsScreen embedded onDone={() => {}} />);
+  try {
+    expect(view.container.querySelectorAll('input[name="model-provider"]')).toHaveLength(11);
+    const radio = [...view.container.querySelectorAll("label")]
+      .find((label) => label.textContent === "DeepSeek")
+      ?.querySelector("input");
+    await interact(() => radio?.click());
+    expect((view.container.querySelector("#model-name") as HTMLInputElement).value).toBe(
+      "deepseek-v4-flash",
+    );
+    expect(view.container.querySelectorAll("datalist option")).toHaveLength(2);
+    const kimi = [...view.container.querySelectorAll("label")]
+      .find((label) => label.textContent === "Kimi（月之暗面）")
+      ?.querySelector("input");
+    await interact(() => kimi?.click());
+    const key = view.container.querySelector("#model-api-key") as HTMLInputElement;
+    await setInputValue(key, "fixture-private-key");
+    const region = view.container.querySelector("#model-region") as HTMLSelectElement;
+    await interact(() => {
+      region.value = "https://api.moonshot.ai/v1";
+      region.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(key.value).toBe("");
+  } finally {
+    await view.unmount();
+  }
+});

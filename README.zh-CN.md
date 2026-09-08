@@ -171,3 +171,13 @@ Node 凭证仍是 bearer secret；配对不代表持有证明或 mTLS。
 可区分的名称。本项目与 xAI、腾讯、CopilotKit、OpenClaw 或其他参考项目不存在隶属关系。
 
 现在可以通过 [SKILL.md 导入与 Owner 全文审核](docs/REVIEWED_SKILLS.zh-CN.md)，让 Agent 按需使用技能指令流程。
+
+### Desktop 模型服务
+
+设置 → 模型 API 现提供 11 家服务预设：OpenAI、Anthropic、Google Gemini、DeepSeek、Kimi、
+OpenRouter、硅基流动、阿里云百炼、智谱 / Z.AI、MiniMax、火山方舟。
+选择 API Key 对应区域，从常用模型中选择或手填模型 ID，再保存加密配置。
+支持的服务可以获取有界模型列表，不生成付费内容；尚无已验证列表接口的服务会明确提示仅保存配置、
+未在线验证。切换厂商或区域会清空密钥输入。已有 Kimi 配置和本地数据继续兼容。
+本次 Desktop 使用一个由 Server 管理的默认模型，未加入逐员工连接或任意自定义主机。
+见[接入调查](docs/research/desktop-model-presets.md)。

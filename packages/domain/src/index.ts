@@ -1,3 +1,5 @@
+import type { ModelProviderId } from "./model-providers.js";
+export * from "./model-providers.js";
 import type {
   NodeArchitecture,
   NodeCapabilityDescriptor,
@@ -490,7 +492,7 @@ export interface Run {
 
 /** Provider-reported counts for observed steps; null means at least one count was unavailable. */
 export interface RunModelUsage {
-  provider: "openai" | "anthropic" | "openrouter" | "moonshot";
+  provider: ModelProviderId;
   model: string;
   steps: number;
   inputTokens: number | null;
