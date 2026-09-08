@@ -44,14 +44,22 @@ Windows and Linux initially offer the remote-client path.
 
 ### Download a development bundle
 
+**Start here: [Desktop downloads and installation](docs/DESKTOP_INSTALLATION.md)** — platform file
+names, installation steps, command installers, first model setup and upgrade/data guidance.
+Versioned DMG (macOS arm64), per-user EXE (Windows x64), AppImage and DEB (Linux x64) now have a
+native CI build path. Published installers will appear in
+[Desktop Releases](https://github.com/yxflc11/openbot/releases); publication remains pending until a
+`desktop-v...` release contains those assets. Successful CI installer artifacts expire after 14 days.
+
 Open a successful run for the desired commit in [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 and download its `openbot-desktop-<platform>-<arch>-<commit>.tar.gz` artifact. GitHub sign-in is
 required; these artifacts expire after seven days. Extract with `tar -xzf <archive>` to retain
 executable permissions and symlinks. Open `OpenBot.app` on macOS, `openbot.exe` on Windows, or
 `openbot` on Linux from the extracted directory. OS requirements for unsigned apps still apply.
 
-Each platform uploads only after its package checks pass. These are application directories, not
-DMG/MSI/deb installers or an auto-update channel. The older `v0.1.0-alpha.1` GitHub Release remains a
+Each platform uploads only after its package checks pass. The tar archives above are application
+directories; the separate `openbot-installers-...` artifacts contain installers and checksums.
+No automatic update channel is enabled. The older `v0.1.0-alpha.1` GitHub Release remains a
 source-only foundation snapshot.
 
 ### Build from source
@@ -81,9 +89,9 @@ enter a trusted HTTPS Server origin and sign in as its Owner. See
 | --- | --- | --- |
 | Desktop and Web | Channels, Bots, approvals, task inspector, shared back/forward navigation, native menus, conversation draft/scroll restoration, skills gallery and persistent interface preferences | Notifications, localization polish and broader accessibility/device evidence |
 | Local macOS services | App-owned PostgreSQL and Server, encrypted bootstrap, restart with retained data, explicit remote-client switching | Cross-platform guided services, authenticated remote sharing, backup, upgrades and login-service recovery |
-| Models / native Agent | Owner opt-in, encrypted OpenAI/Anthropic settings, bounded model/tool/observation loop, scoped channel reads and durable Bot replies | Live model evidence, broader governed tools and external-agent adapters |
+| Models / native Agent | Owner opt-in, encrypted OpenAI/Anthropic/OpenRouter settings, bounded model/tool/observation loop, scoped channel/source reads, downloadable Markdown reports, durable replies, stop/resubmit and recorded model usage | Live model evidence, broader governed tools and external-agent adapters |
 | Automatic tasks | PostgreSQL schedules, pause/resume/delete, bounded intervals, one due occurrence after downtime and existing authorized task routing | Multi-Server coordination and additional schedule semantics |
-| Employee profile | Role/biography editing, dated evolution archive, reviewed skills, typed Owner-managed memory, review-bound export/import and experimental DSSE signing | Autonomous learning, executable skills, selective cloning and public trust distribution |
+| Employee profile | Role/biography editing, dated evolution archive, reviewed skills, typed Owner-managed memory, reviewed task lessons with explicit model sharing, review-bound export/import and experimental DSSE signing | Autonomous learning, executable skills, selective cloning and public trust distribution |
 | Worker protocol | Outbound connections, one-time pairing, revocation, versioned capability routing, progress, frames and artifacts | Proof-of-possession identity, complete service/device conformance and signed distribution |
 | Computer execution | Read-only Docker/browser URL-to-screenshot flow | Safe interaction, native desktop Providers, signed single-use leases and exclusive takeover |
 
@@ -95,6 +103,8 @@ extension boundaries. The optional office visualization remains deferred.
 Employee evolution and learning are explicitly inspired by
 [Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py).
 OpenBot owns its evidence, review and portability model and does not claim to have invented that concept.
+
+[Current delivery evidence and remaining capability gaps](docs/DELIVERY_STATUS.md).
 
 ## Development
 

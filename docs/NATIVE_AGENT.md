@@ -7,7 +7,7 @@ runs iteration; PostgreSQL remains the authority for tasks, channel membership, 
 
 ## Use it
 
-1. In **Settings → Models & API**, choose OpenAI or Anthropic, enter a model that supports tool
+1. In **Settings → Models & API**, choose OpenAI, Anthropic or OpenRouter, enter a model that supports tool
    calling and its API key, check **Enable native Agent**, then verify and save. The shared UI
    currently labels this option **启用原生 Agent**. Metadata validation alone does not prove that
    a model supports the generation endpoint or tools.
@@ -15,6 +15,10 @@ runs iteration; PostgreSQL remains the authority for tasks, channel membership, 
    For example: “Read this channel and summarize the outstanding tasks.”
 3. The task changes from queued to running. The inspector records model steps and tool observations;
    a successful task produces a Bot reply and completed Run. A failure is visible on the Run.
+4. The inspector identifies native work as **executed by Server**, shows recorded input/output
+   tokens and allows the Owner to stop a queued/running native task. A failed or cancelled task can
+   be explicitly submitted again as a new task; this starts from the original instruction, not a
+   model checkpoint. Worker task cancellation is not exposed by this native-only command.
 
 Inference is off by default, including for existing encrypted model configurations. Enabling it
 allows new `none`-profile tasks, including scheduled tasks, to send the task and requested channel
@@ -22,24 +26,48 @@ context to the chosen provider; API charges may apply. Tasks created before the 
 are not replayed. Re-enter the key when changing settings. Disabling or replacing settings aborts
 active inference. Server must remain running; remote Desktop clients use their connected Server.
 
+For a source-backed report, include up to three explicit HTTPS URLs in the task and ask for a
+Markdown report. For example: “Read https://example.com and prepare a report.md with citations.”
+The resulting file appears in the channel and Run inspector after successful completion. Pages are
+untrusted source material; downloads contain model-written text, not executable HTML.
+
+Desktop uses a native **Save report** dialog for Markdown files; choose a new `.md` filename.
+Existing files are not overwritten. General browser downloads remain disabled in the native shell.
+
+The native loop includes the assigned Bot's current name, role and description as bounded context,
+and records the profile revision it used. Profile content does not grant tools or override policy.
+
 ## Tools and limits
 
 | Boundary | Behavior |
 | --- | --- |
 | `read_channel_context` | At most 12 messages, bounded text, only the current task's channel and no messages created after the task |
 | `read_task_status` | At most 8 task titles/statuses in that channel, no tasks created after this task |
-| Authority | Both tools take an empty strict object. Server binds channel/Bot from the claimed Run and rechecks membership and Run state |
-| Iteration | At most 5 model steps, 8 executed read tools and 1,024 output tokens per step |
+| `read_public_page` | Read one of at most 3 explicit task URLs by index; 15 seconds, 512 KiB input, 6,000 UTF-8 bytes of extracted text |
+| `read_employee_memory` | Frozen snapshot of up to 8 explicitly model-enabled memories for this Bot; 2,000 UTF-8 bytes per body and 10 KiB projection, with IDs/revisions/truncation |
+| `propose_memory` | One bounded candidate lesson per successful task; no active-memory change until Owner review |
+| `write_report` | Prepare at most 2 Markdown files; 24 KiB authored text and 32 KiB including Server source provenance |
+| Authority | Strict schemas; Server binds channel/Bot and URL list from the claimed Run and rechecks membership and Run state. No model-selected URL or filesystem path |
+| Iteration | At most 5 model steps, 8 executed tools and 1,024 output tokens per step; no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
 | Time/output | 90-second inference deadline, 30-second HTTP deadline, 512 KiB provider reply, 16 KiB instruction/tool projection, 8,000-character final reply |
 | Concurrency | At most 2 active native Runs per Server, one per channel; conditional database claims prevent duplicate execution |
-| Network | Fixed official OpenAI Responses or Anthropic Messages endpoint, no redirects, proxy URL or automatic retries; OpenAI response storage is disabled |
-| Lifecycle | Reply, completion and audit commit together. Interrupted running tasks fail on restart; ambiguous/failed tasks are not automatically retried |
+| Network | Fixed official provider endpoints plus task-authorized public HTTPS GETs. Source DNS answers must all be public; the connection pins the checked address and verifies the original TLS host. No redirects, proxies or automatic retries; OpenAI response storage is disabled |
+| Lifecycle | Reply, report metadata, completion and audit commit together. Prepared report files are removed when publication fails. Interrupted running tasks fail on restart; ambiguous/failed tasks are not automatically retried |
 
 Progress contains action/result summaries, never internal reasoning, API keys or raw provider error
-bodies. Provider token usage is not yet persisted or aggregated into the usage panel. These limits
-bound the native loop; database availability remains required for state changes and shutdown.
+bodies. Per-step provider-reported input/output totals and model identity persist in PostgreSQL.
+Missing or invalid counts remain unknown. The usage panel sums only known records in the loaded
+channel/workspace sample; it is not a lifetime total, cost estimate or bill. An interrupted request
+may incur usage that was never reported. Reported-token thresholds stop subsequent calls, not a
+provider request already in flight. Existing byte/time/step limits apply even when counts are absent.
+Database availability remains required for state changes and shutdown.
 
-The tools do not expose memory, executable skills, shell, arbitrary URLs, computer input, external
+Cancellation and audit commit before the active request is aborted. Late results cannot replace a
+cancelled Run. Credential rejection, rate limits, unavailable providers, changed settings, revoked
+scope, tool failures and execution limits have fixed actionable failure messages. No automatic retry
+is performed. See [execution experience research](research/agent-execution-experience.md).
+
+The tools do not expose unshared memory, executable skills, shell, local files/PDFs, arbitrary URLs, computer input, external
 messages or approval decisions. Existing Worker-profile tasks keep their existing dispatcher and
 approval path. A native task requiring an unavailable action should explain that limitation.
 Hermes/Pi/OpenClaw delegation, browser observe/act tools and arbitrary desktop control remain future
@@ -52,8 +80,47 @@ a tool result received by the next model step. Tests cover scope/argument reject
 settings opt-in, cancellation and persistence. The disposable PostgreSQL integration suite covers
 competing claims, no historical replay, Worker exclusion, channel isolation, membership revocation,
 transaction rollback, exactly one reply and restart interruption. UI tests cover explicit opt-in
-and Server progress without a fabricated Node.
+and Server progress without a fabricated Node. Source tests cover private/reserved addresses, mixed DNS,
+numeric connection pinning, TLS host preservation, redirects, compression, size and cancellation.
+Report tests cover transactional publication, rollback, source provenance and authenticated downloads.
 
 These fixtures make no paid requests and do not certify live model availability, output quality or
 real-device desktop control. See the [research record](research/native-agent-loop.md) and
-[execution plan](EXECUTION_PLAN.md).
+[source/report research](research/agent-research-artifacts.md) and [execution plan](EXECUTION_PLAN.md).
+
+## Reviewed memory loop
+
+Ask the Bot to retain a reusable lesson after a task. It may call `propose_memory` once; the lesson
+is stored as pending only when the task completes. Open **Employee → Memory → Candidate lessons**
+(UI: **员工 → 记忆 → 候选经验**) and refresh to read the source task, full title and body. Edit it,
+then accept or reject. The model-use checkbox is off by default: accepting alone saves an internal,
+non-portable Owner memory. Explicitly enable model use to make it available to this Bot's later tasks.
+Existing memories also have this separate opt-in in their editor. Confidential/restricted entries and
+secret references cannot be shared. Old records remain off after migration.
+
+`read_employee_memory` retrieves a bounded recent snapshot, not semantic search or FTS. Each task
+records only retrieved IDs/revisions in audit; source Run IDs accompany reviewed proposals. Later
+model steps and final publication recheck those revisions and permissions. Disabling, deleting or
+editing a used record stops further use of the stale snapshot; content already sent upstream cannot
+be recalled. Pending proposals never enter retrieval. Each Bot can have at most 50 pending lessons;
+review the queue before creating more. Acceptance/rejection is serialized and cannot duplicate memory.
+Rejected text is removed; accepted text lives in the Owner memory, not the proposal audit.
+
+This is an experimental reviewed-memory loop inspired by Hermes Agent, not autonomous skill learning.
+Executable SKILL.md loading, semantic/FTS retrieval, background consolidation, retention schedules and
+cross-session user modelling remain future work. See [research](research/agent-reviewed-knowledge.md).
+
+## OpenRouter models
+
+Select **OpenRouter** and enter an explicit `author/model` ID from its current catalog. Verification
+reads key and model-endpoint metadata without generating a completion. Management/provisioning keys,
+mismatched model IDs and Agent-enabled models without a declared tool-capable endpoint are rejected.
+Metadata validation does not certify model quality, account credit or generation availability.
+
+The Server uses @openrouter/ai-sdk-provider 3.0.0 against the fixed chat-completions endpoint. Routing
+requires supported parameters, disables automatic provider fallback and requests data_collection=deny.
+OpenRouter forwards task content to its selected model provider; the routing request is not independent
+certification of third-party retention. Existing loop, output, cancellation, memory and usage limits
+apply. No OpenRouter web plugins, BYOK injection, arbitrary endpoints or automatic model selection.
+One active Server model configuration is retained; multi-profile/per-Bot selection remains future work.
+See [research and known compatibility limits](research/openrouter-model-entry.md).

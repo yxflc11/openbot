@@ -172,7 +172,7 @@ Token 与私钥会被阻止；只能保存 `vault://operations/email` 这类不�
 ```
 
 删除会物理移除记忆记录。同一事务追加的审计事件只包含员工 ID、记忆 ID、动作、revision、变化
-字段、操作者与时间，不保存标题、正文、来源或内容哈希。检索、定时保留、自主写入提案、版本
+字段、操作者与时间，不保存标题、正文、来源或内容哈希。语义/全文检索、定时保留、自主改写有效记忆、版本
 恢复和选择性导出仍未实现。
 
 ## 审核员工技能元数据
@@ -381,3 +381,20 @@ Artifact 与临时画面内容接口使用同一个 Owner Session，响应为 `p
 还返回 `code: "internal_error"` 与该 request id，但不返回异常原文。Server 和 Node 的运行日志为
 结构化 JSON，遵循 `OPENBOT_LOG_LEVEL`，且只接受白名单 request/Run/Node 关联字段。HTTP 日志只记
 不含 query 的路由路径，不记录 header、Cookie、正文、凭证、任意异常对象或 stack。
+
+## 任务经验审阅
+
+记忆新增/更新可携带 `modelUseEnabled` 布尔值，存储后的记录会返回它。新增与迁移旧记录默认
+关闭，独立于迁移策略；仅公开或内部、非密钥引用允许启用，更新仍需预期修订。
+
+- `GET /api/v1/bots/:botId/knowledge-proposals`：仅 Owner 可读的待审列表，最多 50 条，返回
+  Server 生成的候选 ID、来源 Run ID、类型、标题、正文和时间。
+- `POST /api/v1/bots/:botId/knowledge-proposals/:proposalId/review`：严格解析且请求体最多 16 KiB。
+  批准为 `{decision:"accept", ownerReviewed:true, title, content, modelUseEnabled:boolean}`；
+  拒绝为 `{decision:"reject", ownerReviewed:true}`。标题最多 160 字符，正文最多 2,000 字符
+  及 8,000 UTF-8 字节，拒绝凭据值/私钥。跨员工或未知 ID 返回 404，已审阅返回 409。
+  批准、新记忆、来源和审计同一事务提交；审阅后删除候选正文。返回 proposalId、decision、
+  memoryId/null。
+
+模型只能在有界原生循环中准备候选，不能调用 Owner 接口；成功任务与候选一起提交。
+参见[原生 Agent](NATIVE_AGENT.zh-CN.md)。

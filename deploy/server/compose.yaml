@@ -41,11 +41,14 @@ services:
       OPENBOT_TRUSTED_PROXY_ADDRESS: ${OPENBOT_TRUSTED_PROXY_ADDRESS:-}
       OPENBOT_LOG_LEVEL: ${OPENBOT_LOG_LEVEL:-info}
       OPENBOT_OBJECT_STORE_PATH: /var/lib/openbot/objects
+      OPENBOT_MODEL_DIRECTORY: /var/lib/openbot/model
     ports:
       - "127.0.0.1:3001:3001"
     volumes:
       - openbot-objects:/var/lib/openbot/objects
+      - openbot-model:/var/lib/openbot/model
 
 volumes:
   openbot-postgres:
   openbot-objects:
+  openbot-model:

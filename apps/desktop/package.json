@@ -1,6 +1,8 @@
 {
   "name": "@openbot/desktop",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.2",
+  "author": "OpenBot contributors",
+  "homepage": "https://github.com/yxflc11/openbot",
   "private": true,
   "description": "Installable OpenBot Desktop client.",
   "license": "MIT",
@@ -11,6 +13,8 @@
     "build:main": "tsc -p tsconfig.json",
     "build:renderer": "npm run build:desktop --workspace @openbot/web",
     "package": "npm run build && npm run prepare:native && node scripts/package.mjs",
+    "make:installers": "node scripts/make-installers.mjs",
+    "package:installers": "npm run package && npm run make:installers",
     "package:preview": "npm run build && npm run prepare:native && node scripts/package.mjs --preview",
     "start": "npm run build && electron .",
     "test": "vitest run src scripts",
@@ -27,7 +31,8 @@
     "@electron/packager": "20.3.0",
     "@openbot/web": "0.0.0",
     "@types/write-file-atomic": "4.0.3",
-    "electron": "44.2.0"
+    "electron": "44.2.0",
+    "electron-builder": "26.16.0"
   },
   "optionalDependencies": {
     "@embedded-postgres/darwin-arm64": "17.10.0-beta.17",

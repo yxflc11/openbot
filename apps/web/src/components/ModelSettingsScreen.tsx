@@ -12,7 +12,7 @@ export function ModelSettingsScreen({
   onDone(): void;
 }) {
   const [snapshot, setSnapshot] = useState<ModelSettingsSummary>();
-  const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
+  const [provider, setProvider] = useState<"openai" | "anthropic" | "openrouter">("openai");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [agentEnabled, setAgentEnabled] = useState(false);
@@ -82,7 +82,7 @@ export function ModelSettingsScreen({
           <form onSubmit={submit}>
             <fieldset className="model-provider-options" disabled={busy || !snapshot}>
               <legend>模型服务</legend>
-              {(["openai", "anthropic"] as const).map((value) => (
+              {(["openai", "anthropic", "openrouter"] as const).map((value) => (
                 <label key={value}>
                   <input
                     type="radio"
@@ -94,7 +94,7 @@ export function ModelSettingsScreen({
                       setApiKey("");
                     }}
                   />
-                  {value === "openai" ? "OpenAI" : "Anthropic"}
+                  {{ openai: "OpenAI", anthropic: "Anthropic", openrouter: "OpenRouter" }[value]}
                 </label>
               ))}
             </fieldset>
@@ -106,7 +106,11 @@ export function ModelSettingsScreen({
               maxLength={128}
               autoCapitalize="none"
               spellCheck={false}
-              placeholder="填写账户中可用的模型 ID"
+              placeholder={
+                provider === "openrouter"
+                  ? "填写 author/model 格式的模型 ID"
+                  : "填写账户中可用的模型 ID"
+              }
               disabled={busy || !snapshot}
               required
             />
@@ -128,9 +132,21 @@ export function ModelSettingsScreen({
               required
             />
             <p className="connection-hint">
-              {provider === "openai" ? "api.openai.com" : "api.anthropic.com"} ·
-              密钥加密保存在你的服务电脑上。
+              {
+                {
+                  openai: "api.openai.com",
+                  anthropic: "api.anthropic.com",
+                  openrouter: "openrouter.ai",
+                }[provider]
+              }{" "}
+              · 密钥加密保存在你的服务电脑上。
             </p>
+            {provider === "openrouter" ? (
+              <p className="connection-hint">
+                OpenRouter
+                会将任务交给其模型提供商。请选择支持工具调用的具体模型；验证只检查密钥和模型元数据，不生成付费回复。当前关闭自动回退，并要求路由满足工具参数和数据收集限制。
+              </p>
+            ) : null}
             <label className="model-agent-option">
               <input
                 type="checkbox"
@@ -142,7 +158,7 @@ export function ModelSettingsScreen({
             </label>
             <p className="connection-hint">
               启用后，新建的无电脑任务会将任务内容和按需读取的当前频道上下文发送给所选模型， 由 Bot
-              调用只读工具并回复，可能产生 API 费用。
+              读取有界资料、准备报告或待审经验并回复，可能产生 API 费用。
             </p>
             <button
               type="submit"

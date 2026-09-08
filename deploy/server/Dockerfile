@@ -29,6 +29,7 @@ ENV OPENBOT_OBJECT_STORE_PATH=/var/lib/openbot/objects
 WORKDIR /workspace
 
 RUN install -d --owner=node --group=node --mode=0700 /var/lib/openbot/objects
+RUN install -d --owner=node --group=node --mode=0700 /var/lib/openbot/model
 
 COPY --from=production-dependencies --chown=node:node /workspace/node_modules ./node_modules
 COPY --from=build --chown=node:node /workspace/package.json ./package.json

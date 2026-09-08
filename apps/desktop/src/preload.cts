@@ -45,6 +45,14 @@ const runtimeInfo = Object.freeze({
   shellVersion,
 });
 const bridge: OpenBotDesktopBridge = Object.freeze({
+  saveReport: (artifactId: string) => {
+    if (
+      typeof artifactId !== "string" ||
+      !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(artifactId)
+    )
+      return Promise.resolve({ status: "unavailable" });
+    return ipcRenderer.invoke("openbot:save-report", artifactId);
+  },
   getRuntimeInfo: () => runtimeInfo,
   onNavigationCommand: (listener: (command: DesktopNavigationCommand) => void) => {
     if (typeof listener !== "function") return () => {};

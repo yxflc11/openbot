@@ -20,6 +20,7 @@ import {
 import { type ConversationSession, createConversationSession } from "../conversation-session";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { useWorkspacePreferences } from "../workspace-preferences";
+import { ArtifactCard } from "./ArtifactCard";
 import { ChannelMembersMenu } from "./ChannelMembersMenu";
 import { HashIcon, SendIcon } from "./Icons";
 import { OpenBotMark } from "./OpenBotMark";
@@ -346,7 +347,12 @@ export function ChannelWorkspace({
                 }
                 botsById={botsById}
                 artifacts={
-                  message.runId === undefined ? [] : (artifactsByRun.get(message.runId) ?? [])
+                  message.runId === undefined
+                    ? []
+                    : (artifactsByRun.get(message.runId) ?? []).filter(
+                        (artifact) =>
+                          artifact.mediaType === "image/png" || message.authorType === "bot",
+                      )
                 }
                 run={message.runId === undefined ? undefined : runsById.get(message.runId)}
                 progress={
@@ -533,19 +539,7 @@ function MessageRow({
         {artifacts.length > 0 ? (
           <div className="message-artifacts">
             {artifacts.map((artifact) => (
-              <a
-                href={`/api/v1/artifacts/${artifact.id}/content`}
-                target="_blank"
-                rel="noreferrer"
-                key={artifact.id}
-              >
-                <img
-                  src={`/api/v1/artifacts/${artifact.id}/content`}
-                  alt={artifact.name}
-                  loading="lazy"
-                />
-                <span>{artifact.name}</span>
-              </a>
+              <ArtifactCard artifact={artifact} key={artifact.id} />
             ))}
           </div>
         ) : null}

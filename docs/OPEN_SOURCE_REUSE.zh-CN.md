@@ -35,7 +35,10 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 
 | OpenBot 范围 | 调研来源 | 许可证 | 决定与现状 |
 | --- | --- | --- | --- |
+| Desktop 安装分发与模型配置初始化 | electron-builder 26.16.0 / f4610970f78b6ce223b1f4cee2b5e8f5caa14a48；现有 Packager 20.3.0、Fuses 2.1.3；Node 24.20.0 文件/加密与 Compose 卷 | MIT；BSD-2-Clause；Node.js 许可；规范条款 | 只在已验证应用包外复用 builder，生成 DMG/NSIS/AppImage/DEB；完整核对源提交与产物后创建草稿 Release。Server 私有模型目录保留密钥，损坏时关闭失败。未复制上游源码，见[调研](research/desktop-installable-delivery.md)和[安装](DESKTOP_INSTALLATION.zh-CN.md)。 |
 | Server 原生 Agent 循环 | ai 7.0.93、@ai-sdk/openai 4.0.60、@ai-sdk/anthropic 4.0.49；比较 OpenAI Agents JS v0.17.0 和已固定的 Hermes 运行时 | Apache-2.0；MIT | 复用已发布 ToolLoopAgent、严格的频道只读工具、有界迭代和官方模型 HTTP。Owner 启用、数据库领取/回复/审计与配置撤销仍由 OpenBot 管理。未复制源码，见[调研](research/native-agent-loop.md)与[运行说明](NATIVE_AGENT.zh-CN.md)。 |
+| 原生 Agent 公开网页与报告 | ipaddr.js 2.5.0 / dc552827；html-to-text 10.0.1 / 1c39d988；Node HTTPS 与现有 AI SDK/产物存储 | MIT；Node.js license；Apache-2.0 | 复用地址分类和有界文本提取，适配任务网址、公网 IP 固定连接与 Markdown 报告事务发布。未复制上游源码，见[调研](research/agent-research-artifacts.md)。 |
+| 原生任务取消、档案与用量 | Node AbortController；PostgreSQL 17 行锁；ai 7.0.93 / 6359fd58；React 19.2.8 | Node.js；PostgreSQL；Apache-2.0；MIT | 扩展 Server 管理的 Run 生命周期：先持久取消再中止请求、有界 Bot 上下文、模型报告用量和明确重新提交。未复制源码，见[调研](research/agent-execution-experience.md)。 |
 | Desktop 统一顶栏与页面历史 | React 19.2.8；2026-09-05 审查的 Apple 工具栏与 WAI-ARIA 指引；比较 React Router 8.3.0 / 2edaca7 和 react-resizable-panels 4.9.0 | MIT；Apple/WHATWG/W3C 条款 | 复用原生控件与 React 状态，实现固定顶栏、左右栏独立开关和有界的授权页面访问历史。显示设置时保留认证工作空间；更换 Owner/Server 或退出登录时结束其生命周期。不引入 URL 路由器、拖动缩放依赖或 Codex 源码/素材。见[调研](research/desktop-navigation-continuity.md)。 |
 | Desktop 频道草稿与发送连续性 | 现有 React 19.2.8、原生 HTML textarea 和 CSSOM View；比较 react-textarea-autosize 8.5.9 | MIT；WHATWG/W3C 条款 | 复用外部存储快照与原生几何测量，建立有界工作空间内存缓存、按频道区分的草稿版本和发送归属，并恢复阅读位置。文字不进入 localStorage；发送完成保留更新后的输入，结果不明确时不自动重试。未新增依赖或复制源码，见[调研](research/desktop-conversation-continuity.md)。 |
 | 优先显示频道动态的 Desktop 信息栏 | 原生 HTML details/summary、React 19.2.8 / 1dd4ecb，以及 OpenBot 14e41ae78a35cd6a6b52de25a4e60300c2fe993d 的认证快照 | WHATWG 条款；MIT | 先投影当前频道的待审批操作、进行中任务与最近结果，再提供折叠的工作空间总览。检查频道/Run 关联，保留已超出近期 Run 样本的待审批记录。不新增计量或执行权威；缺少 Token 用量时仍显示不可用。未复制源码，见[调研](research/desktop-contextual-inspector.md)。 |
@@ -110,6 +113,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 | CI 依赖与密钥扫描 | [TruffleHog `3.97.1` / `20652fbb`](https://github.com/trufflesecurity/trufflehog/tree/20652fbbdefffcdaa493a5bf57ab2ac6b1db715b)、[Gitleaks `v8.27.2` / `c7acf33`](https://github.com/gitleaks/gitleaks/tree/c7acf33) 与 [npm CLI `10.9.9` / `745d8d90`](https://github.com/npm/cli/tree/745d8d90b5403110d26ba332ba83d8c5a51f0578) | AGPL-3.0；MIT；Artistic-2.0 | 在 CI 中以只读、digest 固定容器运行 TruffleHog，并关闭验证与更新；它不链接也不随 OpenBot 分发。选择精确审查的 npm CLI，以 `npm ci --ignore-scripts` 校验并构建完整锁定树，再以失败关闭方式只审计生产依赖。Gitleaks 是备用静态候选，不采用其面向组织另行授权的官方 Action。见[调研证据](research/dev-001-short-term-hardening.md)。 |
 | 浏览器出站加固 | [OWASP SSRF Prevention Cheat Sheet `b8586414`](https://github.com/OWASP/CheatSheetSeries/blob/b8586414a5c47ae68911edb97d4e7b7bc6301035/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md) 与 [CopilotKit/OpenBot `agent-computer` `257c1280`](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer) | 文档 CC BY-SA 4.0；MIT | 延期。当前 Docker Provider 的 DNS 预检无法约束另一个浏览器服务的重定向和真实连接。出站控制进入 `agent-computer` 或其网络命名空间前，该适配器仅可用于可信测试目标；不把更多应用层预检宣传成 SSRF 控制。见[调研证据](research/dev-001-short-term-hardening.md)。 |
 | 办公室可视化 | 项目所有者提供的腾讯 Marvis 产品图片 | 未找到可复用源码许可证 | 只作视觉启发，不引入 Marvis 代码或资源；办公室继续作为延期插件。 |
+| 桌面事件流生命周期 | Electron 44.2.0 / tag object `369b0d9d3afdd5b8c0bdb0ad42391443947a7424`；AbortController | MIT；Node.js license | 单窗口保留一条工作区与一条频道流；替换、导航、关闭时中止。重建响应不能依赖上游协议取消，无源码复制；[研究](research/desktop-stream-lifecycle.md)。 |
 
 ## 追溯覆盖图
 
@@ -202,3 +206,11 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 每个非简单功能 PR 都要链接调研记录或 ADR，并回答：评估了什么上游或标准；为什么选择依赖、
 适配、fork 或本地差集；审查了哪个版本和许可证；是否复制/实质改编源码及其 NOTICE 在哪里；
 当上游缺失、不兼容或被攻破时如何 fail closed。
+
+## 已审核记忆参与原生任务
+
+已完成复用审查：沿用 PostgreSQL、Owner 记忆生命周期和敏感文本扫描，仅增加默认关闭的模型使用开关、成功任务候选经验及事务审阅。Hermes Agent 的启发归属保留；未复制源码、未新增依赖，不宣称可执行技能或自主学习。 [Research](research/agent-reviewed-knowledge.md).
+
+## OpenRouter 模型入口
+
+复用已发布 @openrouter/ai-sdk-provider 3.0.0 / c1ce69ab（Apache-2.0），以固定端点、严格模型 ID、非推理元数据验证和明确路由策略适配现有循环。未复制源码，不宣称支持所有模型。 [Research](research/openrouter-model-entry.md).

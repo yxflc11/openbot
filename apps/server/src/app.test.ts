@@ -63,6 +63,83 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 const testOrigin = "http://localhost:5173";
 
 describe("server app", () => {
+  it("requires Owner authentication, origin and explicit bounded review for knowledge proposals", async () => {
+    const knowledge = {
+      list: vi.fn(async () => []),
+      review: vi.fn(async () => ({ proposalId: "proposal", decision: "reject", memoryId: null })),
+    };
+    const app = createTestApp({ store: createTestStore(), knowledge });
+    const endpoint = "/api/v1/bots/bot/knowledge-proposals";
+    expect((await app.request(endpoint)).status).toBe(401);
+    const login = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Origin: testOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+    expect((await app.request(endpoint, { headers: { Cookie: cookie } })).status).toBe(200);
+    const post = (body: unknown, origin = testOrigin) =>
+      app.request(`${endpoint}/proposal/review`, {
+        method: "POST",
+        headers: { Cookie: cookie, Origin: origin, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await post({ decision: "reject", ownerReviewed: false })).status).toBe(422);
+    expect(
+      (await post({ decision: "reject", ownerReviewed: true }, "https://other.example")).status,
+    ).toBe(403);
+    expect(
+      (await post({ decision: "accept", ownerReviewed: true, title: "Fact", content: "Fact" }))
+        .status,
+    ).toBe(422);
+    expect(knowledge.review).not.toHaveBeenCalled();
+    expect((await post({ decision: "reject", ownerReviewed: true })).status).toBe(200);
+    expect(knowledge.review).toHaveBeenCalledExactlyOnceWith("bot", "proposal", {
+      decision: "reject",
+      ownerReviewed: true,
+    });
+    knowledge.review.mockRejectedValueOnce(new StoreConflictError("Already reviewed."));
+    expect((await post({ decision: "reject", ownerReviewed: true })).status).toBe(409);
+    knowledge.review.mockRejectedValueOnce(new StoreNotFoundError("Not found."));
+    expect((await post({ decision: "reject", ownerReviewed: true })).status).toBe(404);
+  });
+
+  it("authenticates a strict native task cancel command and maps conflicts without leaking errors", async () => {
+    const cancelNativeRun = vi.fn(
+      async (_id: string) => ({ id: "run-1", channelId: "channel-1", status: "cancelled" }) as Run,
+    );
+    const app = createTestApp({ store: createTestStore(), cancelNativeRun });
+    const post = (cookie?: string, body: unknown = {}, origin = testOrigin) =>
+      app.request("/api/v1/runs/run-1/cancel", {
+        method: "POST",
+        headers: {
+          Origin: origin,
+          "Content-Type": "application/json",
+          ...(cookie ? { Cookie: cookie } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+    expect((await post()).status).toBe(401);
+    const login = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { Origin: testOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "correct-owner-password" }),
+    });
+    const cookie = login.headers.get("set-cookie")?.split(";")[0];
+    expect((await post(cookie, { force: true })).status).toBe(422);
+    expect((await post(cookie, {}, "https://other.example")).status).toBe(403);
+    expect(cancelNativeRun).not.toHaveBeenCalled();
+    expect((await post(cookie)).status).toBe(200);
+    expect(cancelNativeRun).toHaveBeenCalledExactlyOnceWith("run-1");
+    cancelNativeRun.mockRejectedValueOnce(new StoreConflictError("Task ended."));
+    expect((await post(cookie)).status).toBe(409);
+    cancelNativeRun.mockRejectedValueOnce(new StoreNotFoundError("Task not found."));
+    expect((await post(cookie)).status).toBe(404);
+    cancelNativeRun.mockRejectedValueOnce(new Error("PRIVATE PROVIDER BODY"));
+    const failed = await post(cookie);
+    expect(failed.status).toBe(500);
+    expect(await failed.text()).not.toContain("PRIVATE");
+  });
   it("authenticates and origin-checks automatic task creation, then validates a bounded command", async () => {
     const create = vi.fn().mockResolvedValue({ id: "schedule-1" });
     const automations = {
@@ -647,6 +724,37 @@ describe("server app", () => {
       headers: { Cookie: cookie },
     });
     expect(corrupted.status).toBe(500);
+  });
+
+  it("serves reports only to the Owner with named attachment disposition and verified bytes", async () => {
+    const bytes = Buffer.from("# 研究报告\n\nA useful finding.");
+    const artifact: ArtifactRecord = {
+      id: "00000000-0000-4000-8000-000000000010",
+      runId: "00000000-0000-4000-8000-000000000011",
+      name: "研究报告.md",
+      mediaType: "text/markdown",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      sizeBytes: bytes.byteLength,
+      createdAt: "2026-09-08T00:00:00.000Z",
+      storageKey:
+        "runs/00000000-0000-4000-8000-000000000011/00000000-0000-4000-8000-000000000010.md",
+      metadata: {},
+    };
+    const store = createTestStore();
+    store.getArtifact = async () => artifact;
+    const app = createTestApp({ store, artifactStorage: { read: async () => bytes } });
+    expect((await app.request(`/api/v1/artifacts/${artifact.id}/content`)).status).toBe(401);
+    const response = await app.request(`/api/v1/artifacts/${artifact.id}/content`, {
+      headers: { Cookie: await login(app) },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("text/markdown");
+    expect(response.headers.get("content-disposition")).toContain(
+      `filename*=UTF-8''${encodeURIComponent(artifact.name)}`,
+    );
+    expect(response.headers.get("content-disposition")).toMatch(/^attachment/u);
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await response.text()).toBe(bytes.toString("utf8"));
   });
 
   it("serves the latest authenticated live frame without persistence", async () => {
@@ -1973,6 +2081,8 @@ function createCompatibleBrowserNode(): ExecutionNode {
 }
 
 function createTestApp({
+  knowledge,
+  cancelNativeRun,
   automations,
   store,
   dispatchRun,
@@ -1990,6 +2100,8 @@ function createTestApp({
   remoteAddress = "127.0.0.1",
   trustedProxyAddress,
 }: {
+  knowledge?: Parameters<typeof createApp>[0]["knowledge"];
+  cancelNativeRun?: Parameters<typeof createApp>[0]["cancelNativeRun"];
   automations?: Parameters<typeof createApp>[0]["automations"];
   store: ControlPlaneStore;
   dispatchRun?: (run: Run) => void;
@@ -2018,6 +2130,8 @@ function createTestApp({
     requestThrottle,
   );
   return createApp({
+    ...(knowledge === undefined ? {} : { knowledge }),
+    ...(cancelNativeRun === undefined ? {} : { cancelNativeRun }),
     ...(automations === undefined ? {} : { automations }),
     allowedOrigins: [testOrigin],
     auth,

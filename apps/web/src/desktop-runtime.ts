@@ -78,6 +78,9 @@ export interface DesktopNavigationMenuState {
   settingsAvailable: boolean;
 }
 export interface OpenBotDesktopBridge {
+  saveReport?(
+    artifactId: string,
+  ): Promise<Readonly<{ status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" }>>;
   onNavigationCommand?(listener: (command: DesktopNavigationCommand) => void): () => void;
   updateNavigationMenuState?(state: DesktopNavigationMenuState): Promise<void>;
   setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;

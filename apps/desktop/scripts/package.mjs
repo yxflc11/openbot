@@ -81,6 +81,16 @@ const packagePaths = await packager({
   extraResource: [desktopIconPng],
   afterCopyExtraResources: [
     async ({ buildPath }) => {
+      if (process.platform === "darwin") {
+        // The DMG contains the app, not Packager's surrounding directory. Keep runtime notices
+        // inside it, using the exact unpacked runtime rather than npm's optional local dist cache.
+        for (const notice of ["LICENSE", "LICENSES.chromium.html"]) {
+          await cp(
+            join(buildPath, notice),
+            packagedDesktopResource(buildPath, process.platform, notice, identity),
+          );
+        }
+      }
       if (nativeRuntime) {
         await copyContainedResource(
           nativeRuntime,

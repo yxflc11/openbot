@@ -96,6 +96,9 @@ export const DESKTOP_NAVIGATION_COMMAND_CHANNEL = "openbot:navigation-command";
 export const DESKTOP_NAVIGATION_MENU_STATE_CHANNEL = "openbot:navigation-menu-state";
 
 export interface OpenBotDesktopBridge {
+  saveReport?(
+    artifactId: string,
+  ): Promise<Readonly<{ status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" }>>;
   onNavigationCommand?(listener: (command: DesktopNavigationCommand) => void): () => void;
   updateNavigationMenuState?(state: DesktopNavigationMenuState): Promise<void>;
   setSidebarTranslucency?(enabled: boolean): Promise<DesktopSidebarMaterialState>;

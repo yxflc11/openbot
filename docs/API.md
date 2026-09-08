@@ -181,7 +181,7 @@ Delete a memory:
 Deletion requires a distinct reviewed command and the current revision. It physically removes the
 memory row. The same transaction appends a lifecycle event containing only Employee id, memory id,
 action, revision, changed field names, actor, and time; it never retains title, content,
-provenance, or a content hash. Retrieval, retention schedules, autonomous write proposals,
+provenance, or a content hash. Semantic/full-text retrieval, retention schedules, autonomous active-memory writes,
 version restoration, and selective export remain unimplemented.
 
 ## Skill metadata review
@@ -408,3 +408,21 @@ exception message. Server and Node operational logs are structured JSON, honor
 `OPENBOT_LOG_LEVEL`, and use allowlisted request/Run/Node fields. HTTP logs record the route path
 without its query and never record headers, cookies, bodies, credentials, arbitrary error objects,
 or stacks.
+
+## Reviewed task knowledge
+
+`modelUseEnabled` is an optional boolean on memory create/update and is returned on stored memory.
+It defaults to false for new and migrated entries. It is independent of portability; only public or
+internal non-secret-reference entries may be enabled. Updates require the usual expected revision.
+
+- `GET /api/v1/bots/:botId/knowledge-proposals`: Owner-only pending list, at most 50, including
+  Server-generated proposal ID, source Run ID, kind, title, content and timestamp.
+- `POST /api/v1/bots/:botId/knowledge-proposals/:proposalId/review`: strict 16 KiB maximum body.
+  Accept: `{decision:"accept", ownerReviewed:true, title, content, modelUseEnabled:boolean}`.
+  Reject: `{decision:"reject", ownerReviewed:true}`. Titles 160 characters; content 2,000 characters
+  and 8,000 UTF-8 bytes; credential values/private keys rejected. Cross-Bot or missing IDs return
+  404; previously reviewed proposals return 409. Acceptance, new memory, provenance and audit commit
+  together; review removes candidate text. The result has proposalId, decision and memoryId/null.
+
+Models only prepare a proposal in the bounded native loop; they do not call these Owner endpoints.
+Successful Run completion publishes the candidate atomically. See [Native Agent](NATIVE_AGENT.md).

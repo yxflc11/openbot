@@ -21,16 +21,20 @@
     "@openbot/logging": "0.0.0",
     "@openbot/policy": "0.0.0",
     "@openbot/protocol": "0.0.0",
+    "@openrouter/ai-sdk-provider": "3.0.0",
     "@sigstore/core": "4.0.1",
     "ai": "7.0.93",
     "filename-reserved-regex": "4.0.0",
     "hono": "4.13.5",
+    "html-to-text": "10.0.1",
+    "ipaddr.js": "2.5.0",
     "write-file-atomic": "8.0.0",
     "ws": "8.21.3",
     "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/filename-reserved-regex": "3.0.0",
+    "@types/html-to-text": "9.0.4",
     "@types/write-file-atomic": "4.0.3",
     "@types/ws": "8.18.1",
     "tsx": "4.23.13"

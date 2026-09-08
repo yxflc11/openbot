@@ -22,9 +22,11 @@ import type {
   EmployeeProfileSection,
   EmployeeSkillMutationResult,
   ExecutionNode,
+  KnowledgeProposal,
   Message,
   NodeEnrollmentToken,
   NodeIdentitySummary,
+  ReviewKnowledgeProposalInput,
   Run,
   RunFrame,
   RunProgress,
@@ -72,6 +74,15 @@ export async function login(
 
 export async function logout(): Promise<void> {
   await request<void>("/api/v1/auth/logout", { method: "POST" });
+}
+
+export async function cancelNativeRun(runId: string): Promise<Run> {
+  const result = await request<{ run: Run }>(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  return result.run;
 }
 
 export function subscribeToUnauthorized(handler: () => void): () => void {
@@ -962,7 +973,7 @@ export type ModelSettingsSummary =
   | { status: "unconfigured"; revision: null }
   | {
       status: "configured";
-      provider: "openai" | "anthropic";
+      provider: "openai" | "anthropic" | "openrouter";
       model: string;
       revision: string;
       agentEnabled?: boolean;
@@ -972,7 +983,7 @@ export function getModelSettings(): Promise<ModelSettingsSummary> {
 }
 export function saveModelSettings(input: {
   agentEnabled: boolean;
-  provider: "openai" | "anthropic";
+  provider: "openai" | "anthropic" | "openrouter";
   model: string;
   apiKey: string;
   revision: string | null;
@@ -982,4 +993,25 @@ export function saveModelSettings(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+
+export async function getKnowledgeProposals(botId: string): Promise<KnowledgeProposal[]> {
+  const result = await request<{ proposals: KnowledgeProposal[] }>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/knowledge-proposals`,
+  );
+  return result.proposals;
+}
+export async function reviewKnowledgeProposal(
+  botId: string,
+  proposalId: string,
+  input: ReviewKnowledgeProposalInput,
+): Promise<{ proposalId: string; decision: string; memoryId: string | null }> {
+  return request(
+    `/api/v1/bots/${encodeURIComponent(botId)}/knowledge-proposals/${encodeURIComponent(proposalId)}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }

@@ -25,10 +25,15 @@ and notices.
 - Vercel AI SDK `ai` 7.0.93, `@ai-sdk/openai` 4.0.60, `@ai-sdk/anthropic` 4.0.49,
   `@ai-sdk/provider` 4.0.10, `@ai-sdk/provider-utils` 5.0.36 and the SDK's transitive
   `@ai-sdk/gateway` 4.0.75 — Copyright 2023 Vercel, Inc.; Apache License 2.0.
-  The Server uses explicit OpenAI/Anthropic adapters, not the gateway. Package LICENSE files
+  The Server uses explicit OpenAI/Anthropic/OpenRouter adapters, not the AI SDK gateway. Package LICENSE files
   remain in the packaged production dependency tree. No upstream implementation was copied.
   See [Agent research](docs/research/native-agent-loop.md) and the
   [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+
+- `@openrouter/ai-sdk-provider` 3.0.0 — OpenRouter contributors; Apache License 2.0.
+  Selected release c1ce69ab9dfe9ca87a57e1db5faf35ee78f6fa1a; use the public chat adapter without
+  copied or modified upstream code. Its LICENSE remains in packaged production dependencies.
+  See [OpenRouter research](docs/research/openrouter-model-entry.md).
 
 No upstream source is copied into OpenBot. The following MIT license text is reproduced for the
 MIT-licensed dependencies listed above:
@@ -103,6 +108,12 @@ The following ISC license text is reproduced for `signal-exit`:
 
 ## Native Desktop Server preview
 
+Desktop installer creation additionally uses build-only `electron-builder` 26.16.0, reviewed at
+`f4610970f78b6ce223b1f4cee2b5e8f5caa14a48`, MIT, copyright 2015 Loopline Systems. No upstream
+source was copied or substantially adapted. Its package license and downloaded installer-tool
+notices remain under their upstream licenses; the application does not load electron-builder at
+runtime. See `docs/research/desktop-installable-delivery.md` for the installer-only reuse boundary.
+
 - PostgreSQL 17.10 — PostgreSQL Global Development Group and the Regents of the University
   of California; PostgreSQL License. Native packaging uses
   `@embedded-postgres/darwin-arm64` / `darwin-x64` `17.10.0-beta.17`, MIT packager,
@@ -116,3 +127,12 @@ The following ISC license text is reproduced for `signal-exit`:
 - This is an internal unsigned development bundle. Exact per-library binary/source correspondence
   and LGPL distribution obligations remain public-release gates, documented in that inventory.
   Do not represent the preview as an attested or distribution-cleared release.
+
+## Native Agent public sources
+
+- ipaddr.js 2.5.0 (dc55282780d8702bac31ef012ca52e4a77fbca1f), MIT.
+- html-to-text 10.0.1 (1c39d9885075836a7e45d0236c7a5541dede8e52), MIT.
+- @types/html-to-text 9.0.4, MIT, build-time types only.
+
+Packages retain their upstream notices in the production dependency closure. No upstream source
+was copied or substantially adapted. See [research](docs/research/agent-research-artifacts.md).

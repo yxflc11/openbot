@@ -68,3 +68,24 @@ dependency inventory, missing-password rejection, all 18 current migrations, hea
 object persistence, migration idempotence, and zero-exit SIGTERM. It does not publish artifacts.
 
 See [upstream research and remaining risks](research/server-node24-production-container.md).
+
+## Persistent model settings
+
+The default Compose deployment now mounts `openbot-model` at `/var/lib/openbot/model` and sets
+`OPENBOT_MODEL_DIRECTORY`. On first startup the Server creates a private 32-byte encryption key;
+encrypted provider settings are retained in the same private directory. No provider is enabled by
+default. The Owner configures and explicitly enables it through Desktop settings after connecting.
+The source-development `.env.example` uses `./data/model` for the same lifecycle.
+
+Back up the **whole model directory**, including `encryption.key` and `settings.json`, alongside
+PostgreSQL and objects. Protect that backup as a secret: keeping key and ciphertext together does
+not protect against access to the entire directory. Restore with Server ownership and directory
+mode `0700`, file mode `0600`. A missing key beside existing settings, malformed key, symbolic link,
+or exposed Unix permissions prevents startup; restore the original key rather than deleting data.
+The container restart smoke checks saved model settings using a fake provider, with no paid calls.
+
+Existing Desktop-managed services retain their explicit `OPENBOT_MODEL_SETTINGS_PATH` and
+`OPENBOT_MODEL_ENCRYPTION_KEY` bootstrap. Do not combine those two legacy variables with
+`OPENBOT_MODEL_DIRECTORY`. Separate deployments may keep their existing explicit-key setup; there
+is no automatic key migration or rotation. The plain key is readable only by the Server account,
+not a renderer or Worker, and the settings API never returns it.

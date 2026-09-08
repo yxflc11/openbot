@@ -7,13 +7,13 @@ import { z } from "zod";
 
 export const modelSettingsInputSchema = z
   .object({
-    provider: z.enum(["openai", "anthropic"]),
+    provider: z.enum(["openai", "anthropic", "openrouter"]),
     model: z
       .string()
       .trim()
       .min(1)
       .max(128)
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*(?:\/[A-Za-z0-9][A-Za-z0-9._:-]*)?$/u),
     apiKey: z
       .string()
       .min(16)
@@ -22,9 +22,17 @@ export const modelSettingsInputSchema = z
     revision: z.string().uuid().nullable(),
     agentEnabled: z.boolean().default(false),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.provider === "openrouter" ? value.model.includes("/") : !value.model.includes("/"),
+    {
+      message: "OpenRouter requires an author/model slug; direct providers use a model ID.",
+      path: ["model"],
+    },
+  );
 type ModelInput = z.infer<typeof modelSettingsInputSchema>;
-const retainedSchema = modelSettingsInputSchema.extend({
+const retainedSchema = modelSettingsInputSchema.safeExtend({
   revision: z.string().uuid(),
   agentEnabledAt: z.string().datetime().nullable().default(null),
 });
@@ -184,7 +192,55 @@ export class ModelSettingsService {
       throw new ModelSettingsError("storage_unavailable");
     }
   }
+  async #verifyRouter(input: ModelInput): Promise<void> {
+    const headers = { Accept: "application/json", Authorization: `Bearer ${input.apiKey}` };
+    const key = z
+      .object({
+        data: z.object({
+          is_management_key: z.literal(false),
+          is_provisioning_key: z.literal(false).optional(),
+        }),
+      })
+      .safeParse(
+        await requestModelMetadata(
+          this.fetcher,
+          "https://openrouter.ai/api/v1/key",
+          headers,
+          32 * 1024,
+        ),
+      );
+    if (!key.success) throw new ModelSettingsError("invalid_credentials");
+    const path = input.model.split("/").map(encodeURIComponent).join("/");
+    const metadata = z
+      .object({
+        data: z.object({
+          id: z.string(),
+          endpoints: z
+            .array(z.object({ supported_parameters: z.array(z.string()).optional() }))
+            .max(1000),
+        }),
+      })
+      .safeParse(
+        await requestModelMetadata(
+          this.fetcher,
+          `https://openrouter.ai/api/v1/models/${path}/endpoints`,
+          headers,
+          256 * 1024,
+        ),
+      );
+    if (
+      !metadata.success ||
+      metadata.data.data.id !== input.model ||
+      !metadata.data.data.endpoints.length ||
+      (input.agentEnabled &&
+        !metadata.data.data.endpoints.some((endpoint) =>
+          endpoint.supported_parameters?.includes("tools"),
+        ))
+    )
+      throw new ModelSettingsError("model_unavailable");
+  }
   async #verify(input: ModelInput): Promise<void> {
+    if (input.provider === "openrouter") return this.#verifyRouter(input);
     const origin =
       input.provider === "openai" ? "https://api.openai.com" : "https://api.anthropic.com";
     const headers: Record<string, string> = { Accept: "application/json" };
@@ -230,5 +286,46 @@ export class ModelSettingsService {
     } finally {
       await response?.body?.cancel().catch(() => undefined);
     }
+  }
+}
+
+/** Fixed metadata-only URLs are selected by Server code; no key is sent to a renderer-chosen host. */
+async function requestModelMetadata(
+  fetcher: typeof fetch,
+  url: string,
+  headers: Record<string, string>,
+  maximumBytes: number,
+): Promise<unknown> {
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  try {
+    const signal = AbortSignal.timeout(8000);
+    const response = await fetcher(url, { headers, redirect: "manual", signal });
+    reader = response.body?.getReader();
+    if (response.status === 401 || response.status === 403)
+      throw new ModelSettingsError("invalid_credentials");
+    if (response.status === 404) throw new ModelSettingsError("model_unavailable");
+    if (
+      !response.ok ||
+      !response.headers.get("content-type")?.includes("application/json") ||
+      !reader
+    )
+      throw new ModelSettingsError("provider_unavailable");
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    while (true) {
+      signal.throwIfAborted();
+      const part = await reader.read();
+      if (part.done) break;
+      bytes += part.value.byteLength;
+      if (bytes > maximumBytes) throw new ModelSettingsError("provider_unavailable");
+      chunks.push(part.value);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch (error) {
+    if (error instanceof ModelSettingsError) throw error;
+    throw new ModelSettingsError("provider_unavailable");
+  } finally {
+    await reader?.cancel().catch(() => undefined);
+    reader?.releaseLock();
   }
 }

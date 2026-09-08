@@ -1,6 +1,8 @@
+import { NativeRunControls, nativeRunFailure } from "./NativeRunControls";
 import type { Artifact, Bot, ExecutionNode, Run, RunFrame, RunProgress } from "@openbot/domain";
 import { useEffect, useRef } from "react";
 import { runStatusLabel } from "../run-state";
+import { ArtifactCard } from "./ArtifactCard";
 import { CloseIcon, NodeIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -12,6 +14,7 @@ export function RunInspector({
   progress,
   run,
   onClose,
+  onRun,
 }: {
   artifacts: Artifact[];
   bot: Bot | undefined;
@@ -20,6 +23,7 @@ export function RunInspector({
   progress: RunProgress[];
   run: Run;
   onClose(): void;
+  onRun(run: Run): void;
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -36,7 +40,9 @@ export function RunInspector({
     };
   }, [onClose]);
 
-  const terminal = run.status === "completed" || run.status === "failed";
+  const terminal =
+    run.status === "completed" || run.status === "failed" || run.status === "cancelled";
+  const native = run.executionProfile === "none" && !run.nodeId;
 
   return (
     <div className="inspector-backdrop">
@@ -102,17 +108,39 @@ export function RunInspector({
               </span>
               <span>
                 <small>执行电脑</small>
-                <strong>{node?.name ?? (run.nodeId ? "节点已离线" : "等待分配")}</strong>
+                <strong>
+                  {native
+                    ? "由 Server 执行"
+                    : (node?.name ?? (run.nodeId ? "节点已离线" : "等待分配"))}
+                </strong>
               </span>
             </div>
           </section>
 
+          <NativeRunControls key={run.id} run={run} onRun={onRun} />
+          {run.modelUsage ? (
+            <section className="inspector-section" aria-label="任务模型用量">
+              <h3>模型用量</h3>
+              <p>
+                {run.modelUsage.provider} · {run.modelUsage.model} · {run.modelUsage.steps} 轮
+              </p>
+              <p>
+                输入 {run.modelUsage.inputTokens?.toLocaleString() ?? "未知"} · 输出{" "}
+                {run.modelUsage.outputTokens?.toLocaleString() ?? "未知"} Token
+              </p>
+              <p className="frame-meta">仅包含已收到用量的模型步骤，不代表账单或任务成本。</p>
+            </section>
+          ) : null}
           <section className="inspector-section">
             <h3>进度</h3>
             <ol className="progress-timeline">
               <ProgressItem
                 label="任务已接收"
-                message="任务已写入频道并等待可用节点。"
+                message={
+                  native
+                    ? "任务已保存，等待 Server 的原生 Agent 执行。"
+                    : "任务已写入频道并等待可用节点。"
+                }
                 time={run.createdAt}
                 complete
               />
@@ -127,8 +155,20 @@ export function RunInspector({
               ))}
               {terminal ? (
                 <ProgressItem
-                  label={run.status === "completed" ? "任务完成" : "任务失败"}
-                  message={run.errorMessage ?? run.resultSummary ?? "任务已结束。"}
+                  label={
+                    run.status === "completed"
+                      ? "任务完成"
+                      : run.status === "cancelled"
+                        ? "任务已取消"
+                        : "任务失败"
+                  }
+                  message={
+                    run.status === "cancelled"
+                      ? "Owner 已停止此任务。"
+                      : run.errorMessage
+                        ? nativeRunFailure(run)
+                        : (run.resultSummary ?? "任务已结束。")
+                  }
                   time={run.updatedAt}
                   complete
                   failed={run.status === "failed"}
@@ -136,7 +176,7 @@ export function RunInspector({
               ) : (
                 <ProgressItem
                   label={runStatusLabel(run.status)}
-                  message={currentStatusMessage(run.status)}
+                  message={currentStatusMessage(run.status, native)}
                   time={run.updatedAt}
                 />
               )}
@@ -148,22 +188,7 @@ export function RunInspector({
               <h3>产物</h3>
               <div className="inspector-artifacts">
                 {artifacts.map((artifact) => (
-                  <a
-                    href={`/api/v1/artifacts/${artifact.id}/content`}
-                    target="_blank"
-                    rel="noreferrer"
-                    key={artifact.id}
-                  >
-                    <img
-                      src={`/api/v1/artifacts/${artifact.id}/content`}
-                      alt={artifact.name}
-                      loading="lazy"
-                    />
-                    <span>
-                      <strong>{artifact.name}</strong>
-                      <small>{formatBytes(artifact.sizeBytes)}</small>
-                    </span>
-                  </a>
+                  <ArtifactCard artifact={artifact} key={artifact.id} />
                 ))}
               </div>
             </section>
@@ -205,7 +230,9 @@ function stageLabel(stage: string): string {
   return stageLabels[stage] ?? stage;
 }
 
-function currentStatusMessage(status: Run["status"]): string {
+function currentStatusMessage(status: Run["status"], native = false): string {
+  if (native && status === "queued") return "等待 Server 原生 Agent 接单；请确认模型设置已启用。";
+  if (native && status === "running") return "Server 正在执行模型与工具循环，进度会自动更新。";
   const messages: Record<Run["status"], string> = {
     queued: "正在等待符合固定执行环境的节点。",
     assigned: "节点已接单，等待 Server 发放启动指令。",
@@ -235,6 +262,9 @@ function frameDimensions(frame: RunFrame): string {
 }
 
 const stageLabels: Record<string, string> = {
+  context: "员工上下文",
+  planning: "模型步骤",
+  observation: "工具结果",
   navigate: "打开网页",
   screenshot: "截取画面",
 };

@@ -65,6 +65,42 @@ describe("ContextRail", () => {
     }
   });
 
+  it("shows only reported usage in the selected channel without inventing missing totals", async () => {
+    const measured = {
+      ...run("measured", "completed"),
+      executionProfile: "none" as const,
+      modelUsage: {
+        provider: "openai" as const,
+        model: "fixture",
+        steps: 2,
+        inputTokens: 120,
+        outputTokens: null,
+      },
+    };
+    const elsewhere = {
+      ...measured,
+      id: "elsewhere",
+      channelId: "other",
+      modelUsage: { ...measured.modelUsage, inputTokens: 99999, outputTokens: 99999 },
+    };
+    const view = await renderComponent(
+      <ContextRail
+        selectedChannelId="channel-1"
+        realtimeState="live"
+        workspace={workspace({ runs: [measured, elsewhere] })}
+        onDecideApproval={vi.fn()}
+        onInspectRun={vi.fn()}
+      />,
+    );
+    try {
+      const tokens = view.container.querySelector('[aria-label="Token 用量"]');
+      expect(tokens?.textContent).toContain("输入 120 · 输出 未知");
+      expect(tokens?.textContent).not.toContain("99,999");
+      expect(tokens?.textContent).toContain("不代表账单");
+    } finally {
+      await view.unmount();
+    }
+  });
   it("counts the recent snapshot without treating failures or cancellations as completion", async () => {
     const runs = [
       run("queued", "queued"),

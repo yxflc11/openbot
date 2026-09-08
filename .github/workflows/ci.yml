@@ -66,7 +66,7 @@ jobs:
   portable:
     name: Portable (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -86,6 +86,8 @@ jobs:
           node-version: 22.22.2
           cache: npm
       - run: npm ci
+      - name: Verify native Desktop bootstrap behavior
+        run: node --test scripts/install-desktop.test.mjs
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
@@ -115,6 +117,23 @@ jobs:
             >> "$GITHUB_ENV"
       - name: Package the unsigned Desktop development artifact
         run: npm run package --workspace @openbot/desktop
+      - name: Make the unsigned Desktop installers from the verified package
+        run: npm run make:installers --workspace @openbot/desktop
+      - name: Parse the Windows bootstrap with the native PowerShell parser
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$env:GITHUB_WORKSPACE/scripts/install-desktop.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -ne 0) { throw "Windows bootstrap contains PowerShell syntax errors." }
+      - name: Retain versioned installers and checksums
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.OPENBOT_INSTALLER_ARTIFACT }}
+          path: ${{ env.OPENBOT_INSTALLER_DIRECTORY }}
+          if-no-files-found: error
+          retention-days: 14
       - name: Validate macOS LaunchAgent contract with native plist parser
         if: runner.os == 'macOS'
         run: |

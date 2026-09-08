@@ -39,7 +39,8 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
-import type { ZodType } from "zod";
+import { type ZodType, z } from "zod";
+import { reviewKnowledgeProposalSchema } from "./agent-knowledge.js";
 import type { ArtifactStorage } from "./artifact-storage.js";
 import {
   type AutomationStore,
@@ -75,12 +76,15 @@ import {
   LoginRateLimitedError,
   type OwnerAuthService,
 } from "./owner-auth.js";
+import type { PostgresKnowledgeStore } from "./postgres-knowledge-store.js";
 import { RealtimeEventBuffer } from "./realtime-event-buffer.js";
 import type { RequestThrottle } from "./request-throttle.js";
 import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  knowledge?: Pick<PostgresKnowledgeStore, "list" | "review">;
+  cancelNativeRun?: (runId: string) => Promise<Run>;
   automations?: AutomationStore;
   modelSettings?: ModelSettingsService;
   allowedOrigins: string[];
@@ -464,10 +468,23 @@ export function createApp(dependencies: AppDependencies) {
         "Cache-Control": "private, no-store",
         "Content-Length": String(bytes.byteLength),
         "Content-Type": record.mediaType,
-        "Content-Disposition": "inline",
+        "Content-Disposition":
+          record.mediaType === "text/markdown"
+            ? `attachment; filename="report.md"; filename*=UTF-8''${encodeURIComponent(record.name).replace(/['()*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`)}`
+            : "inline",
         "X-Content-Type-Options": "nosniff",
       },
     });
+  });
+
+  app.post("/api/v1/runs/:runId/cancel", async (context) => {
+    await parseRequest(context.req.raw, z.object({}).strict(), 128);
+    if (!dependencies.cancelNativeRun)
+      return context.json({ error: "Native task cancellation is unavailable." }, 503);
+    const run = await dependencies.cancelNativeRun(context.req.param("runId"));
+    realtime.publish({ type: "run.updated", channelId: run.channelId, run });
+    workspaceRealtime.publish({ type: "run.updated", run });
+    return context.json({ run });
   });
 
   app.get("/api/v1/runs/:runId/frame", (context) => {
@@ -654,6 +671,27 @@ export function createApp(dependencies: AppDependencies) {
       input,
     );
     publishEmployeeProfileChanged(workspaceRealtime, botId, ["skills", "evolution"]);
+    return context.json(result);
+  });
+
+  app.get("/api/v1/bots/:botId/knowledge-proposals", async (context) => {
+    if (!dependencies.knowledge)
+      return context.json({ error: "Knowledge review is unavailable." }, 503);
+    return context.json({
+      proposals: await dependencies.knowledge.list(context.req.param("botId")),
+    });
+  });
+  app.post("/api/v1/bots/:botId/knowledge-proposals/:proposalId/review", async (context) => {
+    if (!dependencies.knowledge)
+      return context.json({ error: "Knowledge review is unavailable." }, 503);
+    const input = await parseRequest(context.req.raw, reviewKnowledgeProposalSchema, 16 * 1024);
+    const botId = context.req.param("botId");
+    const result = await dependencies.knowledge.review(
+      botId,
+      context.req.param("proposalId"),
+      input,
+    );
+    publishEmployeeProfileChanged(workspaceRealtime, botId, ["memory"]);
     return context.json(result);
   });
 

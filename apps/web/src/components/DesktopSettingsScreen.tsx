@@ -341,7 +341,7 @@ export function DesktopSettingsScreen({
                   title="桌面运行时"
                   description={runtime ? `Electron ${runtime.shellVersion}` : "Web"}
                 />
-                <SettingRow title="模型接口" description="OpenAI · Anthropic" />
+                <SettingRow title="模型接口" description="OpenAI · Anthropic · OpenRouter" />
                 <SettingRow
                   title="员工进化"
                   description="员工的持续学习与进化方向受到 Hermes Agent 启发。"

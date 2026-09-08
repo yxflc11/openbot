@@ -79,7 +79,7 @@ export function validateSecurityWorkflow(workflow) {
   const requiredPortableFragments = [
     "name: Portable ($" + "{{ matrix.name }})",
     "runs-on: $" + "{{ matrix.runner }}",
-    "timeout-minutes: 15",
+    "timeout-minutes: 30",
     "fail-fast: false",
     "- name: Linux x64\n            runner: ubuntu-24.04",
     "- name: Windows x64\n            runner: windows-2025",
@@ -99,6 +99,8 @@ export function validateSecurityWorkflow(workflow) {
     "OPENBOT_DESKTOP_MACOS_WORKER_COMPANION=$companion_root/OpenBot Worker Host.app",
     "name: Package the unsigned Desktop development artifact",
     "npm run package --workspace @openbot/desktop",
+    "npm run make:installers --workspace @openbot/desktop",
+    "name: Retain versioned installers and checksums",
     "name: Validate macOS LaunchAgent contract with native plist parser",
     "if: runner.os == 'macOS'",
     "npm run worker-host:macos:check",

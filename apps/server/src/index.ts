@@ -10,13 +10,14 @@ import { AutomationScheduler } from "./automations.js";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import { EmployeePublisherKeyring } from "./employee-publisher-keyring.js";
 import { closeHttpServer } from "./http-shutdown.js";
-import { ModelSettingsService } from "./model-settings.js";
+import { bootstrapModelSettings } from "./model-settings-bootstrap.js";
 import { NativeAgentRunner } from "./native-agent.js";
 import { NodeIdentityService } from "./node-identity.js";
 import { NodeRegistry } from "./node-registry.js";
 import { OwnerAuthService } from "./owner-auth.js";
 import { PostgresAgentStore } from "./postgres-agent-store.js";
 import { PostgresAutomationStore } from "./postgres-automation-store.js";
+import { PostgresKnowledgeStore } from "./postgres-knowledge-store.js";
 import { PostgresNodeIdentityStore } from "./postgres-node-identity-store.js";
 import { PostgresRequestThrottleStore } from "./postgres-request-throttle-store.js";
 import { PostgresOwnerSessionStore } from "./postgres-session-store.js";
@@ -28,6 +29,8 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 const env = serverEnvSchema.parse(process.env);
 const logger = createLogger({ level: env.OPENBOT_LOG_LEVEL });
+// Validate retained key material before database migration or Run recovery changes durable state.
+const modelSettings = await bootstrapModelSettings(env);
 const HTTP_SHUTDOWN_GRACE_MS = 10_000;
 const database = createDatabase(env.OPENBOT_DATABASE_URL);
 await database.migrate();
@@ -68,16 +71,24 @@ const dispatcher = new RunDispatcher(
 );
 await dispatcher.start();
 // Existing credentials do not enable inference: the Owner must explicitly opt in in Settings.
-const modelSettings =
-  env.OPENBOT_MODEL_SETTINGS_PATH && env.OPENBOT_MODEL_ENCRYPTION_KEY
-    ? new ModelSettingsService(env.OPENBOT_MODEL_SETTINGS_PATH, env.OPENBOT_MODEL_ENCRYPTION_KEY)
-    : undefined;
+const nativeStore = new PostgresAgentStore(database.db);
 const nativeAgent = modelSettings
-  ? new NativeAgentRunner(new PostgresAgentStore(database.db), modelSettings, realtime, () =>
-      logger.error(
-        "agent.poll_failed",
-        "Native Agent polling failed; Run state remains in PostgreSQL.",
-      ),
+  ? new NativeAgentRunner(
+      nativeStore,
+      modelSettings,
+      realtime,
+      () =>
+        logger.error(
+          "agent.poll_failed",
+          "Native Agent polling failed; Run state remains in PostgreSQL.",
+        ),
+      undefined,
+      {
+        artifacts: artifactStorage,
+        onUpdated: (run) => workspaceRealtime.publish({ type: "run.updated", run }),
+        onCompleted: (run, artifacts) =>
+          workspaceRealtime.publish({ type: "run.updated", run, artifacts }),
+      },
     )
   : undefined;
 const requestThrottle = new RequestThrottle(new PostgresRequestThrottleStore(database.db));
@@ -110,6 +121,12 @@ const automationScheduler = new AutomationScheduler(
     ),
 );
 const app = createApp({
+  knowledge: new PostgresKnowledgeStore(database.db),
+  cancelNativeRun: async (runId) => {
+    const run = await nativeStore.cancel(runId);
+    nativeAgent?.cancel(runId);
+    return run;
+  },
   automations,
   ...(modelSettings ? { modelSettings } : {}),
   allowedOrigins: env.OPENBOT_ALLOWED_ORIGINS,

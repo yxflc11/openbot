@@ -396,6 +396,8 @@ export function App() {
           />
         ) : null}
       </>
+    ) : showSettings && !desktopBridge ? (
+      <ModelSettingsScreen onDone={() => setShowSettings(false)} />
     ) : null;
 
   if (
@@ -450,7 +452,7 @@ export function App() {
           key={`${session.owner.id}:${desktopConnection?.status === "configured" ? desktopConnection.serverUrl : "web"}`}
           active={!showSettings}
           ownerName={session.owner.name}
-          onSettings={desktopBridge ? () => setShowSettings(true) : undefined}
+          onSettings={() => setShowSettings(true)}
           onLogout={async () => {
             await logout();
             setSession({ authenticated: false });
@@ -1020,6 +1022,10 @@ export function AuthenticatedWorkspace({
           liveFrame={framesByRun.get(selectedRun.id)}
           run={selectedRun}
           onClose={closeInspector}
+          onRun={(run) => {
+            projectRun(run);
+            setSelectedRunId(run.id);
+          }}
         />
       ) : null}
 

@@ -633,6 +633,7 @@ const employeeMemoryFields = {
   content: z.string().trim().min(1).max(8000),
   sensitivity: employeeMemorySensitivitySchema,
   portability: employeeMemoryPortabilityInputSchema,
+  modelUseEnabled: z.boolean().optional(),
 };
 
 function requireSecretReferencePolicy(
@@ -643,6 +644,19 @@ function requireSecretReferencePolicy(
   },
   context: z.RefinementCtx,
 ): void {
+  if (
+    "modelUseEnabled" in value &&
+    value.modelUseEnabled === true &&
+    (value.kind === "secret-reference" ||
+      value.sensitivity === "confidential" ||
+      value.sensitivity === "restricted")
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["modelUseEnabled"],
+      message: "Only public or internal non-secret memory can be shared with the model.",
+    });
+  }
   if (value.kind !== "secret-reference") return;
   if (value.sensitivity !== undefined && value.sensitivity !== "restricted") {
     context.addIssue({
@@ -673,6 +687,7 @@ export const updateEmployeeMemoryInputSchema = z
     content: employeeMemoryFields.content.optional(),
     sensitivity: employeeMemoryFields.sensitivity.optional(),
     portability: employeeMemoryFields.portability.optional(),
+    modelUseEnabled: employeeMemoryFields.modelUseEnabled,
   })
   .strict()
   .refine(
@@ -681,7 +696,8 @@ export const updateEmployeeMemoryInputSchema = z
       value.title !== undefined ||
       value.content !== undefined ||
       value.sensitivity !== undefined ||
-      value.portability !== undefined,
+      value.portability !== undefined ||
+      value.modelUseEnabled !== undefined,
     { message: "At least one memory field must change." },
   )
   .superRefine(requireSecretReferencePolicy);

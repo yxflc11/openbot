@@ -40,14 +40,21 @@ Windows、Linux 首次启动提供远程客户端流程。
 
 ### 下载开发包
 
+**下载入口：[Desktop 下载与安装](docs/DESKTOP_INSTALLATION.zh-CN.md)** — 包含各平台文件名、
+安装步骤、命令安装入口、首次模型配置与升级/数据说明。macOS arm64 的 DMG、Windows x64 的
+当前用户 EXE、Linux x64 的 AppImage/DEB 已有原生 CI 构建路径。公开安装包将在
+[Desktop Releases](https://github.com/yxflc11/openbot/releases) 提供；只有 `desktop-v...`
+Release 实际含有附件时才算已发布。成功 CI 中的安装器产物保留 14 天。
+
 在 [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) 中打开目标提交对应的
 成功运行，下载 `openbot-desktop-<platform>-<arch>-<commit>.tar.gz` 产物。
 需要登录 GitHub；产物保留七天。使用 `tar -xzf <archive>` 解压以保留可执行权限和符号链接，
 然后打开目录中的 macOS `OpenBot.app`、Windows `openbot.exe` 或 Linux `openbot`。
 仍须遵守操作系统对未签名应用的要求。
 
-每个平台仅在本平台包检查通过后上传。这些是应用目录，不是 DMG/MSI/deb 安装器，也没有自动更新
-通道。旧的 `v0.1.0-alpha.1` GitHub Release 仍是仅含源码的基础快照。
+每个平台仅在本平台包检查通过后上传。上面的 tar 归档是应用目录；单独的
+`openbot-installers-...` 产物包含安装器与校验值。目前没有自动更新通道。
+旧的 `v0.1.0-alpha.1` GitHub Release 仍是仅含源码的基础快照。
 
 ### 从源码构建
 
@@ -75,9 +82,9 @@ Windows、Linux 提供连接流程。远程连接需输入可信的 HTTPS Server
 | --- | --- | --- |
 | Desktop 与 Web | 频道、Bot、审批、任务检查器、统一前进/后退导航、原生菜单、对话草稿与滚动恢复、技能库、持久化界面偏好 | 通知、本地化完善和更多无障碍/设备验证 |
 | macOS 本地服务 | 应用自有 PostgreSQL 与 Server、加密初始化身份、保留数据重启、显式切换远程客户端 | 跨平台服务引导、经认证的远程共享、备份、升级与登录服务恢复 |
-| 模型 / 原生 Agent | Owner 明确启用、加密 OpenAI/Anthropic 配置、有界模型/工具/观察循环、当前频道读取和持久化 Bot 回复 | 真实模型验证、更多受控工具和外部 Agent 适配器 |
+| 模型 / 原生 Agent | Owner 明确启用、加密 OpenAI/Anthropic/OpenRouter 配置、有界模型/工具/观察循环、频道/明确网页读取、可下载 Markdown 报告、持久化回复、停止/重提与模型用量 | 真实模型验证、更多受控工具和外部 Agent 适配器 |
 | 自动任务 | PostgreSQL 定时记录、暂停/恢复/删除、有界间隔、停机后最多补交一次到期任务、复用授权路由 | 多 Server 协调和更多调度语义 |
-| 员工档案 | 职责/简介编辑、带日期进化档案、技能审核、Owner 管理的类型化记忆、绑定审核的导出/导入与实验性 DSSE 签名 | 自主学习、可执行技能、选择性复制和公开信任分发 |
+| 员工档案 | 职责/简介编辑、带日期进化档案、技能审核、Owner 管理的类型化记忆、任务经验审阅与明确模型使用开关、绑定审核的导出/导入与实验性 DSSE 签名 | 自主学习、可执行技能、选择性复制和公开信任分发 |
 | Worker 协议 | 出站连接、一次性配对、吊销、带版本能力路由、进度、画面和产物 | 持有证明身份、完整服务/设备一致性与签名分发 |
 | 电脑执行 | 只读 Docker/browser URL 截图流程 | 安全交互、原生桌面 Provider、签名单次 lease 和独占接管 |
 
@@ -88,6 +95,8 @@ OpenBot 尚未提供 Hermes/Pi/OpenClaw 运行时适配器、插件安装生命�
 员工进化和学习方向明确受到
 [Hermes Agent 学习图谱](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)
 启发。OpenBot 自行负责证据、审核和迁移模型，不声称原创了这一概念。
+
+[本次交付证据与尚未实现的能力](docs/DELIVERY_STATUS.zh-CN.md)。
 
 ## 开发与独立部署
 

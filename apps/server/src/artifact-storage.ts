@@ -15,10 +15,19 @@ export interface PersistedArtifact {
 }
 
 export interface ArtifactStorage {
-  persist(runId: string, inputs: CompletedArtifact[]): Promise<PersistedArtifact[]>;
+  persist(runId: string, inputs: ArtifactInput[]): Promise<PersistedArtifact[]>;
   read(storageKey: string): Promise<Buffer>;
   remove(storageKeys: string[]): Promise<void>;
 }
+
+/** Native text outputs are Server-owned; this does not expand the Worker PNG wire protocol. */
+export interface NativeReportArtifact {
+  name: string;
+  mediaType: "text/markdown";
+  text: string;
+  metadata?: Record<string, unknown> | undefined;
+}
+export type ArtifactInput = CompletedArtifact | NativeReportArtifact;
 
 export class FileArtifactStorage implements ArtifactStorage {
   readonly #root: string;
@@ -27,13 +36,15 @@ export class FileArtifactStorage implements ArtifactStorage {
     this.#root = resolve(root);
   }
 
-  async persist(runId: string, inputs: CompletedArtifact[]): Promise<PersistedArtifact[]> {
+  async persist(runId: string, inputs: ArtifactInput[]): Promise<PersistedArtifact[]> {
     const persisted: PersistedArtifact[] = [];
     try {
       for (const input of inputs) {
-        const bytes = decodePng(input.base64);
+        const bytes =
+          input.mediaType === "image/png" ? decodePng(input.base64) : decodeReport(input);
         const id = randomUUID();
-        const storageKey = `runs/${runId}/${id}.png`;
+        const extension = input.mediaType === "image/png" ? "png" : "md";
+        const storageKey = `runs/${runId}/${id}.${extension}`;
         const destination = this.#pathFor(storageKey);
         await mkdir(dirname(destination), { recursive: true });
         // The maintained npm primitive fsyncs, renames, and removes its temporary file on failure.
@@ -76,13 +87,27 @@ export class FileArtifactStorage implements ArtifactStorage {
   }
 
   #pathFor(storageKey: string): string {
-    if (!/^runs\/[0-9a-f-]+\/[0-9a-f-]+\.png$/i.test(storageKey)) {
+    if (!/^runs\/[0-9a-f-]+\/[0-9a-f-]+\.(?:png|md)$/i.test(storageKey)) {
       throw new Error("Invalid artifact storage key.");
     }
     const path = resolve(this.#root, storageKey);
     if (!path.startsWith(`${this.#root}${sep}`)) throw new Error("Artifact path escaped its root.");
     return path;
   }
+}
+
+export function decodeReport(input: NativeReportArtifact): Buffer {
+  if (
+    input.mediaType !== "text/markdown" ||
+    !/^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,100}\.md$/u.test(input.name) ||
+    !input.text.trim() ||
+    input.text.includes("\0")
+  ) {
+    throw new Error("Invalid Markdown report.");
+  }
+  const bytes = Buffer.from(input.text, "utf8");
+  if (bytes.byteLength > 32 * 1024) throw new Error("Report exceeds the 32 KiB limit.");
+  return bytes;
 }
 
 function decodePng(base64: string): Buffer {

@@ -12,6 +12,27 @@ afterEach(async () => {
 });
 
 describe("file artifact storage", () => {
+  it("stores bounded UTF-8 Markdown under generated ids and rejects paths, empty text and excess bytes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openbot-reports-"));
+    temporaryRoots.push(root);
+    const storage = new FileArtifactStorage(root);
+    const runId = "00000000-0000-4000-8000-000000000001";
+    const [record] = await storage.persist(runId, [
+      { name: "研究报告.md", mediaType: "text/markdown", text: "# 研究\n\nA useful finding." },
+    ]);
+    expect(record?.storageKey).toMatch(/\.md$/u);
+    expect(record?.storageKey).not.toContain("研究报告");
+    expect((await storage.read(record?.storageKey ?? "")).toString("utf8")).toContain("# 研究");
+    for (const invalid of [
+      { name: "../report.md", text: "data" },
+      { name: "report.md", text: "" },
+      { name: "report.md", text: "中".repeat(12_000) },
+      { name: "report.md", text: "bad\u0000content" },
+    ])
+      await expect(
+        storage.persist(runId, [{ ...invalid, mediaType: "text/markdown" }]),
+      ).rejects.toThrow();
+  });
   it("writes an immutable PNG under the configured root and can remove it", async () => {
     const root = await mkdtemp(join(tmpdir(), "openbot-artifacts-"));
     temporaryRoots.push(root);
