@@ -53,3 +53,37 @@
   JSON adapter without failure bypasses. Run `npm run check` and replay actual full-history output.
 - GitHub-hosted CI provides the final Linux runner evidence; local Docker on macOS only proves
   the pinned scanner and adapter behavior on that environment.
+
+## Desktop UI PR historical fixtures (2026-09-09)
+
+PR #23, CI run `34344341115`, security job `102442260610` passed the production dependency audit
+with zero vulnerabilities, then failed the exact-finding adapter. Replayed the same digest-pinned
+TruffleHog image with verification disabled, no update, read-only temporary Git checkout and
+`--network none`. The completed scan returned 183 with three URI findings: the previously reviewed
+fixture and two additional synthetic negative-test URLs. Candidate values were not printed.
+
+Reviewed the exact pinned [URI detector source](https://raw.githubusercontent.com/trufflesecurity/trufflehog/20652fbbdefffcdaa493a5bf57ab2ac6b1db715b/pkg/detectors/uri/uri.go)
+and the existing candidate comparison above. Search terms: `trufflesecurity/trufflehog false
+positive git history URI credentials allowlist`. Retain the same released detector and thin JSON
+adapter: modifying only today's tests cannot remove immutable published history, while path or
+URI-detector exclusions would conceal unrelated findings. No dependency update or scanner bypass
+is needed.
+
+| Commit | File and line | SHA-256 of Raw | SHA-256 of RawV2 | Review |
+| --- | --- | --- | --- | --- |
+| `c095669dbb4e241d2999867e3778b1b4408a83fa` | `apps/desktop/src/desktop-support-links.test.ts:29` | `5cb295befc1b5d1ef305b1741773eb77b2488034068900f6303cff28085306e9` | `867b18066ef99681db5cac0d82c24537671436661eb4e73669beaaece989885c` | Fixed support-link rejection test; fake userinfo, mocked OS opener never called |
+| `e8fa933dbd94751ee01974bb16e53158760f1c26` | `apps/server/src/native-web-tools.test.ts:99` | `10a105928f8eee716169d4b157b0976a7ac565f1262cfb11c2aee2d4f711a07d` | `41a0b7336302d4c7c07f4f5620b3f87a03d8ef3c2e08a925d7eb91f3e54de986` | Provider endpoint rejection test; fake userinfo, mocked fetcher never called |
+
+Both findings use detector 17 / URI, `Verified: false`; unlike the original fixture, their RawV2
+fields include a path, so each raw field needs its own exact digest. Extend the immutable tuple
+list only by these two reviewed entries. Rewrite current negative fixtures using URL username and
+password setters so later test edits do not introduce fresh literal credential-pattern findings.
+The exercised rejection behavior remains identical. Test mutations of every tuple field, mixed
+unreviewed findings and scanner errors, then replay the actual complete result file. No scanner
+source is copied or substantially adapted; all existing security gates remain enabled.
+
+Validation completed: 13 credential/workflow contract tests, 20 Desktop support-link tests and
+31 native-web-tools tests passed. The complete offline scanner was replayed against a disposable
+Git clone containing the candidate fix as a temporary commit; it returned only the same three
+historical findings, and the adapter passed with `3 exact historical fixture(s)`. The disposable
+commit was never pushed. Hosted CI on the final combined commit remains the release gate.

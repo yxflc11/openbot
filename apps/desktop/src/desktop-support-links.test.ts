@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { openDesktopSupportLink } from "./desktop-support-links.js";
 import { DESKTOP_ENTRY_URL } from "./local-content.js";
 
+function credentialBearingTestUrl() {
+  const url = new URL("https://github.com/yxflc11/openbot/issues/new");
+  url.username = "user";
+  url.password = "password";
+  return url.href;
+}
+
 function source() {
   return {
     mainFrame: { url: DESKTOP_ENTRY_URL },
@@ -26,7 +33,7 @@ describe("fixed Desktop support destinations", () => {
     "https://github.com/yxflc11/openbot#other",
     "https://github.com/yxflc11/openbot/issues/new?body=private",
     "https://github.com/yxflc11/openbot/issues/new#private",
-    "https://user:password@github.com/yxflc11/openbot/issues/new",
+    credentialBearingTestUrl(),
     "https://github.com:443/yxflc11/openbot/issues/new",
     "https://github.com.evil.example/yxflc11/openbot/issues/new",
     "https://github.com/yxflc11/openbot/issues/%6eew",

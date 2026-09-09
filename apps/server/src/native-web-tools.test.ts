@@ -27,6 +27,13 @@ const tavily = (content = "Public source evidence") =>
 
 afterEach(() => vi.restoreAllMocks());
 
+function credentialBearingTestUrl() {
+  const url = new URL("https://api.moonshot.cn/v1");
+  url.username = "user";
+  url.password = "password";
+  return url.href;
+}
+
 describe("native public search transport", () => {
   it.each(["https://api.moonshot.cn/v1", "https://api.moonshot.ai/v1"])(
     "binds selected Kimi credentials to the exact %s Formula endpoint",
@@ -96,7 +103,7 @@ describe("native public search transport", () => {
       { baseUrl: "https://api.moonshot.cn.evil.example/v1" },
       { baseUrl: "https://api.moonshot.cn/v1/other" },
       { baseUrl: "http://api.moonshot.cn/v1" },
-      { baseUrl: "https://user:password@api.moonshot.cn/v1" },
+      { baseUrl: credentialBearingTestUrl() },
     ])
       expect(createNativeWebSearch({ ...config, ...change }, { fetcher })).toBeUndefined();
     expect(fetcher).not.toHaveBeenCalled();
