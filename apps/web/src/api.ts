@@ -348,6 +348,14 @@ export async function createBot(input: CreateBotInput): Promise<Bot> {
   return result.bot;
 }
 
+export async function openBotConversation(botId: string): Promise<Channel> {
+  const result = await request<{ channel: Channel }>(
+    `/api/v1/bots/${encodeURIComponent(botId)}/conversation`,
+    { method: "POST" },
+  );
+  return result.channel;
+}
+
 export async function createChannel(input: CreateChannelInput): Promise<Channel> {
   const result = await request<{ channel: Channel }>("/api/v1/channels", {
     method: "POST",

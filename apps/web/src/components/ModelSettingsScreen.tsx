@@ -1,8 +1,8 @@
 import {
   type ModelProviderId,
-  modelProviderPresets,
-  modelProviderPreset,
   modelProviderBaseUrl,
+  modelProviderPreset,
+  modelProviderPresets,
 } from "@openbot/domain";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -102,7 +102,7 @@ export function ModelSettingsScreen({
             <fieldset className="model-provider-options" disabled={busy || !snapshot}>
               <legend>模型服务</legend>
               {modelProviderPresets.map((item) => (
-                <label key={item.id}>
+                <label key={item.id} className="model-provider-card">
                   <input
                     type="radio"
                     name="model-provider"
@@ -123,72 +123,86 @@ export function ModelSettingsScreen({
                 </label>
               ))}
             </fieldset>
-            <label htmlFor="model-region">API 地址与区域</label>
-            <select
-              id="model-region"
-              value={baseUrl}
-              disabled={busy || !snapshot}
-              onChange={(event) => {
-                setBaseUrl(event.target.value);
-                setApiKey("");
-                setModels(undefined);
-                setSaved(false);
-                setError(undefined);
-              }}
-            >
-              {preset.endpoints.map((endpoint) => (
-                <option key={endpoint.baseUrl} value={endpoint.baseUrl}>
-                  {regionLabel(endpoint.name)}
-                </option>
-              ))}
-            </select>
-            <p className="connection-hint">{baseUrl}</p>
-            <label htmlFor="model-name">模型名称</label>
-            <input
-              id="model-name"
-              list="model-suggestions"
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              maxLength={128}
-              autoCapitalize="none"
-              spellCheck={false}
-              placeholder={
-                provider === "openrouter"
-                  ? "填写 author/model 格式的模型 ID"
-                  : "填写账户中可用的模型 ID"
-              }
-              disabled={busy || !snapshot}
-              required
-            />
-            <datalist id="model-suggestions">
-              {(models ?? preset.suggestedModels).map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
-            <p className="connection-hint">
-              可选择常用模型或手填模型 ID，实际可用性以你的账户为准。
-              {provider === "ark" ? "火山方舟支持填写已开通的推理接入点 ID。" : ""}
-            </p>
-            <label htmlFor="model-api-key">
-              API Key{snapshot?.status === "configured" ? "（重新输入以更新）" : ""}
-            </label>
-            <input
-              id="model-api-key"
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              autoComplete="off"
-              autoCapitalize="none"
-              spellCheck={false}
-              minLength={16}
-              maxLength={512}
-              placeholder="粘贴 API Key"
-              disabled={busy || !snapshot}
-              required
-            />
-            <p className="connection-hint">
-              密钥加密保存在你的服务电脑上，切换厂商或区域后需要重新输入。
-            </p>
+            <div className="model-config-group">
+              <div className="model-config-row">
+                <label htmlFor="model-region">API 地址与区域</label>
+                <div className="model-config-control">
+                  <select
+                    id="model-region"
+                    value={baseUrl}
+                    disabled={busy || !snapshot}
+                    onChange={(event) => {
+                      setBaseUrl(event.target.value);
+                      setApiKey("");
+                      setModels(undefined);
+                      setSaved(false);
+                      setError(undefined);
+                    }}
+                  >
+                    {preset.endpoints.map((endpoint) => (
+                      <option key={endpoint.baseUrl} value={endpoint.baseUrl}>
+                        {regionLabel(endpoint.name)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="connection-hint">{baseUrl}</p>
+                </div>
+              </div>
+              <div className="model-config-row">
+                <label htmlFor="model-name">模型名称</label>
+                <div className="model-config-control">
+                  <input
+                    id="model-name"
+                    list="model-suggestions"
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    maxLength={128}
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder={
+                      provider === "openrouter"
+                        ? "填写 author/model 格式的模型 ID"
+                        : "填写账户中可用的模型 ID"
+                    }
+                    disabled={busy || !snapshot}
+                    required
+                  />
+                  <datalist id="model-suggestions">
+                    {(models ?? preset.suggestedModels).map((id) => (
+                      <option key={id} value={id} />
+                    ))}
+                  </datalist>
+                  <p className="connection-hint">
+                    可选择常用模型或手填模型 ID，实际可用性以你的账户为准。
+                    {provider === "ark" ? "火山方舟支持填写已开通的推理接入点 ID。" : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="model-config-row">
+                <label htmlFor="model-api-key">
+                  API Key{snapshot?.status === "configured" ? "（重新输入以更新）" : ""}
+                </label>
+                <div className="model-config-control">
+                  <input
+                    id="model-api-key"
+                    type="password"
+                    value={apiKey}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    minLength={16}
+                    maxLength={512}
+                    placeholder="粘贴 API Key"
+                    disabled={busy || !snapshot}
+                    required
+                  />
+                  <p className="connection-hint">
+                    密钥加密保存在你的服务电脑上，切换厂商或区域后需要重新输入。
+                  </p>
+                </div>
+              </div>
+            </div>
             {preset.discovery ? (
               <button
                 className="secondary-button"
@@ -232,22 +246,30 @@ export function ModelSettingsScreen({
                 会将任务交给其模型提供商。请选择支持工具调用的具体模型；验证只检查密钥和模型元数据，不生成付费回复。当前关闭自动回退，并要求路由满足工具参数和数据收集限制。
               </p>
             ) : null}
-            <label className="model-agent-option">
-              <input
-                type="checkbox"
-                checked={agentEnabled}
-                onChange={(event) => setAgentEnabled(event.target.checked)}
-                disabled={busy || !snapshot}
-              />
-              启用原生 Agent
-            </label>
-            <p className="connection-hint">
-              启用后，新建的无电脑任务会将任务内容和按需读取的当前频道上下文发送给所选模型， 由 Bot
-              读取有界资料、准备报告或待审经验并回复，可能产生 API 费用。
-            </p>
+            <div className="model-agent-group">
+              <label className="model-agent-option">
+                <span>启用原生 Agent</span>
+                <span className="model-agent-toggle">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-checked={agentEnabled}
+                    aria-label="启用原生 Agent"
+                    checked={agentEnabled}
+                    onChange={(event) => setAgentEnabled(event.target.checked)}
+                    disabled={busy || !snapshot}
+                  />
+                  <span aria-hidden="true" />
+                </span>
+              </label>
+              <p className="connection-hint">
+                启用后，新建的无电脑任务会将任务内容和按需读取的当前频道上下文发送给所选模型， 由
+                Bot 读取有界资料、准备报告或待审经验并回复，可能产生 API 费用。
+              </p>
+            </div>
             <button
               type="submit"
-              className="primary-button"
+              className="primary-button model-save-button"
               disabled={busy || !snapshot || apiKey.length < 16 || !model.trim()}
             >
               {busy ? "正在处理…" : preset.discovery ? "验证并保存" : "保存配置"}

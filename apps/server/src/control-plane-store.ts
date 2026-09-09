@@ -119,6 +119,7 @@ export interface ControlPlaneStore {
     input: DeleteEmployeeMemoryInput,
   ): Promise<EmployeeMemoryDeletionResult>;
   createChannel(input: CreateChannelInput): Promise<Channel>;
+  getOrCreateDirectConversation(botId: string): Promise<Channel>;
   submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult>;
   assignRun(runId: string, nodeId: string): Promise<Run | undefined>;
   startRun(runId: string, nodeId: string): Promise<Run | undefined>;

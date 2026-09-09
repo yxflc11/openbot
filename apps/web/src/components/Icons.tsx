@@ -109,7 +109,7 @@ export function SettingsIcon() {
 export function SendIcon() {
   return (
     <Icon>
-      <path d="m4 11 16-7-7 16-2-7-7-2ZM11 13l9-9" {...strokeProps} />
+      <path d="M12 20V4m-7 7 7-7 7 7" {...strokeProps} />
     </Icon>
   );
 }
@@ -158,6 +158,14 @@ export function ForwardIcon() {
   return (
     <Icon>
       <path d="m10 5 7 7-7 7M17 12H3" {...strokeProps} />
+    </Icon>
+  );
+}
+
+export function ShareIcon() {
+  return (
+    <Icon>
+      <path d="M12 15V3m-4 4 4-4 4 4M8 10H5v11h14V10h-3" {...strokeProps} />
     </Icon>
   );
 }

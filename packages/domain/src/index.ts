@@ -40,6 +40,8 @@ export interface Channel {
   name: string;
   description: string;
   botIds: EntityId[];
+  /** Server-owned fixed participant for a direct conversation. */
+  directBotId?: EntityId;
   createdAt: string;
 }
 

@@ -1775,6 +1775,68 @@ describe("server app", () => {
     });
   });
 
+  it("authenticates direct conversations and retains fixed per-Bot identity", async () => {
+    const store = createTestStore();
+    const bot = await store.createBot({ name: "Ops", role: "Assistant", computerProfile: "none" });
+    const other = await store.createBot({
+      name: "Coder",
+      role: "Assistant",
+      computerProfile: "none",
+    });
+    const app = createTestApp({ store });
+    const path = `/api/v1/bots/${bot.id}/conversation`;
+    expect(
+      (await app.request(path, { method: "POST", headers: { Origin: testOrigin } })).status,
+    ).toBe(401);
+    const cookie = await login(app);
+    const headers = authenticatedHeaders(cookie);
+    expect(
+      (
+        await app.request(path, {
+          method: "POST",
+          headers: { ...headers, Origin: "https://evil.example" },
+        })
+      ).status,
+    ).toBe(403);
+    const first = await app.request(path, { method: "POST", headers });
+    expect(first.status).toBe(200);
+    const { channel } = (await first.json()) as { channel: Channel };
+    expect(channel).toMatchObject({ directBotId: bot.id, botIds: [bot.id] });
+    expect(await (await app.request(path, { method: "POST", headers })).json()).toEqual({
+      channel,
+    });
+    expect(
+      (await app.request("/api/v1/bots/missing/conversation", { method: "POST", headers })).status,
+    ).toBe(404);
+    for (const botId of [bot.id, other.id]) {
+      expect(
+        (
+          await app.request(`/api/v1/channels/${channel.id}/bots`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ botId }),
+          })
+        ).status,
+      ).toBe(422);
+    }
+    const sent = await app.request(`/api/v1/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ content: "Prepare a report" }),
+    });
+    expect(sent.status).toBe(201);
+    expect(await sent.json()).toMatchObject({ run: { botId: bot.id } });
+    expect(
+      (
+        await app.request(`/api/v1/channels/${channel.id}/messages`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ content: "Redirect", botId: other.id }),
+        })
+      ).status,
+    ).toBe(422);
+  });
+
   it("creates a channel with a selected Bot", async () => {
     const store = createTestStore();
     const bot = await store.createBot({
@@ -2859,6 +2921,22 @@ function createTestStore(): ControlPlaneStore {
       channels.push(channel);
       return channel;
     },
+    async getOrCreateDirectConversation(botId: string) {
+      const bot = bots.find((item) => item.id === botId);
+      if (bot === undefined) throw new StoreNotFoundError("Bot not found.");
+      const existing = channels.find((item) => item.directBotId === botId);
+      if (existing !== undefined) return existing;
+      const channel: Channel = {
+        id: id(),
+        name: bot.name,
+        description: "",
+        directBotId: botId,
+        botIds: [botId],
+        createdAt: new Date().toISOString(),
+      };
+      channels.push(channel);
+      return channel;
+    },
     async submitTask(channelId: string, input: CreateMessageInput) {
       const channel = channels.find((item) => item.id === channelId);
       if (channel === undefined) {
@@ -3040,6 +3118,9 @@ function createTestStore(): ControlPlaneStore {
       const channel = channels.find((item) => item.id === channelId);
       if (channel === undefined) {
         throw new Error("Channel not found.");
+      }
+      if (channel.directBotId !== undefined) {
+        throw new StoreValidationError("Direct conversation membership cannot be changed.");
       }
       if (!channel.botIds.includes(botId)) {
         channel.botIds.push(botId);

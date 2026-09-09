@@ -425,6 +425,13 @@ export function createApp(dependencies: AppDependencies) {
     return context.json({ channel }, 201);
   });
 
+  app.post("/api/v1/bots/:botId/conversation", async (context) => {
+    const channel = await dependencies.store.getOrCreateDirectConversation(
+      context.req.param("botId"),
+    );
+    return context.json({ channel });
+  });
+
   app.post("/api/v1/channels/:channelId/bots", async (context) => {
     const input = await parseRequest(context.req.raw, joinChannelBotInputSchema);
     const channel = await dependencies.store.joinBotToChannel(

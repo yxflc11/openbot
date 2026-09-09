@@ -149,7 +149,10 @@ describe("Desktop workspace navigation continuity", () => {
       const messages = rendered.container.querySelector<HTMLElement>(".message-list");
       if (!workspace || !messages) throw new Error("Workspace did not open");
       messages.scrollTop = 84;
-      await interact(() => buttonByText(rendered.container, "账号与设置").click());
+      await interact(() =>
+        rendered.container.querySelector<HTMLElement>(".owner-menu summary")?.click(),
+      );
+      await interact(() => buttonByText(rendered.container, "设置").click());
       expect(workspace.hidden).toBe(true);
       expect(workspace.hasAttribute("inert")).toBe(true);
       expect(rendered.container.querySelector(".app-shell")).toBe(shell);
@@ -185,7 +188,10 @@ describe("Desktop workspace navigation continuity", () => {
       expect(composer(rendered.container).value).toBe("");
       await enterDraft(composer(rendered.container), "设计频道草稿");
 
-      await interact(() => buttonByText(rendered.container, "账号与设置").click());
+      await interact(() =>
+        rendered.container.querySelector<HTMLElement>(".owner-menu summary")?.click(),
+      );
+      await interact(() => buttonByText(rendered.container, "设置").click());
       await interact(() => buttonByLabel(rendered.container, "关闭设置").click());
       expect(title(rendered.container)).toBe(channelB.name);
       expect(composer(rendered.container).value).toBe("设计频道草稿");
@@ -212,47 +218,53 @@ describe("Desktop workspace navigation continuity", () => {
     }
   });
 
-  it.each(["技能广场", "自动任务"])(
-    "enters a newly created channel from %s",
-    async (destination) => {
-      const rendered = await renderComponent(<App />);
-      try {
-        await settleEffects();
-        await interact(() => buttonByText(rendered.container, destination).click());
-        await settleEffects();
-        expect(title(rendered.container)).toBe(destination);
-        await interact(() => buttonByText(rendered.container, "新建对话").click());
-        const dialog = rendered.container.querySelector("dialog");
-        const name = dialog?.querySelector("input");
-        if (!(name instanceof HTMLInputElement)) throw new Error("Create channel dialog missing");
-        await setInputValue(name, "新的频道");
-        const checkbox = dialog?.querySelector<HTMLInputElement>('input[type="checkbox"]');
-        await interact(() => checkbox?.click());
-        await interact(() =>
-          dialog
-            ?.querySelector("form")
-            ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
-        );
-        await settleEffects();
-        expect(api.createChannel).toHaveBeenCalledWith({
-          name: "新的频道",
-          description: "",
-          botIds: [bot.id],
-        });
-        expect(title(rendered.container)).toBe("新的频道");
-        expect(rendered.container.querySelector(".workspace-destination")).toBeNull();
-        expect(rendered.container.querySelector("dialog")).toBeNull();
-        expect(composer(rendered.container).id).toBe("message-created-channel");
-        expect(composer(rendered.container).disabled).toBe(false);
-        expect(document.activeElement).toBe(composer(rendered.container));
-        await interact(() => buttonByLabel(rendered.container, "后退").click());
-        await settleEffects();
-        expect(title(rendered.container)).toBe(destination);
-      } finally {
-        await rendered.unmount();
-      }
-    },
-  );
+  it("returns from the full-page plugin library and creates a channel through the single creation menu", async () => {
+    const rendered = await renderComponent(<App />);
+    try {
+      await settleEffects();
+      await enterDraft(composer(rendered.container), "保留这个草稿");
+      await interact(() => buttonByText(rendered.container, "插件").click());
+      await settleEffects();
+      expect(rendered.container.querySelector(".full-page-destination")).not.toBeNull();
+      await interact(() =>
+        rendered.container
+          .querySelector<HTMLButtonElement>(".plugin-refresh .settings-back")
+          ?.click(),
+      );
+      await settleEffects();
+      expect(composer(rendered.container).value).toBe("保留这个草稿");
+      await interact(() =>
+        rendered.container.querySelector<HTMLElement>(".create-menu summary")?.click(),
+      );
+      await interact(() => buttonByText(rendered.container, "创建频道").click());
+      const dialog = rendered.container.querySelector("dialog");
+      const name = dialog?.querySelector("input");
+      if (!(name instanceof HTMLInputElement)) throw new Error("Create channel dialog missing");
+      await setInputValue(name, "新的频道");
+      const checkbox = dialog?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      await interact(() => checkbox?.click());
+      await interact(() =>
+        dialog
+          ?.querySelector("form")
+          ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
+      );
+      await settleEffects();
+      expect(api.createChannel).toHaveBeenCalledWith({
+        name: "新的频道",
+        description: "",
+        botIds: [bot.id],
+      });
+      expect(title(rendered.container)).toBe("新的频道");
+      expect(rendered.container.querySelector("dialog")).toBeNull();
+      expect(composer(rendered.container).id).toBe("message-created-channel");
+      expect(document.activeElement).toBe(composer(rendered.container));
+      await interact(() => buttonByLabel(rendered.container, "后退").click());
+      await settleEffects();
+      expect(composer(rendered.container).value).toBe("保留这个草稿");
+    } finally {
+      await rendered.unmount();
+    }
+  });
 });
 
 function composer(container: HTMLElement): HTMLTextAreaElement {
@@ -271,7 +283,9 @@ async function enterDraft(input: HTMLTextAreaElement, value: string) {
 }
 
 function title(container: HTMLElement) {
-  return container.querySelector(".workspace-toolbar h1")?.textContent;
+  return container.querySelector(
+    ".workspace-toolbar .channel-heading strong, .workspace-toolbar h1",
+  )?.textContent;
 }
 
 function channelButton(container: HTMLElement, name: string): HTMLButtonElement {

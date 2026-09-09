@@ -38,7 +38,7 @@ macOS arm64 or Linux x64 (example version; it must have been published):
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.sh \
   -o /tmp/openbot-install-desktop.sh
-bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.2
+bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.3
 ```
 
 The macOS bootstrap installs to `~/Applications/OpenBot.app`; it refuses to replace an existing
@@ -50,7 +50,7 @@ Windows x64, from PowerShell:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.ps1 -OutFile "$env:TEMP\openbot-install-desktop.ps1"
-& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.2
+& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.3
 ```
 
 The PowerShell script opens the per-user installer and waits for its result. If your execution
@@ -61,12 +61,19 @@ part of this procedure.
 
 1. On macOS choose **Service computer** to initialize local services, or connect to an existing
    Server. Windows and Linux use the existing-Server path.
-2. Sign in as Owner. In **Account and settings → Model and API**, configure a supported provider,
-   model and key; explicitly opt into the native Agent when ready to send channel text to it.
-3. Create a Bot and channel, then submit a `none`-profile task. A provider metadata check does not
+2. Sign in as Owner. In **Owner → Settings → Model services**, configure the Server's single
+   default provider, model and key; explicitly opt into the native Agent when ready.
+3. Use the **+** beside the OpenBot wordmark to create a Bot or channel. Click a Bot for a direct
+   conversation, or address it with **@** in a channel, then submit a `none`-profile task. A provider metadata check does not
    prove inference: the first completed real task is the live model acceptance step.
 4. Quit and reopen Desktop. Verify the workspace and model summary remain available. Local macOS
    services stop when Desktop quits; unattended schedules require a continuously running Server.
+
+The alpha.3 interface adds full-window vertical Settings and Plugins, direct Bot conversations,
+bounded text attachments and verified-skill requests. Share previews recent messages for explicit
+clipboard copying; it does not publish a hosted link. See onboarding for the exact limits.
+Windows/Linux keep remote-client operation; native installation/runtime validation for this
+revision must be checked in its recorded platform evidence.
 
 See [Desktop onboarding](DESKTOP_ONBOARDING.md), [native Agent](NATIVE_AGENT.md) and
 [Server container](SERVER_CONTAINER.md) for the exact supported boundaries.

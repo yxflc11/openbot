@@ -34,6 +34,8 @@ it("filters authorized channels and Bots, restores selection and keeps actions f
   const select = vi.fn();
   const create = vi.fn();
   const settings = vi.fn();
+  const direct = vi.fn();
+  const profile = vi.fn();
   const view = await renderComponent(
     <Sidebar
       bots={bots}
@@ -42,7 +44,8 @@ it("filters authorized channels and Bots, restores selection and keeps actions f
       ownerName="Owner"
       selectedChannelId="design"
       onSelectChannel={select}
-      onSelectBot={vi.fn()}
+      onSelectBot={direct}
+      onOpenBotProfile={profile}
       onCreateBot={vi.fn()}
       onCreateChannel={create}
       onManageNodes={vi.fn()}
@@ -66,8 +69,34 @@ it("filters authorized channels and Bots, restores selection and keeps actions f
     await interact(() => selected.click());
     expect(select).toHaveBeenCalledWith("design");
     const buttons = [...view.container.querySelectorAll("button")];
-    await interact(() => buttons.find((button) => button.textContent === "新建对话")?.click());
-    await interact(() => buttons.find((button) => button.textContent === "账号与设置")?.click());
+    expect(view.container.querySelector(".brand")?.textContent?.trim()).toBe("OpenBot");
+    expect(view.container.querySelector(".brand svg")).toBeNull();
+    expect(view.container.textContent).not.toContain("新建对话");
+    expect(view.container.querySelectorAll(".sidebar-heading button")).toHaveLength(0);
+    await interact(() =>
+      view.container.querySelector<HTMLElement>(".create-menu summary")?.click(),
+    );
+    await interact(() =>
+      buttons.find((button) => button.textContent?.trim() === "创建频道")?.click(),
+    );
+    expect(view.container.querySelector("details.create-menu")?.hasAttribute("open")).toBe(false);
+    await interact(() => view.container.querySelector<HTMLElement>(".owner-menu summary")?.click());
+    await interact(() => buttons.find((button) => button.textContent?.trim() === "设置")?.click());
+    const botRow = view.container.querySelector<HTMLButtonElement>(".bot-row");
+    await interact(() => botRow?.click());
+    expect(direct).toHaveBeenCalledWith("reviewer");
+    expect(profile).not.toHaveBeenCalled();
+    await interact(() =>
+      botRow?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })),
+    );
+    expect(profile).toHaveBeenCalledWith("reviewer");
+    await interact(() =>
+      botRow?.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "F10", shiftKey: true, bubbles: true }),
+      ),
+    );
+    expect(profile).toHaveBeenCalledTimes(2);
+    expect(direct).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledOnce();
     expect(settings).toHaveBeenCalledOnce();
   } finally {
