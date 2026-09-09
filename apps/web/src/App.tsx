@@ -23,10 +23,12 @@ import {
   joinBotToChannel,
   login,
   logout,
+  openBotConversation,
   type RealtimeConnectionState,
   subscribeToUnauthorized,
   subscribeToWorkspaceEvents,
 } from "./api";
+import { resolveAuthSession } from "./auth-session-recovery";
 import { AutomationsScreen } from "./components/AutomationsScreen";
 import { ChannelMembersMenu } from "./components/ChannelMembersMenu";
 import { ChannelWorkspace } from "./components/ChannelWorkspace";
@@ -41,7 +43,15 @@ import { DesktopSetupScreen } from "./components/DesktopSetupScreen";
 import { EmployeeProfileRail } from "./components/EmployeeProfileRail";
 import { EmployeeProfileView, type ProfileTab } from "./components/EmployeeProfileView";
 import { ExportEmployeeDialog } from "./components/ExportEmployeeDialog";
-import { BackIcon, ForwardIcon, HashIcon, PanelLeftIcon, PanelRightIcon } from "./components/Icons";
+import {
+  BackIcon,
+  ForwardIcon,
+  HashIcon,
+  NodeIcon,
+  PanelLeftIcon,
+  PanelRightIcon,
+  ShareIcon,
+} from "./components/Icons";
 import { ImportEmployeeDialog } from "./components/ImportEmployeeDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { MobileNavigation, type MobilePanel } from "./components/MobileNavigation";
@@ -49,9 +59,9 @@ import { ModelSettingsScreen } from "./components/ModelSettingsScreen";
 import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { OpenBotMark } from "./components/OpenBotMark";
 import { RunInspector } from "./components/RunInspector";
+import { ShareConversationDialog } from "./components/ShareConversationDialog";
 import { Sidebar } from "./components/Sidebar";
 import { SkillLibraryScreen } from "./components/SkillLibraryScreen";
-import { resolveAuthSession } from "./auth-session-recovery";
 import { createConversationSession } from "./conversation-session";
 import {
   type DesktopConnectionState,
@@ -59,6 +69,7 @@ import {
   type DesktopSetupPlanState,
   getOpenBotDesktopBridge,
 } from "./desktop-runtime";
+import { shortcutLabel } from "./desktop-shortcuts";
 import {
   isActiveRun,
   mergeArtifacts,
@@ -87,6 +98,9 @@ export function App() {
   const [modelChecked, setModelChecked] = useState(false);
   const [showModelSetup, setShowModelSetup] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"general" | "about" | "automations">(
+    "general",
+  );
   const [settingsError, setSettingsError] = useState<string>();
   const [showNodeSettings, setShowNodeSettings] = useState(false);
   const [settingsNodes, setSettingsNodes] = useState<WorkspaceSnapshot["nodes"]>([]);
@@ -429,6 +443,7 @@ export function App() {
     showSettings && desktopSetupPlan?.status === "configured" ? (
       <>
         <DesktopSettingsScreen
+          initialSection={settingsSection}
           error={settingsError}
           plan={desktopSetupPlan.plan}
           material={material}
@@ -510,7 +525,10 @@ export function App() {
           key={`${session.owner.id}:${desktopConnection?.status === "configured" ? desktopConnection.serverUrl : "web"}`}
           active={!showSettings}
           ownerName={session.owner.name}
-          onSettings={() => setShowSettings(true)}
+          onSettings={(section = "general") => {
+            setSettingsSection(section);
+            setShowSettings(true);
+          }}
           onLogout={async () => {
             explicitlyLoggedOut.current = true;
             ++authRequest.current;
@@ -537,7 +555,7 @@ export function AuthenticatedWorkspace({
 }: {
   active?: boolean;
   ownerName: string;
-  onSettings?: (() => void) | undefined;
+  onSettings?: ((section?: "general" | "about" | "automations") => void) | undefined;
   onLogout(): Promise<void>;
 }) {
   const { values: preferences } = useWorkspacePreferences();
@@ -565,6 +583,15 @@ export function AuthenticatedWorkspace({
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [sharing, setSharing] = useState(false);
+  const directRequest = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: leaving a view invalidates an in-flight direct-conversation open.
+  useEffect(
+    () => () => {
+      directRequest.current += 1;
+    },
+    [location, active],
+  );
   const [selectedRunId, setSelectedRunId] = useState<string>();
   const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile>();
   const [employeeProfileLoading, setEmployeeProfileLoading] = useState(false);
@@ -846,6 +873,7 @@ export function AuthenticatedWorkspace({
   }
 
   function selectChannel(channelId: string) {
+    directRequest.current += 1;
     navigation.navigate({ kind: "channel", id: channelId });
     setEmployeeExportOpen(false);
     setEmployeeImportOpen(false);
@@ -854,11 +882,32 @@ export function AuthenticatedWorkspace({
   }
 
   function openEmployee(botId: string, initialTab: ProfileTab = "overview") {
+    directRequest.current += 1;
     navigation.navigate({ kind: "employee", id: botId, tab: initialTab });
     setEmployeeExportOpen(false);
     setEmployeeImportOpen(false);
     setSelectedRunId(undefined);
     setMobilePanel(undefined);
+  }
+
+  async function openDirectConversation(botId: string) {
+    const request = ++directRequest.current;
+    try {
+      const channel = await openBotConversation(botId);
+      if (request !== directRequest.current) return;
+      setWorkspace((current) =>
+        current
+          ? {
+              ...current,
+              channels: [...current.channels.filter((item) => item.id !== channel.id), channel],
+            }
+          : current,
+      );
+      selectChannel(channel.id);
+    } catch (cause) {
+      if (request === directRequest.current)
+        setError(cause instanceof Error ? cause.message : "无法打开 Bot 对话，请重试。");
+    }
   }
 
   function assignEmployee(botId: string) {
@@ -886,6 +935,7 @@ export function AuthenticatedWorkspace({
   }
 
   const selectedChannel = workspace.channels.find((channel) => channel.id === selectedChannelId);
+  const fullPage = destination === "skills" || destination === "automations";
   const selectedRun = workspace.runs.find((run) => run.id === selectedRunId);
   const panelToggle = (
     <button
@@ -903,7 +953,7 @@ export function AuthenticatedWorkspace({
 
   return (
     <div
-      className={`app-shell desktop-workspace ${showDetails ? "" : "without-context"} ${preferences.leftPanelOpen ? "" : "without-sidebar"}`}
+      className={`app-shell desktop-workspace ${fullPage ? "full-page-destination" : ""} ${showDetails ? "" : "without-context"} ${preferences.leftPanelOpen ? "" : "without-sidebar"}`}
     >
       <header className="workspace-toolbar">
         <nav className="toolbar-navigation" aria-label="页面与侧栏导航">
@@ -913,7 +963,7 @@ export function AuthenticatedWorkspace({
             aria-label={preferences.leftPanelOpen ? "收起侧栏" : "打开侧栏"}
             aria-expanded={preferences.leftPanelOpen}
             aria-controls="workspace-sidebar"
-            title="切换侧栏 · ⌘B"
+            title={`切换侧栏 · ${shortcutLabel("B")}`}
             onClick={() => updatePreferences({ leftPanelOpen: !preferences.leftPanelOpen })}
           >
             <PanelLeftIcon />
@@ -922,7 +972,7 @@ export function AuthenticatedWorkspace({
             type="button"
             className="icon-button"
             aria-label="后退"
-            title="后退 · ⌘["
+            title={`后退 · ${shortcutLabel("[")}`}
             disabled={!navigation.canGoBack}
             onClick={navigation.back}
           >
@@ -932,7 +982,7 @@ export function AuthenticatedWorkspace({
             type="button"
             className="icon-button"
             aria-label="前进"
-            title="前进 · ⌘]"
+            title={`前进 · ${shortcutLabel("]")}`}
             disabled={!navigation.canGoForward}
             onClick={navigation.forward}
           >
@@ -940,54 +990,80 @@ export function AuthenticatedWorkspace({
           </button>
         </nav>
         <div className="toolbar-context">
-          <div className="toolbar-title">
-            <HashIcon />
-            <h1
-              title={
-                destination === "automations"
-                  ? "自动任务"
-                  : destination === "skills"
-                    ? "技能广场"
-                    : selectedEmployeeId
-                      ? (employeeProfile?.employee.name ?? "Bot 档案")
-                      : (selectedChannel?.name ?? "频道聊天")
-              }
-            >
-              {destination === "automations"
-                ? "自动任务"
-                : destination === "skills"
-                  ? "技能广场"
-                  : selectedEmployeeId
-                    ? (employeeProfile?.employee.name ?? "Bot 档案")
-                    : (selectedChannel?.name ?? "频道聊天")}
-            </h1>
-          </div>
-          {destination === "chat" && selectedChannel && (
+          {selectedChannel ? (
             <ChannelMembersMenu
               key={selectedChannel.id}
               channel={selectedChannel}
               bots={workspace.bots}
               onJoin={handleJoinBot}
               onOpenBot={openEmployee}
+              showTitle
             />
+          ) : (
+            <div className="toolbar-title">
+              <HashIcon />
+              <h1
+                title={
+                  destination === "automations"
+                    ? "自动任务"
+                    : destination === "skills"
+                      ? "技能广场"
+                      : selectedEmployeeId
+                        ? (employeeProfile?.employee.name ?? "Bot 档案")
+                        : "频道聊天"
+                }
+              >
+                {destination === "automations"
+                  ? "自动任务"
+                  : destination === "skills"
+                    ? "技能广场"
+                    : selectedEmployeeId
+                      ? (employeeProfile?.employee.name ?? "Bot 档案")
+                      : "频道聊天"}
+              </h1>
+            </div>
           )}
         </div>
-        <div className="toolbar-layout">{panelToggle}</div>
+        <div className="toolbar-layout">
+          {selectedChannel && (
+            <button className="toolbar-share" type="button" onClick={() => setSharing(true)}>
+              <ShareIcon />
+              <span>分享</span>
+            </button>
+          )}
+          <button
+            className="icon-button"
+            type="button"
+            aria-label="工作电脑"
+            title="工作电脑"
+            onClick={() => setDialog("node")}
+          >
+            <NodeIcon />
+          </button>
+          {panelToggle}
+        </div>
       </header>
       <div id="workspace-sidebar" className="workspace-sidebar" hidden={!preferences.leftPanelOpen}>
         <Sidebar
           onHome={() => navigation.navigate({ kind: "home" })}
           bots={workspace.bots}
-          channels={workspace.channels}
+          channels={workspace.channels.filter((channel) => !channel.directBotId)}
           runs={workspace.runs}
           ownerName={ownerName}
           destination={destination}
-          onAutomations={() => navigation.navigate({ kind: "automations" })}
+          onAutomations={() =>
+            onSettings ? onSettings("automations") : navigation.navigate({ kind: "automations" })
+          }
           onSkills={() => navigation.navigate({ kind: "skills" })}
           selectedChannelId={destination === "chat" ? selectedChannel?.id : undefined}
-          selectedBotId={destination === "chat" ? selectedEmployeeId : undefined}
+          selectedBotId={
+            destination === "chat"
+              ? (selectedEmployeeId ?? selectedChannel?.directBotId)
+              : undefined
+          }
           onSelectChannel={selectChannel}
-          onSelectBot={openEmployee}
+          onSelectBot={(botId) => void openDirectConversation(botId)}
+          onOpenBotProfile={openEmployee}
           onCreateBot={() => setDialog("bot")}
           onCreateChannel={() => setDialog("channel")}
           onManageNodes={() => setDialog("node")}
@@ -1000,6 +1076,9 @@ export function AuthenticatedWorkspace({
         <AutomationsScreen bots={workspace.bots} channels={workspace.channels} />
       ) : destination === "skills" ? (
         <SkillLibraryScreen
+          onBack={navigation.back}
+          onCreateBot={() => setDialog("bot")}
+          onImportBot={() => setEmployeeImportOpen(true)}
           bots={workspace.bots}
           onOpenBot={(botId) => openEmployee(botId, "skills")}
         />
@@ -1078,6 +1157,13 @@ export function AuthenticatedWorkspace({
         onSelectBot={openEmployee}
       />
 
+      {sharing && selectedChannel && (
+        <ShareConversationDialog
+          channel={selectedChannel}
+          bots={workspace.bots}
+          onClose={() => setSharing(false)}
+        />
+      )}
       {selectedRun ? (
         <RunInspector
           artifacts={workspace.artifacts.filter((artifact) => artifact.runId === selectedRun.id)}

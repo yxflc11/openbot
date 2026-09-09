@@ -85,7 +85,7 @@ describe("Desktop settings interactions", () => {
       expect(rendered.container.querySelector('[role="status"]')?.textContent).toContain(
         "已恢复默认",
       );
-      await interact(() => button(rendered.container, "通用与外观").click());
+      await interact(() => button(rendered.container, "常规").click());
       expect(
         (rendered.container.querySelector('[aria-label="半透明侧栏"]') as HTMLInputElement).checked,
       ).toBe(true);
@@ -134,7 +134,7 @@ describe("Desktop settings interactions", () => {
         />,
       );
       try {
-        await interact(() => button(rendered.container, "服务与工作电脑").click());
+        await interact(() => button(rendered.container, "工作电脑").click());
         expect(rendered.container.textContent).toContain("https://server.example.test");
         expect(rendered.container.textContent).toContain("等待你在系统中批准");
         await interact(() => button(rendered.container, "更改用途").click());
@@ -178,7 +178,7 @@ describe("Desktop settings interactions", () => {
     );
     try {
       expect(fetchMock).not.toHaveBeenCalled();
-      await interact(() => button(rendered.container, "模型与 API").click());
+      await interact(() => button(rendered.container, "模型服务").click());
       await interact(() =>
         Array.from(
           rendered.container.querySelectorAll<HTMLInputElement>('input[type="radio"]'),
@@ -218,4 +218,79 @@ describe("Desktop settings interactions", () => {
       await rendered.unmount();
     }
   });
+});
+
+it("opens an initial category and searches settings without changing preferences", async () => {
+  const actions = callbacks();
+  const rendered = await renderComponent(
+    <Settings
+      plan={hostPlan}
+      material={{ status: "enabled" }}
+      initialSection="about"
+      {...actions}
+    />,
+  );
+  try {
+    expect(rendered.container.querySelector("#settings-section-title")?.textContent).toBe(
+      "关于 OpenBot",
+    );
+    const search = rendered.container.querySelector<HTMLInputElement>(
+      '[aria-label="搜索设置"][type="search"]',
+    );
+    if (!search) throw new Error("Settings search is missing");
+    await setInputValue(search, "字号");
+    expect(rendered.container.querySelectorAll('nav[aria-label="设置分类"] button')).toHaveLength(
+      1,
+    );
+    await interact(() => button(rendered.container, "常规").click());
+    expect(rendered.container.querySelector('[aria-label="聊天字号"]')).not.toBeNull();
+    expect(search.value).toBe("");
+    await setInputValue(search, "missing-category");
+    expect(rendered.container.querySelector('[role="status"]')?.textContent).toContain(
+      "没有匹配的设置",
+    );
+    await interact(() => button(rendered.container, "← 返回应用").click());
+    expect(actions.onBack).toHaveBeenCalledOnce();
+    expect(localStorage.getItem(preferences.preferencesKey)).toBeNull();
+  } finally {
+    await rendered.unmount();
+  }
+});
+
+it("retries a failed automation workspace load and keeps its manager inside settings", async () => {
+  let failed = true;
+  const fetchMock = vi.fn(async (url: string) => {
+    if (url === "/api/v1/workspace")
+      return failed
+        ? Response.json({ error: "Unavailable" }, { status: 503 })
+        : Response.json({ bots: [], channels: [] });
+    if (url === "/api/v1/automations") return Response.json({ automations: [] });
+    throw new Error("Unexpected request");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const rendered = await renderComponent(
+    <Settings
+      plan={hostPlan}
+      material={{ status: "enabled" }}
+      initialSection="automations"
+      {...callbacks()}
+    />,
+  );
+  try {
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toContain(
+      "无法读取工作空间",
+    );
+    failed = false;
+    await interact(() => button(rendered.container, "重试").click());
+    expect(rendered.container.querySelector('nav[aria-label="设置分类"]')).not.toBeNull();
+    expect(rendered.container.querySelector('[role="alert"]')).toBeNull();
+    expect(rendered.container.textContent).toContain("先创建 Bot，并将它加入一个频道");
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/workspace",
+      "/api/v1/workspace",
+      "/api/v1/automations",
+    ]);
+  } finally {
+    await rendered.unmount();
+  }
 });

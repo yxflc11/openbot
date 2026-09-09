@@ -42,6 +42,7 @@ services:
       OPENBOT_LOG_LEVEL: ${OPENBOT_LOG_LEVEL:-info}
       OPENBOT_OBJECT_STORE_PATH: /var/lib/openbot/objects
       OPENBOT_MODEL_DIRECTORY: /var/lib/openbot/model
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
     ports:
       - "127.0.0.1:3001:3001"
     volumes:

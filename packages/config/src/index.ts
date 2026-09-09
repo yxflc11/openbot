@@ -87,6 +87,16 @@ export const serverEnvSchema = z
       .regex(/^[a-f0-9]{64}$/u)
       .optional(),
     OPENBOT_LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+    TAVILY_API_KEY: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(512)
+        .regex(/^[\x21-\x7e]+$/u)
+        .optional(),
+    ),
     OPENBOT_TRUSTED_PROXY_ADDRESS: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z

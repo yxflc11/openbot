@@ -12,6 +12,7 @@ import {
   type Session,
   safeStorage,
   session,
+  shell,
   utilityProcess,
   type WebContents,
 } from "electron";
@@ -22,6 +23,7 @@ import {
   isDesktopSessionAuthenticated,
   issueDesktopNodeEnrollmentToken,
 } from "./desktop-server-actions.js";
+import { openDesktopSupportLink } from "./desktop-support-links.js";
 import { isTrustedDesktopIpcSender } from "./ipc-security.js";
 import {
   DESKTOP_ENTRY_URL,
@@ -31,9 +33,10 @@ import {
 } from "./local-content.js";
 import { DesktopLocalWorkerController } from "./local-worker-controller.js";
 import { MacOSWorkerCompanion } from "./macos-worker-companion.js";
-import { desktopProfileCompatibility } from "./profile-compatibility.js";
 import { NativeServerController } from "./native-server.js";
 import { DesktopNavigationMenuController } from "./navigation-menu.js";
+import { desktopProfileCompatibility } from "./profile-compatibility.js";
+import { DesktopReportSaver } from "./report-save.js";
 import {
   DESKTOP_CONFIGURE_SERVER_CHANNEL,
   DESKTOP_CONNECTION_STATE_CHANNEL,
@@ -57,7 +60,6 @@ import { DesktopEventStreamLifecycle } from "./server-proxy.js";
 import { FileDesktopSetupPlanStore } from "./setup-plan.js";
 import { DesktopSetupPlanController } from "./setup-plan-controller.js";
 import { SidebarMaterialController } from "./sidebar-material.js";
-import { DesktopReportSaver } from "./report-save.js";
 
 let nativeServer: NativeServerController | undefined;
 let quitting = false;
@@ -110,9 +112,25 @@ function lockDownSession(desktopSession: Session): void {
 }
 
 function lockDownWebContents(contents: WebContents): void {
-  contents.setWindowOpenHandler(() => DESKTOP_WINDOW_OPEN_DECISION);
+  const openSupportLink = (url: string) => {
+    const expected = mainWindow?.isDestroyed() === false ? mainWindow.webContents : undefined;
+    void openDesktopSupportLink(url, contents, expected, (destination) =>
+      shell.openExternal(destination),
+    ).catch(() => {
+      if (!quitting && mainWindow?.isDestroyed() === false) {
+        dialog.showErrorBox("无法打开支持页面", "系统浏览器未能打开页面，请稍后重试。");
+      }
+    });
+  };
+  contents.setWindowOpenHandler(({ url }) => {
+    openSupportLink(url);
+    return DESKTOP_WINDOW_OPEN_DECISION;
+  });
   contents.on("will-attach-webview", (event) => event.preventDefault());
-  contents.on("will-navigate", (event) => event.preventDefault());
+  contents.on("will-navigate", (event) => {
+    event.preventDefault();
+    openSupportLink(event.url);
+  });
   contents.on("will-redirect", (event) => event.preventDefault());
 }
 

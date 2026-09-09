@@ -31,7 +31,7 @@ macOS arm64 或 Linux x64（示例版本必须已发布）：
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.sh \
   -o /tmp/openbot-install-desktop.sh
-bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.2
+bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.3
 ```
 
 macOS 安装到 `~/Applications/OpenBot.app`，拒绝覆盖已有应用；需要升级时使用 DMG 审查操作。
@@ -42,7 +42,7 @@ Windows x64，在 PowerShell 中执行：
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.ps1 -OutFile "$env:TEMP\openbot-install-desktop.ps1"
-& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.2
+& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.3
 ```
 
 PowerShell 脚本打开当前用户安装器并等待结果。如果系统执行策略禁止脚本，直接下载并打开 EXE；
@@ -51,12 +51,17 @@ PowerShell 脚本打开当前用户安装器并等待结果。如果系统执行
 ## 第一次实际使用
 
 1. macOS 选择“作为服务电脑”初始化本地服务，或连接已有 Server。Windows/Linux 使用连接流程。
-2. 以 Owner 登录，在“账号与设置 → 模型与 API”配置支持的提供方、模型与密钥；准备好将频道文字
-   发给模型后，再明确启用原生 Agent。
-3. 创建 Bot 与频道，提交 `none` 配置任务。模型元数据检查不能证明推理可用；第一次真实任务成功
+2. 以 Owner 登录，在“Owner → 设置 → 模型服务”配置 Server 唯一默认提供方、模型与密钥，
+   准备好后明确启用原生 Agent。
+3. 使用 OpenBot 文字右侧的 **+** 创建 Bot 或频道。点击 Bot 单独对话，或在频道中 **@** 它，
+   然后提交 `none` 配置任务。模型元数据检查不能证明推理可用；第一次真实任务成功
    才是实际模型验收。
 4. 退出后重新打开 Desktop，确认工作区与模型摘要仍存在。退出 Desktop 会停止 macOS 本地服务；
    无人值守定时任务需要持续运行的 Server。
+
+alpha.3 界面增加全窗口竖向设置与插件、Bot 单独对话、有界文本附件和已审核技能使用请求。
+分享功能预览近期消息，由用户明确复制到剪贴板，不发布托管链接；准确限制见引导说明。
+Windows/Linux 保持远程客户端用途，本次修订的原生安装/运行验证需查看对应平台证据。
 
 完整能力边界见 [Desktop 引导](DESKTOP_ONBOARDING.zh-CN.md)、[原生 Agent](NATIVE_AGENT.zh-CN.md)
 和 [Server 容器](SERVER_CONTAINER.zh-CN.md)。

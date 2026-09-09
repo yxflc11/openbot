@@ -23,10 +23,12 @@ export const channels = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
+    directBotId: text("direct_bot_id").references(() => bots.id, { onDelete: "restrict" }),
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("channels_name_idx").on(table.name),
+    uniqueIndex("channels_name_idx").on(table.name).where(sql`${table.directBotId} is null`),
+    uniqueIndex("channels_direct_bot_idx").on(table.directBotId),
     check("channels_name_not_blank", sql`length(btrim(${table.name})) > 0`),
   ],
 );

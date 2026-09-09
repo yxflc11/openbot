@@ -322,3 +322,147 @@ describe("ChannelWorkspace continuity", () => {
     await rendered.unmount();
   });
 });
+
+describe("ChannelWorkspace recipient and attachment interactions", () => {
+  const secondBot: Bot = { ...bot, id: "bot-b", name: "Coder" };
+  const outsider: Bot = { ...bot, id: "outsider", name: "Outside" };
+  function multi(session = createConversationSession()) {
+    return (
+      <ChannelWorkspace
+        globalHeader
+        channel={{ ...channel("a"), botIds: [bot.id, secondBot.id] }}
+        session={session}
+        bots={[bot, secondBot, outsider]}
+        artifacts={[]}
+        progress={[]}
+        {...callbacks}
+      />
+    );
+  }
+  it("chooses only channel members using @ and submits the chosen structured id", async () => {
+    vi.mocked(createMessage).mockResolvedValue(result("a"));
+    const session = createConversationSession();
+    const rendered = await renderComponent(multi(session));
+    try {
+      await typeText(rendered.container, "Review @");
+      const choices = rendered.container.querySelectorAll('[role="option"]');
+      expect(choices).toHaveLength(2);
+      expect(rendered.container.querySelector('[role="listbox"]')?.textContent).not.toContain(
+        "Outside",
+      );
+      await interact(() => (choices[1] as HTMLButtonElement).click());
+      expect(session.channel("a").getSnapshot().draft).toMatchObject({
+        text: "Review",
+        targetBotId: "bot-b",
+      });
+      expect(rendered.container.querySelector(".composer-mention")?.textContent).toContain(
+        "@Coder",
+      );
+      expect(rendered.container.querySelector(".message-composer select")).toBeNull();
+      await submit(rendered.container);
+      expect(createMessage).toHaveBeenCalledWith("a", { content: "Review", botId: "bot-b" });
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("does not send an unresolved @ mention to the previous recipient", async () => {
+    const session = createConversationSession();
+    session.channel("a", bot.id);
+    const rendered = await renderComponent(multi(session));
+    try {
+      await typeText(rendered.container, "Review @unknown");
+      expect(
+        rendered.container.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled,
+      ).toBe(true);
+      await submit(rendered.container);
+      expect(createMessage).not.toHaveBeenCalled();
+      expect(session.channel("a").getSnapshot().draft.text).toBe("Review @unknown");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("keeps an explicitly removed recipient empty until another Bot is chosen", async () => {
+    const session = createConversationSession();
+    const rendered = await renderComponent(view("a", session));
+    try {
+      await interact(() =>
+        rendered.container.querySelector<HTMLButtonElement>('[aria-label="移除接收 Bot"]')?.click(),
+      );
+      expect(session.channel("a").getSnapshot().draft.targetBotId).toBe("");
+      expect(rendered.container.querySelector(".composer-mention")).toBeNull();
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("clears a removed member's identity and skills without losing text or attachments", async () => {
+    const session = createConversationSession();
+    session
+      .channel("a", secondBot.id)
+      .edit({
+        text: "Unsent work",
+        skills: [{ id: "skill-b", name: "Coding", version: "1" }],
+        attachments: [{ name: "brief.md", text: "Instructions" }],
+      });
+    const rendered = await renderComponent(view("a", session));
+    try {
+      expect(session.channel("a").getSnapshot().draft).toMatchObject({
+        targetBotId: "",
+        skills: [],
+        text: "Unsent work",
+        attachments: [{ name: "brief.md", text: "Instructions" }],
+      });
+      await submit(rendered.container);
+      expect(createMessage).not.toHaveBeenCalled();
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("does not select a mention while an IME confirms text", async () => {
+    const session = createConversationSession();
+    const rendered = await renderComponent(multi(session));
+    try {
+      await typeText(rendered.container, "Review @");
+      const textarea = rendered.container.querySelector("textarea");
+      await interact(() =>
+        textarea?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true }),
+        ),
+      );
+      expect(session.channel("a").getSnapshot().draft.targetBotId).toBe("");
+      expect(rendered.container.querySelector('[role="listbox"]')).not.toBeNull();
+      expect(createMessage).not.toHaveBeenCalled();
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("blocks a fourth attachment and keeps selected context after transport failure", async () => {
+    const session = createConversationSession();
+    const attachments = ["one.md", "two.md", "three.md"].map((name) => ({ name, text: "Review" }));
+    session.channel("a", bot.id).edit({
+      text: "keep draft",
+      attachments,
+      skills: [{ id: "skill-a", name: "Review", version: "1" }],
+    });
+    vi.mocked(createMessage).mockRejectedValue(new Error("offline"));
+    const rendered = await renderComponent(view("a", session));
+    try {
+      const input = rendered.container.querySelector<HTMLInputElement>('input[type="file"]');
+      if (!input) throw new Error("Attachment input missing");
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new File(["four"], "four.md")],
+      });
+      await interact(() => input.dispatchEvent(new Event("change", { bubbles: true })));
+      expect(rendered.container.textContent).toContain("最多添加 3 个文本附件");
+      expect(session.channel("a").getSnapshot().draft.attachments).toEqual(attachments);
+      await submit(rendered.container);
+      expect(session.channel("a").getSnapshot().draft).toMatchObject({
+        attachments,
+        skills: [{ id: "skill-a", name: "Review", version: "1" }],
+      });
+      expect(rendered.container.textContent).toContain("offline");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+});

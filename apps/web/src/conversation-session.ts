@@ -1,10 +1,13 @@
 import type { CreateMessageInput, Message, Run, SubmitTaskResult } from "@openbot/domain";
+import { type ComposerAttachment, type ComposerSkill, composeTaskText } from "./composer-context";
 import { mergeRuns } from "./run-state";
 
 export interface ConversationDraft {
   text: string;
   targetBotId: string;
   replyTo?: Message | undefined;
+  attachments?: ComposerAttachment[];
+  skills?: ComposerSkill[];
   revision: number;
 }
 
@@ -27,7 +30,11 @@ export interface ConversationScroll {
 export interface ConversationChannel {
   getSnapshot(): ConversationSnapshot;
   subscribe(listener: () => void): () => void;
-  edit(update: Partial<Pick<ConversationDraft, "text" | "targetBotId" | "replyTo">>): void;
+  edit(
+    update: Partial<
+      Pick<ConversationDraft, "text" | "targetBotId" | "replyTo" | "attachments" | "skills">
+    >,
+  ): void;
   merge(messages: Message[], runs?: Run[]): void;
   loaded(error?: string): void;
   scroll: ConversationScroll;
@@ -107,6 +114,8 @@ export function createConversationSession(): ConversationSession {
         edit(update) {
           if (disposed || closed || capacityError) return;
           const draft = { ...state.draft, ...update, revision: state.draft.revision + 1 };
+          if (update.targetBotId !== undefined && update.targetBotId !== state.draft.targetBotId)
+            draft.skills = [];
           draft.text = draft.text.slice(0, 8000);
           publish({ draft });
         },
@@ -133,7 +142,12 @@ export function createConversationSession(): ConversationSession {
           if (disposed || closed || capacityError) return Promise.resolve(undefined);
           if (pending) return pending;
           const sent = state.draft;
+          const content = composeTaskText(sent.text, sent.attachments, sent.skills);
           if (!sent.text.trim() || !sent.targetBotId) return Promise.resolve(undefined);
+          if (content.length > 8000) {
+            publish({ sendError: "消息与附件合计不能超过 8000 字符，请缩短内容。" });
+            return Promise.resolve(undefined);
+          }
           if (pendingCount >= 8) {
             publish({ sendError: "已有多条消息正在发送，请稍候再试。" });
             return Promise.resolve(undefined);
@@ -146,7 +160,7 @@ export function createConversationSession(): ConversationSession {
               disposed || closed
                 ? undefined
                 : submit({
-                    content: sent.text.trim(),
+                    content,
                     botId: sent.targetBotId,
                     ...(sent.replyTo ? { replyToMessageId: sent.replyTo.id } : {}),
                   }),
@@ -162,6 +176,8 @@ export function createConversationSession(): ConversationSession {
                   draft: {
                     ...state.draft,
                     text: "",
+                    attachments: [],
+                    skills: [],
                     replyTo: undefined,
                     revision: sent.revision + 1,
                   },
@@ -188,6 +204,8 @@ export function createConversationSession(): ConversationSession {
           pending !== undefined ||
           listeners.size > 0 ||
           state.draft.text.length > 0 ||
+          Boolean(state.draft.attachments?.length) ||
+          Boolean(state.draft.skills?.length) ||
           state.draft.replyTo !== undefined,
         dispose() {
           closed = true;

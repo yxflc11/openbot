@@ -83,6 +83,128 @@ function fixture() {
   };
 }
 describe("native Agent loop", () => {
+  it("searches without supplied URLs and supersedes prior no-internet replies", async () => {
+    const f = fixture();
+    const evidence = "Source: https://www.nvidia.com/ ; retrieved public evidence";
+    const search = vi.fn(async () => evidence);
+    const model = new MockLanguageModelV4({
+      doGenerate: [calls("web_search", '{"query":"NVIDIA official RTX 5090"}'), answer(evidence)],
+    });
+    const result = await executeAgentRun({ ...f, model, webSearch: { search } });
+    expect(result.text).toBe(evidence);
+    expect(search).toHaveBeenCalledOnce();
+    expect(model.doGenerateCalls).toHaveLength(2);
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toContain(
+      "Prior replies claiming no internet",
+    );
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).not.toContain(
+      "No other network targets are authorized",
+    );
+    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain(evidence);
+    const progress = f.publish.mock.calls.map(([event]) => event.message);
+    expect(progress).toContain("Started web_search.");
+    expect(progress).toContain("Completed web_search.");
+    expect(JSON.stringify(progress)).not.toContain("NVIDIA official");
+    expect(JSON.stringify(progress)).not.toContain("retrieved public evidence");
+    expect(vi.mocked(f.store.progress).mock.invocationCallOrder[2]).toBeLessThan(
+      search.mock.invocationCallOrder[0]!,
+    );
+  });
+  it("reads a newly selected public source and retains its report provenance", async () => {
+    const f = fixture();
+    const source = {
+      url: "https://www.nvidia.com/",
+      text: "Official source",
+      fetchedAt: run.createdAt,
+      truncated: false,
+    };
+    const readSource = vi.fn(async () => source);
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        calls("fetch", JSON.stringify({ url: source.url })),
+        calls("write_report", JSON.stringify({ name: "research.md", markdown: "Official source" })),
+        answer("Read the official source."),
+      ],
+    });
+    const result = await executeAgentRun({ ...f, model, readSource, allowReports: true });
+    expect(readSource).toHaveBeenCalledWith(source.url, f.signal);
+    expect(result.reports[0]?.metadata?.sources).toEqual([
+      { url: source.url, fetchedAt: source.fetchedAt, truncated: false },
+    ]);
+    expect(result.reports[0]?.text).toContain(source.url);
+  });
+  it("stops public retrieval before effects when the start audit fails", async () => {
+    const f = fixture();
+    const original = f.store.progress;
+    f.store.progress = vi.fn(async (...args) => {
+      if (args[2] === "Started web_search.") throw new Error("audit unavailable");
+      return original(...args);
+    });
+    const search = vi.fn(async () => "evidence");
+    const model = new MockLanguageModelV4({
+      doGenerate: [calls("web_search", '{"query":"public"}'), answer()],
+    });
+    await expect(executeAgentRun({ ...f, model, webSearch: { search } })).rejects.toThrow();
+    expect(search).not.toHaveBeenCalled();
+    expect(model.doGenerateCalls).toHaveLength(1);
+  });
+  it.each(["fetch", "read_public_page"])(
+    "shares the four-call budget between public search and %s",
+    async (reader) => {
+      const search = vi.fn(async () => "evidence");
+      const readSource = vi.fn();
+      const model = new MockLanguageModelV4({
+        doGenerate: [
+          calls("web_search", '{"query":"public"}', 4),
+          calls(
+            reader,
+            reader === "fetch" ? '{"url":"https://www.nvidia.com/"}' : '{"sourceIndex":0}',
+          ),
+          answer(),
+        ],
+      });
+      await expect(
+        executeAgentRun({
+          ...fixture(),
+          run: { ...run, instruction: "Search and read https://www.nvidia.com/" },
+          model,
+          readSource,
+          webSearch: { search },
+        }),
+      ).rejects.toThrow(/limits/);
+      expect(search).toHaveBeenCalledTimes(4);
+      expect(readSource).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["search-failed", "scope-revoked", "oversized"])(
+    "fails the Run after %s instead of returning an unsupported answer",
+    async (kind) => {
+      const f = fixture();
+      const search = vi.fn(async () => {
+        if (kind === "search-failed") throw new Error("private provider payload");
+        if (kind === "scope-revoked")
+          vi.mocked(f.store.assertScope).mockRejectedValue(
+            new NativeExecutionError("scope_revoked"),
+          );
+        return kind === "oversized" ? "x".repeat(128 * 1024) : "evidence";
+      });
+      const model = new MockLanguageModelV4({
+        doGenerate: [calls("web_search", '{"query":"public"}'), answer("Guess")],
+      });
+      await expect(executeAgentRun({ ...f, model, webSearch: { search } })).rejects.toThrow();
+      expect(model.doGenerateCalls).toHaveLength(1);
+      expect(f.publish.mock.calls.map(([event]) => event.message)).toContain("Failed web_search.");
+      expect(JSON.stringify(f.publish.mock.calls)).not.toContain("private provider payload");
+    },
+  );
+  it("does not advertise search when no retrieval service exists", async () => {
+    const model = new MockLanguageModelV4({ doGenerate: answer() });
+    await executeAgentRun({ ...fixture(), model });
+    expect(model.doGenerateCalls[0]?.tools?.some((entry) => entry.name === "web_search")).toBe(
+      false,
+    );
+    expect(model.doGenerateCalls[0]?.tools?.some((entry) => entry.name === "fetch")).toBe(true);
+  });
   it("runs the released K3 tool adapter with reasoning continuity and records only public output", async () => {
     const f = fixture();
     const bodies: Record<string, unknown>[] = [];

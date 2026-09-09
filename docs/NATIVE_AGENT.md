@@ -7,7 +7,7 @@ runs iteration; PostgreSQL remains the authority for tasks, channel membership, 
 
 ## Use it
 
-1. In **Settings → Models & API**, choose OpenAI, Anthropic or OpenRouter, enter a model that supports tool
+1. In **Settings → Models & API**, choose a supported provider such as Kimi, OpenAI, Anthropic or OpenRouter, enter a model that supports tool
    calling and its API key, check **Enable native Agent**, then verify and save. The shared UI
    currently labels this option **启用原生 Agent**. Metadata validation alone does not prove that
    a model supports the generation endpoint or tools.
@@ -26,8 +26,12 @@ context to the chosen provider; API charges may apply. Tasks created before the 
 are not replayed. Re-enter the key when changing settings. Disabling or replacing settings aborts
 active inference. Server must remain running; remote Desktop clients use their connected Server.
 
-For a source-backed report, include up to three explicit HTTPS URLs in the task and ask for a
-Markdown report. For example: “Read https://example.com and prepare a report.md with citations.”
+For public research, ask for a search or supply a public HTTPS URL and request a Markdown report.
+Kimi uses its official search with the saved model key. Other chat providers can use a separate
+`TAVILY_API_KEY` configured on the Server; this takes precedence over Kimi search. Desktop forwards
+that variable only to its Server when explicitly present in the app launch environment. Without a
+search service, public source reading remains available. No per-URL approval is required.
+The older indexed source tool still accepts up to three explicit HTTPS URLs. For example: “Read https://example.com and prepare a report.md with citations.”
 The resulting file appears in the channel and Run inspector after successful completion. Pages are
 untrusted source material; downloads contain model-written text, not executable HTML.
 
@@ -43,15 +47,17 @@ and records the profile revision it used. Profile content does not grant tools o
 | --- | --- |
 | `read_channel_context` | At most 12 messages, bounded text, only the current task's channel and no messages created after the task |
 | `read_task_status` | At most 8 task titles/statuses in that channel, no tasks created after this task |
+| `web_search` | Public search through the selected official Kimi service or explicit Tavily service; query up to 1,000 characters, bounded response, no automatic retries |
+| `fetch` | Read model-selected public HTTPS sources through the existing DNS-pinned reader; same page/time/text bounds as `read_public_page` |
 | `read_public_page` | Read one of at most 3 explicit task URLs by index; 15 seconds, 512 KiB input, 6,000 UTF-8 bytes of extracted text |
 | `read_employee_memory` | Frozen snapshot of up to 8 explicitly model-enabled memories for this Bot; 2,000 UTF-8 bytes per body and 10 KiB projection, with IDs/revisions/truncation |
 | `propose_memory` | One bounded candidate lesson per successful task; no active-memory change until Owner review |
 | `write_report` | Prepare at most 2 Markdown files; 24 KiB authored text and 32 KiB including Server source provenance |
-| Authority | Strict schemas; Server binds channel/Bot and URL list from the claimed Run and rechecks membership and Run state. No model-selected URL or filesystem path |
-| Iteration | At most 5 model steps, 8 executed tools and 1,024 output tokens per step; no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
-| Time/output | 90-second inference deadline, 30-second HTTP deadline, 512 KiB provider reply, 16 KiB instruction/tool projection, 8,000-character final reply |
+| Authority | Strict schemas; Server binds channel/Bot from the claimed Run and rechecks membership and Run state. Public HTTPS source selection is allowed; filesystem paths and private network targets are not |
+| Iteration | At most 5 model steps, 8 executed tools including at most 4 web calls, and 1,024 output tokens per step (4,096 for Kimi); no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
+| Time/output | 90-second inference deadline, 30-second HTTP deadline, 512 KiB provider reply, 16 KiB instruction/ordinary tool projection, up to 128 KiB serialized opaque search evidence (never truncated), 8,000-character final reply |
 | Concurrency | At most 2 active native Runs per Server, one per channel; conditional database claims prevent duplicate execution |
-| Network | Fixed official provider endpoints plus task-authorized public HTTPS GETs. Source DNS answers must all be public; the connection pins the checked address and verifies the original TLS host. No redirects, proxies or automatic retries; OpenAI response storage is disabled |
+| Network | Fixed official model/search endpoints plus bounded public HTTPS source GETs. Source DNS answers must all be public; the connection pins the checked address and verifies the original TLS host. No redirects, proxies or automatic retries; OpenAI response storage is disabled |
 | Lifecycle | Reply, report metadata, completion and audit commit together. Prepared report files are removed when publication fails. Interrupted running tasks fail on restart; ambiguous/failed tasks are not automatically retried |
 
 Progress contains action/result summaries, never internal reasoning, API keys or raw provider error
@@ -67,7 +73,7 @@ cancelled Run. Credential rejection, rate limits, unavailable providers, changed
 scope, tool failures and execution limits have fixed actionable failure messages. No automatic retry
 is performed. See [execution experience research](research/agent-execution-experience.md).
 
-The tools do not expose unshared memory, executable skills, shell, local files/PDFs, arbitrary URLs, computer input, external
+The tools do not expose unshared memory, executable skills, shell, local files/PDFs, private-network URLs, computer input, external
 messages or approval decisions. Existing Worker-profile tasks keep their existing dispatcher and
 approval path. A native task requiring an unavailable action should explain that limitation.
 Hermes/Pi/OpenClaw delegation, browser observe/act tools and arbitrary desktop control remain future
@@ -127,4 +133,4 @@ See [research and known compatibility limits](research/openrouter-model-entry.md
 
 ## Kimi K3
 
-Desktop Settings → Model & API includes Kimi (Moonshot CN), default model `kimi-k3`. Enter the API key and enable the native Agent; the key is encrypted on the service computer and retained after restart. Verification checks the model list without generating content. K3 uses low reasoning effort and up to 4,096 output tokens per step (including reasoning), within the existing 90-second task deadline and five-step limit. Only newly created tasks for Bots without a computer run automatically. Existing queued tasks are not replayed. This integration does not add web search; source reading still requires explicit public URLs in the task.
+Desktop Settings → Model & API includes Kimi (Moonshot CN), default model `kimi-k3`. Enter the API key and enable the native Agent; the key is encrypted on the service computer and retained after restart. Verification checks the model list without generating content. K3 uses low reasoning effort and up to 4,096 output tokens per step (including reasoning), within the existing 90-second task deadline and five-step limit. Only newly created tasks for Bots without a computer run automatically. Existing queued tasks are not replayed. Public search and source reading are available in the installed native Agent through the [Desktop web tool integration](research/desktop-public-web-tools.md). Search progress records started/completed/failed tool names without queries or result bodies.

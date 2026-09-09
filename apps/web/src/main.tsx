@@ -6,6 +6,8 @@ import "./workspace-shell.css";
 import "./workspace-preferences.css";
 import "./desktop-workspace.css";
 import "./conversation-round-one.css";
+import "./desktop-ui-refresh.css";
+import "./settings-plugin-refresh.css";
 
 const runtime = window.openbotDesktop?.getRuntimeInfo?.();
 if (runtime?.kind === "desktop") {

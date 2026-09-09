@@ -18,7 +18,15 @@ export function nativeRunFailure(run: Run): string {
   return messages[run.errorCode ?? ""] ?? run.errorMessage ?? "任务已结束。";
 }
 
-export function NativeRunControls({ run, onRun }: { run: Run; onRun(run: Run): void }) {
+export function NativeRunControls({
+  run,
+  onRun,
+  compact = false,
+}: {
+  run: Run;
+  onRun(run: Run): void;
+  compact?: boolean;
+}) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   if (run.executionProfile !== "none" || run.nodeId !== undefined) return null;
@@ -26,7 +34,10 @@ export function NativeRunControls({ run, onRun }: { run: Run; onRun(run: Run): v
   const canResubmit = run.status === "failed" || run.status === "cancelled";
   if (!canStop && !canResubmit) return null;
   return (
-    <section className="native-run-controls" aria-label="原生任务操作">
+    <section
+      className={`native-run-controls${compact ? " compact" : ""}`}
+      aria-label="原生任务操作"
+    >
       <button
         type="button"
         className="secondary-button"
@@ -54,11 +65,13 @@ export function NativeRunControls({ run, onRun }: { run: Run; onRun(run: Run): v
       >
         {pending ? "正在处理…" : canStop ? "停止任务" : "重新提交任务"}
       </button>
-      <p>
-        {canStop
-          ? "停止后不会继续发布此任务的回复或报告。"
-          : "将从头创建一个新任务，原任务记录会保留。"}
-      </p>
+      {!compact && (
+        <p>
+          {canStop
+            ? "停止后不会继续发布此任务的回复或报告。"
+            : "将从头创建一个新任务，原任务记录会保留。"}
+        </p>
+      )}
       {error ? <p role="alert">{error}</p> : null}
     </section>
   );

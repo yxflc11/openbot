@@ -1,18 +1,7 @@
 import type { Bot, Channel, Run } from "@openbot/domain";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { indexActiveRunsByBot, runStatusLabel } from "../run-state";
-import {
-  AutomationIcon,
-  BotIcon,
-  ComposeIcon,
-  HashIcon,
-  NodeIcon,
-  PlusIcon,
-  SearchIcon,
-  SettingsIcon,
-  SkillIcon,
-} from "./Icons";
-import { OpenBotMark } from "./OpenBotMark";
+import { BotIcon, HashIcon, PlusIcon, SearchIcon, SettingsIcon, SkillIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 interface SidebarProps {
@@ -24,11 +13,12 @@ interface SidebarProps {
   runs: Run[];
   ownerName: string;
   onHome?: (() => void) | undefined;
-  onSettings?: (() => void) | undefined;
+  onSettings?: ((section?: "general" | "about" | "automations") => void) | undefined;
   selectedChannelId?: string | undefined;
   selectedBotId?: string | undefined;
   onSelectChannel(channelId: string): void;
   onSelectBot(botId: string): void;
+  onOpenBotProfile?: ((botId: string) => void) | undefined;
   onCreateBot(): void;
   onCreateChannel(): void;
   onManageNodes(): void;
@@ -36,8 +26,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  destination,
-  onAutomations,
   onSkills,
   bots,
   channels,
@@ -49,21 +37,31 @@ export function Sidebar({
   selectedBotId,
   onSelectChannel,
   onSelectBot,
+  onOpenBotProfile,
   onCreateBot,
   onCreateChannel,
-  onManageNodes,
   onLogout,
 }: SidebarProps) {
   const [query, setQuery] = useState("");
   const term = query.trim().toLocaleLowerCase();
-  const filteredChannels = channels.filter((channel) =>
-    `${channel.name} ${channel.description}`.toLocaleLowerCase().includes(term),
-  );
-  const filteredBots = bots.filter((bot) => bot.name.toLocaleLowerCase().includes(term));
   const activeRunByBot = indexActiveRunsByBot(runs);
   const [logoutError, setLogoutError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-
+  const root = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const close = (event: PointerEvent) => {
+      for (const menu of root.current?.querySelectorAll("details[open]") ?? []) {
+        if (event.target instanceof Node && !menu.contains(event.target))
+          menu.removeAttribute("open");
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  function dismiss() {
+    for (const menu of root.current?.querySelectorAll("details[open]") ?? [])
+      menu.removeAttribute("open");
+  }
   async function handleLogout() {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -75,26 +73,63 @@ export function Sidebar({
       setLoggingOut(false);
     }
   }
-
   return (
-    <aside className="sidebar" aria-label="主导航">
-      <a
-        className="brand"
-        href="/"
-        aria-label="OpenBot 首页"
-        onClick={
-          onHome
-            ? (event) => {
-                event.preventDefault();
-                onHome();
-              }
-            : undefined
+    <aside
+      className="sidebar"
+      aria-label="主导航"
+      ref={root}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          const menu = (event.target as HTMLElement).closest("details");
+          menu?.removeAttribute("open");
+          menu?.querySelector("summary")?.focus();
         }
-      >
-        <OpenBotMark />
-        OpenBot
-      </a>
-
+      }}
+    >
+      <div className="sidebar-brand-row">
+        <a
+          className="brand"
+          href="/"
+          aria-label="OpenBot 首页"
+          onClick={
+            onHome
+              ? (event) => {
+                  event.preventDefault();
+                  onHome();
+                }
+              : undefined
+          }
+        >
+          OpenBot
+        </a>
+        <details className="create-menu">
+          <summary className="icon-button" aria-label="创建" title="创建">
+            <PlusIcon />
+          </summary>
+          <div className="sidebar-popover create-popover">
+            <button
+              type="button"
+              onClick={() => {
+                dismiss();
+                onCreateChannel();
+              }}
+            >
+              <HashIcon />
+              创建频道
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                dismiss();
+                onCreateBot();
+              }}
+            >
+              <BotIcon />
+              创建 Bot
+            </button>
+          </div>
+        </details>
+      </div>
       <search className="sidebar-search" aria-label="搜索工作空间">
         <SearchIcon />
         <input
@@ -105,143 +140,146 @@ export function Sidebar({
           onChange={(event) => setQuery(event.target.value)}
         />
       </search>
-      <nav className="workspace-actions" aria-label="工作空间操作">
-        <button type="button" onClick={onCreateChannel}>
-          <ComposeIcon />
-          <span>新建对话</span>
-          <PlusIcon />
-        </button>
-        {onAutomations && (
-          <button
-            type="button"
-            onClick={onAutomations}
-            aria-current={destination === "automations" ? "page" : undefined}
-          >
-            <AutomationIcon />
-            <span>自动任务</span>
-          </button>
-        )}
-        {onSkills && (
-          <button
-            type="button"
-            onClick={onSkills}
-            aria-current={destination === "skills" ? "page" : undefined}
-          >
-            <SkillIcon />
-            <span>技能广场</span>
-          </button>
-        )}
-        <button type="button" onClick={onManageNodes}>
-          <NodeIcon />
-          <span>工作电脑</span>
-        </button>
-      </nav>
       <div className="sidebar-body">
-        <SidebarSection title="频道" onAdd={onCreateChannel} addLabel="创建频道">
-          {filteredChannels.length === 0 ? (
-            <SidebarEmpty>{term ? "没有匹配的频道" : "还没有频道"}</SidebarEmpty>
-          ) : (
-            filteredChannels.map((channel) => (
-              <button
-                aria-current={selectedChannelId === channel.id ? "page" : undefined}
-                className={`sidebar-row channel-list-row ${selectedChannelId === channel.id ? "selected" : ""}`}
-                key={channel.id}
-                onClick={() => onSelectChannel(channel.id)}
-                type="button"
-              >
-                <span className="channel-list-avatar">
-                  <HashIcon />
-                </span>
-                <span className="channel-list-copy">
-                  <strong>{channel.name}</strong>
-                  <small>
-                    {channel.description || `${channel.botIds.length} 名 Bot · 开始对话`}
-                  </small>
-                </span>
-              </button>
-            ))
-          )}
-        </SidebarSection>
-
-        <SidebarSection title="Bots" onAdd={onCreateBot} addLabel="创建 Bot">
-          {filteredBots.length === 0 ? (
-            <SidebarEmpty>{term ? "没有匹配的 Bot" : "还没有 Bot"}</SidebarEmpty>
-          ) : (
-            filteredBots.map((bot) => {
-              const run = activeRunByBot.get(bot.id);
-              return (
+        <section className="sidebar-section">
+          <div className="sidebar-heading">
+            <h2>频道</h2>
+          </div>
+          <div className="sidebar-list">
+            {channels
+              .filter((channel) =>
+                `${channel.name} ${channel.description}`.toLocaleLowerCase().includes(term),
+              )
+              .map((channel) => (
                 <button
-                  className={`sidebar-row bot-row ${selectedBotId === bot.id ? "selected" : ""}`}
+                  aria-current={selectedChannelId === channel.id ? "page" : undefined}
+                  className={`sidebar-row channel-list-row ${selectedChannelId === channel.id ? "selected" : ""}`}
+                  key={channel.id}
+                  onClick={() => onSelectChannel(channel.id)}
                   type="button"
-                  onClick={() => onSelectBot(bot.id)}
-                  key={bot.id}
                 >
-                  <RobotAvatar bot={bot} compact status={run?.status ?? bot.status} />
-                  <span>{bot.name}</span>
-                  <small className="bot-state">
-                    <span
-                      className={`status-dot ${run ? "active" : "online"}`}
-                      aria-hidden="true"
-                    />
-                    {run ? runStatusLabel(run.status) : "待命"}
-                  </small>
+                  <span className="channel-list-avatar">
+                    <HashIcon />
+                  </span>
+                  <span className="channel-list-copy">
+                    <strong>{channel.name}</strong>
+                  </span>
                 </button>
-              );
-            })
-          )}
-        </SidebarSection>
+              ))}
+            {!channels.some((channel) =>
+              `${channel.name} ${channel.description}`.toLocaleLowerCase().includes(term),
+            ) && <p className="sidebar-empty">{term ? "没有匹配的频道" : "点击顶部 + 创建频道"}</p>}
+          </div>
+        </section>
+        <section className="sidebar-section">
+          <div className="sidebar-heading">
+            <h2>Bots</h2>
+          </div>
+          <div className="sidebar-list">
+            {bots
+              .filter((bot) => bot.name.toLocaleLowerCase().includes(term))
+              .map((bot) => {
+                const run = activeRunByBot.get(bot.id);
+                return (
+                  <button
+                    className={`sidebar-row bot-row ${selectedBotId === bot.id ? "selected" : ""}`}
+                    type="button"
+                    key={bot.id}
+                    aria-current={selectedBotId === bot.id ? "page" : undefined}
+                    title={`${bot.name} · 点击对话，右键打开档案`}
+                    onClick={() => onSelectBot(bot.id)}
+                    onContextMenu={(event) => {
+                      if (onOpenBotProfile) {
+                        event.preventDefault();
+                        onOpenBotProfile(bot.id);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if ((event.shiftKey && event.key === "F10") || event.key === "ContextMenu") {
+                        event.preventDefault();
+                        onOpenBotProfile?.(bot.id);
+                      }
+                    }}
+                  >
+                    <RobotAvatar bot={bot} compact status={run?.status ?? bot.status} />
+                    <span>{bot.name}</span>
+                    <small className="bot-state">
+                      <span
+                        className={`status-dot ${run ? "active" : "idle"}`}
+                        aria-hidden="true"
+                      />
+                      {run ? runStatusLabel(run.status) : "待命"}
+                    </small>
+                  </button>
+                );
+              })}
+            {!bots.some((bot) => bot.name.toLocaleLowerCase().includes(term)) && (
+              <p className="sidebar-empty">{term ? "没有匹配的 Bot" : "点击顶部 + 创建 Bot"}</p>
+            )}
+          </div>
+        </section>
       </div>
-
-      {onSettings ? (
-        <button className="sidebar-settings" type="button" onClick={onSettings}>
-          <SettingsIcon />
-          <span>账号与设置</span>
-        </button>
-      ) : null}
-      <footer className="sidebar-owner">
-        <span>
-          <strong>{ownerName}</strong>
-          <small className={logoutError ? "warning" : ""} role={logoutError ? "alert" : undefined}>
-            {logoutError ? "退出失败，请重试" : "工作空间所有者"}
-          </small>
-        </span>
-        <button type="button" disabled={loggingOut} onClick={() => void handleLogout()}>
-          {loggingOut ? "退出中" : "退出"}
-        </button>
+      <footer className="sidebar-footer">
+        {onSkills && (
+          <button className="sidebar-plugin" type="button" onClick={onSkills}>
+            <SkillIcon />
+            <span>插件</span>
+          </button>
+        )}
+        <details className="owner-menu">
+          <summary>
+            <span className="owner-avatar">{ownerName.slice(0, 1).toUpperCase()}</span>
+            <span>{ownerName}</span>
+            <span className="owner-chevron" aria-hidden="true">
+              ⌄
+            </span>
+          </summary>
+          <div className="sidebar-popover owner-popover">
+            {onSettings && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dismiss();
+                    onSettings();
+                  }}
+                >
+                  <SettingsIcon />
+                  设置
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    dismiss();
+                    onSettings("about");
+                  }}
+                >
+                  <span aria-hidden="true">ⓘ</span>关于 OpenBot
+                </button>
+              </>
+            )}
+            <a href="https://github.com/yxflc11/openbot#readme" target="_blank" rel="noreferrer">
+              帮助中心<span aria-hidden="true">↗</span>
+            </a>
+            <a
+              href="https://github.com/yxflc11/openbot/issues/new"
+              target="_blank"
+              rel="noreferrer"
+            >
+              发送反馈<span aria-hidden="true">↗</span>
+            </a>
+            <hr />
+            <button type="button" disabled={loggingOut} onClick={() => void handleLogout()}>
+              {loggingOut ? "退出中…" : "退出登录"}
+            </button>
+            {logoutError && (
+              <p className="warning" role="alert">
+                退出失败，请重试
+              </p>
+            )}
+          </div>
+        </details>
       </footer>
     </aside>
-  );
-}
-
-function SidebarSection({
-  title,
-  onAdd,
-  addLabel,
-  children,
-}: {
-  title: string;
-  onAdd(): void;
-  addLabel: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="sidebar-section">
-      <div className="sidebar-heading">
-        <h2>{title}</h2>
-        <button className="icon-button" type="button" aria-label={addLabel} onClick={onAdd}>
-          <PlusIcon />
-        </button>
-      </div>
-      <div className="sidebar-list">{children}</div>
-    </section>
-  );
-}
-
-function SidebarEmpty({ children }: { children: React.ReactNode }) {
-  return (
-    <button className="sidebar-empty" type="button" disabled>
-      <BotIcon />
-      {children}
-    </button>
   );
 }

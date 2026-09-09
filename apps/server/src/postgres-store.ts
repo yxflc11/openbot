@@ -100,6 +100,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         id: channels.id,
         name: channels.name,
         description: channels.description,
+        directBotId: channels.directBotId,
         createdAt: channels.createdAt,
         botId: channelBots.botId,
       })
@@ -113,6 +114,7 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
         id: row.id,
         name: row.name,
         description: row.description,
+        ...(row.directBotId === null ? {} : { directBotId: row.directBotId }),
         botIds: [],
         createdAt: row.createdAt.toISOString(),
       };
@@ -1244,6 +1246,64 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     };
   }
 
+  async getOrCreateDirectConversation(botId: string): Promise<Channel> {
+    return this.#db.transaction(async (transaction) => {
+      // A database row lock serializes this singleton across processes, not just one renderer.
+      const [bot] = await transaction
+        .select({ id: bots.id, name: bots.name })
+        .from(bots)
+        .where(eq(bots.id, botId))
+        .for("update")
+        .limit(1);
+      if (bot === undefined) throw new StoreNotFoundError("Bot not found.");
+      const [existing] = await transaction
+        .select()
+        .from(channels)
+        .where(eq(channels.directBotId, botId))
+        .limit(1);
+      if (existing !== undefined) {
+        return {
+          id: existing.id,
+          name: existing.name,
+          description: existing.description,
+          directBotId: botId,
+          botIds: [botId],
+          createdAt: existing.createdAt.toISOString(),
+        };
+      }
+      const id = randomUUID();
+      const now = new Date();
+      await transaction
+        .insert(channels)
+        .values({
+          id,
+          name: bot.name,
+          directBotId: botId,
+          description: "",
+          createdAt: now,
+          updatedAt: now,
+        });
+      await transaction.insert(channelBots).values({ channelId: id, botId, joinedAt: now });
+      await transaction.insert(runEvents).values([
+        {
+          id: randomUUID(),
+          channelId: id,
+          type: "CHANNEL_CREATED",
+          payload: { name: bot.name, directBotId: botId },
+        },
+        { id: randomUUID(), channelId: id, botId, type: "BOT_JOINED_CHANNEL", payload: {} },
+      ]);
+      return {
+        id,
+        name: bot.name,
+        description: "",
+        directBotId: botId,
+        botIds: [botId],
+        createdAt: now.toISOString(),
+      };
+    });
+  }
+
   async submitTask(channelId: string, input: CreateMessageInput): Promise<SubmitTaskResult> {
     // Interactive and scheduled submissions share this exact routing and audit transaction.
     return this.#db.transaction((transaction) =>
@@ -1704,11 +1764,17 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     try {
       await this.#db.transaction(async (transaction) => {
         const [channelRows, botRows] = await Promise.all([
-          transaction.select({ id: channels.id }).from(channels).where(eq(channels.id, channelId)),
+          transaction
+            .select({ id: channels.id, directBotId: channels.directBotId })
+            .from(channels)
+            .where(eq(channels.id, channelId)),
           transaction.select({ id: bots.id }).from(bots).where(eq(bots.id, botId)),
         ]);
         if (channelRows.length === 0) {
           throw new StoreNotFoundError("Channel not found.");
+        }
+        if (channelRows[0]?.directBotId !== null) {
+          throw new StoreValidationError("Direct conversation membership cannot be changed.");
         }
         if (botRows.length === 0) {
           throw new StoreNotFoundError("Bot not found.");
@@ -2222,12 +2288,17 @@ export async function submitTaskInTransaction(
   };
 
   const channelRows = await transaction
-    .select({ id: channels.id })
+    .select({ id: channels.id, directBotId: channels.directBotId })
     .from(channels)
     .where(eq(channels.id, channelId))
     .limit(1);
   if (channelRows.length === 0) {
     throw new StoreNotFoundError("Channel not found.");
+  }
+
+  const directBotId = channelRows[0]?.directBotId ?? undefined;
+  if (directBotId !== undefined && input.botId !== undefined && input.botId !== directBotId) {
+    throw new StoreValidationError("A direct conversation can only address its Bot.");
   }
 
   if (input.replyToMessageId !== undefined) {
@@ -2252,7 +2323,7 @@ export async function submitTaskInTransaction(
     .innerJoin(bots, eq(channelBots.botId, bots.id))
     .where(eq(channelBots.channelId, channelId))
     .orderBy(asc(channelBots.joinedAt), asc(bots.createdAt), asc(bots.id));
-  const assignee = selectChannelAssignee(candidates, input.botId);
+  const assignee = selectChannelAssignee(candidates, directBotId ?? input.botId);
   if (assignee === undefined) {
     throw new StoreValidationError(
       input.botId === undefined

@@ -109,7 +109,7 @@ test("Linux installation recovers from copy failure and retains a concurrent des
   for (const [name, body] of Object.entries(files))
     await writeFile(join(commands, name), body, { mode: 0o755 });
   const run = () =>
-    spawnSync("bash", [isolated], {
+    spawnSync("bash", [isolated, "0.1.0-alpha.2"], {
       encoding: "utf8",
       env: { ...process.env, PATH: `${commands}:${process.env.PATH}` },
     });

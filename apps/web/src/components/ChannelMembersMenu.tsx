@@ -1,13 +1,16 @@
 import type { Bot, Channel } from "@openbot/domain";
 import { useEffect, useRef, useState } from "react";
+import { HashIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
 export function ChannelMembersMenu({
+  showTitle = false,
   channel,
   bots,
   onJoin,
   onOpenBot,
 }: {
+  showTitle?: boolean;
   channel: Channel;
   bots: Bot[];
   onJoin(botId: string): Promise<void>;
@@ -44,8 +47,20 @@ export function ChannelMembersMenu({
         }
       }}
     >
-      <summary aria-label="频道成员" title="频道成员">
-        <span aria-hidden="true">···</span>
+      <summary aria-label="频道成员" title={channel.directBotId ? "Bot 档案" : "频道详情与成员"}>
+        {showTitle && (
+          <span className="channel-heading">
+            {!channel.directBotId && <HashIcon />}
+            <strong>{channel.name}</strong>
+          </span>
+        )}
+        <span className="channel-avatar-stack" aria-hidden="true">
+          {members.slice(0, 4).map((bot) => (
+            <RobotAvatar key={bot.id} bot={bot} compact />
+          ))}
+          {members.length > 4 && <span>+{members.length - 4}</span>}
+          {members.length === 0 && <span>添加 Bot</span>}
+        </span>
       </summary>
       <div className="channel-members-popover">
         <h2>
@@ -70,7 +85,7 @@ export function ChannelMembersMenu({
           ))}
           {members.length === 0 ? <p>频道还没有 Bot</p> : null}
         </div>
-        {available.length > 0 ? (
+        {!channel.directBotId && available.length > 0 ? (
           <form
             onSubmit={(event) => {
               event.preventDefault();

@@ -3,7 +3,29 @@ import { readFile, stat } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const MAX_BYTES = 16 * 1024 * 1024;
-const FIXTURE_DIGEST = "1231625e7e70c4e56347672932d37a1c35eff89051483b37cbd09f7b9c58337e";
+const REVIEWED_FIXTURES = Object.freeze([
+  {
+    commit: "9cc73c9e78451e572f57d142d6b9caf62ccb78e2",
+    file: "apps/server/src/model-web-tools.test.ts",
+    line: 188,
+    raw: "1231625e7e70c4e56347672932d37a1c35eff89051483b37cbd09f7b9c58337e",
+    rawV2: "1231625e7e70c4e56347672932d37a1c35eff89051483b37cbd09f7b9c58337e",
+  },
+  {
+    commit: "c095669dbb4e241d2999867e3778b1b4408a83fa",
+    file: "apps/desktop/src/desktop-support-links.test.ts",
+    line: 29,
+    raw: "5cb295befc1b5d1ef305b1741773eb77b2488034068900f6303cff28085306e9",
+    rawV2: "867b18066ef99681db5cac0d82c24537671436661eb4e73669beaaece989885c",
+  },
+  {
+    commit: "e8fa933dbd94751ee01974bb16e53158760f1c26",
+    file: "apps/server/src/native-web-tools.test.ts",
+    line: 99,
+    raw: "10a105928f8eee716169d4b157b0976a7ac565f1262cfb11c2aee2d4f711a07d",
+    rawV2: "41a0b7336302d4c7c07f4f5620b3f87a03d8ef3c2e08a925d7eb91f3e54de986",
+  },
+]);
 
 function digest(value) {
   return typeof value === "string" ? createHash("sha256").update(value).digest("hex") : undefined;
@@ -17,11 +39,14 @@ function reviewedFixture(finding) {
     finding?.DetectorType === 17 &&
     finding.DetectorName === "URI" &&
     finding.Verified === false &&
-    source?.commit === "9cc73c9e78451e572f57d142d6b9caf62ccb78e2" &&
-    source.file === "apps/server/src/model-web-tools.test.ts" &&
-    source.line === 188 &&
-    digest(finding.Raw) === FIXTURE_DIGEST &&
-    digest(finding.RawV2) === FIXTURE_DIGEST
+    REVIEWED_FIXTURES.some(
+      (fixture) =>
+        source?.commit === fixture.commit &&
+        source.file === fixture.file &&
+        source.line === fixture.line &&
+        digest(finding.Raw) === fixture.raw &&
+        digest(finding.RawV2) === fixture.rawV2,
+    )
   );
 }
 

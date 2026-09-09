@@ -1,4 +1,6 @@
-import { type ReactNode, useState } from "react";
+import type { WorkspaceSnapshot } from "@openbot/domain";
+import { type ReactNode, useEffect, useState } from "react";
+import { getWorkspace } from "../api";
 import {
   type DesktopConnectionState,
   type DesktopLocalWorkerState,
@@ -6,34 +8,57 @@ import {
   type DesktopSidebarMaterialState,
   getOpenBotDesktopBridge,
 } from "../desktop-runtime";
+import { shortcutLabel } from "../desktop-shortcuts";
 import {
   defaultPreferences,
   updatePreferences,
   useWorkspacePreferences,
 } from "../workspace-preferences";
-import { ApprovalIcon, BotIcon, CloseIcon, NodeIcon, SettingsIcon } from "./Icons";
+import { AutomationsScreen } from "./AutomationsScreen";
+import {
+  ApprovalIcon,
+  AutomationIcon,
+  BotIcon,
+  CloseIcon,
+  NodeIcon,
+  SearchIcon,
+  SettingsIcon,
+} from "./Icons";
 import { ModelSettingsScreen } from "./ModelSettingsScreen";
 import { OpenBotMark } from "./OpenBotMark";
 
-type Section = "general" | "models" | "connection" | "privacy" | "about";
+export type DesktopSettingsSection =
+  | "general"
+  | "models"
+  | "connection"
+  | "automations"
+  | "privacy"
+  | "about";
+type Section = DesktopSettingsSection;
 const sections: Array<{ id: Section; label: string; icon: ReactNode; description: string }> = [
   {
     id: "general",
-    label: "通用与外观",
+    label: "常规",
     icon: <SettingsIcon />,
     description: "让 OpenBot 按照你的习惯工作。",
   },
   {
     id: "models",
-    label: "模型与 API",
+    label: "模型服务",
     icon: <BotIcon />,
     description: "管理 Bot 使用的默认模型服务。",
   },
   {
     id: "connection",
-    label: "服务与工作电脑",
+    label: "工作电脑",
     icon: <NodeIcon />,
     description: "管理这台电脑的角色、连接与工作设备。",
+  },
+  {
+    id: "automations",
+    label: "自动任务",
+    icon: <AutomationIcon />,
+    description: "让 Bot 按计划在频道中完成工作。",
   },
   {
     id: "privacy",
@@ -54,6 +79,8 @@ export function DesktopSettingsScreen({
   onRole,
   onWorker,
   onBack,
+  initialSection = "general",
+  onAutomations,
 }: {
   error?: string | undefined;
   plan: DesktopSetupPlanInput;
@@ -64,34 +91,80 @@ export function DesktopSettingsScreen({
   onRole(): void;
   onWorker(): void;
   onBack(): void;
+  initialSection?: DesktopSettingsSection;
+  onAutomations?(): void;
 }) {
-  const [section, setSection] = useState<Section>("general");
+  const [section, setSection] = useState<Section>(initialSection);
+  const [search, setSearch] = useState("");
+  useEffect(() => setSection(initialSection), [initialSection]);
   const { values, saved } = useWorkspacePreferences();
   const [resetNotice, setResetNotice] = useState(false);
   const runtime = getOpenBotDesktopBridge()?.getRuntimeInfo?.();
   const selected = sections.find((item) => item.id === section) ?? sections[0];
+  const term = search.trim().toLocaleLowerCase();
+  const keywords: Record<Section, string> = {
+    general: "外观 字号 透明 密度 聊天 快捷键 动效 时间 侧栏 导航",
+    models: "API Kimi DeepSeek OpenAI Anthropic 模型 密钥 服务",
+    connection: "连接 设备 绑定 权限 服务地址 工作组件",
+    automations: "定时 计划 调度 自动 任务",
+    privacy: "隐私 数据 保存 恢复 默认 权限",
+    about: "版本 平台 Electron Hermes 关于",
+  };
+  const matching = sections.filter((item) =>
+    `${item.label} ${item.description} ${keywords[item.id]}`.toLocaleLowerCase().includes(term),
+  );
   return (
-    <main className="desktop-settings-layout">
+    <div className="desktop-settings-layout settings-refresh">
       <aside className="settings-navigation">
         <button className="settings-back" type="button" onClick={onBack}>
-          <span aria-hidden="true">←</span> 返回工作空间
+          <span aria-hidden="true">←</span> 返回应用
         </button>
-        <h1>设置</h1>
+        <h1 className="settings-nav-title">设置</h1>
+        <search className="settings-search" aria-label="搜索设置">
+          <SearchIcon />
+          <input
+            aria-label="搜索设置"
+            type="search"
+            placeholder="搜索设置…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </search>
         <nav aria-label="设置分类">
-          {sections.map((item) => (
-            <button
-              type="button"
-              key={item.id}
-              aria-current={section === item.id ? "page" : undefined}
-              onClick={() => setSection(item.id)}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {(
+            [
+              { label: "应用", ids: ["general", "about", "privacy"] },
+              { label: "工作空间", ids: ["models", "connection", "automations"] },
+            ] as const
+          ).map((group) => {
+            const items = group.ids.flatMap((id) => matching.filter((item) => item.id === id));
+            return items.length > 0 ? (
+              <div className="settings-nav-group" key={group.label}>
+                <p>{group.label}</p>
+                {items.map((item) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    aria-current={section === item.id ? "page" : undefined}
+                    onClick={() => {
+                      setSection(item.id);
+                      setSearch("");
+                    }}
+                  >
+                    {item.icon}
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null;
+          })}
         </nav>
+        {matching.length === 0 && (
+          <p className="settings-search-empty" role="status">
+            没有匹配的设置，试试“模型”或“外观”。
+          </p>
+        )}
         <div className="settings-brand">
-          <OpenBotMark />
           <span>
             OpenBot Desktop<small>此设备的设置</small>
           </span>
@@ -133,7 +206,14 @@ export function DesktopSettingsScreen({
                 >
                   <Switch
                     label="半透明侧栏"
-                    checked={values.sidebarTranslucent}
+                    checked={
+                      values.sidebarTranslucent &&
+                      material.status !== "unsupported" &&
+                      material.status !== "unavailable"
+                    }
+                    disabled={
+                      material.status === "unsupported" || material.status === "unavailable"
+                    }
                     onChange={(checked) => updatePreferences({ sidebarTranslucent: checked })}
                   />
                 </SettingRow>
@@ -208,7 +288,7 @@ export function DesktopSettingsScreen({
                     }
                   >
                     <option value="enter">Enter 发送</option>
-                    <option value="modifier">⌘ / Ctrl + Enter 发送</option>
+                    <option value="modifier">{shortcutLabel("Enter")} 发送</option>
                   </select>
                 </SettingRow>
                 <SettingRow title="消息时间格式" description="用于频道消息的时间显示。">
@@ -228,6 +308,7 @@ export function DesktopSettingsScreen({
             </>
           )}
           {section === "models" && <ModelSettingsScreen embedded onDone={() => {}} />}
+          {section === "automations" && <SettingsAutomations onOpen={onAutomations} />}
           {section === "connection" && (
             <>
               <SettingsGroup title="当前连接">
@@ -341,7 +422,10 @@ export function DesktopSettingsScreen({
                   title="桌面运行时"
                   description={runtime ? `Electron ${runtime.shellVersion}` : "Web"}
                 />
-                <SettingRow title="模型接口" description="OpenAI · Anthropic · OpenRouter" />
+                <SettingRow
+                  title="模型服务"
+                  description="在模型服务中查看支持的提供商与当前连接。"
+                />
                 <SettingRow
                   title="员工进化"
                   description="员工的持续学习与进化方向受到 Hermes Agent 启发。"
@@ -351,7 +435,55 @@ export function DesktopSettingsScreen({
           )}
         </div>
       </section>
-    </main>
+    </div>
+  );
+}
+function SettingsAutomations({ onOpen }: { onOpen?: (() => void) | undefined }) {
+  const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
+  const [error, setError] = useState(false);
+  const [revision, setRevision] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A user retry must restart the bounded workspace read.
+  useEffect(() => {
+    const controller = new AbortController();
+    setError(false);
+    setWorkspace(undefined);
+    void getWorkspace(AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]))
+      .then((value) => {
+        if (!controller.signal.aborted) setWorkspace(value);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setError(true);
+      });
+    return () => controller.abort();
+  }, [revision]);
+  if (error)
+    return (
+      <div className="settings-load-notice" role="alert">
+        <p>无法读取工作空间，请重试。</p>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => setRevision((value) => value + 1)}
+        >
+          重试
+        </button>
+        {onOpen && (
+          <button type="button" className="secondary-button" onClick={onOpen}>
+            打开自动任务
+          </button>
+        )}
+      </div>
+    );
+  if (!workspace)
+    return (
+      <p className="settings-load-notice" role="status">
+        正在读取自动任务…
+      </p>
+    );
+  return (
+    <div className="settings-automations">
+      <AutomationsScreen bots={workspace.bots} channels={workspace.channels} />
+    </div>
   );
 }
 function SettingsGroup({
@@ -393,10 +525,12 @@ function SettingRow({
 function Switch({
   label,
   checked,
+  disabled = false,
   onChange,
 }: {
   label: string;
   checked: boolean;
+  disabled?: boolean;
   onChange(value: boolean): void;
 }) {
   return (
@@ -407,6 +541,7 @@ function Switch({
         aria-checked={checked}
         aria-label={label}
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
       <span aria-hidden="true" />

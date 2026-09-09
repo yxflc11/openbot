@@ -1,4 +1,3 @@
-import { ArtifactDownloadLink } from "./ArtifactCard";
 import type {
   ApprovalDecision,
   Artifact,
@@ -8,6 +7,7 @@ import type {
   WorkspaceSnapshot,
 } from "@openbot/domain";
 import type { RealtimeConnectionState } from "../api";
+import { ArtifactDownloadLink } from "./ArtifactCard";
 import "../context-rail.css";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { ApprovalCard } from "./ApprovalCard";
@@ -129,7 +129,7 @@ export function ContextRail({
                   run={run}
                   detail={
                     latestProgress.get(run.id)?.message ??
-                    `${bot?.name ?? "未知 Bot"} · ${node?.name ?? "等待分配电脑"}`
+                    `${bot?.name ?? "未知 Bot"} · ${run.executionProfile === "none" ? "正在处理" : (node?.name ?? "等待分配电脑")}`
                   }
                   onInspect={onInspectRun}
                   key={run.id}

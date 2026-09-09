@@ -12,17 +12,21 @@ import {
 } from "react";
 import {
   createMessage,
+  getEmployeeProfile,
   listMessages,
   listRuns,
   type RealtimeConnectionState,
   subscribeToChannelEvents,
 } from "../api";
+import { composeTaskText, readComposerAttachment } from "../composer-context";
 import { type ConversationSession, createConversationSession } from "../conversation-session";
+import { shortcutLabel } from "../desktop-shortcuts";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { useWorkspacePreferences } from "../workspace-preferences";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChannelMembersMenu } from "./ChannelMembersMenu";
-import { HashIcon, SendIcon } from "./Icons";
+import { HashIcon, PlusIcon, SendIcon, SkillIcon } from "./Icons";
+import { NativeRunControls } from "./NativeRunControls";
 import { OpenBotMark } from "./OpenBotMark";
 import { RichMessage } from "./RichMessage";
 import { RobotAvatar } from "./RobotAvatar";
@@ -59,7 +63,8 @@ export function ChannelWorkspace({
   const { values: preferences } = useWorkspacePreferences();
   const [ownSession] = useState(createConversationSession);
   const session = suppliedSession ?? ownSession;
-  const firstMemberId = channel.botIds.find((id) => bots.some((bot) => bot.id === id)) ?? "";
+  const firstMemberId =
+    channel.directBotId ?? (channel.botIds.length === 1 ? (channel.botIds[0] ?? "") : "");
   const conversation = useMemo(
     () => session.channel(channel.id, firstMemberId),
     [session, channel.id, firstMemberId],
@@ -86,6 +91,59 @@ export function ChannelWorkspace({
   const viewportSize = useRef({ width: 0, height: 0 });
   const mounted = useRef(false);
   const targetBot = botsById.get(draft.targetBotId);
+  const [mentionQuery, setMentionQuery] = useState<string>();
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [contextError, setContextError] = useState<string>();
+  const [skillChoices, setSkillChoices] = useState<
+    Array<{ id: string; name: string; version: string }>
+  >([]);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const addMenu = useRef<HTMLDetailsElement>(null);
+  const matchingMembers = members.filter(
+    (bot) =>
+      mentionQuery !== undefined &&
+      bot.name.toLocaleLowerCase().includes(mentionQuery.toLocaleLowerCase()),
+  );
+  const activeRun = runs.find((run) => isActiveRun(run));
+  const activeBot = activeRun ? botsById.get(activeRun.botId) : undefined;
+  const activeProgress = activeRun
+    ? progress.filter((item) => item.runId === activeRun.id).at(-1)
+    : undefined;
+  const contextLength = composeTaskText(draft.text, draft.attachments, draft.skills).length;
+  function chooseMention(bot: Bot) {
+    conversation.edit({
+      targetBotId: bot.id,
+      text: draft.text.replace(/(?:^|\s)@[^@\n]*$/, "").trimEnd(),
+    });
+    setMentionQuery(undefined);
+    setMentionIndex(0);
+    textarea.current?.focus();
+  }
+  // biome-ignore lint/correctness/useExhaustiveDependencies: identity changes must discard the previous Bot catalog.
+  useEffect(() => {
+    setSkillsOpen(false);
+    setSkillChoices([]);
+  }, [draft.targetBotId]);
+  useEffect(() => {
+    if (!skillsOpen || !draft.targetBotId) return;
+    const controller = new AbortController();
+    setSkillsLoading(true);
+    setContextError(undefined);
+    void getEmployeeProfile(draft.targetBotId, controller.signal)
+      .then((profile) => {
+        if (!controller.signal.aborted)
+          setSkillChoices(profile.skills.filter((skill) => skill.state === "verified"));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setContextError("无法读取技能，请重试。");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSkillsLoading(false);
+      });
+    return () => controller.abort();
+  }, [skillsOpen, draft.targetBotId]);
   const artifactsByRun = useMemo(() => {
     const result = new Map<string, Artifact[]>();
     for (const artifact of artifacts) {
@@ -101,14 +159,20 @@ export function ChannelWorkspace({
     return result;
   }, [progress]);
   const unlinkedRuns = runs.filter(
-    (run) => isActiveRun(run) && !messages.some((message) => message.runId === run.id),
+    (run) =>
+      isActiveRun(run) &&
+      run.id !== activeRun?.id &&
+      !messages.some((message) => message.runId === run.id),
   );
 
   useEffect(() => {
-    if (!channel.botIds.includes(draft.targetBotId) || !botsById.has(draft.targetBotId)) {
-      if (draft.targetBotId !== firstMemberId) conversation.edit({ targetBotId: firstMemberId });
+    if (
+      draft.targetBotId &&
+      (!channel.botIds.includes(draft.targetBotId) || !botsById.has(draft.targetBotId))
+    ) {
+      conversation.edit({ targetBotId: "" });
     }
-  }, [conversation, channel.botIds, botsById, draft.targetBotId, firstMemberId]);
+  }, [conversation, channel.botIds, botsById, draft.targetBotId]);
 
   useEffect(() => {
     mounted.current = true;
@@ -234,11 +298,44 @@ export function ChannelWorkspace({
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (sending || !members.some((bot) => bot.id === draft.targetBotId)) return;
+    if (
+      sending ||
+      mentionQuery !== undefined ||
+      !members.some((bot) => bot.id === draft.targetBotId)
+    )
+      return;
     const result = await conversation.send((input) => createMessage(channel.id, input));
     if (result && mounted.current) onRun(result.run);
   }
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (
+      !event.nativeEvent.isComposing &&
+      event.keyCode !== 229 &&
+      !event.shiftKey &&
+      !event.altKey &&
+      mentionQuery !== undefined
+    ) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMentionQuery(undefined);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setMentionIndex((value) =>
+          Math.max(
+            0,
+            Math.min(matchingMembers.length - 1, value + (event.key === "ArrowDown" ? 1 : -1)),
+          ),
+        );
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && matchingMembers[mentionIndex]) {
+        event.preventDefault();
+        chooseMention(matchingMembers[mentionIndex]);
+        return;
+      }
+    }
     if (
       event.key !== "Enter" ||
       event.shiftKey ||
@@ -286,6 +383,27 @@ export function ChannelWorkspace({
           </div>
         </header>
       ) : null}
+      {activeRun && (
+        <div className="active-task-strip">
+          {activeBot && <RobotAvatar bot={activeBot} compact />}
+          <strong>
+            {botsById.get(activeRun.botId)?.name ?? "Bot"} · {runStatusLabel(activeRun.status)}
+          </strong>
+          <span className="task-spinner" aria-hidden="true" />
+          <span className="active-task-stage">{activeProgress?.message ?? activeRun.title}</span>
+          <button type="button" onClick={() => onInspectRun(activeRun.id)}>
+            查看详情
+          </button>
+          <NativeRunControls
+            compact
+            run={activeRun}
+            onRun={(run) => {
+              conversation.merge([], [run]);
+              onRun(run);
+            }}
+          />
+        </div>
+      )}
       <section
         className="conversation-panel channel-conversation"
         aria-label={`${channel.name} 消息`}
@@ -331,7 +449,9 @@ export function ChannelWorkspace({
               <p>
                 {members.length === 0
                   ? "先从顶部菜单添加一名 Bot。"
-                  : "选择一名 Bot，直接交代第一件工作。"}
+                  : channel.directBotId
+                    ? "直接交代第一件工作。"
+                    : "输入 @ 提及 Bot，开始第一件工作。"}
               </p>
             </div>
           ) : (
@@ -404,6 +524,49 @@ export function ChannelWorkspace({
               </button>
             </div>
           ) : null}
+          {targetBot && !channel.directBotId && (
+            <div className="composer-mention">
+              <span>@{targetBot.name}</span>
+              <button
+                type="button"
+                aria-label="移除接收 Bot"
+                onClick={() => {
+                  conversation.edit({ targetBotId: "" });
+                  setMentionQuery("");
+                  textarea.current?.focus();
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+          {mentionQuery !== undefined && (
+            <div
+              className="mention-options"
+              role="listbox"
+              id={`mentions-${channel.id}`}
+              aria-label="提及 Bot"
+            >
+              {matchingMembers.map((bot, index) => (
+                <button
+                  role="option"
+                  aria-selected={index === mentionIndex}
+                  id={`mention-${bot.id}`}
+                  key={bot.id}
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => chooseMention(bot)}
+                >
+                  <RobotAvatar bot={bot} compact />
+                  <span>
+                    {bot.name}
+                    <small>{bot.role}</small>
+                  </span>
+                </button>
+              ))}
+              {matchingMembers.length === 0 && <p>没有匹配的频道 Bot</p>}
+            </div>
+          )}
           <textarea
             ref={textarea}
             id={`message-${channel.id}`}
@@ -415,45 +578,208 @@ export function ChannelWorkspace({
             placeholder={
               members.length === 0
                 ? "先从顶部菜单添加一名 Bot"
-                : `给 ${targetBot?.name ?? "Bot"} 发消息`
+                : channel.directBotId
+                  ? `给 ${targetBot?.name ?? "Bot"} 发消息`
+                  : "输入 @ 提及 Bot，或继续输入消息…"
             }
-            onChange={(event) => conversation.edit({ text: event.target.value })}
+            aria-controls={mentionQuery !== undefined ? `mentions-${channel.id}` : undefined}
+            aria-activedescendant={
+              mentionQuery !== undefined && matchingMembers[mentionIndex]
+                ? `mention-${matchingMembers[mentionIndex]?.id}`
+                : undefined
+            }
+            onChange={(event) => {
+              conversation.edit({ text: event.target.value });
+              const query = channel.directBotId
+                ? undefined
+                : /(?:^|\s)@([^@\n]*)$/.exec(event.target.value)?.[1];
+              setMentionQuery(query);
+              setMentionIndex(0);
+            }}
             onKeyDown={handleComposerKeyDown}
           />
           <div className="composer-toolbar">
-            <div className="composer-bot-chip">
-              {targetBot ? <RobotAvatar bot={targetBot} compact /> : <HashIcon />}
-              <select
-                value={draft.targetBotId}
-                disabled={members.length === 0 || Boolean(capacityError)}
-                onChange={(event) => conversation.edit({ targetBotId: event.target.value })}
-                aria-label="选择接收任务的 Bot"
+            <div className="composer-context-controls">
+              <details
+                className="composer-add-menu"
+                ref={addMenu}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && addMenu.current) {
+                    addMenu.current.open = false;
+                    addMenu.current.querySelector("summary")?.focus();
+                  }
+                }}
               >
-                {members.length === 0 ? (
-                  <option value="">选择 Bot</option>
-                ) : (
-                  members.map((bot) => (
-                    <option value={bot.id} key={bot.id}>
-                      {bot.name}
-                    </option>
-                  ))
-                )}
-              </select>
+                <summary className="composer-add" aria-label="添加附件或技能">
+                  <PlusIcon />
+                </summary>
+                <div className="composer-add-popover">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (addMenu.current) addMenu.current.open = false;
+                      fileInput.current?.click();
+                    }}
+                  >
+                    添加文本附件<small>TXT、MD、CSV、JSON · 最多 6 KB</small>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!targetBot}
+                    onClick={() => {
+                      if (addMenu.current) addMenu.current.open = false;
+                      setSkillsOpen(true);
+                    }}
+                  >
+                    使用技能
+                    <small>
+                      {targetBot ? `${targetBot.name} 已审核的技能` : "先 @ 提及一名 Bot"}
+                    </small>
+                  </button>
+                </div>
+              </details>
+              <input
+                hidden
+                ref={fileInput}
+                type="file"
+                accept=".txt,.md,.csv,.json"
+                aria-label="选择文本附件"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (!file) return;
+                  setContextError(undefined);
+                  const revision = conversation.getSnapshot().draft.revision;
+                  try {
+                    if ((draft.attachments?.length ?? 0) >= 3)
+                      throw new Error("最多添加 3 个文本附件。");
+                    const attachment = await readComposerAttachment(file);
+                    const latest = conversation.getSnapshot().draft;
+                    if (latest.revision !== revision)
+                      throw new Error("草稿已改变，请重新添加附件。");
+                    if ((latest.attachments?.length ?? 0) >= 3)
+                      throw new Error("最多添加 3 个文本附件。");
+                    if (latest.attachments?.some((item) => item.name === attachment.name))
+                      throw new Error("已添加同名附件，请先移除后重试。");
+                    const attachments = [...(latest.attachments ?? []), attachment];
+                    if (composeTaskText(latest.text, attachments, latest.skills).length > 8000)
+                      throw new Error("消息与附件合计不能超过 8000 字符。");
+                    conversation.edit({ attachments });
+                  } catch (cause) {
+                    setContextError(cause instanceof Error ? cause.message : "无法读取附件。");
+                  }
+                }}
+              />
+              <div className="composer-chips">
+                {draft.attachments?.map((file, index) => (
+                  <span className="context-chip" key={file.name} title={file.text}>
+                    <span>↗ {file.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`移除附件 ${file.name}`}
+                      onClick={() =>
+                        conversation.edit({
+                          attachments: draft.attachments?.filter((_, item) => item !== index) ?? [],
+                        })
+                      }
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {draft.skills?.map((skill) => (
+                  <span className="context-chip" key={skill.id}>
+                    <SkillIcon />
+                    <span>{skill.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`移除技能 ${skill.name}`}
+                      onClick={() =>
+                        conversation.edit({
+                          skills: draft.skills?.filter((item) => item.id !== skill.id) ?? [],
+                        })
+                      }
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
             <button
               className="composer-send"
               type="submit"
               disabled={
-                sending || Boolean(capacityError) || members.length === 0 || !draft.text.trim()
+                sending ||
+                Boolean(capacityError) ||
+                members.length === 0 ||
+                !draft.targetBotId ||
+                !draft.text.trim() ||
+                contextLength > 8000 ||
+                mentionQuery !== undefined
               }
               aria-label="发送消息"
               title={
-                preferences.sendShortcut === "modifier" ? "⌘ / Ctrl + Enter 发送" : "Enter 发送"
+                preferences.sendShortcut === "modifier"
+                  ? `${shortcutLabel("Enter")} 发送`
+                  : "Enter 发送"
               }
             >
               {sending ? <span aria-hidden="true">…</span> : <SendIcon />}
             </button>
           </div>
+          {skillsOpen && (
+            <div className="composer-skills-panel">
+              <header>
+                <strong>使用 {targetBot?.name} 的技能</strong>
+                <button
+                  type="button"
+                  aria-label="关闭技能选择"
+                  onClick={() => setSkillsOpen(false)}
+                >
+                  ×
+                </button>
+              </header>
+              {skillsLoading ? (
+                <p role="status">正在读取…</p>
+              ) : skillChoices.length === 0 ? (
+                <p>暂无已审核技能，可在插件中添加并审核。</p>
+              ) : (
+                skillChoices.map((skill) => (
+                  <button
+                    type="button"
+                    key={skill.id}
+                    disabled={
+                      (draft.skills?.length ?? 0) >= 2 ||
+                      draft.skills?.some((item) => item.id === skill.id)
+                    }
+                    onClick={() => {
+                      conversation.edit({
+                        skills: [
+                          ...(draft.skills ?? []),
+                          { id: skill.id, name: skill.name, version: skill.version },
+                        ],
+                      });
+                      setSkillsOpen(false);
+                    }}
+                  >
+                    {skill.name}
+                    <small>v{skill.version}</small>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+          {contextError && (
+            <p className="composer-error" role="alert">
+              {contextError}
+            </p>
+          )}
+          {contextLength > 8000 && (
+            <p className="composer-error" role="alert">
+              消息与附件合计不能超过 8000 字符。
+            </p>
+          )}
           {sending ? (
             <p className="composer-pending" role="status">
               正在发送，你可以继续起草下一条。
@@ -468,7 +794,7 @@ export function ChannelWorkspace({
         <div className="conversation-footer">
           <span>
             {preferences.sendShortcut === "modifier"
-              ? "⌘ / Ctrl + Enter 发送 · Enter 换行"
+              ? `${shortcutLabel("Enter")} 发送 · Enter 换行`
               : "Enter 发送 · Shift + Enter 换行"}
           </span>
           <span className={`realtime-state ${realtimeState}`}>

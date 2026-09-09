@@ -2,7 +2,7 @@
 
 [简体中文](DESKTOP_ONBOARDING.zh-CN.md)
 
-Desktop shares one application across macOS, Windows and Linux. The macOS source-build preview
+Desktop 0.1.0-alpha.3 shares one application across macOS, Windows and Linux. The macOS source-build preview
 offers two choices; Windows, Linux and unknown platforms offer only the existing-Server connection
 until native service setup is implemented for them:
 
@@ -12,30 +12,49 @@ until native service setup is implemented for them:
 - **Remote client:** Desktop saves and verifies an existing HTTPS Server origin, then asks for
   its Owner login. It does not initialize or start a local database or Server.
 
-The macOS window uses native traffic lights inside the content area. The application and in-app
-branding share one icon. The left navigation provides New conversation, Automations, Skills,
-channels and Bots. Search filters the authorized channel and Bot list. The office scene remains
-deferred.
+The macOS window retains native traffic lights and the left sidebar toggle. The sidebar keeps
+**OpenBot** as a wordmark without a separate brand icon. Its single creation **+** opens channel
+and Bot creation; there is no separate New conversation row or extra plus beside section headings.
+Search filters authorized channels and Bots. **Plugins** and **Owner** are the bottom entries;
+Owner opens Settings, About, Help, Feedback and logout. The office scene remains deferred.
 
 ## Workspace navigation and conversations
 
-A shared toolbar aligns navigation with the native window controls. The left side contains the
-sidebar toggle and back/forward buttons, the middle identifies the current channel or destination,
-and the information-panel toggle stays at the far right. Both side panels start open and can be
-hidden independently from the toolbar or Settings; those choices are saved locally. Channel
-membership and adding an existing Bot are available from the channel's more menu.
+The left and right panels can be collapsed independently. The channel title and horizontally
+stacked Bot avatars form one borderless disclosure for channel details and membership; there is
+no separate more menu. Share, Work computers and the right-panel toggle remain separate controls
+at the top right. The compact task-progress strip and contextual information panel are retained.
 
-Back and forward revisit channels, Bot profiles, Skills and Automations within the current
-workspace. Creating a channel opens it immediately. Returning from Settings preserves the selected
-view, channel draft and reading position. Navigation is local presentation state, not a change to
-Server routing or permissions. See [navigation research](research/desktop-navigation-continuity.md).
+Click a Bot in the sidebar to open its persistent direct conversation. Right-click it to open the
+Bot profile. A direct conversation has exactly one Server-owned Bot identity; repeated opens reuse
+the same conversation, and adding other members or routing its task to another Bot is rejected.
+Direct conversations do not appear as ordinary channels. See
+[direct-conversation research](research/desktop-direct-conversations.md).
 
-The conversation keeps a shared reading surface, lightweight human-message bubbles and quoted
-replies. Task status appears beside its associated message. The rounded composer grows from two
-to eight lines, with the receiving Bot selector and send button below the text. Reading older
-messages stays in place as new messages arrive; **Return to latest** resumes following the bottom.
+Back and forward revisit workspace destinations. Creating a channel opens it immediately.
+Returning from Settings preserves the selected view, draft and reading position. Navigation is
+local presentation state, not Server routing or authorization. See
+[navigation research](research/desktop-navigation-continuity.md).
 
-Each channel retains its draft text, selected Bot and quoted reply in workspace-session memory.
+The conversation keeps readable messages, quoted replies and associated task status. In a channel,
+type **@** and choose a current member to address that Bot; the selection uses its Server-provided
+ID. A direct conversation needs no mention. The composer no longer has a Bot dropdown below the
+text. It grows from two to eight lines and retains the send button; Enter sends by default and
+Shift+Enter inserts a newline. Reading older messages stays in place until **Return to latest**.
+
+The composer's **+** adds removable attachment and skill chips. It accepts at most **3 UTF-8 TXT,
+MD, CSV or JSON files**, each at most **6,000 bytes**. File contents become user-provided task text;
+the full request, including text, attachment labels/content and skill requests, must fit within
+**8,000 characters**. This does not upload binary files, PDFs or screenshots. You can request at
+most **2 verified skills already assigned to the addressed Bot**. Skill selection requests their
+use and does not grant capabilities; the Server rechecks assignment and verification at execution.
+
+**Share** first shows an explicit preview of recently loaded messages as Markdown. **Copy
+conversation** writes that preview to the clipboard, with a manual-copy fallback. This is not a
+complete-history export or hosted/public share link; no conversation is automatically published.
+
+Each channel retains its draft text, selected Bot, quoted reply, attachment and skill chips in
+workspace-session memory.
 Switching channels while a send is pending does not move its result into another channel, and a
 successful send clears only the unchanged submitted draft. Newer edits are kept. Only one message
 submission per channel is pending at a time; failures retain the draft and are not retried
@@ -43,16 +62,15 @@ automatically. After an uncertain network result, check the channel history befo
 
 Drafts are not saved to disk or localStorage and do not survive logout, changing Owner/Server,
 reload or closing the window. The bounded cache retains up to 32 visited channels with drafts of
-at most 8,000 characters. Unsent drafts, quoted replies and pending sends are not evicted; if all
+at most 8,000 characters. Unsent drafts, quoted replies, attachment/skill selections and pending sends are not evicted; if all
 slots are in use, the next channel displays a limit notice until an older draft is sent or cleared.
 This is not offline sending or Server-side idempotency. See
 [conversation research](research/desktop-conversation-continuity.md).
 
-The information panel prioritizes the selected channel's pending approvals, active tasks and
-recent results. Workspace totals are available in a disclosure below them. Existing approval and
-task-inspection actions retain Server authorization. The Token panel explicitly reports missing
-usage because the current Server does not yet produce model measurements; task statistics describe
-the recent bounded snapshot, not a daily or all-time total. See
+The information panel prioritizes the selected channel's pending approvals, active tasks, recent
+results and artifacts. Existing approval and task-inspection actions retain Server authorization.
+The Token panel displays measurements supplied by the Server when available. Missing measurements
+remain unavailable; recent bounded task/usage data is not an all-time or billed total. See
 [inspector research](research/desktop-contextual-inspector.md).
 
 macOS sidebar translucency uses Electron's native sidebar material behind the left navigation;
@@ -69,7 +87,7 @@ only when their corresponding view action is available.
 
 | Action | macOS shortcut |
 | --- | --- |
-| New conversation | Command+N |
+| Create a channel | Command+N |
 | Open Settings | Command+, |
 | Back / Forward | Command+[ / Command+] |
 | Show or hide the left sidebar | Command+B |
@@ -81,15 +99,21 @@ command bridge, Reload menu or Developer Tools menu is added. See
 
 ## Settings and local preferences
 
-Settings has five categories:
+Open **Owner → Settings**. Settings replaces the workspace across the whole application window;
+its own vertical category navigation, search and **Back to app** control replace the channel/Bot
+sidebar. Categories are grouped under Application and Workspace:
 
 | Category | Available controls and information |
 | --- | --- |
-| General & Appearance | Sidebar translucency, independent left/right-panel visibility, comfortable/compact spacing, 14/16 px chat text, reduced motion, Enter or Command/Ctrl+Enter to send, and 12/24-hour message timestamps |
-| Models & API | Read and validate/save model access; explicitly enable or disable the native Agent |
-| Server & Work Computers | Current role and Server address, change role or remote connection, open device management, and read local Worker status |
-| Privacy & Data | Where data and model credentials are stored, Server authorization boundaries, usage availability, and reset local interface preferences |
-| About OpenBot | Application branding, platform/runtime information, supported model-interface choices, and Hermes Agent attribution |
+| General | Sidebar translucency, independent panel visibility, comfortable/compact spacing, 14/16 px chat text, reduced motion, send shortcut and 12/24-hour timestamps |
+| About OpenBot | Version/platform/runtime information, model-interface choices and Hermes Agent attribution |
+| Privacy & Data | Data/credential storage, Server authorization, available usage and reset local interface preferences |
+| Model services | Validate and save the Server's **one default model configuration**, replace its key and explicitly enable or disable the native Agent |
+| Work computers | Current role and Server address, change role/remote connection, manage devices and inspect local Worker status |
+| Automatic tasks | Create and manage persistent schedules through the existing Server API |
+
+Provider presets are choices for the single default configuration, not independently saved
+connections or per-Bot model assignments.
 
 Interface preferences are non-secret values saved in this renderer's local profile, not workspace
 policy on the Server. They apply immediately and survive reopening when storage is available.
@@ -100,12 +124,20 @@ Shift+Enter always inserts a newline, and IME composition does not send a messag
 motion remains effective even when the local reduced-motion switch is off. See
 [preference research](research/desktop-workspace-preferences.md).
 
-## Skills and automatic tasks
+## Plugins and automatic tasks
 
-Skills indexes actual skill records belonging to Bots in the connected workspace. Search and
-state filters lead to the existing Bot skill-review surface. Missing profile reads are shown as
-unavailable rather than empty. This is a workspace gallery: it does not download marketplace
-packages or activate executable skills. See [destination research](research/workspace-destinations.md).
+Open **Plugins** at the sidebar bottom. It occupies the full application window with **Back to
+app**, without the workspace sidebar. The Skills tab lists actual workspace skills with search
+and state filters. **Add skill** imports a single `SKILL.md` for a selected Bot into the existing
+review process; imported content is not immediately trusted or activated. Open a skill's Bot
+profile to review its source, version, full content, declared capabilities and content digest.
+The Bots tab provides Bot creation and the existing reviewed Bot-template import flow. Failed
+profile reads are shown as unavailable, not empty. This is a workspace extension interface, not
+a public marketplace or an installer for arbitrary executable plugin bundles. See
+[destination research](research/workspace-destinations.md) and
+[UI refresh research](research/desktop-ui-refresh.md).
+
+Automatic tasks are available from **Owner → Settings → Automatic tasks**.
 
 An authenticated Owner can create an automatic task for a Bot already in a channel, then pause,
 resume or delete its schedule. The UI offers elapsed intervals of one hour, 24 hours and seven
@@ -130,14 +162,17 @@ See [recurring-task research](research/server-automations.md).
 
 ## Current boundaries
 
-This is a source-build preview, not a signed/notarized public installer. Native installation has
-been exercised on macOS arm64. The x64 package is pinned but has not been exercised on Intel;
-Windows and Linux retain remote-client behavior and have no native installer in this change.
+This is the **0.1.0-alpha.3 development UI**, not a signed/notarized public-release claim. The
+installer pipeline targets macOS arm64, Windows x64 and Linux x64; Windows/Linux remain remote
+clients. Build configuration alone does not establish native Windows/Linux installation or
+runtime verification for this revision. macOS Intel is outside the installer matrix. See
+[installation](DESKTOP_INSTALLATION.md) for versioned artifacts and distribution boundaries.
 
-The [native Agent](NATIVE_AGENT.md) adds model-generated replies after Owner opt-in.
-This interface does not add input screenshot/file attachments,
-task cancellation or automatic/safe retries. Those require separately reviewed Server behavior;
-the composer only submits through the existing authenticated text-message API.
+The [native Agent](NATIVE_AGENT.md) adds model-generated replies after Owner opt-in. The composer
+supports the bounded text attachments described above, through the authenticated text-task API.
+Binary/PDF/image inputs and automatic retries remain outside this change. Existing native-task
+stop and explicit resubmission controls retain their Server-owned lifecycle; resubmission creates
+a new task and does not promise safe replay of prior side effects.
 
 The bundled Server currently listens **only on this Mac**. Sharing this native installation with
 another computer requires a future authenticated HTTPS provisioning flow. Do not enter its
@@ -155,11 +190,14 @@ stops local services and retains their data. Switching back reuses that data.
 
 ## Model access
 
-After native installation, choose OpenAI or Anthropic and enter an accessible model ID and API key.
-Validation requests only model metadata from the selected provider's official HTTPS endpoint;
-no generation or transcript is sent. Keys can be replaced in Settings. Concurrent or stale saves
-reject instead of overwriting a newer revision. Skipping postpones configuration until Settings
-(or the next startup). There is no custom proxy URL in this initial UI.
+After native installation, select a supported provider preset, its allowed endpoint/region, an
+accessible model ID and API key. Presets include OpenAI, Anthropic, Gemini, DeepSeek and Kimi/Moonshot
+among the choices shown by the current app. Validation/discovery requests model metadata, not
+generation or transcripts. The Server stores one default provider/model configuration, shared by
+native Agent tasks; switching the selection replaces that default. Keys can be replaced in
+**Owner → Settings → Model services**. Concurrent or stale saves reject instead of overwriting a
+newer revision. Skipping postpones setup. Presets do not imply that every listed model is available
+to the supplied account, and arbitrary custom proxy URLs are not accepted.
 
 Saving credentials leaves inference disabled unless the Owner checks **Enable native Agent**.
 The [native Agent](NATIVE_AGENT.md) then executes new `none`-profile tasks through a bounded
