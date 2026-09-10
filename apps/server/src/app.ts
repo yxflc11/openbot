@@ -617,12 +617,10 @@ export function createApp(dependencies: AppDependencies) {
       channelId: result.message.channelId,
       message: result.message,
     });
-    realtime.publish({
-      type: "run.created",
-      channelId: result.run.channelId,
-      run: result.run,
-    });
-    dependencies.dispatchRun?.(result.run);
+    for (const run of result.runs ?? [result.run]) {
+      realtime.publish({ type: "run.created", channelId: run.channelId, run });
+      dependencies.dispatchRun?.(run);
+    }
     return context.json(result, 201);
   });
 

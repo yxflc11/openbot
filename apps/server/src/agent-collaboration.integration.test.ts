@@ -81,6 +81,117 @@ describe.skipIf(!url)("PostgreSQL channel Bot collaboration", () => {
     if (!root) throw new Error("Failed to claim root.");
     return { control, native, other, members, channel, root, since };
   }
+  it("atomically creates exact recipients and preserves direct-channel authority", async () => {
+    const f = await fixture();
+    const selected = f.members.slice(1, 3).map((bot) => bot.id);
+    const submitted = await f.control.submitTask(f.channel.id, {
+      content: "Both review",
+      botIds: selected,
+    });
+    expect(submitted.runs?.map((run) => run.botId)).toEqual(selected);
+    expect(submitted.runs?.every((run) => run.sourceMessageId === submitted.message.id)).toBe(true);
+    const beforeMessages = await f.control.listMessages(f.channel.id);
+    const beforeRuns = await f.control.listRuns(f.channel.id);
+    const outsider = await f.control.createBot({
+      name: "Outside",
+      role: "Outside",
+      computerProfile: "none",
+    });
+    for (const input of [
+      { botIds: [required(selected[0]), outsider.id] },
+      { botIds: [required(selected[0]), required(selected[0])] },
+      { botId: required(selected[0]), botIds: selected },
+    ])
+      await expect(
+        f.control.submitTask(f.channel.id, { content: "Must rollback", ...input }),
+      ).rejects.toThrow();
+    expect(await f.control.listMessages(f.channel.id)).toEqual(beforeMessages);
+    expect(await f.control.listRuns(f.channel.id)).toEqual(beforeRuns);
+    const direct = await f.control.getOrCreateDirectConversation(required(selected[0]));
+    await expect(
+      f.control.submitTask(direct.id, { content: "Redirect", botIds: selected }),
+    ).rejects.toThrow();
+    expect(await f.control.listMessages(direct.id)).toHaveLength(0);
+  });
+  it("reads preceding late answers at start while keeping later human inputs independent", async () => {
+    const f = await fixture();
+    const next = await f.control.submitTask(f.channel.id, { content: "Continue from that answer" });
+    const later = await f.control.submitTask(f.channel.id, { content: "LATER_INDEPENDENT_TASK" });
+    const answer = await f.native.complete(f.root, "PRECEDING_ANSWER_AFTER_QUEUE");
+    const active = required(await f.native.claim(next.run, f.since));
+    const context = JSON.stringify(await f.native.initialContext(active));
+    expect(context).toContain("PRECEDING_ANSWER_AFTER_QUEUE");
+    expect(context).toContain(next.message.content);
+    expect(context).not.toContain(later.message.content);
+    expect(await f.control.listRuns(f.channel.id)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: later.run.id, status: "queued" })]),
+    );
+    await f.native.complete(active, "Second done");
+    const replied = await f.control.submitTask(f.channel.id, {
+      content: "Discuss quoted answer",
+      replyToMessageId: answer.message.id,
+    });
+    const otherChannel = await f.control.createChannel({
+      name: "Other",
+      description: "",
+      botIds: [f.root.botId],
+    });
+    await expect(
+      f.control.submitTask(otherChannel.id, {
+        content: "Wrong scope",
+        replyToMessageId: answer.message.id,
+      }),
+    ).rejects.toThrow();
+    const laterActive = required(await f.native.claim(later.run, f.since));
+    await f.native.complete(laterActive, "Later done");
+    const replyActive = required(await f.native.claim(replied.run, f.since));
+    expect(await f.native.context(replyActive)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: answer.message.id,
+          content: answer.message.content,
+          referenced: true,
+        }),
+      ]),
+    );
+  });
+  it("keeps delegated context inside the original input boundary and freezes later observations", async () => {
+    const f = await fixture();
+    const later = await f.control.submitTask(f.channel.id, { content: "DO_NOT_STEER_CHILD" });
+    const child = await f.native.delegate(f.root, {
+      botId: required(f.members[1]).id,
+      task: "Independent assignment",
+    });
+    const before = JSON.stringify(await f.native.context(child.run));
+    expect(before).toContain("Independent assignment");
+    expect(before).not.toContain(later.message.content);
+    await required(database)
+      .client`insert into messages (id,channel_id,author_type,author_id,run_id,content,created_at) values ('late-observation',${f.channel.id},'bot',${f.root.botId},${f.root.id},'AFTER_START_REPLY',now()+interval '1 second')`;
+    expect(JSON.stringify(await f.native.context(child.run))).not.toContain("AFTER_START_REPLY");
+    expect(
+      JSON.stringify(await f.native.context({ ...child.run, updatedAt: "2099-01-01T00:00:00Z" })),
+    ).not.toContain("AFTER_START_REPLY");
+  });
+  it("keeps a bounded explicit reference outside the rolling history window", async () => {
+    const f = await fixture();
+    const source = await f.native.complete(f.root, "OLD_EXPLICIT_REFERENCE");
+    for (let i = 0; i < 14; i++)
+      await f.control.submitTask(f.channel.id, { content: `Intervening queued input ${i}` });
+    const replied = await f.control.submitTask(f.channel.id, {
+      content: "Explain the quote",
+      replyToMessageId: source.message.id,
+    });
+    const active = required(await f.native.claim(replied.run, f.since));
+    expect(await f.native.context(active)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: source.message.id,
+          referenced: true,
+          content: "OLD_EXPLICIT_REFERENCE",
+        }),
+      ]),
+    );
+  });
   it("binds author and recipient identities, persists provenance, and retains the root channel lease", async () => {
     const f = await fixture();
     const child = await f.native.delegate(f.root, {

@@ -1,10 +1,12 @@
 import type { CreateMessageInput, Message, Run, SubmitTaskResult } from "@openbot/domain";
 import { type ComposerAttachment, type ComposerSkill, composeTaskText } from "./composer-context";
+import { selectedRecipientIds } from "./recipient-utils";
 import { mergeRuns } from "./run-state";
 
 export interface ConversationDraft {
   text: string;
   targetBotId: string;
+  targetBotIds?: string[];
   replyTo?: Message | undefined;
   attachments?: ComposerAttachment[];
   skills?: ComposerSkill[];
@@ -32,7 +34,10 @@ export interface ConversationChannel {
   subscribe(listener: () => void): () => void;
   edit(
     update: Partial<
-      Pick<ConversationDraft, "text" | "targetBotId" | "replyTo" | "attachments" | "skills">
+      Pick<
+        ConversationDraft,
+        "text" | "targetBotId" | "targetBotIds" | "replyTo" | "attachments" | "skills"
+      >
     >,
   ): void;
   merge(messages: Message[], runs?: Run[]): void;
@@ -114,7 +119,19 @@ export function createConversationSession(): ConversationSession {
         edit(update) {
           if (disposed || closed || capacityError) return;
           const draft = { ...state.draft, ...update, revision: state.draft.revision + 1 };
-          if (update.targetBotId !== undefined && update.targetBotId !== state.draft.targetBotId)
+          // Older single-recipient controls replace a selection rather than leaving hidden recipients.
+          if (update.targetBotId !== undefined && update.targetBotIds === undefined)
+            draft.targetBotIds = update.targetBotId ? [update.targetBotId] : [];
+          let recipients: string[];
+          try {
+            recipients = selectedRecipientIds(draft);
+          } catch (cause) {
+            publish({ sendError: cause instanceof Error ? cause.message : "接收 Bot 无效。" });
+            return;
+          }
+          draft.targetBotId = recipients[0] ?? "";
+          if (draft.targetBotIds !== undefined) draft.targetBotIds = recipients;
+          if (JSON.stringify(recipients) !== JSON.stringify(selectedRecipientIds(state.draft)))
             draft.skills = [];
           draft.text = draft.text.slice(0, 8000);
           publish({ draft });
@@ -143,7 +160,8 @@ export function createConversationSession(): ConversationSession {
           if (pending) return pending;
           const sent = state.draft;
           const content = composeTaskText(sent.text, sent.attachments, sent.skills);
-          if (!sent.text.trim() || !sent.targetBotId) return Promise.resolve(undefined);
+          if (!sent.text.trim()) return Promise.resolve(undefined);
+          const recipients = selectedRecipientIds(sent);
           if (content.length > 8000) {
             publish({ sendError: "消息与附件合计不能超过 8000 字符，请缩短内容。" });
             return Promise.resolve(undefined);
@@ -161,16 +179,24 @@ export function createConversationSession(): ConversationSession {
                 ? undefined
                 : submit({
                     content,
-                    botId: sent.targetBotId,
+                    ...(recipients.length > 1
+                      ? { botIds: recipients }
+                      : recipients.length === 1
+                        ? { botId: recipients[0] }
+                        : {}),
                     ...(sent.replyTo ? { replyToMessageId: sent.replyTo.id } : {}),
                   }),
             )
             .then((result) => {
               if (disposed || closed || !result) return undefined;
-              if (result.message.channelId !== id || result.run.channelId !== id) {
+              const receivedRuns = [result.run, ...(result.runs ?? [])];
+              if (
+                result.message.channelId !== id ||
+                receivedRuns.some((run) => run.channelId !== id)
+              ) {
                 throw new Error("服务返回了不匹配的频道。");
               }
-              value.merge([result.message], [result.run]);
+              value.merge([result.message], receivedRuns);
               if (state.draft.revision === sent.revision) {
                 publish({
                   draft: {

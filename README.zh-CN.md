@@ -27,6 +27,8 @@ Server 负责身份、路由、授权和审计。界面能显示桌面，并不�
 
 本地 Desktop alpha.4 升级增加[频道 Bot 委派、持久附件和经审阅的 MCP 插件工具](docs/CORE_UPGRADE.zh-CN.md)。接收方以自己的身份执行，Server 保存完整任务关系。
 
+本地 Desktop alpha.5 根据原生应用体验重做[频道对话](docs/CHANNEL_EXPERIENCE.zh-CN.md)，增加多接收者、紧凑消息、附件预览和排队上下文连续性。
+
 ## Windows、macOS 与 Linux Desktop
 
 三端使用相同的 Electron 44.2.0 应用和共享频道工作区。

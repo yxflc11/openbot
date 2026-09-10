@@ -351,32 +351,108 @@ export class PostgresAgentStore implements AgentRunStore {
       return { run: toRun(cancelled), descendants: descendants.map(toRun) };
     });
   }
+  async initialContext(run: Run): Promise<unknown> {
+    return this.context(run);
+  }
   async context(run: Run): Promise<unknown> {
     await this.assertScope(run);
-    const rows = await this.db
+    const [source] = await this.db
       .select({
-        author: messages.authorType,
-        authorId: messages.authorId,
-        content: messages.content,
+        id: messages.id,
+        rootRunId: runs.rootRunId,
+        createdAt: messages.createdAt,
+        replyToMessageId: messages.replyToMessageId,
       })
+      .from(runs)
+      .innerJoin(messages, eq(messages.id, runs.sourceMessageId))
+      .where(
+        and(
+          eq(runs.id, run.id),
+          eq(runs.channelId, run.channelId),
+          eq(messages.channelId, run.channelId),
+        ),
+      )
+      .limit(1);
+    if (!source) throw new NativeExecutionError("scope_revoked");
+    const [rootSource] =
+      source.rootRunId === null
+        ? []
+        : await this.db
+            .select({ createdAt: messages.createdAt })
+            .from(runs)
+            .innerJoin(messages, eq(messages.id, runs.sourceMessageId))
+            .where(
+              and(
+                eq(runs.id, source.rootRunId),
+                eq(runs.channelId, run.channelId),
+                eq(messages.channelId, run.channelId),
+              ),
+            )
+            .limit(1);
+    if (source.rootRunId !== null && !rootSource) throw new NativeExecutionError("scope_revoked");
+    const inputCutoff = rootSource?.createdAt ?? source.createdAt;
+    const [started] = await this.db
+      .select({ createdAt: runEvents.createdAt })
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, run.id), eq(runEvents.type, "RUN_STARTED")))
+      .orderBy(asc(runEvents.createdAt))
+      .limit(1);
+    // Freeze history at the persisted start, not at each model tool call. New human messages
+    // remain separate queued tasks; only preceding task trees may contribute late Bot replies.
+    if (!started) throw new NativeExecutionError("scope_revoked");
+    const cutoff = started.createdAt;
+    const projection = {
+      id: messages.id,
+      author: messages.authorType,
+      authorId: messages.authorId,
+      content: messages.content,
+    };
+    const rows = await this.db
+      .select(projection)
       .from(messages)
       .where(
         and(
           eq(messages.channelId, run.channelId),
-          lte(messages.createdAt, new Date(run.createdAt)),
+          or(
+            eq(messages.id, source.id),
+            lte(messages.createdAt, inputCutoff),
+            and(
+              eq(messages.authorType, "bot"),
+              lte(messages.createdAt, cutoff),
+              sql`exists (
+            select 1 from runs reply_run
+            join runs root_run on root_run.id = coalesce(reply_run.root_run_id, reply_run.id)
+            join messages root_source on root_source.id = root_run.source_message_id
+            where reply_run.id = ${messages.runId}
+              and reply_run.channel_id = ${run.channelId} and root_run.channel_id = ${run.channelId}
+              and root_source.channel_id = ${run.channelId}
+              and root_source.created_at <= ${inputCutoff.toISOString()}::timestamptz
+          )`,
+            ),
+          ),
         ),
       )
       .orderBy(desc(messages.createdAt), desc(messages.id))
       .limit(12);
-    // Byte bounds also cover non-ASCII content; JSON escaping is bounded once more by the runtime.
+    const [reference] =
+      source.replyToMessageId === null
+        ? []
+        : await this.db
+            .select(projection)
+            .from(messages)
+            .where(
+              and(eq(messages.id, source.replyToMessageId), eq(messages.channelId, run.channelId)),
+            )
+            .limit(1);
+    const selected = reference
+      ? [{ ...reference, referenced: true }, ...rows.filter((row) => row.id !== reference.id)]
+      : rows;
     let remaining = 10_000;
-    return rows
+    return selected
       .map((row) => {
-        const content = Buffer.from(row.content)
-          .subarray(0, Math.min(1600, remaining))
-          .toString("utf8");
+        const content = boundedKnowledgeText(row.content, Math.min(1600, remaining));
         remaining = Math.max(0, remaining - Buffer.byteLength(content));
-        return { author: row.author, authorId: row.authorId, content };
+        return { ...row, content };
       })
       .reverse();
   }

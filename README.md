@@ -30,6 +30,8 @@ The app's ability to display a desktop does not grant permission to control it.
 
 The local Desktop alpha.4 upgrade adds [channel Bot delegation, persistent attachments and reviewed MCP plugin tools](docs/CORE_UPGRADE.md). Each recipient executes under its own identity; the Server records the task tree.
 
+The local Desktop alpha.5 update rebuilds the [channel conversation experience](docs/CHANNEL_EXPERIENCE.md) from native-app observations, with multiple recipients, compact messages, file previews and queued-context continuity.
+
 ## Desktop on Windows, macOS and Linux
 
 All three platforms use the same Electron 44.2.0 application and shared channel workspace.

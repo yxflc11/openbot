@@ -690,12 +690,14 @@ export interface CreateChannelInput {
 export interface CreateMessageInput {
   content: string;
   botId?: EntityId | undefined;
+  botIds?: EntityId[] | undefined;
   replyToMessageId?: EntityId | undefined;
 }
 
 export interface SubmitTaskResult {
   message: Message;
   run: Run;
+  runs?: Run[];
 }
 
 /** A model-authored proposal is never active memory before an Owner review. */

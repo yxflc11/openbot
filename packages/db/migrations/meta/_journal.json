@@ -169,6 +169,13 @@
       "when": 1789968000005,
       "tag": "0023_channel_bot_collaboration",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1789968000006,
+      "tag": "0024_multi_bot_message_recipients",
+      "breakpoints": true
     }
   ]
 }

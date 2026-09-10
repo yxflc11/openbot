@@ -441,8 +441,8 @@ export const runs = pgTable(
       .where(
         sql`${table.status} = 'queued' AND ${table.nodeId} IS NULL AND ${table.executionProfile} <> 'none'`,
       ),
-    uniqueIndex("runs_source_message_idx")
-      .on(table.sourceMessageId)
+    uniqueIndex("runs_source_message_bot_idx")
+      .on(table.sourceMessageId, table.botId)
       .where(sql`${table.sourceMessageId} IS NOT NULL`),
     check("runs_title_not_blank", sql`length(btrim(${table.title})) > 0`),
     check("runs_instruction_not_blank", sql`length(btrim(${table.instruction})) > 0`),

@@ -231,3 +231,5 @@ Desktop 服务预设复用现有 AI SDK 适配器与 Owner 设置，见 [Desktop
 Desktop 公开检索复用 ai 7.0.93 / `6359fd58fe68eaade096b5d923bac26de84ca3bd`、@ai-sdk/moonshotai 3.0.45 / `8a09c78c039e2c092468eaeff97faaabf3b77366`（Apache-2.0）、2026-09-08 审查的 Kimi Formula/Tavily 官方契约及现有 DNS 固定读取器。每任务最多四次联网调用，沿用原生 Run 权限、审计和截止时间。未复制上游源码，见[Desktop 联网工具调研](research/desktop-public-web-tools.zh-CN.md)。
 
 频道呈现和插件管理复用 React 19.2.8、原生 HTML 控件与 OpenBot 身份。官方 Grok Bot 对照、界面边界和实际渲染检查见[频道呈现](research/channel-collaboration-presentation.zh-CN.md)和[插件界面](research/plugin-owner-interface.zh-CN.md)；未复制 xAI 图像或源码。
+
+alpha.5 原生参考频道改造继续复用上述已锁定依赖与标准，没有复制专有源码、头像或私人对话。见[原生体验](research/channel-native-reference.md)、[路由与上下文](research/channel-context-routing.md)、[附件展示](research/channel-attachment-presentation.md)和[用户可见行为](CHANNEL_EXPERIENCE.zh-CN.md)。

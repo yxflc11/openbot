@@ -958,7 +958,7 @@ export function AuthenticatedWorkspace({
 
   return (
     <div
-      className={`app-shell desktop-workspace ${fullPage ? "full-page-destination" : ""} ${showDetails ? "" : "without-context"} ${preferences.leftPanelOpen ? "" : "without-sidebar"}`}
+      className={`app-shell desktop-workspace ${destination === "chat" && selectedChannel ? "channel-view" : ""} ${fullPage ? "full-page-destination" : ""} ${showDetails ? "" : "without-context"} ${preferences.leftPanelOpen ? "" : "without-sidebar"}`}
     >
       <header className="workspace-toolbar">
         <nav className="toolbar-navigation" aria-label="页面与侧栏导航">

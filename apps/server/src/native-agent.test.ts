@@ -83,6 +83,28 @@ function fixture() {
   };
 }
 describe("native Agent loop", () => {
+  it("includes start-time history and explicit reply content before the current task", async () => {
+    const f = fixture();
+    f.store.initialContext = vi.fn(async () => [
+      { content: "Referenced source answer", referenced: true },
+    ]);
+    const model = new MockLanguageModelV4({ doGenerate: answer() });
+    await executeAgentRun({ ...f, model });
+    const prompt = JSON.stringify(model.doGenerateCalls[0]?.prompt);
+    expect(prompt).toContain("Referenced source answer");
+    expect(prompt.indexOf("Referenced source answer")).toBeLessThan(
+      prompt.indexOf(run.instruction),
+    );
+    expect(f.store.initialContext).toHaveBeenCalledWith(run);
+    expect(f.store.context).not.toHaveBeenCalled();
+  });
+  it("rejects oversized initial context before calling a model", async () => {
+    const f = fixture();
+    f.store.initialContext = vi.fn(async () => "x".repeat(17000));
+    const model = new MockLanguageModelV4({ doGenerate: answer() });
+    await expect(executeAgentRun({ ...f, model })).rejects.toThrow();
+    expect(model.doGenerateCalls).toHaveLength(0);
+  });
   it("searches without supplied URLs and supersedes prior no-internet replies", async () => {
     const f = fixture();
     const evidence = "Source: https://www.nvidia.com/ ; retrieved public evidence";

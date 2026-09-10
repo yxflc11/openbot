@@ -344,6 +344,130 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
       />
     );
   }
+  it("adds two Bot recipients and sends one request while publishing every returned task", async () => {
+    const primary = result("a");
+    const secondRun = { ...primary.run, id: "run-coder", botId: secondBot.id };
+    vi.mocked(createMessage).mockResolvedValue({ ...primary, runs: [primary.run, secondRun] });
+    const rendered = await renderComponent(multi());
+    try {
+      await typeText(rendered.container, "Review @Assistant");
+      await interact(() =>
+        rendered.container.querySelector<HTMLButtonElement>("#mention-bot-a")?.click(),
+      );
+      await typeText(rendered.container, "Review @Coder");
+      await interact(() =>
+        rendered.container.querySelector<HTMLButtonElement>("#mention-bot-b")?.click(),
+      );
+      expect(rendered.container.querySelectorAll(".composer-mention")).toHaveLength(2);
+      await submit(rendered.container);
+      expect(createMessage).toHaveBeenCalledTimes(1);
+      expect(createMessage).toHaveBeenCalledWith("a", {
+        content: "Review",
+        botIds: [bot.id, secondBot.id],
+      });
+      expect(callbacks.onRun.mock.calls.map(([run]) => run.id)).toEqual([
+        primary.run.id,
+        secondRun.id,
+      ]);
+      expect(rendered.container.querySelectorAll(".channel-work-item")).toHaveLength(2);
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("sends a group message without @ for Server-owned routing", async () => {
+    vi.mocked(createMessage).mockResolvedValue(result("a"));
+    const rendered = await renderComponent(multi());
+    try {
+      await typeText(rendered.container, "Please coordinate this work");
+      expect(rendered.container.querySelector<HTMLButtonElement>(".composer-send")?.disabled).toBe(
+        false,
+      );
+      await submit(rendered.container);
+      expect(createMessage).toHaveBeenCalledWith("a", { content: "Please coordinate this work" });
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("selects everyone from the actual channel membership without including an outside Bot", async () => {
+    vi.mocked(createMessage).mockResolvedValue(result("a"));
+    const rendered = await renderComponent(multi());
+    try {
+      await typeText(rendered.container, "Coordinate @everyone");
+      await interact(() =>
+        rendered.container.querySelector<HTMLButtonElement>(".mention-everyone")?.click(),
+      );
+      expect(rendered.container.querySelectorAll(".composer-mention")).toHaveLength(2);
+      await submit(rendered.container);
+      expect(createMessage).toHaveBeenCalledWith("a", {
+        content: "Coordinate",
+        botIds: [bot.id, secondBot.id],
+      });
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("chooses everyone with Enter as a recipient action without prematurely sending", async () => {
+    const session = createConversationSession();
+    const rendered = await renderComponent(multi(session));
+    try {
+      await typeText(rendered.container, "Coordinate @");
+      const input = rendered.container.querySelector("textarea");
+      await interact(() =>
+        input?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })),
+      );
+      expect(session.channel("a").getSnapshot().draft).toMatchObject({
+        text: "Coordinate",
+        targetBotIds: [bot.id, secondBot.id],
+      });
+      expect(createMessage).not.toHaveBeenCalled();
+      expect(rendered.container.querySelector('[role="listbox"]')).toBeNull();
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("addresses a replied Bot and navigates an existing quote to its exact source", async () => {
+    const source: Message = {
+      ...message("a", "Coder result"),
+      authorType: "bot",
+      authorId: secondBot.id,
+    };
+    const quoted: Message = { ...message("a", "Follow-up"), replyToMessageId: source.id };
+    vi.mocked(listMessages).mockResolvedValue([source, quoted]);
+    vi.mocked(createMessage).mockResolvedValue(result("a"));
+    const session = createConversationSession();
+    const rendered = await renderComponent(multi(session));
+    try {
+      await interact(() =>
+        rendered.container
+          .querySelector<HTMLButtonElement>('[aria-label="回复 Coder 的消息"]')
+          ?.click(),
+      );
+      expect(session.channel("a").getSnapshot().draft).toMatchObject({
+        targetBotIds: [secondBot.id],
+        replyTo: source,
+      });
+      expect(document.activeElement).toBe(rendered.container.querySelector("textarea"));
+      await typeText(rendered.container, "Please explain");
+      await submit(rendered.container);
+      expect(createMessage).toHaveBeenCalledWith("a", {
+        content: "Please explain",
+        botId: secondBot.id,
+        replyToMessageId: source.id,
+      });
+      const sourceRow = document.getElementById(`channel-message-${source.id}`);
+      if (!sourceRow) throw new Error("Source message missing");
+      const scrollIntoView = vi.fn();
+      sourceRow.scrollIntoView = scrollIntoView;
+      await interact(() =>
+        rendered.container.querySelector<HTMLButtonElement>(".message-quote")?.click(),
+      );
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "auto" });
+      expect(document.activeElement).toBe(sourceRow);
+      expect(session.channel("a").scroll.atBottom).toBe(false);
+    } finally {
+      await rendered.unmount();
+    }
+  });
   it("chooses only channel members using @ and submits the chosen structured id", async () => {
     vi.mocked(createMessage).mockResolvedValue(result("a"));
     const session = createConversationSession();
@@ -351,18 +475,18 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
     try {
       await typeText(rendered.container, "Review @");
       const choices = rendered.container.querySelectorAll('[role="option"]');
-      expect(choices).toHaveLength(2);
+      expect(choices).toHaveLength(3);
       expect(rendered.container.querySelector('[role="listbox"]')?.textContent).not.toContain(
         "Outside",
       );
-      await interact(() => (choices[1] as HTMLButtonElement).click());
+      await interact(() =>
+        rendered.container.querySelector<HTMLButtonElement>("#mention-bot-b")?.click(),
+      );
       expect(session.channel("a").getSnapshot().draft).toMatchObject({
         text: "Review",
         targetBotId: "bot-b",
       });
-      expect(rendered.container.querySelector(".composer-mention")?.textContent).toContain(
-        "@Coder",
-      );
+      expect(rendered.container.querySelector(".composer-mention")?.textContent).toContain("Coder");
       expect(rendered.container.querySelector(".message-composer select")).toBeNull();
       await submit(rendered.container);
       expect(createMessage).toHaveBeenCalledWith("a", { content: "Review", botId: "bot-b" });
@@ -386,12 +510,14 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
       await rendered.unmount();
     }
   });
-  it("keeps an explicitly removed recipient empty until another Bot is chosen", async () => {
+  it("keeps an explicitly removed recipient empty for default channel routing", async () => {
     const session = createConversationSession();
     const rendered = await renderComponent(view("a", session));
     try {
       await interact(() =>
-        rendered.container.querySelector<HTMLButtonElement>('[aria-label="移除接收 Bot"]')?.click(),
+        rendered.container
+          .querySelector<HTMLButtonElement>('[aria-label="移除接收 Bot Assistant"]')
+          ?.click(),
       );
       expect(session.channel("a").getSnapshot().draft.targetBotId).toBe("");
       expect(rendered.container.querySelector(".composer-mention")).toBeNull();
@@ -399,7 +525,7 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
       await rendered.unmount();
     }
   });
-  it("clears a removed member's identity and skills without losing text or attachments", async () => {
+  it("retains a removed recipient and blocks submission rather than silently using default routing", async () => {
     const session = createConversationSession();
     session.channel("a", secondBot.id).edit({
       text: "Unsent work",
@@ -409,11 +535,16 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
     const rendered = await renderComponent(view("a", session));
     try {
       expect(session.channel("a").getSnapshot().draft).toMatchObject({
-        targetBotId: "",
-        skills: [],
+        targetBotId: secondBot.id,
         text: "Unsent work",
         attachments: [{ name: "brief.md", text: "Instructions" }],
       });
+      expect(rendered.container.querySelector(".composer-mention")?.textContent).toContain(
+        "已离开的 Bot",
+      );
+      expect(rendered.container.querySelector<HTMLButtonElement>(".composer-send")?.disabled).toBe(
+        true,
+      );
       await submit(rendered.container);
       expect(createMessage).not.toHaveBeenCalled();
     } finally {
@@ -474,6 +605,119 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
 });
 
 describe("ChannelWorkspace delegated identities", () => {
+  it("groups consecutive same-author messages and separates a later conversation", async () => {
+    const first: Message = { ...message("a", "First answer"), authorType: "bot", authorId: bot.id };
+    const continuation: Message = {
+      ...first,
+      id: "continuation",
+      content: "More detail",
+      createdAt: "2026-09-05T00:01:00Z",
+    };
+    const later: Message = {
+      ...first,
+      id: "later",
+      content: "A later answer",
+      createdAt: "2026-09-05T00:10:00Z",
+    };
+    vi.mocked(listMessages).mockResolvedValue([first, continuation, later]);
+    const rendered = await renderComponent(view("a"));
+    try {
+      const rows = rendered.container.querySelectorAll(".message-row");
+      expect(rows[0]?.classList.contains("group-start")).toBe(true);
+      expect(rows[0]?.classList.contains("group-end")).toBe(false);
+      expect(rows[1]?.classList.contains("group-continuation")).toBe(true);
+      expect(rows[1]?.classList.contains("group-end")).toBe(true);
+      expect(rows[2]?.classList.contains("group-start")).toBe(true);
+      expect(rendered.container.querySelectorAll(".message-time-divider")).toHaveLength(2);
+      expect(rows[1]?.textContent).toContain("More detail");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("shows every live or failed task inline and keeps queued supplementary messages distinct", async () => {
+    const running: Run = {
+      ...result("a").run,
+      id: "running",
+      status: "running",
+      title: "Researching",
+    };
+    const queued: Run = {
+      ...running,
+      id: "queued",
+      status: "queued",
+      title: "Supplementary task",
+      createdAt: "2026-09-05T00:01:00Z",
+    };
+    const failed: Run = {
+      ...running,
+      id: "failed",
+      status: "failed",
+      title: "Failed work",
+      errorMessage: "Tool unavailable",
+    };
+    const complete: Run = {
+      ...running,
+      id: "complete",
+      status: "completed",
+      title: "Finished work",
+    };
+    vi.mocked(listRuns).mockResolvedValue([running, queued, failed, complete]);
+    const rendered = await renderComponent(view("a"));
+    try {
+      expect(rendered.container.querySelector(".active-task-strip")).toBeNull();
+      expect(
+        rendered.container.querySelector('[role="log"] .channel-work-activity'),
+      ).not.toBeNull();
+      expect(rendered.container.querySelectorAll(".channel-work-item")).toHaveLength(3);
+      expect(rendered.container.querySelector(".channel-work-item.running")?.textContent).toContain(
+        "Researching",
+      );
+      expect(rendered.container.querySelector(".channel-work-item.queued")?.textContent).toContain(
+        "Supplementary task",
+      );
+      expect(rendered.container.querySelector(".channel-work-item.failed")?.textContent).toContain(
+        "Tool unavailable",
+      );
+      expect(rendered.container.querySelectorAll(".work-ellipsis")).toHaveLength(1);
+      await interact(() =>
+        rendered.container
+          .querySelector<HTMLButtonElement>(".channel-work-item.failed > div > button")
+          ?.click(),
+      );
+      expect(callbacks.onInspectRun).toHaveBeenCalledWith(failed.id);
+      await typeText(rendered.container, "Next independent task");
+      expect(rendered.container.querySelector<HTMLButtonElement>(".composer-send")?.disabled).toBe(
+        false,
+      );
+    } finally {
+      await rendered.unmount();
+    }
+  });
+  it("keeps historical failures out of current activity after a newer request completes", async () => {
+    const previous: Run = {
+      ...result("a").run,
+      id: "previous-failure",
+      status: "failed",
+      createdAt: "2026-09-04T00:00:00Z",
+    };
+    const completed: Run = {
+      ...previous,
+      id: "later-completed",
+      status: "completed",
+      createdAt: "2026-09-05T00:00:00Z",
+    };
+    vi.mocked(listRuns).mockResolvedValue([
+      previous,
+      { ...previous, id: "previous-cancelled", status: "cancelled" },
+      completed,
+    ]);
+    const rendered = await renderComponent(view("a"));
+    try {
+      expect(rendered.container.querySelector(".channel-work-activity")).toBeNull();
+    } finally {
+      await rendered.unmount();
+    }
+  });
   it("renders sender and recipient independently and attaches output only to its producing Bot", async () => {
     const recipient: Bot = { ...bot, id: "researcher", name: "Researcher" };
     const parent: Run = { ...result("a").run, id: "parent", sourceMessageId: "request" };

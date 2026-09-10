@@ -1,0 +1,133 @@
+.message-attachments,
+.composer-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.message-attachments {
+  margin-top: 6px;
+}
+.message-attachment-card,
+.composer-attachment-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #fff;
+  color: #242424;
+  padding: 7px 10px 7px 7px;
+}
+.attachment-card-caption {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+}
+.attachment-card-caption strong {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.attachment-card-caption small {
+  color: #888;
+  font-size: 10px;
+}
+.attachment-thumbnail,
+.attachment-file-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 7px;
+  flex: 0 0 38px;
+}
+.attachment-thumbnail {
+  object-fit: cover;
+}
+.attachment-file-icon {
+  display: grid;
+  place-items: center;
+  background: #f0f0f0;
+  color: #7b7b7b;
+  font-size: 9px;
+  font-weight: 600;
+}
+.composer-attachment-card > .attachment-remove-button {
+  border: 0;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+}
+.composer-attachment-card > .attachment-remove-button:hover {
+  background: #eee;
+  color: #222;
+}
+.composer-attachment-card > .attachment-remove-button:focus-visible {
+  outline: 2px solid #888;
+  outline-offset: 2px;
+}
+.attachment-drop-active {
+  outline: 2px solid #909090;
+  outline-offset: -2px;
+}
+.attachment-drop-hint {
+  font-size: 12px;
+  color: #555;
+  padding: 6px 0;
+}
+@media (max-width: 480px) {
+  .attachment-card-caption strong {
+    max-width: 170px;
+  }
+}
+.attachment-image-button {
+  display: block;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: 7px;
+}
+.attachment-image-button:focus-visible {
+  outline: 2px solid #777;
+  outline-offset: 2px;
+}
+.attachment-image-dialog {
+  width: fit-content;
+  max-width: min(90vw, 1000px);
+  max-height: 90vh;
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  padding: 14px;
+  background: #fff;
+  color: #222;
+}
+.attachment-image-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+.attachment-image-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 10px;
+}
+.attachment-image-dialog header strong {
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.attachment-image-dialog > img {
+  display: block;
+  max-width: 100%;
+  max-height: 74vh;
+  object-fit: contain;
+}
