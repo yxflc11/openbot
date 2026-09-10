@@ -12,125 +12,135 @@ if (process.platform !== "win32" || process.arch !== "x64") {
 const runtimeRoot = resolve(process.argv[2] ?? "native-runtime");
 if (!process.argv[3]) throw new Error("A fresh native smoke result path is required.");
 const resultPath = resolve(process.argv[3]);
-let succeeded = false;
-await app.whenReady();
-const dataRoot = await mkdtemp(join(tmpdir(), "openbot-windows-native-"));
-// mkdtemp starts with the user's inherited ACL, so let the controller create and protect its child.
-const clusterRoot = join(dataRoot, "local-server");
-let databaseUrl;
-let loginCount = 0;
-let cooperativeShutdownFailed = false;
-let database;
-const controller = new NativeServerController({
-  runtimeRoot,
-  dataRoot: clusterRoot,
-  platform: process.platform,
-  encrypt(value) {
-    assert.equal(safeStorage.isEncryptionAvailable(), true, "DPAPI must be available");
-    return safeStorage.encryptString(value).toString("base64");
-  },
-  decrypt(value) {
-    return safeStorage.decryptString(Buffer.from(value, "base64"));
-  },
-  async launchServer(env) {
-    databaseUrl = env.OPENBOT_DATABASE_URL;
-    const child = utilityProcess.fork(join(runtimeRoot, "apps/server/dist/index.js"), [], {
-      env,
-      cwd: runtimeRoot,
-      stdio: "ignore",
-      serviceName: "OpenBot Windows CI Server",
-    });
-    let alive = true;
-    child.once("exit", () => {
-      alive = false;
-    });
-    await new Promise((resolveReady, reject) => {
-      const timer = setTimeout(() => {
-        child.kill();
-        reject(new Error("Server readiness timed out"));
-      }, 30_000);
+async function runSmoke() {
+  let succeeded = false;
+  console.info("Windows native smoke: Electron ready.");
+  const dataRoot = await mkdtemp(join(tmpdir(), "openbot-windows-native-"));
+  // mkdtemp starts with the user's inherited ACL, so let the controller create and protect its child.
+  const clusterRoot = join(dataRoot, "local-server");
+  let databaseUrl;
+  let loginCount = 0;
+  let cooperativeShutdownFailed = false;
+  let database;
+  const controller = new NativeServerController({
+    runtimeRoot,
+    dataRoot: clusterRoot,
+    platform: process.platform,
+    encrypt(value) {
+      assert.equal(safeStorage.isEncryptionAvailable(), true, "DPAPI must be available");
+      return safeStorage.encryptString(value).toString("base64");
+    },
+    decrypt(value) {
+      return safeStorage.decryptString(Buffer.from(value, "base64"));
+    },
+    async launchServer(env) {
+      databaseUrl = env.OPENBOT_DATABASE_URL;
+      const child = utilityProcess.fork(join(runtimeRoot, "apps/server/dist/index.js"), [], {
+        env,
+        cwd: runtimeRoot,
+        stdio: "ignore",
+        serviceName: "OpenBot Windows CI Server",
+      });
+      let alive = true;
       child.once("exit", () => {
-        clearTimeout(timer);
-        reject(new Error("Server exited before readiness"));
+        alive = false;
       });
-      child.on("message", (message) => {
-        if (message?.type === "openbot-server-ready" && message.port === Number(env.OPENBOT_PORT)) {
+      await new Promise((resolveReady, reject) => {
+        const timer = setTimeout(() => {
+          child.kill();
+          reject(new Error("Server readiness timed out"));
+        }, 30_000);
+        child.once("exit", () => {
           clearTimeout(timer);
-          resolveReady();
-        }
-      });
-    });
-    return {
-      isAlive: () => alive,
-      async stop() {
-        if (!alive) return;
-        await new Promise((resolveStopped, reject) => {
-          const timer = setTimeout(() => {
-            child.kill();
-            cooperativeShutdownFailed = true;
-            reject(new Error("Cooperative Server shutdown timed out"));
-          }, 12_000);
-          child.once("exit", () => {
-            clearTimeout(timer);
-            resolveStopped();
-          });
-          child.postMessage({ type: "openbot-server-shutdown" });
+          reject(new Error("Server exited before readiness"));
         });
-      },
-    };
-  },
-  async connect(url, password) {
-    const health = await fetch(`${url}/health`);
-    assert.equal(health.ok, true);
-    assert.equal((await health.json()).service, "openbot-server");
-    const login = await fetch(`${url}/api/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Origin: url },
-      body: JSON.stringify({ password }),
-    });
-    assert.equal(login.ok, true);
-    const cookie = login.headers.get("set-cookie")?.split(";")[0];
-    assert.ok(cookie);
-    const channels = await fetch(`${url}/api/v1/channels`, { headers: { Cookie: cookie } });
-    assert.equal(channels.ok, true, "authenticated migrated API must respond");
-    loginCount += 1;
-  },
-  async authenticate() {},
-});
-try {
-  const first = await controller.start();
-  assert.equal(first.status, "ready", JSON.stringify(first));
-  database = postgres(databaseUrl, { max: 1 });
-  await database`create table openbot_windows_smoke (value text not null)`;
-  await database`insert into openbot_windows_smoke values ('retained across restart')`;
-  await database.end();
-  database = undefined;
-  const encryptedBefore = await readFile(join(clusterRoot, "bootstrap.json"), "utf8");
-  assert.equal(encryptedBefore.includes("databasePassword"), false);
-  await controller.stop();
-  assert.equal(cooperativeShutdownFailed, false);
-  await assert.rejects(fetch(`${first.serverUrl}/health`));
-  assert.equal(controller.getState().status, "idle");
-  const second = await controller.start();
-  assert.equal(second.status, "ready", JSON.stringify(second));
-  assert.equal(await readFile(join(clusterRoot, "bootstrap.json"), "utf8"), encryptedBefore);
-  database = postgres(databaseUrl, { max: 1 });
-  const rows = await database`select value from openbot_windows_smoke`;
-  assert.equal(rows[0].value, "retained across restart");
-  assert.equal(loginCount, 2);
-  succeeded = true;
-} finally {
-  await database?.end();
-  await controller.stop();
-  await rm(dataRoot, { recursive: true, force: true });
-  if (succeeded) {
-    await writeFile(resultPath, JSON.stringify({
-      schemaVersion: 1,
-      platform: process.platform,
-      arch: process.arch,
-      checks: ["postgresql", "migrations", "dpapi", "owner-login", "retained-data", "stop", "restart", "cleanup"],
-    }), { flag: "wx" });
-    console.info("Windows native smoke passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.");
+        child.on("message", (message) => {
+          if (message?.type === "openbot-server-ready" && message.port === Number(env.OPENBOT_PORT)) {
+            clearTimeout(timer);
+            resolveReady();
+          }
+        });
+      });
+      return {
+        isAlive: () => alive,
+        async stop() {
+          if (!alive) return;
+          await new Promise((resolveStopped, reject) => {
+            const timer = setTimeout(() => {
+              child.kill();
+              cooperativeShutdownFailed = true;
+              reject(new Error("Cooperative Server shutdown timed out"));
+            }, 12_000);
+            child.once("exit", () => {
+              clearTimeout(timer);
+              resolveStopped();
+            });
+            child.postMessage({ type: "openbot-server-shutdown" });
+          });
+        },
+      };
+    },
+    async connect(url, password) {
+      const health = await fetch(`${url}/health`);
+      assert.equal(health.ok, true);
+      assert.equal((await health.json()).service, "openbot-server");
+      const login = await fetch(`${url}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: url },
+        body: JSON.stringify({ password }),
+      });
+      assert.equal(login.ok, true);
+      const cookie = login.headers.get("set-cookie")?.split(";")[0];
+      assert.ok(cookie);
+      const channels = await fetch(`${url}/api/v1/channels`, { headers: { Cookie: cookie } });
+      assert.equal(channels.ok, true, "authenticated migrated API must respond");
+      loginCount += 1;
+    },
+    async authenticate() {},
+  });
+  try {
+    console.info("Windows native smoke: starting local Server.");
+    const first = await controller.start();
+    assert.equal(first.status, "ready", JSON.stringify(first));
+    database = postgres(databaseUrl, { max: 1 });
+    await database`create table openbot_windows_smoke (value text not null)`;
+    await database`insert into openbot_windows_smoke values ('retained across restart')`;
+    await database.end();
+    database = undefined;
+    const encryptedBefore = await readFile(join(clusterRoot, "bootstrap.json"), "utf8");
+    assert.equal(encryptedBefore.includes("databasePassword"), false);
+    await controller.stop();
+    assert.equal(cooperativeShutdownFailed, false);
+    await assert.rejects(fetch(`${first.serverUrl}/health`));
+    assert.equal(controller.getState().status, "idle");
+    console.info("Windows native smoke: restarting retained cluster.");
+    const second = await controller.start();
+    assert.equal(second.status, "ready", JSON.stringify(second));
+    assert.equal(await readFile(join(clusterRoot, "bootstrap.json"), "utf8"), encryptedBefore);
+    database = postgres(databaseUrl, { max: 1 });
+    const rows = await database`select value from openbot_windows_smoke`;
+    assert.equal(rows[0].value, "retained across restart");
+    assert.equal(loginCount, 2);
+    succeeded = true;
+  } finally {
+    await database?.end();
+    await controller.stop();
+    await rm(dataRoot, { recursive: true, force: true });
+    if (succeeded) {
+      await writeFile(resultPath, JSON.stringify({
+        schemaVersion: 1,
+        platform: process.platform,
+        arch: process.arch,
+        checks: ["postgresql", "migrations", "dpapi", "owner-login", "retained-data", "stop", "restart", "cleanup"],
+      }), { flag: "wx" });
+      console.info("Windows native smoke passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.");
+    }
+    app.quit();
   }
-  app.quit();
 }
+
+// Electron emits ready after ESM evaluation; awaiting it at module scope deadlocks.
+void app.whenReady().then(runSmoke).catch((error) => {
+  console.error("Windows native smoke failed:", error);
+  app.exit(1);
+});

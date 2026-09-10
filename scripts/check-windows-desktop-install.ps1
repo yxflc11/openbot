@@ -29,6 +29,10 @@ try {
   $smoke = Start-Process -FilePath $Electron -ArgumentList $arguments -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   if (!$smoke.WaitForExit(120000)) {
     $smoke.Kill($true)
+    $smoke.WaitForExit()
+    foreach ($log in @($stdout, $stderr)) {
+      if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 30 | Write-Host }
+    }
     throw 'Installed native runtime smoke exceeded 120 seconds.'
   }
   $smoke.WaitForExit()
