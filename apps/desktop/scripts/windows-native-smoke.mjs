@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { app, safeStorage, utilityProcess } from "electron";
@@ -10,6 +10,9 @@ if (process.platform !== "win32" || process.arch !== "x64") {
   throw new Error("This smoke gate requires native Windows x64.");
 }
 const runtimeRoot = resolve(process.argv[2] ?? "native-runtime");
+if (!process.argv[3]) throw new Error("A fresh native smoke result path is required.");
+const resultPath = resolve(process.argv[3]);
+let succeeded = false;
 await app.whenReady();
 const dataRoot = await mkdtemp(join(tmpdir(), "openbot-windows-native-"));
 // mkdtemp starts with the user's inherited ACL, so let the controller create and protect its child.
@@ -115,12 +118,19 @@ try {
   const rows = await database`select value from openbot_windows_smoke`;
   assert.equal(rows[0].value, "retained across restart");
   assert.equal(loginCount, 2);
-  console.info(
-    "Windows native smoke passed: packaged PostgreSQL, migrations, DPAPI, Owner login, retained data, stop and restart.",
-  );
+  succeeded = true;
 } finally {
   await database?.end();
   await controller.stop();
   await rm(dataRoot, { recursive: true, force: true });
+  if (succeeded) {
+    await writeFile(resultPath, JSON.stringify({
+      schemaVersion: 1,
+      platform: process.platform,
+      arch: process.arch,
+      checks: ["postgresql", "migrations", "dpapi", "owner-login", "retained-data", "stop", "restart", "cleanup"],
+    }), { flag: "wx" });
+    console.info("Windows native smoke passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.");
+  }
   app.quit();
 }

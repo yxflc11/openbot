@@ -10,6 +10,10 @@ if (![OperatingSystem]::IsWindows() -or [Runtime.InteropServices.RuntimeInformat
 }
 $target = Join-Path $env:RUNNER_TEMP ('OpenBotWindowsInstall-' + [Guid]::NewGuid().ToString('N'))
 if (Test-Path -LiteralPath $target) { throw 'Test installation destination already exists.' }
+$receipt = "$target.result.json"
+$stdout = "$target.stdout.log"
+$stderr = "$target.stderr.log"
+if (Test-Path -LiteralPath $receipt) { throw 'Native smoke result path must be fresh.' }
 try {
   # NSIS /D is deliberately last and unquoted, per its documented command-line contract.
   $process = Start-Process -FilePath $Installer -ArgumentList "/S /D=$target" -Wait -PassThru
@@ -20,8 +24,24 @@ try {
     throw 'Installed application differs from the reviewed package.'
   }
   if (!(Test-Path -LiteralPath (Join-Path $target 'openbot.exe'))) { throw 'Installed executable missing.' }
-  & $Electron $SmokeScript (Join-Path $target 'resources/native-runtime')
-  if ($LASTEXITCODE -ne 0) { throw 'Installed native runtime failed its startup/restart smoke.' }
+  $runtime = Join-Path $target 'resources/native-runtime'
+  $arguments = "`"$SmokeScript`" `"$runtime`" `"$receipt`""
+  $smoke = Start-Process -FilePath $Electron -ArgumentList $arguments -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  if (!$smoke.WaitForExit(120000)) {
+    $smoke.Kill($true)
+    throw 'Installed native runtime smoke exceeded 120 seconds.'
+  }
+  $smoke.WaitForExit()
+  if ($smoke.ExitCode -ne 0 -or !(Test-Path -LiteralPath $receipt)) {
+    if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr -Tail 30 | Write-Host }
+    throw 'Installed native runtime did not complete its startup/restart assertions.'
+  }
+  $result = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+  $expectedChecks = 'postgresql,migrations,dpapi,owner-login,retained-data,stop,restart,cleanup'
+  if ($result.schemaVersion -ne 1 -or $result.platform -ne 'win32' -or $result.arch -ne 'x64' -or ($result.checks -join ',') -ne $expectedChecks) {
+    throw 'Installed native runtime result is incomplete.'
+  }
+  Write-Host "PASS: native smoke receipt verified ($expectedChecks)."
 } finally {
   $uninstaller = Join-Path $target 'Uninstall OpenBot.exe'
   if (Test-Path -LiteralPath $uninstaller) {
@@ -35,5 +55,8 @@ try {
   }
   if (Test-Path -LiteralPath (Join-Path $target 'openbot.exe')) { throw 'Uninstall left the executable installed.' }
   if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+  foreach ($file in @($receipt, $stdout, $stderr)) {
+    if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force }
+  }
 }
 Write-Host 'Windows per-user NSIS install, installed native runtime and uninstall checks passed.'
