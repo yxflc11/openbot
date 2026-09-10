@@ -6,20 +6,24 @@ const execute = promisify(execFile);
 
 /** Values are transported as environment data, never interpolated into executable PowerShell. */
 export const WINDOWS_PRIVATE_DIRECTORY_SCRIPT = `
+[Console]::Out.WriteLine('openbot-acl:started')
 $ErrorActionPreference = 'Stop'
 $path = $env:OPENBOT_PRIVATE_DIRECTORY
-$item = Get-Item -LiteralPath $path -Force
-if (!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe directory' }
+$item = [IO.DirectoryInfo]::new($path)
+if (!$item.Exists -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe directory' }
+[Console]::Out.WriteLine('openbot-acl:identity')
 $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
 if ($env:OPENBOT_PRIVATE_DIRECTORY_NEW -eq '1') {
-  $acl = New-Object Security.AccessControl.DirectorySecurity
+  [Console]::Out.WriteLine('openbot-acl:protecting')
+  $acl = [Security.AccessControl.DirectorySecurity]::new()
   $acl.SetOwner($sid)
   $acl.SetAccessRuleProtection($true, $false)
-  $rule = New-Object Security.AccessControl.FileSystemAccessRule($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
+  $rule = [Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
   $acl.AddAccessRule($rule)
-  Set-Acl -LiteralPath $path -AclObject $acl
+  $item.SetAccessControl($acl)
 }
-$acl = Get-Acl -LiteralPath $path
+[Console]::Out.WriteLine('openbot-acl:reading')
+$acl = $item.GetAccessControl()
 if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $sid.Value) { throw 'Unexpected owner' }
 $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
 $ownerAccess = $false
@@ -85,5 +89,12 @@ export async function verifyWindowsPrivateDirectory(path: string, created: boole
   );
   // The fixed command has no stdin protocol; send EOF so PowerShell cannot wait for input.
   operation.child.stdin?.end();
-  await operation;
+  try {
+    await operation;
+  } catch (error) {
+    // Report only fixed phases, never raw PowerShell output, paths, or environment data.
+    const output = error && typeof error === "object" && "stdout" in error ? String(error.stdout) : "";
+    const phase = [...output.matchAll(/openbot-acl:(started|identity|protecting|reading)/gu)].at(-1)?.[1] ?? "launch";
+    throw new Error(`Windows private directory verification failed during ${phase}.`);
+  }
 }
