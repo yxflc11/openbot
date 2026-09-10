@@ -13,7 +13,7 @@
 
 创建有独立身份、职责、经审核记忆和技能的同事。在频道交代任务，让 Bot 邀请另一位 Bot 帮忙，查看回复过程并下载成果。Desktop 与 Web 共用真实 React 工作区，Server 负责身份、权限、路由、审批和审计。
 
-**当前源码候选版本为 Desktop `0.1.0-alpha.6`。** 频道协作、丰富附件、MCP 扩展接口和双语官网均已实现，但本候选版**尚未发布**：源码已推送、官网已独立上线；Windows 原生 CI 与安装包发布仍需完成。[逐功能交付清单](docs/RELEASE_COMPLETION.zh-CN.md)列出实现、证据和剩余发布关口。开发安装包未签名，没有自动更新通道，也不宣称任意桌面控制已获认证。
+**当前源码版本为 Desktop `0.1.0-alpha.6`。** 频道协作、丰富附件、MCP 扩展接口和双语官网均已实现。安装器是否已发布以 [Desktop 发行页](https://github.com/yxflc11/openbot/releases)为准，源码提交与安装器发布分别管理。[逐功能交付清单](docs/RELEASE_COMPLETION.zh-CN.md)列出实现与验证边界。开发安装包未签名，没有自动更新通道，也不宣称任意桌面控制已获认证。
 
 官网：[English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/)。官网由独立的 openbot-website 仓库部署，产品安装包另行验证发布。现在可先阅读[源码文档索引](docs/README.zh-CN.md)。当前候选版维护英文与中文文档，日文和葡萄牙文 README 仍对应较早快照。
 
@@ -38,7 +38,7 @@
 
 ## Windows 候选版与已有平台
 
-本次新增原生平台工作只面向 **Windows x64**。alpha.6 源码提供按用户安装的 NSIS 安装器、内置 Server/PostgreSQL、DPAPI 初始化凭据、私有数据 ACL、正常停止和保留数据重启。已提供针对安装后运行时的 Windows CI 验证程序，实际结果仍待运行。安装 Desktop 不会登记 Worker，也不会授予电脑控制权。见 [Windows Desktop](docs/WINDOWS_DESKTOP.zh-CN.md)。
+本次新增原生平台工作只面向 **Windows x64**。alpha.6 源码提供按用户安装的 NSIS 安装器、内置 Server/PostgreSQL、DPAPI 初始化凭据、私有数据 ACL、正常停止和保留数据重启。[Windows 托管验证](https://github.com/yxflc11/openbot/actions/runs/34497646235)已通过安装后的运行时、加密凭据、数据库迁移、保留数据重启和安装器生命周期检查；它不代表交互硬件或代码签名认证。安装 Desktop 不会登记 Worker，也不会授予电脑控制权。见 [Windows Desktop](docs/WINDOWS_DESKTOP.zh-CN.md)。
 
 保留已有 macOS arm64 本地服务/companion 和 Linux 远程客户端代码；本次不新增 macOS/Linux 适配，也不扩大其一致性结论。Worker Host 与电脑 Provider 仍有独立的登记和验证边界。
 

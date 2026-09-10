@@ -14,7 +14,7 @@
 
 | 优先级 | 问题 | 处理与状态 |
 | --- | --- | --- |
-| P1 | PostgreSQL CI 只有 automation/direct，协作和新交互测试可能默认跳过 | 增加独立 collaboration/interactions CI 步骤和临时数据库。本地四套 PostgreSQL 共 49 项通过；推送后仍需观察托管 CI。 |
+| P1 | PostgreSQL CI 只有 automation/direct，协作和新交互测试可能默认跳过 | 增加独立 collaboration/interactions CI 步骤和临时数据库。本地四套 PostgreSQL 共 49 项通过；托管 CI 也已运行通过。 |
 | P1 | 架构文档混合早期 fork 候选和当前实现，把来源消息唯一、AG-UI、游标等当成现状 | 重写当前英文架构并提供中文翻译，明确复合唯一键、REST/SSE 快照、扩展权限和运行限制；没有复制一份陈旧架构制造重复。 |
 | P2 | Server/Web 缺少目录级说明，贡献者不知道改哪里 | 增加双语仓库地图及两个模块 README，列出职责、入口和定向测试。 |
 | P2 | 贡献教程使用宽泛 Node/npm 版本和 `npm install`，与 CI/锁文件不一致 | 同步双语教程，使用 Node 22.22.2 CI 基线、npm 10.9.9 和 `npm ci`；其他 Node 版本必须满足 engines。 |
@@ -33,6 +33,6 @@
 
 ## 验证和剩余工作
 
-本审查运行了文档链接检查、26 文件迁移检查、消息操作/回应组件测试、Server/Web 类型检查、Server 回归和四套隔离 PostgreSQL 测试。后续发布集成已通过完整根目录 `npm run check`、演示渲染检查和独立官网部署。托管 CI 的安全、PostgreSQL、两种容器架构和 macOS 均已通过；Windows 原生安装生命周期及最终发布仍需完成，不能由本审查替代。
+本审查运行了文档链接检查、26 文件迁移检查、消息操作/回应组件测试、Server/Web 类型检查、Server 回归和四套隔离 PostgreSQL 测试。后续发布集成已通过完整根目录 `npm run check`、演示渲染检查和独立官网部署。托管 CI 的安全、PostgreSQL、两种容器架构和 macOS 均已通过；[Windows 原生安装生命周期](https://github.com/yxflc11/openbot/actions/runs/34497646235)也已通过。安装器仍通过独立、核对源码身份的发布门槛交付；本审查不替代真机认证。
 
 扩展模块前按[仓库地图](REPOSITORY_MAP.zh-CN.md)定位。优先增加独立功能模块，避免在无关协调器继续堆分支。替代实现通过回归前保留旧行为；删除文件或样式必须根据引用和渲染证据，不能只凭名称陈旧。

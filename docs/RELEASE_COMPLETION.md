@@ -2,7 +2,7 @@
 
 [简体中文](RELEASE_COMPLETION.zh-CN.md)
 
-Candidate: 0.1.0-alpha.6, 2026-09-10. This record describes the source candidate. The public website is live in the independent openbot-website repository. Native Windows CI and the final product release still await evidence.
+Source version: 0.1.0-alpha.6. Updated 2026-09-11. The public website is live in the independent openbot-website repository. [Native Windows CI](https://github.com/yxflc11/openbot/actions/runs/34497646235) passed. Published installer availability is recorded separately on the [release page](https://github.com/yxflc11/openbot/releases).
 
 ## Workspace and collaboration
 
@@ -45,6 +45,6 @@ The repository review covers all OpenBot apps, packages, Providers, docs, migrat
 Local focused tests cover authority, streaming/steering, actual parser/OCR workers, real MCP SDK transport, update revocation, voice lifecycle, retained startup, modal lifecycle and side action interactions. Four isolated PostgreSQL suites exercised 49 cases. Browser checks cover the actual demo, desktop/narrow layouts, plugin SDK isolation and manual search. Tests using synthetic data or mocked media are not real microphone hardware or paid-provider acceptance.
 
 - Passed: full root check after integration and website separation.
-- Pending: successful hosted Windows source build, 17.10→17.11 database upgrade, installed native runtime/DPAPI/restart and installer lifecycle.
-- Passed: source branch push/PR #29 and independent website Pages deployment (run 34484057506).
-- Pending: final main merge, Windows-only alpha.6 release and installer download verification.
+- Passed: [hosted Windows source build and runtime validation](https://github.com/yxflc11/openbot/actions/runs/34497646235), including 17.10→17.11 data upgrade, installed DPAPI/Owner login, retained data, stop/restart, cleanup and NSIS installation/uninstallation.
+- Passed: source branch push/PR #29 and independent website Pages deployment (run 34486164029).
+- Distribution: the Windows-only alpha.6 release workflow accepts only a successful main push CI, verifies exact source/target/checksums and publishes reviewed assets separately. Use the matching published release and its checksums; this source record is not itself an installer.

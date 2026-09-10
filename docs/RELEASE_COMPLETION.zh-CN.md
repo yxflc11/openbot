@@ -2,7 +2,7 @@
 
 [English](RELEASE_COMPLETION.md)
 
-候选版本：0.1.0-alpha.6，2026-09-10。本记录描述当前源码；官网已由独立 openbot-website 仓库上线；Windows 原生 CI 与产品最终发布仍待证据。
+源码版本：0.1.0-alpha.6，更新于 2026-09-11。官网已由独立 openbot-website 仓库上线；[Windows 原生 CI](https://github.com/yxflc11/openbot/actions/runs/34497646235)已通过。安装器是否已公开以独立的[发行记录](https://github.com/yxflc11/openbot/releases)为准。
 
 ## 工作区与频道
 
@@ -45,6 +45,6 @@
 本地定向测试覆盖身份权限、逐段输出与追加指令、实际解析/OCR Worker、真实 MCP SDK 连接、更新撤权、录音生命周期、恢复启动、弹窗和侧边消息操作。四组隔离 PostgreSQL 测试覆盖 49 个案例；浏览器检查覆盖实际演示、桌面和窄屏、插件隔离、手册搜索。示例数据和模拟媒体测试不等于真实麦克风硬件或付费模型验收。
 
 - 已通过：集成与官网拆仓后的根目录完整检查。
-- 待完成：Windows CI 源码构建、17.10→17.11 数据保留升级、安装后的本地服务/DPAPI/重启及安装器生命周期验证。
-- 已通过：源码分支推送、PR #29，以及独立官网 Pages 部署（运行 34484057506）。
-- 待完成：合并 main、仅 Windows 的 alpha.6 发布与安装器下载验证。
+- 已通过：[Windows 源码构建及运行验证](https://github.com/yxflc11/openbot/actions/runs/34497646235)，包含 17.10→17.11 数据升级、安装后的 DPAPI/Owner 登录、数据保留、停止/重启、清理与 NSIS 安装/卸载。
+- 已通过：源码分支推送、PR #29，以及独立官网 Pages 部署（运行 34486164029）。
+- 发行方式：仅 Windows 的 alpha.6 发布流程只接受通过完整 CI 的 main 提交，核对源码、目标平台和校验值后单独发布安装器。请使用对应的公开发行物及校验值，本源码记录本身不代表安装器已经公开。

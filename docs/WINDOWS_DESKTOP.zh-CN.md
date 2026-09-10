@@ -22,7 +22,7 @@ Windows 通过 PostgreSQL 官方启动机制收紧数据库进程权限，即使
 
 Windows CI 会构建 NSIS 安装器，在唯一临时目录中完成安装，核对安装后的 ASAR 哈希，通过 Electron 对**安装后的运行时**验证 DPAPI、真实数据库、结构迁移、Owner 登录、退出、数据保留与重启，最后卸载。单独的 Windows 测试检查真实 NTFS 权限。应查看对应源码提交的实际 CI 结果；写好工作流不等于工作流已经通过。
 
-本次开发主机是 macOS，本地可移植测试已通过，Windows 原生执行仍需对应 Windows CI 验证。验证脚本复用实际控制器与安装后的运行时，但没有操作安装后应用的窗口。Windows 桌面界面、SmartScreen、代码签名、无障碍与真实电脑控制仍需分别验收。当前安装包只针对 Windows x64，不支持 Windows ARM64。
+本次开发主机是 macOS，本地可移植测试及 [Windows 托管执行](https://github.com/yxflc11/openbot/actions/runs/34497646235)已通过，包含 DPAPI、迁移、Owner 登录、数据保留、停止/重启和清理的明确完成回执。验证脚本复用实际控制器与安装后的运行时，但没有操作安装后应用的窗口。Windows 桌面界面、SmartScreen、代码签名、无障碍与真实电脑控制仍需分别验收。当前安装包只针对 Windows x64，不支持 Windows ARM64。
 
 Windows Worker Host 服务是单独审查的组件，桌面版安装不能证明其 SCM 安装、服务身份和真机验收已完成。发布前需核对实际 CI 的来源清单、随包许可证与代码签名结果，详见[研究记录](research/windows-desktop-completion.md)。本阶段未增加 macOS 或 Linux 适配。
 

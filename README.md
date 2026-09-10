@@ -13,7 +13,7 @@
 
 Create colleagues with their own identity, role, reviewed memory and skills. Assign work in a channel, let one Bot ask another for help, follow their replies and download the result. Desktop and Web share the actual React workspace; the OpenBot Server owns identity, permissions, routing, approvals and audit.
 
-**Current source candidate: Desktop `0.1.0-alpha.6`.** Channel collaboration, richer files, the MCP extension interface and the bilingual website are implemented. This candidate is **not yet published**: the native Windows CI result and final product release still require completion. See the [feature-by-feature delivery record](docs/RELEASE_COMPLETION.md) for implemented behavior, evidence and the three release gates. Development installers are unsigned; no automatic update channel or arbitrary desktop-control certification is claimed.
+**Current source version: Desktop `0.1.0-alpha.6`.** Channel collaboration, richer files, the MCP extension interface and the bilingual website are implemented. Check [Desktop releases](https://github.com/yxflc11/openbot/releases) for published installers; source commits and installer publication are separate. See the [feature-by-feature delivery record](docs/RELEASE_COMPLETION.md) for implemented behavior and validation boundaries. Development installers are unsigned; no automatic update channel or arbitrary desktop-control certification is claimed.
 
 Website: [English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/). The website is deployed independently from the product installer. Read the [source documentation index](docs/README.md) now. English and Chinese are the maintained current-candidate documentation; the Japanese and Portuguese READMEs describe an earlier snapshot.
 
@@ -38,7 +38,7 @@ These are bounded features, not a claim of unlimited agents, unrestricted comput
 
 ## Windows candidate and existing platforms
 
-New native platform work in this milestone targets **Windows x64**. The alpha.6 source adds a per-user NSIS installer, bundled local Server/PostgreSQL, DPAPI bootstrap storage, private data ACLs, graceful stop and retained-data restart. The installed-runtime Windows CI harness exists; its actual result is still pending. Installation does not enroll a Worker or grant computer-control authority. See [Windows Desktop](docs/WINDOWS_DESKTOP.md).
+New native platform work in this milestone targets **Windows x64**. The alpha.6 source adds a per-user NSIS installer, bundled local Server/PostgreSQL, DPAPI bootstrap storage, private data ACLs, graceful stop and retained-data restart. [Hosted Windows validation](https://github.com/yxflc11/openbot/actions/runs/34497646235) passed the installed runtime, encrypted credentials, database migrations, retained restart and installer lifecycle. This does not certify interactive hardware or code signing. Installation does not enroll a Worker or grant computer-control authority. See [Windows Desktop](docs/WINDOWS_DESKTOP.md).
 
 Existing macOS arm64 local services/companion and Linux remote-client code are retained; this milestone does not add new macOS/Linux adaptation or broaden their conformance claims. Worker Hosts and computer Providers remain separate components with their own enrollment and evidence.
 

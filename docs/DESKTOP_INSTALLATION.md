@@ -46,11 +46,11 @@ app. Use the DMG for a reviewed upgrade. Linux installs to
 `~/.local/opt/openbot/<version>/openbot.AppImage`; it keeps existing versions. Delete the downloaded
 script when finished. Neither path requests root privileges or starts Server/Worker services.
 
-Windows x64, from PowerShell:
+Windows x64, after the matching alpha.6 EXE and checksums appear on the release page, from PowerShell:
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.ps1 -OutFile "$env:TEMP\openbot-install-desktop.ps1"
-& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.3
+& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.6
 ```
 
 The PowerShell script opens the per-user installer and waits for its result. If your execution

@@ -38,11 +38,11 @@ macOS 安装到 `~/Applications/OpenBot.app`，拒绝覆盖已有应用；需要
 Linux 安装到 `~/.local/opt/openbot/<version>/openbot.AppImage`，保留已有版本。完成后可删除
 下载的脚本。这两条路径不请求 root 权限，也不启动 Server/Worker 服务。
 
-Windows x64，在 PowerShell 中执行：
+Windows x64，确认发行页已提供对应 alpha.6 EXE 和校验值后，在 PowerShell 中执行：
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.ps1 -OutFile "$env:TEMP\openbot-install-desktop.ps1"
-& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.3
+& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.6
 ```
 
 PowerShell 脚本打开当前用户安装器并等待结果。如果系统执行策略禁止脚本，直接下载并打开 EXE；
