@@ -56,7 +56,7 @@ export function windowsNativeEnvironment(
 export async function verifyWindowsPrivateDirectory(path: string, created: boolean): Promise<void> {
   if (process.platform !== "win32") throw new Error("Windows ACL checks require Windows.");
   const environment = windowsNativeEnvironment();
-  await execute(
+  const operation = execute(
     win32.join(
       environment.SystemRoot ?? "",
       "System32",
@@ -83,4 +83,7 @@ export async function verifyWindowsPrivateDirectory(path: string, created: boole
       maxBuffer: 4096,
     },
   );
+  // The fixed command has no stdin protocol; send EOF so PowerShell cannot wait for input.
+  operation.child.stdin?.end();
+  await operation;
 }
