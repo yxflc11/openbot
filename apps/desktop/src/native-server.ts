@@ -190,6 +190,9 @@ export class NativeServerController {
       OPENBOT_OBJECT_STORE_PATH: join(dataRoot, "objects"),
       OPENBOT_MODEL_SETTINGS_PATH: join(dataRoot, "model-settings.json"),
       OPENBOT_MODEL_ENCRYPTION_KEY: secrets.modelKey,
+      ...(process.env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS
+        ? { OPENBOT_PLUGIN_LOCAL_ENDPOINTS: process.env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS }
+        : {}),
       ...(process.env.TAVILY_API_KEY ? { TAVILY_API_KEY: process.env.TAVILY_API_KEY } : {}),
       OPENBOT_LOG_LEVEL: "error",
     });

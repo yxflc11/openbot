@@ -35,6 +35,7 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 
 | OpenBot 范围 | 调研来源 | 许可证 | 决定与现状 |
 | --- | --- | --- | --- |
+| 频道 Bot 协作与扩展附件 | ai 7.0.93 / 6359fd58；Hono 4.13.5；write-file-atomic 8.0.0；已评估 A2A v0.3.0 | Apache-2.0；MIT | 复用 SDK 子 Agent 工具、多模态消息、HTTP 与不可变存储。Server 建立同频道、有界、独立 Bot 身份的任务树；附件支持每任务 8 件/20 MiB、分页文本及 PNG/JPEG/PDF。未复制源码；见[协作研究](research/channel-bot-collaboration.md)、[附件研究](research/channel-attachments.zh-CN.md)和[升级说明](CORE_UPGRADE.zh-CN.md)。 |
 | 获批的 Desktop 界面优化 | React 19.2.8 / 1dd4ecb；Electron 44.2.0 / tag 对象 369b0d9d3afdd5b8c0bdb0ad42391443947a7424；WAI APG；既有 OpenBot e8fa933 | MIT；W3C 文档条款 | 复用 HTML 控件与既有 renderer，实现统一创建入口、全窗口竖向设置/插件、结构化成员提及和可移除文本附件/已验证技能请求标签。最多 3 个附件、每个 6,000 字节，完整任务不超过 8,000 字符；最多 2 个技能请求不授予权限。分享明确预览并复制近期消息，不托管发布。未复制源码或新增依赖，见[调研](research/desktop-ui-refresh.zh-CN.md)。 |
 | Server 管理的 Bot 单独对话 | PostgreSQL 17 / ec3f6a6a7dd82a8ce455a0710ef75172f9f318d1；Drizzle 0.45.2 / e7dfa14519f363229ccc3ead7b1b2f2051937efb；Postgres.js 3.4.9 | PostgreSQL License；Apache-2.0；Unlicense | 复用数据库行锁、外键和唯一约束，为每个 Bot 创建唯一固定成员频道。仅 Owner 可幂等打开，精确标识路由与消息/Run 审计仍归 Server 管理。临时 PostgreSQL 实例已验证并发创建；未复制源码或增加依赖，见[调研](research/desktop-direct-conversations.zh-CN.md)。 |
 | Desktop 安装分发与模型配置初始化 | electron-builder 26.16.0 / f4610970f78b6ce223b1f4cee2b5e8f5caa14a48；现有 Packager 20.3.0、Fuses 2.1.3；Node 24.20.0 文件/加密与 Compose 卷 | MIT；BSD-2-Clause；Node.js 许可；规范条款 | 只在已验证应用包外复用 builder，生成 DMG/NSIS/AppImage/DEB；完整核对源提交与产物后创建草稿 Release。Server 私有模型目录保留密钥，损坏时关闭失败。未复制上游源码，见[调研](research/desktop-installable-delivery.md)和[安装](DESKTOP_INSTALLATION.zh-CN.md)。 |
@@ -217,6 +218,10 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 
 复用已发布 @openrouter/ai-sdk-provider 3.0.0 / c1ce69ab（Apache-2.0），以固定端点、严格模型 ID、非推理元数据验证和明确路由策略适配现有循环。未复制源码，不宣称支持所有模型。 [Research](research/openrouter-model-entry.md).
 
+## 第三方 MCP 工具插件
+
+已审查 MCP 2025-11-25 与官方 @modelcontextprotocol/sdk 1.30.0 / `2d889f2b329e46680ec9bdd565de4616c497825a`（MIT）。复用 Streamable HTTP Client、JSON Schema 校验和示例 Server API，仅增加 Server 端点边界、加密安装状态、按 Bot 授权、声明摘要绑定与一次性 Owner 审批。未复制源码，不启动子进程、不加载渲染插件、不信任 annotation 自授权、不自动重放。见[调研](research/third-party-mcp-plugins.md)与[作者手册](PLUGINS.zh-CN.md)。
+
 ## Kimi 桌面模型
 
 复用 @ai-sdk/moonshotai 3.0.45 / 8a09c78c039e2c092468eaeff97faaabf3b77366（Apache-2.0），固定国内接口，沿用加密的 Owner 配置；未复制上游源码。[研究](research/kimi-desktop-model.md)。
@@ -224,3 +229,5 @@ MIT/Apache 代码时，必须在 `THIRD_PARTY_NOTICES.md` 或对应 vendor 目�
 Desktop 服务预设复用现有 AI SDK 适配器与 Owner 设置，见 [Desktop 接入审查](research/desktop-model-presets.md)和[服务商 API 调查](research/model-service-presets.zh-CN.md)。没有复制上游源码。
 
 Desktop 公开检索复用 ai 7.0.93 / `6359fd58fe68eaade096b5d923bac26de84ca3bd`、@ai-sdk/moonshotai 3.0.45 / `8a09c78c039e2c092468eaeff97faaabf3b77366`（Apache-2.0）、2026-09-08 审查的 Kimi Formula/Tavily 官方契约及现有 DNS 固定读取器。每任务最多四次联网调用，沿用原生 Run 权限、审计和截止时间。未复制上游源码，见[Desktop 联网工具调研](research/desktop-public-web-tools.zh-CN.md)。
+
+频道呈现和插件管理复用 React 19.2.8、原生 HTML 控件与 OpenBot 身份。官方 Grok Bot 对照、界面边界和实际渲染检查见[频道呈现](research/channel-collaboration-presentation.zh-CN.md)和[插件界面](research/plugin-owner-interface.zh-CN.md)；未复制 xAI 图像或源码。

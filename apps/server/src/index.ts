@@ -1,3 +1,7 @@
+import { FilePluginStore } from "./plugin-store.js";
+import { PluginService } from "./plugin-service.js";
+import { join } from "node:path";
+import { FileChannelAttachmentStorage } from "./channel-attachments.js";
 import type { Server as HttpServer } from "node:http";
 import { serve } from "@hono/node-server";
 import { getConnInfo } from "@hono/node-server/conninfo";
@@ -52,6 +56,9 @@ const unsubscribeNodeEvents = [
 ];
 const store = new PostgresControlPlaneStore(database.db);
 const artifactStorage = new FileArtifactStorage(env.OPENBOT_OBJECT_STORE_PATH);
+const attachments = new FileChannelAttachmentStorage(
+  join(env.OPENBOT_OBJECT_STORE_PATH, "attachments"),
+);
 const employeePublisher =
   env.OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH === undefined
     ? undefined
@@ -73,6 +80,12 @@ const dispatcher = new RunDispatcher(
 await dispatcher.start();
 // Existing credentials do not enable inference: the Owner must explicitly opt in in Settings.
 const nativeStore = new PostgresAgentStore(database.db);
+const plugins = new PluginService({
+  store: new FilePluginStore(join(env.OPENBOT_OBJECT_STORE_PATH, "plugins", "state.json")),
+  assertScope: (run) => nativeStore.assertScope(run),
+  botExists: async (botId) => (await store.listBots()).some((bot) => bot.id === botId),
+  localEndpoints: env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS,
+});
 const nativeAgent = modelSettings
   ? new NativeAgentRunner(
       nativeStore,
@@ -86,6 +99,8 @@ const nativeAgent = modelSettings
       undefined,
       {
         artifacts: artifactStorage,
+        attachments,
+        plugins,
         webSearch: (config) => createNativeWebSearch(config, { tavilyApiKey: env.TAVILY_API_KEY }),
         onUpdated: (run) => workspaceRealtime.publish({ type: "run.updated", run }),
         onCompleted: (run, artifacts) =>
@@ -123,10 +138,17 @@ const automationScheduler = new AutomationScheduler(
     ),
 );
 const app = createApp({
+  attachments,
+  plugins,
   knowledge: new PostgresKnowledgeStore(database.db),
   cancelNativeRun: async (runId) => {
-    const run = await nativeStore.cancel(runId);
+    const { run, descendants } = await nativeStore.cancelWithDescendants(runId);
     nativeAgent?.cancel(runId);
+    for (const child of descendants) {
+      nativeAgent?.cancel(child.id);
+      realtime.publish({ type: "run.updated", channelId: child.channelId, run: child });
+      workspaceRealtime.publish({ type: "run.updated", run: child });
+    }
     return run;
   },
   automations,
@@ -198,6 +220,7 @@ async function shutdownOnce(signal: string): Promise<void> {
       "automation.shutdown_forced",
       "Automatic task polling exceeded the shutdown grace period; queued Runs recover on restart.",
     );
+  plugins.close();
   const dispatcherDrain = dispatcher.stop();
   await nativeAgent?.stop();
   nodeRegistry.close();

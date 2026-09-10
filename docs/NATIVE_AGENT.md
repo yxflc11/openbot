@@ -41,11 +41,16 @@ Existing files are not overwritten. General browser downloads remain disabled in
 The native loop includes the assigned Bot's current name, role and description as bounded context,
 and records the profile revision it used. Profile content does not grant tools or override policy.
 
+See the [alpha.4 core upgrade](CORE_UPGRADE.md) for channel collaboration, attachment formats and plugin setup.
+
 ## Tools and limits
 
 | Boundary | Behavior |
 | --- | --- |
 | `read_channel_context` | At most 12 messages, bounded text, only the current task's channel and no messages created after the task |
+| `list_channel_bots` / `delegate_task` | Discover same-channel native Bots and execute an independently identified child task; up to two levels/four descendants per root, no cycles |
+| `read_attachment` | Page explicitly supplied channel text/code; image/PDF input is provided only to enabled OpenAI/Anthropic adapters and requires model support |
+| `call_plugin` | Invoke an explicitly granted, digest-reviewed MCP tool as this Bot; confirm mode requires a fresh Owner decision |
 | `read_task_status` | At most 8 task titles/statuses in that channel, no tasks created after this task |
 | `web_search` | Public search through the selected official Kimi service or explicit Tavily service; query up to 1,000 characters, bounded response, no automatic retries |
 | `fetch` | Read model-selected public HTTPS sources through the existing DNS-pinned reader; same page/time/text bounds as `read_public_page` |
@@ -55,9 +60,9 @@ and records the profile revision it used. Profile content does not grant tools o
 | `write_report` | Prepare at most 2 Markdown files; 24 KiB authored text and 32 KiB including Server source provenance |
 | Authority | Strict schemas; Server binds channel/Bot from the claimed Run and rechecks membership and Run state. Public HTTPS source selection is allowed; filesystem paths and private network targets are not |
 | Iteration | At most 5 model steps, 8 executed tools including at most 4 web calls, and 1,024 output tokens per step (4,096 for Kimi); no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
-| Time/output | 90-second inference deadline, 30-second HTTP deadline, 512 KiB provider reply, 16 KiB instruction/ordinary tool projection, up to 128 KiB serialized opaque search evidence (never truncated), 8,000-character final reply |
-| Concurrency | At most 2 active native Runs per Server, one per channel; conditional database claims prevent duplicate execution |
-| Network | Fixed official model/search endpoints plus bounded public HTTPS source GETs. Source DNS answers must all be public; the connection pins the checked address and verifies the original TLS host. No redirects, proxies or automatic retries; OpenAI response storage is disabled |
+| Time/output | 300-second task-tree deadline (90 seconds for a runtime without collaboration), 30-second HTTP deadline, 512 KiB provider reply, 16 KiB instruction/ordinary tool projection, up to 128 KiB serialized opaque search evidence (never truncated), 8,000-character final reply |
+| Concurrency | At most 2 root task trees per Server, one per channel; child Runs execute under the root lease and sibling calls are serialized |
+| Network | Fixed official model/search endpoints plus bounded public HTTPS source GETs and reviewed MCP service calls. Source DNS answers must all be public; the connection pins the checked address and verifies the original TLS host. No redirects, proxies or automatic retries; OpenAI response storage is disabled |
 | Lifecycle | Reply, report metadata, completion and audit commit together. Prepared report files are removed when publication fails. Interrupted running tasks fail on restart; ambiguous/failed tasks are not automatically retried |
 
 Progress contains action/result summaries, never internal reasoning, API keys or raw provider error
@@ -68,13 +73,12 @@ may incur usage that was never reported. Reported-token thresholds stop subseque
 provider request already in flight. Existing byte/time/step limits apply even when counts are absent.
 Database availability remains required for state changes and shutdown.
 
-Cancellation and audit commit before the active request is aborted. Late results cannot replace a
+Cancellation and audit commit before the active request is aborted; stopping a parent also cancels its active descendants. Late results cannot replace a
 cancelled Run. Credential rejection, rate limits, unavailable providers, changed settings, revoked
 scope, tool failures and execution limits have fixed actionable failure messages. No automatic retry
 is performed. See [execution experience research](research/agent-execution-experience.md).
 
-The tools do not expose unshared memory, executable skills, shell, local files/PDFs, private-network URLs, computer input, external
-messages or approval decisions. Existing Worker-profile tasks keep their existing dispatcher and
+The tools do not expose unshared memory, executable skills, shell, arbitrary local file paths, computer input or approval decisions. Explicit task attachments and per-Bot MCP grants provide the bounded extension paths described above; general private-network access is unavailable. Existing Worker-profile tasks keep their existing dispatcher and
 approval path. A native task requiring an unavailable action should explain that limitation.
 Hermes/Pi/OpenClaw delegation, browser observe/act tools and arbitrary desktop control remain future
 adapters, with their own authority and conformance gates.

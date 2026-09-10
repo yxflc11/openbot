@@ -43,6 +43,12 @@ export function addReportedUsage(
 }
 
 export const nativeFailureMessages = {
+  plugin_rejected: "The Owner rejected the plugin call. No approved execution was dispatched for that call.",
+  plugin_approval_expired: "The plugin call approval expired before execution. Submit a new task if it is still needed.",
+  plugin_changed: "Plugin tools or Bot grants changed. Review the installed plugin and submit a new task.",
+  plugin_unavailable: "The plugin call could not be confirmed. Check the plugin service; OpenBot did not automatically retry it.",
+  attachment_model_unsupported: "Image/PDF input is not enabled for this provider or model. Choose a compatible OpenAI or Anthropic model, or attach a text version.",
+  attachment_unavailable: "A task attachment is missing, outside this channel, damaged or exceeds its limits. Attach the file again before submitting a new task.",
   model_credentials:
     "Model credentials were rejected. Verify the provider key in Settings before submitting a new task.",
   model_rate_limit: "The model provider rate limit was reached. Wait before submitting a new task.",

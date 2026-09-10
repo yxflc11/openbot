@@ -1,0 +1,171 @@
+.plugin-manager {
+  margin: 20px 0;
+  border-block: 1px solid #e2e6eb;
+  color: #303b48;
+}
+.plugin-manager > summary {
+  cursor: pointer;
+  padding: 15px 0;
+}
+.plugin-manager > summary > span {
+  margin-left: 12px;
+  font-size: 13px;
+  color: #526172;
+}
+.plugin-manager-body {
+  padding: 0 0 16px;
+}
+.plugin-manager-toolbar,
+.plugin-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.plugin-manager-toolbar > p {
+  flex: 1;
+  min-width: 180px;
+}
+.plugin-install,
+.installed-plugin {
+  margin-top: 18px;
+  padding: 18px 0;
+  border-top: 1px solid #e2e6eb;
+}
+.plugin-manager h3,
+.plugin-manager h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.installed-plugin > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.plugin-manager p {
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.plugin-endpoint {
+  overflow-wrap: anywhere;
+}
+.plugin-fields {
+  display: grid;
+  gap: 12px;
+}
+.plugin-fields > label,
+.plugin-grant-editor > label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+}
+.plugin-fields input,
+.plugin-grant-editor select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #bdc6d0;
+  border-radius: 6px;
+  background: #fff;
+  color: #2c3948;
+  font: inherit;
+}
+.plugin-fields > button {
+  justify-self: start;
+}
+.plugin-review-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 13px;
+}
+.plugin-tool-list {
+  margin-block: 14px;
+}
+.plugin-tool-list details {
+  padding: 8px 0;
+}
+.plugin-tool-list summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.plugin-tool-list pre,
+.plugin-call-approval pre {
+  max-height: 260px;
+  max-width: 100%;
+  padding: 12px;
+  overflow: auto;
+  background: #f3f5f7;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.plugin-grant-editor {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+.plugin-grant-editor > .plugin-tool-grant {
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 230px);
+  align-items: center;
+}
+.plugin-grant-editor button {
+  justify-self: start;
+}
+.plugin-call-approvals {
+  padding: 14px 24px;
+  background: #fff9ed;
+  border-bottom: 1px solid #eadbbb;
+  max-height: min(45vh, 460px);
+  overflow: auto;
+}
+.plugin-call-approvals h2 {
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+.plugin-call-approval + .plugin-call-approval {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #dfd5c2;
+}
+.plugin-call-approval > header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: #54442d;
+}
+.plugin-call-approval p {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: #54442d;
+}
+.plugin-call-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.plugin-manager :focus-visible {
+  outline: 2px solid #496884;
+  outline-offset: 3px;
+}
+@media (max-width: 480px) {
+  .plugin-manager > summary > span {
+    display: block;
+    margin: 6px 0 0;
+  }
+  .plugin-grant-editor > .plugin-tool-grant {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .plugin-call-approvals {
+    padding-inline: 16px;
+  }
+}

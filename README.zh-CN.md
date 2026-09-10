@@ -24,6 +24,9 @@ Server 负责身份、路由、授权和审计。界面能显示桌面，并不�
 > 浏览器 Provider 可打开明确网址并返回截图，另有需明确启用并审批的实验性单按钮点击。
 > 原生桌面输入和无人值守表单尚未实现。不要连接支付方式、主账号或生产凭证。
 
+
+本地 Desktop alpha.4 升级增加[频道 Bot 委派、持久附件和经审阅的 MCP 插件工具](docs/CORE_UPGRADE.zh-CN.md)。接收方以自己的身份执行，Server 保存完整任务关系。
+
 ## Windows、macOS 与 Linux Desktop
 
 三端使用相同的 Electron 44.2.0 应用和共享频道工作区。

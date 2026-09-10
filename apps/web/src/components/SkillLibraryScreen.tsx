@@ -4,6 +4,7 @@ import { getEmployeeProfile } from "../api";
 import { EmployeeSkillImport } from "./EmployeeSkillImport";
 import { BotIcon, CloseIcon, PlusIcon, SearchIcon } from "./Icons";
 import "./destinations.css";
+import { PluginManagerPanel } from "./PluginManagerPanel";
 
 interface SkillEntry {
   botId: string;
@@ -160,6 +161,7 @@ export function SkillLibraryScreen({
             )}
           </div>
         </section>
+        <PluginManagerPanel bots={bots} />
         <div
           className="plugin-tabs"
           role="tablist"

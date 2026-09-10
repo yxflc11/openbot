@@ -1878,6 +1878,9 @@ export function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert):
   const usage = runModelUsageSchema.safeParse(row.modelUsage);
   return {
     ...(usage.success ? { modelUsage: usage.data } : {}),
+    ...(row.parentRunId ? { parentRunId: row.parentRunId } : {}),
+    ...(row.rootRunId ? { rootRunId: row.rootRunId } : {}),
+    ...(row.delegatedByBotId ? { delegatedByBotId: row.delegatedByBotId } : {}),
     ...(row.errorCode ? { errorCode: row.errorCode } : {}),
     id: row.id,
     channelId: row.channelId,

@@ -1,3 +1,9 @@
+import {
+  activeCollaborationChain,
+  channelColleagues,
+  createDelegatedRun,
+} from "./postgres-agent-collaboration.js";
+import type { DelegateTaskInput } from "./agent-collaboration.js";
 import type { SkillReference } from "./agent-skills.js";
 import { skillCatalog, assertSkillReferences, readSkillDocument } from "./postgres-agent-skills.js";
 import { randomUUID } from "node:crypto";
@@ -12,7 +18,7 @@ import {
   runs,
 } from "@openbot/db";
 import type { KnowledgeProposalDraft, Run, RunModelUsage, RunProgress } from "@openbot/domain";
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   type AgentKnowledge,
   boundedKnowledgeText,
@@ -47,6 +53,12 @@ const membership = (run: Run) =>
 /** Separate from Worker claims: a model can never acquire a Node or a computer profile here. */
 export class PostgresAgentStore implements AgentRunStore {
   constructor(readonly db: Database) {}
+  async colleagues(run: Run) {
+    return channelColleagues(this.db, run);
+  }
+  async delegate(run: Run, input: DelegateTaskInput) {
+    return createDelegatedRun(this.db, run, input);
+  }
   async queued(since: string): Promise<Run[]> {
     return (
       await this.db
@@ -116,16 +128,23 @@ export class PostgresAgentStore implements AgentRunStore {
     });
   }
   async assertScope(run: Run): Promise<void> {
+    // Ancestry comes from persisted rows even if a caller omits optional provenance fields.
+    await activeCollaborationChain(this.db, run);
+  }
+  async current(run: Run): Promise<Run | undefined> {
     const [row] = await this.db
-      .select({ id: runs.id })
+      .select()
       .from(runs)
-      .innerJoin(
-        channelBots,
-        and(eq(channelBots.channelId, runs.channelId), eq(channelBots.botId, runs.botId)),
-      )
-      .where(running(run))
-      .limit(1);
-    if (!row) throw new NativeExecutionError("scope_revoked");
+      .where(
+        and(
+          eq(runs.id, run.id),
+          eq(runs.channelId, run.channelId),
+          eq(runs.botId, run.botId),
+          eq(runs.executionProfile, "none"),
+          isNull(runs.nodeId),
+        ),
+      );
+    return row ? toRun(row) : undefined;
   }
   async profile(run: Run) {
     await this.assertScope(run);
@@ -154,16 +173,14 @@ export class PostgresAgentStore implements AgentRunStore {
       const [active] = await tx.select({ id: runs.id }).from(runs).where(running(run)).for("share");
       if (!active) throw new NativeExecutionError("scope_revoked");
       const document = await readSkillDocument(tx, run.botId, reference);
-      await tx
-        .insert(runEvents)
-        .values({
-          id: randomUUID(),
-          runId: run.id,
-          channelId: run.channelId,
-          botId: run.botId,
-          type: "SKILL_READ",
-          payload: { executor: "native-agent", ...reference },
-        });
+      await tx.insert(runEvents).values({
+        id: randomUUID(),
+        runId: run.id,
+        channelId: run.channelId,
+        botId: run.botId,
+        type: "SKILL_READ",
+        payload: { executor: "native-agent", ...reference },
+      });
       return document;
     });
   }
@@ -282,12 +299,15 @@ export class PostgresAgentStore implements AgentRunStore {
     });
   }
   async cancel(runId: string): Promise<Run> {
+    return (await this.cancelWithDescendants(runId)).run;
+  }
+  async cancelWithDescendants(runId: string): Promise<{ run: Run; descendants: Run[] }> {
     return this.db.transaction(async (tx) => {
       const [row] = await tx.select().from(runs).where(eq(runs.id, runId)).for("update");
       if (!row) throw new StoreNotFoundError("Task not found.");
       if (row.executionProfile !== "none" || row.nodeId !== null)
         throw new StoreConflictError("Only native Agent tasks can be stopped here.");
-      if (row.status === "cancelled") return toRun(row);
+      if (row.status === "cancelled") return { run: toRun(row), descendants: [] };
       if (row.status !== "running" && row.status !== "queued")
         throw new StoreConflictError("This task has already ended.");
       const [cancelled] = await tx
@@ -304,13 +324,41 @@ export class PostgresAgentStore implements AgentRunStore {
         type: "RUN_CANCELLED",
         payload: { executor: "native-agent", actor: "owner" },
       });
-      return toRun(cancelled);
+      const descendants = await tx
+        .update(runs)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(
+          and(
+            eq(runs.channelId, row.channelId),
+            eq(runs.executionProfile, "none"),
+            isNull(runs.nodeId),
+            inArray(runs.status, ["running", "queued"]),
+            or(eq(runs.rootRunId, row.id), eq(runs.parentRunId, row.id)),
+          ),
+        )
+        .returning();
+      if (descendants.length)
+        await tx.insert(runEvents).values(
+          descendants.map((child) => ({
+            id: randomUUID(),
+            runId: child.id,
+            channelId: child.channelId,
+            botId: child.botId,
+            type: "RUN_CANCELLED",
+            payload: { executor: "native-agent", actor: "owner", ancestorRunId: row.id },
+          })),
+        );
+      return { run: toRun(cancelled), descendants: descendants.map(toRun) };
     });
   }
   async context(run: Run): Promise<unknown> {
     await this.assertScope(run);
     const rows = await this.db
-      .select({ author: messages.authorType, content: messages.content })
+      .select({
+        author: messages.authorType,
+        authorId: messages.authorId,
+        content: messages.content,
+      })
       .from(messages)
       .where(
         and(
@@ -328,7 +376,7 @@ export class PostgresAgentStore implements AgentRunStore {
           .subarray(0, Math.min(1600, remaining))
           .toString("utf8");
         remaining = Math.max(0, remaining - Buffer.byteLength(content));
-        return { author: row.author, content };
+        return { author: row.author, authorId: row.authorId, content };
       })
       .reverse();
   }
@@ -394,6 +442,22 @@ export class PostgresAgentStore implements AgentRunStore {
       throw new Error("Artifact does not belong to this native task.");
     }
     return this.db.transaction(async (tx) => {
+      // Share the creation lease so a child cannot appear after the terminal-state check.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${run.channelId}, 731))`);
+      await activeCollaborationChain(tx, run, "ancestors");
+      const [unfinished] = await tx
+        .select({ id: runs.id })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.channelId, run.channelId),
+            inArray(runs.status, ["running", "queued"]),
+            or(eq(runs.rootRunId, run.id), eq(runs.parentRunId, run.id)),
+          ),
+        )
+        .limit(1);
+      if (unfinished)
+        throw new StoreConflictError("Delegated tasks must finish before their parent completes.");
       const [member] = await tx.select().from(channelBots).where(membership(run)).for("share");
       if (!member) throw new NativeExecutionError("scope_revoked");
       const now = new Date();
@@ -535,6 +599,31 @@ export class PostgresAgentStore implements AgentRunStore {
           executor: "native-agent",
         },
       });
+      // A failed ancestor cannot leave descendants running and monopolize the channel lease.
+      const descendants = await tx
+        .update(runs)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(
+          and(
+            eq(runs.channelId, row.channelId),
+            eq(runs.executionProfile, "none"),
+            isNull(runs.nodeId),
+            inArray(runs.status, ["running", "queued"]),
+            or(eq(runs.rootRunId, row.id), eq(runs.parentRunId, row.id)),
+          ),
+        )
+        .returning();
+      if (descendants.length)
+        await tx.insert(runEvents).values(
+          descendants.map((child) => ({
+            id: randomUUID(),
+            runId: child.id,
+            channelId: child.channelId,
+            botId: child.botId,
+            type: "RUN_CANCELLED",
+            payload: { executor: "native-agent", actor: "ancestor-failure", ancestorRunId: row.id },
+          })),
+        );
       return toRun(row);
     });
   }

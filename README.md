@@ -27,6 +27,9 @@ The app's ability to display a desktop does not grant permission to control it.
 > reviewed single-button click is experimental. Native desktop input and unattended forms are not implemented.
 > Do not connect payment methods, primary accounts or production credentials.
 
+
+The local Desktop alpha.4 upgrade adds [channel Bot delegation, persistent attachments and reviewed MCP plugin tools](docs/CORE_UPGRADE.md). Each recipient executes under its own identity; the Server records the task tree.
+
 ## Desktop on Windows, macOS and Linux
 
 All three platforms use the same Electron 44.2.0 application and shared channel workspace.

@@ -1,12 +1,12 @@
-# Desktop alpha.3 feature inventory and product alignment
+# Desktop alpha.4 feature inventory and product alignment
 
 [English](2026-09-10-feature-inventory.md) · [简体中文](2026-09-10-feature-inventory.zh-CN.md)
 
 ## Scope and overall finding
 
-This is a source audit of Desktop alpha.3 based on commit `74109b5`, with the sharing changes in this delivery described separately. It is not an end-to-end acceptance report for every feature, a live model-output evaluation, or certification of every operating system. “Connected” means a UI operation calls an implemented API or Desktop bridge; credentials, provider availability, packaging, and worker authorization still determine whether a particular installation can execute it.
+This source inventory covers share-fix baseline `8f6520e` and the Desktop alpha.4 [core upgrade](../CORE_UPGRADE.md). It is not an end-to-end acceptance report for every feature, a live model-output evaluation, or certification of every operating system. “Connected” means a UI operation calls an implemented API or Desktop bridge; credentials, provider availability, packaging, and worker authorization still determine whether a particular installation can execute it.
 
-OpenBot currently provides persistent employees and conversations, a bounded model Agent, public-source research, Markdown outputs, reviewed skills and memory, and recurring tasks. This substantially supports the identity and continuity direction in [Product definition](../PRODUCT.md). General computer operation, automatic multi-Bot delegation, public plugin distribution, and authenticated ownership transfer remain separate gaps.
+OpenBot currently provides persistent employees and conversations, a bounded model Agent, public-source research, Markdown outputs, reviewed skills and memory, recurring tasks, channel Bot delegation, persistent attachments and reviewed MCP tools. This substantially supports the identity and continuity direction in [Product definition](../PRODUCT.md). General computer operation, unrestricted asynchronous multi-Bot collaboration, public plugin distribution, and authenticated ownership transfer remain separate gaps.
 
 A **Bot** is an employee; a **Channel** is a persistent working context; a **Run** is one task; a **Node** is an authorized execution computer. Server remains authoritative for identity, routing, approvals, and records. A skill describes a method and cannot grant tools or permissions.
 
@@ -19,10 +19,10 @@ A **Bot** is an employee; a **Channel** is a persistent working context; a **Run
 | Top toolbar | Toggle side panels, navigate backward/forward, inspect channel members, open workers and sharing. | Application navigation; no additional task authority is granted. |
 | Sidebar/search | Filter channel names/descriptions and Bot names, create objects, open plugins/settings. | Not message-body or all-file search. No channel rename/delete/archive or Bot-removal UI was found. |
 | Bot entry | Single-click opens a persistent direct conversation; right-click or Shift+F10 opens the employee profile. | The product’s “click Bot for profile” description is broader than this implementation: conversation is the primary click action. |
-| Channel/membership | Create name and work-goal description, select initial Bots, add existing Bots from the member menu. | A goal is not an autonomous plan, and membership does not initiate cooperation. No removal UI was found. |
+| Channel/membership | Create name and work-goal description, select initial Bots, add existing Bots from the member menu. | Task agents can discover and delegate to native channel colleagues. Membership alone does not trigger conversation; no removal UI was found. |
 | Bot creation | Save name, role, fixed execution profile, and previewed head/body/mobility/accessory/accent combination. | Default is no computer. Docker/Cua/Lume/Coder choices do not prove runtime readiness. Appearance is identity, not a permission level. |
-| Composer/replies | @Bot picker selects one recipient; direct conversations already identify it. Quote a reply, send text, continue drafting during submission, return to latest messages. | One task targets one Bot. No automatic team delegation or broadcast execution. |
-| Text attachments | TXT/MD/CSV/JSON, at most three files of 6,000 bytes each, combined task at most 8,000 characters. | File text is included in the task; this is not binary upload/storage. No image/PDF/Word/Excel attachment support here. |
+| Composer/replies | @Bot picker selects one recipient; direct conversations already identify it. Quote a reply, send text, continue drafting during submission, return to latest messages. | The initial task targets one Bot, which can delegate bounded work to colleagues and synthesize their results. |
+| Attachments | Persistent text/code (256 KiB), PNG/JPEG (5 MiB), PDF (10 MiB); eight files/20 MiB per task with short references. | Text is paged. Binary input needs a compatible OpenAI/Anthropic model. Word/Excel extraction, OCR and transcription are not implemented. |
 | Skill selection | Request up to two reviewed skills belonging to the selected Bot; remove draft selections. | Runtime rechecks assignment, state, and content identity. A request cannot create tools or external authority. |
 | Timeline/live updates | Persisted messages, quoted replies, Markdown/tables, artifacts, task links, and Server event updates. | Continuity exists; unrestricted history search and offline editing do not. |
 
@@ -38,9 +38,9 @@ This is not an interactive logged-in browser. Public fetch rejects private netwo
 | --- | --- | --- |
 | Active task strip | Bot/state/latest structured stage, task-details entry. | Observable progress, not private chain of thought. |
 | Task inspector | Instruction, assigned Bot/Node, progress, available frame, artifacts, failure information. | This version has no interactive employee-browser UI or generic takeover control. A frame is not a controllable desktop. |
-| Stop/re-submit | Stop queued/running Native tasks; create a new task from failed/cancelled instructions. | Applies to no-node Native tasks. Re-submit starts over and retains the previous record, not checkpoint recovery. |
+| Stop/re-submit | Stop queued/running Native tasks and active descendants; create a new task from failed/cancelled instructions. | Applies to no-node Native tasks. Re-submit starts over and retains the previous record, not checkpoint recovery. |
 | Reports/artifacts | Up to two Markdown reports per Native task, each bounded to 24 KiB, published after successful completion. PNG viewing and native Desktop report saving exist. | Not arbitrary DOCX/XLSX/PPTX generation. Actual quality and evidence completeness need review. |
-| Approvals | Show risk, target, summary, validity and persist approve/reject through Server. | Action labels do not establish a working execution adapter. The Native tools do not send email or submit forms. |
+| Approvals | Show risk, target, summary, validity and persist approve/reject through Server. | Action labels do not establish a working execution adapter. Built-in tools do not send email or submit forms; granted MCP tools can perform declared external operations after required confirmation. |
 | Information panel | Current-channel approvals, active tasks, recent results; expandable workspace/worker overview. | Limited to loaded records, not unlimited analytics history. |
 | Token usage | Sum known input/output usage in scope; preserve unknown/no-data states. | Not provider quota, balance, cost, or billing; missing usage is not estimated. |
 
@@ -64,7 +64,7 @@ Evidence: [profile/memory](../../apps/web/src/components/EmployeeProfileView.tsx
 
 ## Plugins and portable employees
 
-The **Plugins** destination has Skills and Bots tabs for the current workspace: search, skill-state filters, a target Bot for import, profile links, and Bot creation/import. It explicitly says the external skill store is not connected. This is not a public marketplace, connector catalog, or general MCP installation interface.
+The **Plugins** destination has Skills and Bots tabs for the current workspace: search, skill-state filters, a target Bot for import, profile links, and Bot creation/import. It explicitly says the external skill store is not connected. MCP tool management now adds reviewed endpoint installation, enable/disable/remove, per-Bot grants and channel call approval. Marketplace, OAuth, stdio and resources/prompts remain unsupported; see the [author manual](../PLUGINS.md).
 
 SKILL.md import accepts one Markdown document up to 12 KiB plus a version. It becomes a candidate requiring full-text review before use. Only single-file instructions with existing tools are supported, not attached resources, scripts, or arbitrary file access. Employee export does not contain this imported skill body.
 
@@ -107,4 +107,4 @@ Evidence: [sharing dialog](../../apps/web/src/components/ShareConversationDialog
 
 The strongest match is the persistent employee/channel foundation: identity survives tasks, Server retains conversations and outputs, changes have evidence, reviewed skills and memory can inform future work, and repeated work can be scheduled. The reviewed learning loop is meaningful progress toward the Hermes-inspired direction.
 
-The main gaps are automatic multi-Bot handoff, general browser/native-computer execution and exclusive human takeover, always-on local service lifecycle, public plugin distribution, full employee cloning/ownership transfer, and broader output formats. The [product north-star scenarios](../PRODUCT.md)—automatic form completion on replaceable nodes, context-bound approval followed by the exact side effect, and cross-platform native software operation—still require their own execution and conformance evidence. A selector, approval card, screenshot or schema alone is not that evidence.
+Real Bot delegation and MCP tools are now implemented. Remaining gaps include unrestricted asynchronous collaboration, general browser/native-computer execution and exclusive human takeover, always-on local service lifecycle, public plugin distribution, full employee cloning/ownership transfer, and broader output formats. The [product north-star scenarios](../PRODUCT.md)—automatic form completion on replaceable nodes, context-bound approval followed by the exact side effect, and cross-platform native software operation—still require their own execution and conformance evidence. A selector, approval card, screenshot or schema alone is not that evidence.

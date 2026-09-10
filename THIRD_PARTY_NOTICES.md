@@ -21,6 +21,10 @@ and notices.
 - `signal-exit` 4.1.0 — Copyright 2015–2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors; ISC
   License. This is the sole runtime dependency of `write-file-atomic` in the Desktop application
   ASAR.
+- `@modelcontextprotocol/sdk` 1.30.0 — Copyright (c) 2024 Anthropic, PBC; MIT License.
+  Official MCP client/server and validation APIs are used without copied implementation code.
+  Its LICENSE remains in production dependencies; the MIT terms are reproduced below.
+  See [plugin research](docs/research/third-party-mcp-plugins.md).
 
 - Vercel AI SDK `ai` 7.0.93, `@ai-sdk/openai` 4.0.60, `@ai-sdk/anthropic` 4.0.49, `@ai-sdk/moonshotai` 3.0.45,
   `@ai-sdk/provider` 4.0.10, `@ai-sdk/provider-utils` 5.0.36 and the SDK's transitive

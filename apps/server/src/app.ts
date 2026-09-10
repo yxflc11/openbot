@@ -1,3 +1,7 @@
+import type { PluginService } from "./plugin-service.js";
+import { createPluginRoutes } from "./plugin-routes.js";
+import type { ChannelAttachmentStorage } from "./channel-attachments.js";
+import { registerChannelAttachmentRoutes } from "./channel-attachment-routes.js";
 import { importSkillSchema, parseSkillDocument } from "./agent-skills.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
@@ -85,6 +89,8 @@ import type { RunFrameStore } from "./run-frame-store.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 export interface AppDependencies {
+  plugins?: PluginService;
+  attachments?: ChannelAttachmentStorage;
   knowledge?: Pick<PostgresKnowledgeStore, "list" | "review">;
   cancelNativeRun?: (runId: string) => Promise<Run>;
   automations?: AutomationStore;
@@ -160,8 +166,8 @@ export function createApp(dependencies: AppDependencies) {
     "/api/*",
     cors({
       origin: dependencies.allowedOrigins,
-      allowHeaders: ["Content-Type", "If-Match"],
-      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "If-Match", "X-OpenBot-Filename"],
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       exposeHeaders: ["ETag", "X-Request-Id"],
       credentials: true,
     }),
@@ -193,6 +199,15 @@ export function createApp(dependencies: AppDependencies) {
     if (!session.authenticated) return context.json({ error: "Authentication required." }, 401);
     return next();
   });
+
+  if (dependencies.attachments)
+    registerChannelAttachmentRoutes(app, {
+      storage: dependencies.attachments,
+      channelExists: async (channelId) =>
+        (await dependencies.store.listChannels()).some((channel) => channel.id === channelId),
+    });
+
+  if (dependencies.plugins) app.route("/api/v1", createPluginRoutes(dependencies.plugins));
 
   app.get("/health", (context) =>
     context.json({

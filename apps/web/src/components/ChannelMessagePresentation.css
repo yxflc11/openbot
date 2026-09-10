@@ -1,0 +1,33 @@
+/* Public Grok Bot conversation reference: bodies carry the bubble, task metadata stays in the timeline. */
+.app-shell .conversation-round-one.channel-workspace .message-row.human .message-content {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.app-shell .conversation-round-one.channel-workspace .message-row.bot .rich-message {
+  width: fit-content;
+  max-width: 100%;
+  padding: 9px 13px;
+  border-radius: 18px;
+  background: #f4f4f2;
+}
+.app-shell .conversation-round-one.channel-workspace .message-row.human .rich-message {
+  padding: 9px 14px;
+  border-radius: 18px;
+  background: #111110;
+  color: #fff;
+}
+.app-shell .conversation-round-one.channel-workspace .message-row .rich-message > :first-child {
+  margin-top: 0;
+}
+.app-shell .conversation-round-one.channel-workspace .message-row.human .rich-message p,
+.app-shell .conversation-round-one.channel-workspace .message-row.human .rich-message a,
+.app-shell .conversation-round-one.channel-workspace .message-row.human .rich-message h3 {
+  color: inherit;
+}
+.app-shell .conversation-round-one.channel-workspace .message-row.human .rich-message pre,
+.app-shell .conversation-round-one.channel-workspace .message-row.human .rich-message th,
+.app-shell .conversation-round-one.channel-workspace .message-row.human .rich-message td {
+  background: #252524;
+  color: #fff;
+}

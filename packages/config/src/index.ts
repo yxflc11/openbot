@@ -78,6 +78,17 @@ export const serverEnvSchema = z
       )
       .pipe(z.array(z.string().url()).min(1)),
     OPENBOT_OBJECT_STORE_PATH: z.string().default("./data/objects"),
+    OPENBOT_PLUGIN_LOCAL_ENDPOINTS: z
+      .string()
+      .max(32768)
+      .default("")
+      .transform((value) =>
+        value
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.string().url().max(2048)).max(16)),
     OPENBOT_EMPLOYEE_PUBLISHER_KEYRING_PATH: z.string().trim().min(1).optional(),
     OPENBOT_EMPLOYEE_PUBLISHER_PASSPHRASE_FILE: z.string().trim().min(1).optional(),
     OPENBOT_MODEL_SETTINGS_PATH: z.string().trim().min(1).optional(),

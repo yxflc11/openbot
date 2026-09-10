@@ -18,18 +18,28 @@ import {
   type RealtimeConnectionState,
   subscribeToChannelEvents,
 } from "../api";
-import { composeTaskText, readComposerAttachment } from "../composer-context";
+import { composeTaskText } from "../composer-context";
 import { type ConversationSession, createConversationSession } from "../conversation-session";
 import { shortcutLabel } from "../desktop-shortcuts";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { useWorkspacePreferences } from "../workspace-preferences";
+import "./ChannelMessagePresentation.css";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChannelMembersMenu } from "./ChannelMembersMenu";
+import { ComposerAttachmentPicker } from "./ComposerAttachmentPicker";
 import { HashIcon, PlusIcon, SendIcon, SkillIcon } from "./Icons";
 import { NativeRunControls } from "./NativeRunControls";
 import { OpenBotMark } from "./OpenBotMark";
+import { PluginCallApprovals } from "./PluginCallApprovals";
 import { RichMessage } from "./RichMessage";
 import { RobotAvatar } from "./RobotAvatar";
+import {
+  type CollaborationRun,
+  DelegatedReplyContext,
+  DelegationNotice,
+  indexRunCollaboration,
+  RunCollaboration,
+} from "./RunCollaboration";
 
 export function ChannelWorkspace({
   headerAction,
@@ -82,6 +92,10 @@ export function ChannelWorkspace({
     [messages],
   );
   const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs]);
+  const collaboration = useMemo(
+    () => indexRunCollaboration(channel.id, runs, messages),
+    [channel.id, runs, messages],
+  );
   const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
   const [readAttempt, setReadAttempt] = useState(0);
   const [awayFromLatest, setAwayFromLatest] = useState(!conversation.scroll.atBottom);
@@ -100,6 +114,7 @@ export function ChannelWorkspace({
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const addMenu = useRef<HTMLDetailsElement>(null);
   const matchingMembers = members.filter(
     (bot) =>
@@ -300,6 +315,7 @@ export function ChannelWorkspace({
     event.preventDefault();
     if (
       sending ||
+      uploadingAttachments ||
       mentionQuery !== undefined ||
       !members.some((bot) => bot.id === draft.targetBotId)
     )
@@ -383,6 +399,7 @@ export function ChannelWorkspace({
           </div>
         </header>
       ) : null}
+      <PluginCallApprovals channelId={channel.id} bots={bots} onInspectRun={onInspectRun} />
       {activeRun && (
         <div className="active-task-strip">
           {activeBot && <RobotAvatar bot={activeBot} compact />}
@@ -469,12 +486,27 @@ export function ChannelWorkspace({
                 artifacts={
                   message.runId === undefined
                     ? []
-                    : (artifactsByRun.get(message.runId) ?? []).filter(
-                        (artifact) =>
-                          artifact.mediaType === "image/png" || message.authorType === "bot",
+                    : (artifactsByRun.get(message.runId) ?? []).filter((artifact) =>
+                        message.authorType === "bot"
+                          ? message.authorId === runsById.get(message.runId ?? "")?.botId
+                          : artifact.mediaType === "image/png",
                       )
                 }
                 run={message.runId === undefined ? undefined : runsById.get(message.runId)}
+                delegation={collaboration.delegationByMessage.get(message.id)}
+                delegatedRun={
+                  message.runId ? collaboration.linkedRuns.get(message.runId) : undefined
+                }
+                parentRun={
+                  message.runId && collaboration.linkedRuns.get(message.runId)?.parentRunId
+                    ? runsById.get(collaboration.linkedRuns.get(message.runId)?.parentRunId ?? "")
+                    : undefined
+                }
+                childRuns={
+                  message.runId && runsById.get(message.runId)?.sourceMessageId === message.id
+                    ? (collaboration.childrenByParent.get(message.runId) ?? [])
+                    : []
+                }
                 progress={
                   message.runId === undefined ? undefined : latestProgressByRun.get(message.runId)
                 }
@@ -621,7 +653,7 @@ export function ChannelWorkspace({
                       fileInput.current?.click();
                     }}
                   >
-                    添加文本附件<small>TXT、MD、CSV、JSON · 最多 6 KB</small>
+                    添加附件<small>文本与代码 256 KB · 图片 5 MB · PDF 10 MB</small>
                   </button>
                   <button
                     type="button"
@@ -638,55 +670,16 @@ export function ChannelWorkspace({
                   </button>
                 </div>
               </details>
-              <input
-                hidden
-                ref={fileInput}
-                type="file"
-                accept=".txt,.md,.csv,.json"
-                aria-label="选择文本附件"
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (!file) return;
-                  setContextError(undefined);
-                  const revision = conversation.getSnapshot().draft.revision;
-                  try {
-                    if ((draft.attachments?.length ?? 0) >= 3)
-                      throw new Error("最多添加 3 个文本附件。");
-                    const attachment = await readComposerAttachment(file);
-                    const latest = conversation.getSnapshot().draft;
-                    if (latest.revision !== revision)
-                      throw new Error("草稿已改变，请重新添加附件。");
-                    if ((latest.attachments?.length ?? 0) >= 3)
-                      throw new Error("最多添加 3 个文本附件。");
-                    if (latest.attachments?.some((item) => item.name === attachment.name))
-                      throw new Error("已添加同名附件，请先移除后重试。");
-                    const attachments = [...(latest.attachments ?? []), attachment];
-                    if (composeTaskText(latest.text, attachments, latest.skills).length > 8000)
-                      throw new Error("消息与附件合计不能超过 8000 字符。");
-                    conversation.edit({ attachments });
-                  } catch (cause) {
-                    setContextError(cause instanceof Error ? cause.message : "无法读取附件。");
-                  }
-                }}
+              <ComposerAttachmentPicker
+                channelId={channel.id}
+                attachments={draft.attachments ?? []}
+                getAttachments={() => conversation.getSnapshot().draft.attachments ?? []}
+                onChange={(attachments) => conversation.edit({ attachments })}
+                inputRef={fileInput}
+                disabled={sending}
+                onUploadingChange={setUploadingAttachments}
               />
               <div className="composer-chips">
-                {draft.attachments?.map((file, index) => (
-                  <span className="context-chip" key={file.name} title={file.text}>
-                    <span>↗ {file.name}</span>
-                    <button
-                      type="button"
-                      aria-label={`移除附件 ${file.name}`}
-                      onClick={() =>
-                        conversation.edit({
-                          attachments: draft.attachments?.filter((_, item) => item !== index) ?? [],
-                        })
-                      }
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
                 {draft.skills?.map((skill) => (
                   <span className="context-chip" key={skill.id}>
                     <SkillIcon />
@@ -711,6 +704,7 @@ export function ChannelWorkspace({
               type="submit"
               disabled={
                 sending ||
+                uploadingAttachments ||
                 Boolean(capacityError) ||
                 members.length === 0 ||
                 !draft.targetBotId ||
@@ -814,6 +808,10 @@ function MessageRow({
   botsById,
   artifacts,
   run,
+  delegation,
+  delegatedRun,
+  parentRun,
+  childRuns,
   progress,
   onReply,
   onInspectRun,
@@ -825,6 +823,10 @@ function MessageRow({
   botsById: Map<string, Bot>;
   artifacts: Artifact[];
   run: Run | undefined;
+  delegation: CollaborationRun | undefined;
+  delegatedRun: CollaborationRun | undefined;
+  parentRun: Run | undefined;
+  childRuns: CollaborationRun[];
   progress: RunProgress | undefined;
   onReply(): void;
   onInspectRun(runId: string): void;
@@ -856,6 +858,17 @@ function MessageRow({
             {formatMessageTime(message.createdAt, preferences.hour12)}
           </time>
         </header>
+        {delegation ? (
+          <DelegationNotice run={delegation} botsById={botsById} onInspectRun={onInspectRun} />
+        ) : null}
+        {delegatedRun && message.authorType === "bot" && message.authorId === delegatedRun.botId ? (
+          <DelegatedReplyContext
+            run={delegatedRun}
+            parent={parentRun}
+            botsById={botsById}
+            onInspectRun={onInspectRun}
+          />
+        ) : null}
         {replyTarget ? (
           <blockquote>
             {messageAuthorName(replyTarget, botsById)}：{replyTarget.content}
@@ -869,7 +882,7 @@ function MessageRow({
             ))}
           </div>
         ) : null}
-        {run ? (
+        {run && !delegation ? (
           <button
             className={`message-run-status ${run.status}`}
             type="button"
@@ -881,6 +894,7 @@ function MessageRow({
             <span aria-hidden="true">›</span>
           </button>
         ) : null}
+        <RunCollaboration childRuns={childRuns} botsById={botsById} onInspectRun={onInspectRun} />
         <div className="message-actions">
           <button type="button" onClick={onReply}>
             ↩ 回复

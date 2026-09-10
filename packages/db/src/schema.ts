@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -400,6 +401,9 @@ export const runs = pgTable(
   "runs",
   {
     id: text("id").primaryKey(),
+    parentRunId: text("parent_run_id").references((): AnyPgColumn => runs.id),
+    rootRunId: text("root_run_id").references((): AnyPgColumn => runs.id),
+    delegatedByBotId: text("delegated_by_bot_id").references(() => bots.id),
     channelId: text("channel_id")
       .notNull()
       .references(() => channels.id),
@@ -421,6 +425,12 @@ export const runs = pgTable(
     ...timestamps,
   },
   (table) => [
+    check(
+      "runs_delegation_shape",
+      sql`(${table.parentRunId} IS NULL AND ${table.rootRunId} IS NULL AND ${table.delegatedByBotId} IS NULL) OR (${table.parentRunId} IS NOT NULL AND ${table.rootRunId} IS NOT NULL AND ${table.delegatedByBotId} IS NOT NULL AND ${table.parentRunId} <> ${table.id} AND ${table.rootRunId} <> ${table.id} AND ${table.executionProfile} = 'none' AND ${table.nodeId} IS NULL)`,
+    ),
+    index("runs_root_idx").on(table.rootRunId),
+    index("runs_parent_idx").on(table.parentRunId),
     index("runs_created_idx").on(table.createdAt),
     index("runs_channel_created_idx").on(table.channelId, table.createdAt),
     index("runs_bot_idx").on(table.botId),

@@ -476,6 +476,9 @@ export interface NodeEnrollmentToken {
 
 export interface Run {
   id: EntityId;
+  parentRunId?: EntityId;
+  rootRunId?: EntityId;
+  delegatedByBotId?: EntityId;
   channelId: EntityId;
   botId: EntityId;
   sourceMessageId?: EntityId;

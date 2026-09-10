@@ -6,6 +6,11 @@ import { createConversationSession } from "../conversation-session";
 import { deferred, interact, renderComponent } from "../test/render-component";
 import { ChannelWorkspace } from "./ChannelWorkspace";
 
+vi.mock("../plugin-api", () => ({
+  listPlugins: vi.fn(async () => ({ plugins: [], pendingCalls: [] })),
+  pluginError: vi.fn(() => "Unavailable"),
+}));
+
 vi.mock("../api", () => ({
   createMessage: vi.fn(),
   listMessages: vi.fn(),
@@ -396,13 +401,11 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
   });
   it("clears a removed member's identity and skills without losing text or attachments", async () => {
     const session = createConversationSession();
-    session
-      .channel("a", secondBot.id)
-      .edit({
-        text: "Unsent work",
-        skills: [{ id: "skill-b", name: "Coding", version: "1" }],
-        attachments: [{ name: "brief.md", text: "Instructions" }],
-      });
+    session.channel("a", secondBot.id).edit({
+      text: "Unsent work",
+      skills: [{ id: "skill-b", name: "Coding", version: "1" }],
+      attachments: [{ name: "brief.md", text: "Instructions" }],
+    });
     const rendered = await renderComponent(view("a", session));
     try {
       expect(session.channel("a").getSnapshot().draft).toMatchObject({
@@ -435,9 +438,12 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
       await rendered.unmount();
     }
   });
-  it("blocks a fourth attachment and keeps selected context after transport failure", async () => {
+  it("blocks a ninth attachment and keeps selected context after transport failure", async () => {
     const session = createConversationSession();
-    const attachments = ["one.md", "two.md", "three.md"].map((name) => ({ name, text: "Review" }));
+    const attachments = Array.from({ length: 8 }, (_, index) => `${index}.md`).map((name) => ({
+      name,
+      text: "Review",
+    }));
     session.channel("a", bot.id).edit({
       text: "keep draft",
       attachments,
@@ -450,10 +456,10 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
       if (!input) throw new Error("Attachment input missing");
       Object.defineProperty(input, "files", {
         configurable: true,
-        value: [new File(["four"], "four.md")],
+        value: [new File(["nine"], "nine.md")],
       });
       await interact(() => input.dispatchEvent(new Event("change", { bubbles: true })));
-      expect(rendered.container.textContent).toContain("最多添加 3 个文本附件");
+      expect(rendered.container.textContent).toContain("最多添加 8 个附件");
       expect(session.channel("a").getSnapshot().draft.attachments).toEqual(attachments);
       await submit(rendered.container);
       expect(session.channel("a").getSnapshot().draft).toMatchObject({
@@ -461,6 +467,72 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
         skills: [{ id: "skill-a", name: "Review", version: "1" }],
       });
       expect(rendered.container.textContent).toContain("offline");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+});
+
+describe("ChannelWorkspace delegated identities", () => {
+  it("renders sender and recipient independently and attaches output only to its producing Bot", async () => {
+    const recipient: Bot = { ...bot, id: "researcher", name: "Researcher" };
+    const parent: Run = { ...result("a").run, id: "parent", sourceMessageId: "request" };
+    const child: Run = {
+      ...parent,
+      id: "child",
+      botId: recipient.id,
+      parentRunId: parent.id,
+      rootRunId: parent.id,
+      delegatedByBotId: bot.id,
+      sourceMessageId: "delegation",
+      status: "completed",
+    };
+    const delegation: Message = {
+      ...message("a", "Please verify sources"),
+      id: "delegation",
+      authorType: "bot",
+      authorId: bot.id,
+      runId: child.id,
+    };
+    const answer: Message = {
+      ...delegation,
+      id: "answer",
+      authorId: recipient.id,
+      content: "Sources verified",
+    };
+    vi.mocked(listMessages).mockResolvedValue([delegation, answer]);
+    vi.mocked(listRuns).mockResolvedValue([parent, child]);
+    const rendered = await renderComponent(
+      <ChannelWorkspace
+        channel={{ ...channel("a"), botIds: [bot.id, recipient.id] }}
+        bots={[bot, recipient]}
+        artifacts={[
+          {
+            id: "report",
+            runId: child.id,
+            name: "sources.md",
+            mediaType: "text/markdown",
+            sha256: "a".repeat(64),
+            sizeBytes: 10,
+            createdAt: bot.createdAt,
+          },
+        ]}
+        progress={[]}
+        {...callbacks}
+      />,
+    );
+    try {
+      const rows = rendered.container.querySelectorAll(".message-row");
+      expect(rows[0]?.querySelector("header strong")?.textContent).toBe(bot.name);
+      expect(rows[1]?.querySelector("header strong")?.textContent).toBe(recipient.name);
+      expect(rows[0]?.querySelector(".delegation-notice")?.textContent).toContain(recipient.name);
+      expect(rows[1]?.querySelector(".delegated-reply-context")?.textContent).toContain(bot.name);
+      expect(rows[0]?.querySelector(".message-artifacts")).toBeNull();
+      expect(rows[1]?.querySelector(".message-artifacts")?.textContent).toContain("sources.md");
+      await interact(() =>
+        rows[1]?.querySelector<HTMLButtonElement>(".delegated-reply-context button")?.click(),
+      );
+      expect(callbacks.onInspectRun).toHaveBeenCalledWith(parent.id);
     } finally {
       await rendered.unmount();
     }
