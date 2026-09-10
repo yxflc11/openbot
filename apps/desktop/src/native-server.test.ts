@@ -1,8 +1,9 @@
+import { channel } from "node:diagnostics_channel";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NativeServerController, type NativeServerOptions } from "./native-server.js";
+import { NativeServerController, type NativeServerOptions, runBounded } from "./native-server.js";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -30,6 +31,29 @@ async function fakeResources(opts: NativeServerOptions) {
     await writeFile(join(opts.runtimeRoot, "postgres/bin", name), "not executable");
 }
 describe("Native Server boundary", () => {
+  it("bounds native command diagnostics without changing the public failure", async () => {
+    const diagnostic = vi.fn();
+    const diagnostics = channel("openbot.desktop.native-startup");
+    diagnostics.subscribe(diagnostic);
+    try {
+      await expect(
+        runBounded(process.execPath, [
+          "-e",
+          "process.stderr.write('x'.repeat(20000));process.exitCode=2;",
+        ]),
+      ).rejects.toThrow("Native operation failed.");
+      expect(diagnostic).toHaveBeenCalledWith(
+        {
+          operation: basename(process.execPath),
+          code: 2,
+          stderr: "x".repeat(16_384),
+        },
+        "openbot.desktop.native-startup",
+      );
+    } finally {
+      diagnostics.unsubscribe(diagnostic);
+    }
+  });
   it.each(["linux", "freebsd"])("does not install on %s", async (platform) => {
     const opts = await options();
     const service = new NativeServerController({ ...opts, platform });
@@ -40,7 +64,21 @@ describe("Native Server boundary", () => {
   it("rejects absent resources without creating bootstrap secrets", async () => {
     const opts = await options();
     const service = new NativeServerController(opts);
-    expect(await service.start()).toEqual({ status: "failed", code: "installation_failed" });
+    const diagnostic = vi.fn();
+    const diagnostics = channel("openbot.desktop.native-startup");
+    diagnostics.subscribe(diagnostic);
+    try {
+      expect(await service.start()).toEqual({ status: "failed", code: "installation_failed" });
+      expect(diagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: { status: "installing", mode: "initialize", step: "checking" },
+          error: expect.objectContaining({ code: "ENOENT" }),
+        }),
+        "openbot.desktop.native-startup",
+      );
+    } finally {
+      diagnostics.unsubscribe(diagnostic);
+    }
     expect(opts.encrypt).not.toHaveBeenCalled();
     expect(opts.connect).not.toHaveBeenCalled();
   });

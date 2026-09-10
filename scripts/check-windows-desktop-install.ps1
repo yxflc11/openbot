@@ -37,7 +37,9 @@ try {
   }
   $smoke.WaitForExit()
   if ($smoke.ExitCode -ne 0 -or !(Test-Path -LiteralPath $receipt)) {
-    if (Test-Path -LiteralPath $stderr) { Get-Content -LiteralPath $stderr -Tail 30 | Write-Host }
+    foreach ($log in @($stdout, $stderr)) {
+      if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 30 | Write-Host }
+    }
     throw 'Installed native runtime did not complete its startup/restart assertions.'
   }
   $result = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json

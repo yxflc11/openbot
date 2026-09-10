@@ -1,9 +1,10 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { channel } from "node:diagnostics_channel";
 import { existsSync } from "node:fs";
 import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import postgresClient from "postgres";
 import { LocalSessionRecovery } from "./local-session-recovery.js";
@@ -13,6 +14,8 @@ import {
   verifyWindowsPrivateDirectory,
   windowsNativeEnvironment,
 } from "./windows-native-security.js";
+
+const startupDiagnostics = channel("openbot.desktop.native-startup");
 
 class NativeCredentialError extends Error {}
 
@@ -77,6 +80,9 @@ export class NativeServerController {
       return Promise.resolve(this.getState());
     this.#pending = this.#start()
       .catch(async (error: unknown) => {
+        // Trusted main-process diagnostics never cross the renderer state/IPC boundary.
+        if (startupDiagnostics.hasSubscribers)
+          startupDiagnostics.publish({ state: this.#state, error });
         await this.#stopChildren();
         this.#state = {
           status: "failed",
@@ -339,11 +345,19 @@ export function runBounded(
   timeout = 30_000,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const captureDiagnostics = startupDiagnostics.hasSubscribers;
+    let diagnosticBytes = 0;
+    const diagnosticChunks: Buffer[] = [];
     const child = spawn(executable, args, {
       env: nativeEnvironment(),
-      stdio: ["pipe", "ignore", "ignore"],
+      stdio: ["pipe", "ignore", captureDiagnostics ? "pipe" : "ignore"],
       shell: false,
       windowsHide: true,
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      const bounded = chunk.subarray(0, Math.max(0, 16_384 - diagnosticBytes));
+      diagnosticBytes += bounded.length;
+      if (bounded.length) diagnosticChunks.push(bounded);
     });
     const timer = setTimeout(() => child.kill("SIGKILL"), timeout);
     child.stdin?.on("error", () => undefined);
@@ -353,6 +367,13 @@ export function runBounded(
     });
     child.once("close", (code) => {
       clearTimeout(timer);
+      if (code !== 0 && captureDiagnostics) {
+        startupDiagnostics.publish({
+          operation: basename(executable),
+          code,
+          stderr: Buffer.concat(diagnosticChunks).toString("utf8"),
+        });
+      }
       code === 0 ? resolve() : reject(new Error("Native operation failed."));
     });
     child.stdin?.end(input);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { channel } from "node:diagnostics_channel";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -22,6 +23,23 @@ async function runSmoke() {
   let loginCount = 0;
   let cooperativeShutdownFailed = false;
   let database;
+  const diagnostics = channel("openbot.desktop.native-startup");
+  const reportDiagnostic = (message) => {
+    const text = JSON.stringify(message, (_key, value) =>
+      value instanceof Error
+        ? { name: value.name, message: value.message, code: value.code }
+        : value,
+    );
+    // This process owns disposable fixtures only; never publish generated bootstrap secrets.
+    console.error(
+      "Windows native diagnostic:",
+      text
+        .replace(/postgres(?:ql)?:\/\/[^\s"\\]+/gu, "[database URL]")
+        .replace(/[a-f0-9]{64}/giu, "[generated secret]")
+        .slice(0, 18_000),
+    );
+  };
+  diagnostics.subscribe(reportDiagnostic);
   const controller = new NativeServerController({
     runtimeRoot,
     dataRoot: clusterRoot,
@@ -55,7 +73,10 @@ async function runSmoke() {
           reject(new Error("Server exited before readiness"));
         });
         child.on("message", (message) => {
-          if (message?.type === "openbot-server-ready" && message.port === Number(env.OPENBOT_PORT)) {
+          if (
+            message?.type === "openbot-server-ready" &&
+            message.port === Number(env.OPENBOT_PORT)
+          ) {
             clearTimeout(timer);
             resolveReady();
           }
@@ -126,21 +147,40 @@ async function runSmoke() {
     await database?.end();
     await controller.stop();
     await rm(dataRoot, { recursive: true, force: true });
+    diagnostics.unsubscribe(reportDiagnostic);
     if (succeeded) {
-      await writeFile(resultPath, JSON.stringify({
-        schemaVersion: 1,
-        platform: process.platform,
-        arch: process.arch,
-        checks: ["postgresql", "migrations", "dpapi", "owner-login", "retained-data", "stop", "restart", "cleanup"],
-      }), { flag: "wx" });
-      console.info("Windows native smoke passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.");
+      await writeFile(
+        resultPath,
+        JSON.stringify({
+          schemaVersion: 1,
+          platform: process.platform,
+          arch: process.arch,
+          checks: [
+            "postgresql",
+            "migrations",
+            "dpapi",
+            "owner-login",
+            "retained-data",
+            "stop",
+            "restart",
+            "cleanup",
+          ],
+        }),
+        { flag: "wx" },
+      );
+      console.info(
+        "Windows native smoke passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.",
+      );
     }
     app.quit();
   }
 }
 
 // Electron emits ready after ESM evaluation; awaiting it at module scope deadlocks.
-void app.whenReady().then(runSmoke).catch((error) => {
-  console.error("Windows native smoke failed:", error);
-  app.exit(1);
-});
+void app
+  .whenReady()
+  .then(runSmoke)
+  .catch((error) => {
+    console.error("Windows native smoke failed:", error);
+    app.exit(1);
+  });

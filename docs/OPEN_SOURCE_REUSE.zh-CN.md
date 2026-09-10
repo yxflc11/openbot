@@ -236,3 +236,5 @@ Desktop 公开检索复用 ai 7.0.93 / `6359fd58fe68eaade096b5d923bac26de84ca3bd
 alpha.5 原生参考频道改造继续复用上述已锁定依赖与标准，没有复制专有源码、头像或私人对话。见[原生体验](research/channel-native-reference.md)、[路由与上下文](research/channel-context-routing.md)、[附件展示](research/channel-attachment-presentation.md)和[用户可见行为](CHANNEL_EXPERIENCE.zh-CN.md)。
 
 原生异步协作继续使用 AI SDK 7.0.93 / `6359fd58fe68eaade096b5d923bac26de84ca3bd`（Apache-2.0）、PostgreSQL 17 锁和 Server 自有 RunEvent，没有复制上游源码。非阻塞汇总、鉴权追加指令与真实流适配见[异步协作研究](research/async-collaboration.md)。回应/移除成员复用 PostgreSQL 事务和 React 19.2.8 portal；Matrix v1.17 只作语义参考，不引入联邦依赖。请求限额隔离与气泡侧边可访问操作见[频道交互研究](research/channel-interactions.md)。
+
+本机启动诊断复用 Node v22.22.2 的 `diagnostics_channel`（MIT），只在受信任的 Electron 主进程中传递。默认不记录日志、不向渲染器暴露原因；仅在有订阅者时收集有大小限制的原生命令错误输出。没有复制源码，见 [Windows 验证研究](research/windows-desktop-completion.md)。
