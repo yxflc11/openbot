@@ -53,14 +53,24 @@ async function runSmoke() {
     },
     async launchServer(env) {
       databaseUrl = env.OPENBOT_DATABASE_URL;
+      const fixtureEnvironment = { ...env };
+      delete fixtureEnvironment.TAVILY_API_KEY;
+      delete fixtureEnvironment.OPENBOT_PLUGIN_LOCAL_ENDPOINTS;
       const child = utilityProcess.fork(join(runtimeRoot, "apps/server/dist/index.js"), [], {
-        env,
+        env: fixtureEnvironment,
         cwd: runtimeRoot,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
         serviceName: "OpenBot Windows CI Server",
       });
       let alive = true;
-      child.once("exit", () => {
+      let serverReady = false;
+      let errorTail = "";
+      child.stderr?.on("data", (chunk) => {
+        errorTail = (errorTail + chunk.toString()).slice(-4096);
+      });
+      child.once("exit", (code) => {
+        if (code !== 0 || !serverReady)
+          reportDiagnostic({ operation: "Server exit", code, stderr: errorTail });
         alive = false;
       });
       await new Promise((resolveReady, reject) => {
@@ -78,6 +88,7 @@ async function runSmoke() {
             message.port === Number(env.OPENBOT_PORT)
           ) {
             clearTimeout(timer);
+            serverReady = true;
             resolveReady();
           }
         });
