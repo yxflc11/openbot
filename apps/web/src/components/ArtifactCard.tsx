@@ -2,11 +2,18 @@ import type { Artifact } from "@openbot/domain";
 import { type ReactNode, useState } from "react";
 import { getOpenBotDesktopBridge } from "../desktop-runtime";
 
-export function ArtifactCard({ artifact }: { artifact: Artifact }) {
+export function ArtifactCard({
+  artifact,
+  downloadImage = false,
+}: {
+  artifact: Artifact;
+  downloadImage?: boolean;
+}) {
   const image = artifact.mediaType === "image/png";
   return (
     <ArtifactDownloadLink
       artifact={artifact}
+      downloadImage={downloadImage}
       className={image ? "artifact-card" : "artifact-card artifact-card-document"}
     >
       {image ? (
@@ -24,7 +31,7 @@ export function ArtifactCard({ artifact }: { artifact: Artifact }) {
         <strong>{artifact.name}</strong>
         <small>
           {image ? "图片" : "Markdown 报告"} · {formatBytes(artifact.sizeBytes)}
-          {image ? "" : " · 下载"}
+          {image && !downloadImage ? "" : " · 下载"}
         </small>
       </span>
     </ArtifactDownloadLink>
@@ -35,27 +42,31 @@ export function ArtifactDownloadLink({
   artifact,
   children,
   className,
+  downloadImage = false,
 }: {
   artifact: Artifact;
   children: ReactNode;
   className?: string;
+  downloadImage?: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string>();
   const image = artifact.mediaType === "image/png";
+  const preview = image && !downloadImage;
+  const label = image ? "图片" : "报告";
   return (
     <>
       <a
         className={className}
         href={`/api/v1/artifacts/${encodeURIComponent(artifact.id)}/content`}
-        download={image ? undefined : artifact.name}
-        target={image ? "_blank" : undefined}
-        rel={image ? "noreferrer" : undefined}
-        aria-label={image ? `查看 ${artifact.name}` : `下载 ${artifact.name}`}
+        download={preview ? undefined : artifact.name}
+        target={preview ? "_blank" : undefined}
+        rel={preview ? "noreferrer" : undefined}
+        aria-label={preview ? `查看 ${artifact.name}` : `下载 ${artifact.name}`}
         aria-busy={saving || undefined}
         onClick={async (event) => {
           const desktop = getOpenBotDesktopBridge();
-          if (image || !desktop) return;
+          if (preview || !desktop) return;
           event.preventDefault();
           if (saving) return;
           setSaving(true);
@@ -64,17 +75,17 @@ export function ArtifactDownloadLink({
             const result = await desktop.saveReport?.(artifact.id);
             setNotice(
               result?.status === "saved"
-                ? "报告已保存"
+                ? `${label}已保存`
                 : result?.status === "cancelled"
                   ? undefined
                   : result?.status === "exists"
                     ? "文件已存在，请换一个文件名。"
                     : result?.status === "busy"
                       ? "请先完成当前保存操作。"
-                      : "无法保存报告，请检查连接或更新 Desktop。",
+                      : `无法保存${label}，请检查连接或更新 Desktop。`,
             );
           } catch {
-            setNotice("无法保存报告，请检查连接后重试。");
+            setNotice(`无法保存${label}，请检查连接后重试。`);
           } finally {
             setSaving(false);
           }

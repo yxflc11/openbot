@@ -1,3 +1,4 @@
+import { getOpenBotDesktopBridge } from "./desktop-runtime";
 import type { ModelProviderId } from "@openbot/domain";
 import type {
   Approval,
@@ -232,7 +233,27 @@ export async function getEmployeeExportPreview(
 export async function downloadEmployeeTemplate(
   botId: string,
   preview: EmployeeExportPreview,
-): Promise<void> {
+): Promise<"saved" | "cancelled"> {
+  const desktop = getOpenBotDesktopBridge();
+  if (desktop) {
+    const result = await desktop.saveEmployeeTemplate?.({
+      botId,
+      packageId: preview.packageId,
+      generatedAt: preview.generatedAt,
+      downloadReviewToken: preview.downloadReviewToken,
+    });
+    if (result?.status === "saved" || result?.status === "cancelled") return result.status;
+    if (result?.status === "changed")
+      throw new ApiError("员工内容在审核后发生变化，请刷新预览。", 412);
+    throw new ApiError(
+      result?.status === "exists"
+        ? "文件已存在，请换一个文件名。"
+        : result?.status === "busy"
+          ? "请先完成当前保存操作。"
+          : "无法保存员工模板，请检查连接或更新 Desktop。",
+      0,
+    );
+  }
   const parameters = new URLSearchParams({
     packageId: preview.packageId,
     generatedAt: preview.generatedAt,
@@ -265,6 +286,7 @@ export async function downloadEmployeeTemplate(
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+  return "saved";
 }
 
 async function browserSha256Hex(bytes: ArrayBuffer): Promise<string> {

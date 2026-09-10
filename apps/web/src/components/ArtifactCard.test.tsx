@@ -58,4 +58,45 @@ describe("task report card", () => {
       await view.unmount();
     }
   });
+  it("downloads a PNG through the native bridge when requested by the share list", async () => {
+    const saveReport = vi.fn(async () => ({ status: "saved" as const }));
+    vi.mocked(getOpenBotDesktopBridge).mockReturnValue({ saveReport } as unknown as NonNullable<
+      ReturnType<typeof getOpenBotDesktopBridge>
+    >);
+    const view = await renderComponent(
+      <ArtifactCard
+        artifact={{ ...artifact, name: "capture.png", mediaType: "image/png" }}
+        downloadImage
+      />,
+    );
+    try {
+      const link = view.container.querySelector("a");
+      expect(link?.getAttribute("download")).toBe("capture.png");
+      expect(link?.getAttribute("target")).toBeNull();
+      expect(link?.getAttribute("aria-label")).toBe("下载 capture.png");
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      await interact(() => link?.dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(true);
+      expect(saveReport).toHaveBeenCalledExactlyOnceWith(artifact.id);
+      expect(view.container.textContent).toContain("图片已保存");
+    } finally {
+      await view.unmount();
+    }
+  });
+  it("keeps a browser download link when the native bridge is absent", async () => {
+    const view = await renderComponent(
+      <ArtifactCard
+        artifact={{ ...artifact, name: "capture.png", mediaType: "image/png" }}
+        downloadImage
+      />,
+    );
+    try {
+      const link = view.container.querySelector("a");
+      expect(link?.getAttribute("download")).toBe("capture.png");
+      expect(link?.getAttribute("target")).toBeNull();
+      expect(link?.getAttribute("href")).toBe("/api/v1/artifacts/report-id/content");
+    } finally {
+      await view.unmount();
+    }
+  });
 });

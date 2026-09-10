@@ -584,6 +584,7 @@ export function AuthenticatedWorkspace({
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [sharing, setSharing] = useState(false);
+  const [sharedBotId, setSharedBotId] = useState<string>();
   const directRequest = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: leaving a view invalidates an in-flight direct-conversation open.
   useEffect(
@@ -741,14 +742,18 @@ export function AuthenticatedWorkspace({
       !dialog &&
       !selectedRunId &&
       !employeeImportOpen &&
-      !employeeExportOpen,
+      !employeeExportOpen &&
+      !sharing &&
+      !sharedBotId,
     settingsAvailable:
       active &&
       onSettings !== undefined &&
       !dialog &&
       !selectedRunId &&
       !employeeImportOpen &&
-      !employeeExportOpen,
+      !employeeExportOpen &&
+      !sharing &&
+      !sharedBotId,
     canGoBack: navigation.canGoBack,
     canGoForward: navigation.canGoForward,
     onBack: navigation.back,
@@ -1026,9 +1031,14 @@ export function AuthenticatedWorkspace({
         </div>
         <div className="toolbar-layout">
           {selectedChannel && (
-            <button className="toolbar-share" type="button" onClick={() => setSharing(true)}>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="分享"
+              title="分享"
+              onClick={() => setSharing(true)}
+            >
               <ShareIcon />
-              <span>分享</span>
             </button>
           )}
           <button
@@ -1159,8 +1169,15 @@ export function AuthenticatedWorkspace({
 
       {sharing && selectedChannel && (
         <ShareConversationDialog
+          key={selectedChannel.id}
           channel={selectedChannel}
           bots={workspace.bots}
+          artifacts={workspace.artifacts}
+          runs={workspace.runs}
+          onShareBot={(botId) => {
+            setSharing(false);
+            setSharedBotId(botId);
+          }}
           onClose={() => setSharing(false)}
         />
       )}
@@ -1199,6 +1216,16 @@ export function AuthenticatedWorkspace({
       ) : null}
       {dialog === "node" ? (
         <NodeManagerDialog onlineNodes={workspace.nodes} onClose={() => setDialog(undefined)} />
+      ) : null}
+      {sharedBotId && workspace.bots.find((bot) => bot.id === sharedBotId) ? (
+        <ExportEmployeeDialog
+          employee={workspace.bots.find((bot) => bot.id === sharedBotId)!}
+          onClose={() => setSharedBotId(undefined)}
+          onDownloaded={(fileName) => {
+            setSharedBotId(undefined);
+            showNotice(`已下载 Bot 模板：${fileName}`);
+          }}
+        />
       ) : null}
       {employeeExportOpen && employeeProfile ? (
         <ExportEmployeeDialog

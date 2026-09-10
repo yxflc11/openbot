@@ -77,7 +77,18 @@ export interface DesktopNavigationMenuState {
   canGoForward: boolean;
   settingsAvailable: boolean;
 }
+export type EmployeeTemplateSaveInput = Readonly<{
+  botId: string;
+  packageId: string;
+  generatedAt: string;
+  downloadReviewToken: string;
+}>;
+export type EmployeeTemplateSaveResult = Readonly<{
+  status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" | "changed";
+}>;
+
 export interface OpenBotDesktopBridge {
+  saveEmployeeTemplate?(input: EmployeeTemplateSaveInput): Promise<EmployeeTemplateSaveResult>;
   restoreLocalSession?(): Promise<Readonly<{ status: "restored" | "unavailable" }>>;
   saveReport?(
     artifactId: string,

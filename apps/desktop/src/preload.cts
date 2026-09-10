@@ -1,4 +1,5 @@
 import type {
+  EmployeeTemplateSaveInput,
   DesktopNavigationCommand,
   DesktopNavigationMenuState,
   DesktopSidebarMaterialState,
@@ -53,6 +54,15 @@ const bridge: OpenBotDesktopBridge = Object.freeze({
     )
       return Promise.resolve({ status: "unavailable" });
     return ipcRenderer.invoke("openbot:save-report", artifactId);
+  },
+  saveEmployeeTemplate: (input: EmployeeTemplateSaveInput) => {
+    if (!isEmployeeTemplateSaveInput(input)) return Promise.resolve({ status: "unavailable" });
+    return ipcRenderer.invoke("openbot:save-employee-template", {
+      botId: input.botId,
+      packageId: input.packageId,
+      generatedAt: input.generatedAt,
+      downloadReviewToken: input.downloadReviewToken,
+    });
   },
   getRuntimeInfo: () => runtimeInfo,
   onNavigationCommand: (listener: (command: DesktopNavigationCommand) => void) => {
@@ -179,5 +189,28 @@ function isNavigationMenuState(value: unknown): value is DesktopNavigationMenuSt
         ["workspaceReady", "settingsAvailable", "canGoBack", "canGoForward"].includes(key) &&
         typeof state[key] === "boolean",
     )
+  );
+}
+
+function isEmployeeTemplateSaveInput(value: unknown): value is EmployeeTemplateSaveInput {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const input = value as Record<string, unknown>;
+  const keys = Object.keys(input);
+  const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
+  return (
+    keys.length === 4 &&
+    keys.every((key) =>
+      ["botId", "packageId", "generatedAt", "downloadReviewToken"].includes(key),
+    ) &&
+    typeof input.botId === "string" &&
+    uuid.test(input.botId) &&
+    typeof input.packageId === "string" &&
+    uuid.test(input.packageId) &&
+    typeof input.generatedAt === "string" &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(input.generatedAt) &&
+    Number.isFinite(Date.parse(input.generatedAt)) &&
+    new Date(input.generatedAt).toISOString() === input.generatedAt &&
+    typeof input.downloadReviewToken === "string" &&
+    /^[a-f0-9]{64}$/u.test(input.downloadReviewToken)
   );
 }

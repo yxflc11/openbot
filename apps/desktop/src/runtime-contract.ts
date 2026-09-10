@@ -95,7 +95,18 @@ export type DesktopNavigationMenuState = Readonly<{
 export const DESKTOP_NAVIGATION_COMMAND_CHANNEL = "openbot:navigation-command";
 export const DESKTOP_NAVIGATION_MENU_STATE_CHANNEL = "openbot:navigation-menu-state";
 
+export type EmployeeTemplateSaveInput = Readonly<{
+  botId: string;
+  packageId: string;
+  generatedAt: string;
+  downloadReviewToken: string;
+}>;
+export type EmployeeTemplateSaveResult = Readonly<{
+  status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" | "changed";
+}>;
+
 export interface OpenBotDesktopBridge {
+  saveEmployeeTemplate?(input: EmployeeTemplateSaveInput): Promise<EmployeeTemplateSaveResult>;
   restoreLocalSession?(): Promise<Readonly<{ status: "restored" | "unavailable" }>>;
   saveReport?(
     artifactId: string,

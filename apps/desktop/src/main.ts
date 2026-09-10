@@ -149,12 +149,20 @@ function registerDesktopIpc(
     choosePath: async (name) => {
       const window = mainWindow;
       if (!window || window.isDestroyed()) return undefined;
+      const image = name.endsWith(".png");
+      const employee = name.endsWith(".json");
       const result = await dialog.showSaveDialog(window, {
-        title: "保存报告",
+        title: employee ? "保存员工模板" : image ? "保存图片" : "保存报告",
         buttonLabel: "保存",
         defaultPath: name,
-        filters: [{ name: "Markdown 报告", extensions: ["md"] }],
-        message: "选择新文件名保存报告；已有文件不会被覆盖。",
+        filters: [
+          employee
+            ? { name: "OpenBot 员工模板", extensions: ["json"] }
+            : image
+              ? { name: "PNG 图片", extensions: ["png"] }
+              : { name: "Markdown 报告", extensions: ["md"] },
+        ],
+        message: "选择新文件名保存；已有文件不会被覆盖。",
         showsTagField: false,
       });
       return result.canceled ? undefined : result.filePath;
@@ -165,6 +173,12 @@ function registerDesktopIpc(
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
       throw new Error("Desktop IPC sender is not allowed.");
     return reportSaver.save(artifactId);
+  });
+  ipcMain.removeHandler("openbot:save-employee-template");
+  ipcMain.handle("openbot:save-employee-template", (event, input: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
+      throw new Error("Desktop IPC sender is not allowed.");
+    return reportSaver.saveEmployeeTemplate(input);
   });
   ipcMain.removeHandler(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL);
   ipcMain.handle(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL, (event, value: unknown) => {
