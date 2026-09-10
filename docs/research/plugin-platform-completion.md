@@ -56,3 +56,7 @@ Use released AppBridge and PostMessageTransport without copied implementation. O
 ### External material must not mint attachment references
 
 The existing attachment marker is an OpenBot transport convention, not MCP content authority. Review of the MCP 1.30.0 untrusted resource/prompt boundary and current `taskAttachmentIds` parser found that blindly inserting external text could reinterpret a reserved marker as an Owner attachment selection. The narrow adapter neutralizes every case-insensitive reserved prefix in the entire inserted label and body. Resource preview remains original text; only the draft transport representation changes. A real component test supplies a malicious prompt marker and verifies the callback cannot receive an active marker. No upstream source is copied or new dependency introduced.
+
+### Approval timeout classification
+
+Hosted Linux CI exposed a clock-domain bug: the approval timeout signal could fire before the separately calculated wall-clock `expiresAt` appeared expired, turning a known approval expiry into generic plugin unavailability. The Node `AbortSignal.timeout`/`AbortSignal.any` API provides the actual originating signal state (https://nodejs.org/api/globals.html#static-method-abortsignaltimeoutdelay). Keep that signal and classify its abort directly, with parent cancellation taking precedence. Preserve the wall-clock expiry for approval admission. A regression freezes `Date.now` while the real timeout runs, verifying expiry without external dispatch. No deadline is increased and no automatic retry is added.

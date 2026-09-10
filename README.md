@@ -13,9 +13,9 @@
 
 Create colleagues with their own identity, role, reviewed memory and skills. Assign work in a channel, let one Bot ask another for help, follow their replies and download the result. Desktop and Web share the actual React workspace; the OpenBot Server owns identity, permissions, routing, approvals and audit.
 
-**Current source candidate: Desktop `0.1.0-alpha.6`.** Channel collaboration, richer files, the MCP extension interface and the bilingual website are implemented. This candidate is **not yet published**: the final source push, native Windows CI result and public website deployment still require completion. See the [feature-by-feature delivery record](docs/RELEASE_COMPLETION.md) for implemented behavior, evidence and the three release gates. Development installers are unsigned; no automatic update channel or arbitrary desktop-control certification is claimed.
+**Current source candidate: Desktop `0.1.0-alpha.6`.** Channel collaboration, richer files, the MCP extension interface and the bilingual website are implemented. This candidate is **not yet published**: the native Windows CI result and final product release still require completion. See the [feature-by-feature delivery record](docs/RELEASE_COMPLETION.md) for implemented behavior, evidence and the three release gates. Development installers are unsigned; no automatic update channel or arbitrary desktop-control certification is claimed.
 
-Planned website deployment targets: [English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/). These links are the targets for this deployment, not a claim that the current candidate is already live. Read the [source documentation index](docs/README.md) now. English and Chinese are the maintained current-candidate documentation; the Japanese and Portuguese READMEs describe an earlier snapshot.
+Website: [English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/). The website is deployed independently from the product installer. Read the [source documentation index](docs/README.md) now. English and Chinese are the maintained current-candidate documentation; the Japanese and Portuguese READMEs describe an earlier snapshot.
 
 ## What you can do
 
@@ -32,7 +32,7 @@ Planned website deployment targets: [English](https://yxflc11.github.io/openbot-
 | Plugins | Connect standard MCP tools, text resources, Owner-selected prompts and isolated Apps. Review declarations and updates, grant access per Bot and approve configured external writes. |
 | Automations | Create fixed-interval tasks, pause/resume/delete, inspect the last outcome and skip overlapping runs. The Server must remain running. |
 | Settings | Eleven model-provider presets, retained encrypted credentials, explicit Agent enablement and workspace appearance/navigation/send preferences. |
-| Website | Product pages, searchable English/Chinese manuals, extension protocol/contribution guides and an isolated interactive demo made from the real channel components. Public deployment is pending. |
+| Website | Product pages, searchable English/Chinese manuals, extension protocol/contribution guides and an isolated interactive demo made from the real channel components. Deployed from the separate openbot-website repository. |
 
 These are bounded features, not a claim of unlimited agents, unrestricted computer input, multi-human collaboration, complete MCP support, automatic crash replay or pixel-identical reproduction of every Grok state. The [delivery record](docs/RELEASE_COMPLETION.md) explains each boundary and links its implementation.
 

@@ -2,7 +2,7 @@
 
 [简体中文](RELEASE_COMPLETION.zh-CN.md)
 
-Candidate: 0.1.0-alpha.6, 2026-09-10. This record describes the source candidate. Native Windows CI, final source publication and public website deployment are release gates still awaiting evidence.
+Candidate: 0.1.0-alpha.6, 2026-09-10. This record describes the source candidate. The public website is live in the independent openbot-website repository. Native Windows CI and the final product release still await evidence.
 
 ## Workspace and collaboration
 
@@ -44,6 +44,7 @@ The repository review covers all OpenBot apps, packages, Providers, docs, migrat
 
 Local focused tests cover authority, streaming/steering, actual parser/OCR workers, real MCP SDK transport, update revocation, voice lifecycle, retained startup, modal lifecycle and side action interactions. Four isolated PostgreSQL suites exercised 49 cases. Browser checks cover the actual demo, desktop/narrow layouts, plugin SDK isolation and manual search. Tests using synthetic data or mocked media are not real microphone hardware or paid-provider acceptance.
 
-- Pending: full root check after final integration.
+- Passed: full root check after integration and website separation.
 - Pending: successful hosted Windows source build, 17.10→17.11 database upgrade, installed native runtime/DPAPI/restart and installer lifecycle.
-- Pending: final GitHub source push, Windows-only alpha.6 release and public Pages verification.
+- Passed: source branch push/PR #29 and independent website Pages deployment (run 34484057506).
+- Pending: final main merge, Windows-only alpha.6 release and installer download verification.

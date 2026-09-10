@@ -33,6 +33,6 @@ Readability had fallen behind feature growth. The main problems were stale archi
 
 ## Verification and remaining work
 
-This review ran document-link validation and the 26-file migration manifest check, focused action/reaction component tests, Server/Web type checks, the Server regression suite and all four isolated PostgreSQL suites. Full root `npm run check`, final rendered UI review, new Windows native lifecycle evidence, website deployment and hosted CI belong to the release integrator; they are not implied by this audit.
+This review ran document-link validation and the 26-file migration manifest check, focused action/reaction component tests, Server/Web type checks, the Server regression suite and all four isolated PostgreSQL suites. The release integrator subsequently passed full root `npm run check`, rendered-demo checks and independent website deployment. Hosted CI passed security, PostgreSQL, both container architectures and macOS. Windows native lifecycle evidence and final release remain required; this audit does not replace those gates.
 
 Before extending an area, follow [REPOSITORY_MAP](REPOSITORY_MAP.md). Prefer a small feature module over adding another branch to an unrelated coordinator. Keep old behavior until the replacement has an actual regression check. Any further removal of files or styles should be based on confirmed references and rendered evidence, not filename age.

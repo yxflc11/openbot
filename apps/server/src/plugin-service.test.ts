@@ -221,10 +221,16 @@ describe("Server-owned MCP plugin lifecycle", () => {
   it("expires pending approval and disables/revokes in-flight calls", async () => {
     const { service, plugin, call } = await fixture(20);
     const enabled = await authorize(service, plugin, "confirm");
-    await expect(
-      service.call(run, callInput(enabled), AbortSignal.timeout(1000)),
-    ).rejects.toMatchObject({ code: "expired" });
-    expect(call).not.toHaveBeenCalled();
+    // Expiry must follow its timeout even if the wall clock stops or moves backward.
+    const wallClock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
+    try {
+      await expect(
+        service.call(run, callInput(enabled), AbortSignal.timeout(1000)),
+      ).rejects.toMatchObject({ code: "expired" });
+      expect(call).not.toHaveBeenCalled();
+    } finally {
+      wallClock.mockRestore();
+    }
   });
 
   it("revokes a waiting approval immediately when the plugin is disabled", async () => {

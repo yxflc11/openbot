@@ -50,6 +50,8 @@ describe("Windows native runtime boundary", () => {
         await rm(parent, { recursive: true, force: true });
       }
     },
+    // Four real PowerShell checks, each with its own 15-second production deadline.
+    65_000,
   );
   it.skipIf(process.platform === "win32")(
     "cannot simulate a successful Windows ACL check on another OS",

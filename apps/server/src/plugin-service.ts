@@ -637,12 +637,14 @@ export class PluginService {
         expiresAt,
       },
     });
+    const timeout = AbortSignal.timeout(this.#approvalTimeout);
     try {
-      const approvalSignal = AbortSignal.any([signal, AbortSignal.timeout(this.#approvalTimeout)]);
+      const approvalSignal = AbortSignal.any([signal, timeout]);
       const decision = await abortPluginOperation(decided, approvalSignal);
       if (decision !== "approve") throw new PluginError("rejected");
     } catch (error) {
-      if (!signal.aborted && Date.parse(expiresAt) <= Date.now()) throw new PluginError("expired");
+      if (!signal.aborted && (timeout.aborted || Date.parse(expiresAt) <= Date.now()))
+        throw new PluginError("expired");
       throw error;
     } finally {
       this.#pending.delete(id);
