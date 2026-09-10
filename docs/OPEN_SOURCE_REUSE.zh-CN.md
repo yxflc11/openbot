@@ -238,3 +238,5 @@ alpha.5 原生参考频道改造继续复用上述已锁定依赖与标准，没
 原生异步协作继续使用 AI SDK 7.0.93 / `6359fd58fe68eaade096b5d923bac26de84ca3bd`（Apache-2.0）、PostgreSQL 17 锁和 Server 自有 RunEvent，没有复制上游源码。非阻塞汇总、鉴权追加指令与真实流适配见[异步协作研究](research/async-collaboration.md)。回应/移除成员复用 PostgreSQL 事务和 React 19.2.8 portal；Matrix v1.17 只作语义参考，不引入联邦依赖。请求限额隔离与气泡侧边可访问操作见[频道交互研究](research/channel-interactions.md)。
 
 本机启动诊断复用 Node v22.22.2 的 `diagnostics_channel`（MIT），只在受信任的 Electron 主进程中传递。默认不记录日志、不向渲染器暴露原因；仅在有订阅者时收集有大小限制的原生命令错误输出。没有复制源码，见 [Windows 验证研究](research/windows-desktop-completion.md)。
+
+Windows 数据库启动复用 PostgreSQL REL_17_11 的 `pg_ctl` 受限令牌机制及 PID 文件/状态契约。薄适配层在清理或停止前核对集群、端口、PID 与启动身份，没有自行实现令牌 API 或复制上游代码，见 [研究](research/windows-desktop-completion.md)。

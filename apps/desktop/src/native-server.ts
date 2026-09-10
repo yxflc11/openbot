@@ -14,6 +14,7 @@ import {
   verifyWindowsPrivateDirectory,
   windowsNativeEnvironment,
 } from "./windows-native-security.js";
+import { startWindowsPostgres, type WindowsPostgresProcess } from "./windows-postgres.js";
 
 const startupDiagnostics = channel("openbot.desktop.native-startup");
 
@@ -45,6 +46,7 @@ export class NativeServerController {
   #state: NativeServerState = { status: "idle" };
   #pending: Promise<NativeServerState> | undefined;
   #postgres: ChildProcess | undefined;
+  #windowsPostgres: WindowsPostgresProcess | undefined;
   #server: ManagedServerProcess | undefined;
   #stopping = false;
   #ownedUrl: string | undefined;
@@ -186,30 +188,46 @@ export class NativeServerController {
     }
     if (this.#stopping) throw new Error("Stopping.");
     const dbPort = await availablePort();
-    this.#postgres = spawn(
-      executable("postgres"),
-      ["-D", cluster, "-h", "127.0.0.1", "-p", String(dbPort), "-k", ""],
-      {
-        env: nativeEnvironment(),
-        stdio: "ignore",
-        shell: false,
-        windowsHide: true,
-      },
-    );
-    const postgres = this.#postgres;
-    let pgFailed = false;
-    postgres.on("error", () => {
-      pgFailed = true;
-    });
-    postgres.on("exit", () => {
+    const databaseExited = () => {
       if (!this.#stopping && this.#state.status === "ready") {
         this.#state = { status: "failed", code: "service_stopped" };
         void this.#stopChildren();
       }
-    });
+    };
+    let pgFailed = false;
+    if (windows) {
+      this.#windowsPostgres = await startWindowsPostgres(
+        runtimeRoot,
+        dataRoot,
+        dbPort,
+        databaseExited,
+      );
+    } else {
+      this.#postgres = spawn(
+        executable("postgres"),
+        ["-D", cluster, "-h", "127.0.0.1", "-p", String(dbPort), "-k", ""],
+        {
+          env: nativeEnvironment(),
+          stdio: "ignore",
+          shell: false,
+          windowsHide: true,
+        },
+      );
+      this.#postgres.on("error", () => {
+        pgFailed = true;
+      });
+      this.#postgres.on("exit", databaseExited);
+    }
+    const postgres = this.#postgres;
+    const windowsPostgres = this.#windowsPostgres;
     const databaseUrl = `postgres://openbot:${secrets.databasePassword}@127.0.0.1:${dbPort}/postgres`;
     await waitUntil(async () => {
-      if (pgFailed || postgres.exitCode !== null || postgres.signalCode !== null || this.#stopping)
+      if (
+        pgFailed ||
+        (postgres && (postgres.exitCode !== null || postgres.signalCode !== null)) ||
+        (windowsPostgres && !windowsPostgres.isAlive()) ||
+        this.#stopping
+      )
         throw new Error("Postgres stopped.");
       const connection = postgresClient(databaseUrl, {
         max: 1,
@@ -280,11 +298,10 @@ export class NativeServerController {
     await server?.stop().catch(() => undefined);
     const postgres = this.#postgres;
     this.#postgres = undefined;
-    if (postgres) {
-      if (this.#options.platform === "win32") {
-        await stopWindowsPostgres(postgres, this.#options.runtimeRoot, this.#options.dataRoot);
-      } else await stopPostgres(postgres);
-    }
+    const windowsPostgres = this.#windowsPostgres;
+    this.#windowsPostgres = undefined;
+    if (windowsPostgres) await windowsPostgres.stop();
+    if (postgres) await stopPostgres(postgres);
   }
 }
 
@@ -402,32 +419,6 @@ async function stopPostgres(child: ChildProcess): Promise<void> {
     });
     child.kill("SIGINT");
   });
-}
-
-async function stopWindowsPostgres(
-  child: ChildProcess,
-  runtimeRoot: string,
-  dataRoot: string,
-): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  const executable = join(runtimeRoot, "postgres", "bin", "pg_ctl.exe");
-  const cluster = join(dataRoot, "postgres");
-  // PostgreSQL implements its own Windows signal channel. Node's kill() would force termination.
-  try {
-    await runBounded(
-      executable,
-      ["stop", "-D", cluster, "-m", "fast", "-w", "-t", "8"],
-      undefined,
-      12_000,
-    );
-  } catch {
-    await runBounded(
-      executable,
-      ["stop", "-D", cluster, "-m", "immediate", "-w", "-t", "4"],
-      undefined,
-      8_000,
-    );
-  }
 }
 
 function decryptBootstrap(options: NativeServerOptions, retained: string): BootstrapSecrets {

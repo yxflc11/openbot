@@ -10,6 +10,8 @@ Windows x64 桌面版可以在本机运行 OpenBot Server 与 PostgreSQL，也�
 
 下载安装包后，安装本身不需要网络。远程模型和外部工具可能需要联网。数据库可执行文件已包含在安装包中，首次使用不会再下载数据库程序。
 
+Windows 通过 PostgreSQL 官方启动机制收紧数据库进程权限，即使 Desktop 继承了管理员令牌。数据库旁的 `postgres.log` 是本机诊断日志，不会自动上传；停止数据库前会核对进程身份。
+
 ## 数据与退出
 
 数据位于 Electron 当前用户应用数据目录下的 `openbot/local-server`，包含数据库、上传对象、模型设置与加密的初始化身份。Electron `safeStorage` 使用 Windows DPAPI 加密初始化身份。数据目录设置仅当前用户可访问、可继承的 NTFS DACL；已有目录出现意外授权时会拒绝使用，不自动修复。DPAPI 的边界是用户登录身份，不能阻止同一身份下的恶意软件。

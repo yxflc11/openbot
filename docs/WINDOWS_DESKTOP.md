@@ -10,6 +10,8 @@ Open OpenBot and choose this computer as the Server. The application initializes
 
 The installer itself needs no Internet connection once downloaded. A configured remote model or external tool can require network access. The application package includes the exact PostgreSQL binaries; it never downloads database executables on first use.
 
+Windows uses PostgreSQL’s official restricted-token launcher even when Desktop inherits an administrator token. The private database log is `postgres.log` beside the cluster; it is local diagnostic data and is not uploaded. Stop operations verify the database process identity before acting.
+
 ## Data and lifecycle
 
 Data lives below Electron's per-user application-data directory in `openbot/local-server`: PostgreSQL data, uploaded objects, model settings and an encrypted bootstrap file. Electron `safeStorage` uses Windows DPAPI for bootstrap encryption. The directory gets an owner-only inheritable NTFS DACL; existing unexpected access is rejected rather than silently repaired. DPAPI is a user-login boundary, not protection from malicious software running under the same login.
