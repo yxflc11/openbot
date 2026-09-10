@@ -59,9 +59,9 @@ See the [alpha.4 core upgrade](CORE_UPGRADE.md) for channel collaboration, attac
 | `propose_memory` | One bounded candidate lesson per successful task; no active-memory change until Owner review |
 | `write_report` | Prepare at most 2 Markdown files; 24 KiB authored text and 32 KiB including Server source provenance |
 | Authority | Strict schemas; Server binds channel/Bot from the claimed Run and rechecks membership and Run state. Public HTTPS source selection is allowed; filesystem paths and private network targets are not |
-| Iteration | At most 5 model steps, 8 executed tools including at most 4 web calls, and 1,024 output tokens per step (4,096 for Kimi); no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
+| Iteration | At most 8 model steps, 16 executed tools including at most 4 web calls, and 1,024 output tokens per step (4,096 for Kimi); no next step after reported cumulative input reaches 64,000 or output reaches 5,120 tokens |
 | Time/output | 300-second task-tree deadline (90 seconds for a runtime without collaboration), 30-second HTTP deadline, 512 KiB provider reply, 16 KiB instruction/ordinary tool projection, up to 128 KiB serialized opaque search evidence (never truncated), 8,000-character final reply |
-| Concurrency | At most 2 root task trees per Server, one per channel; child Runs execute under the root lease and sibling calls are serialized |
+| Concurrency | At most 6 root task trees per Server; same-Bot channel tasks remain serialized while different Bots and sibling assignments can run concurrently |
 | Network | Fixed official model/search endpoints plus bounded public HTTPS source GETs and reviewed MCP service calls. Source DNS answers must all be public; the connection pins the checked address and verifies the original TLS host. No redirects, proxies or automatic retries; OpenAI response storage is disabled |
 | Lifecycle | Reply, report metadata, completion and audit commit together. Prepared report files are removed when publication fails. Interrupted running tasks fail on restart; ambiguous/failed tasks are not automatically retried |
 
@@ -137,4 +137,8 @@ See [research and known compatibility limits](research/openrouter-model-entry.md
 
 ## Kimi K3
 
-Desktop Settings → Model & API includes Kimi (Moonshot CN), default model `kimi-k3`. Enter the API key and enable the native Agent; the key is encrypted on the service computer and retained after restart. Verification checks the model list without generating content. K3 uses low reasoning effort and up to 4,096 output tokens per step (including reasoning), within the existing 90-second task deadline and five-step limit. Only newly created tasks for Bots without a computer run automatically. Existing queued tasks are not replayed. Public search and source reading are available in the installed native Agent through the [Desktop web tool integration](research/desktop-public-web-tools.md). Search progress records started/completed/failed tool names without queries or result bodies.
+Desktop Settings → Model & API includes Kimi (Moonshot CN), default model `kimi-k3`. Enter the API key and enable the native Agent; the key is encrypted on the service computer and retained after restart. Verification checks the model list without generating content. K3 uses low reasoning effort and up to 4,096 output tokens per step (including reasoning), within the current 300-second tree deadline and eight-step limit. Only newly created tasks for Bots without a computer run automatically. Existing queued tasks are not replayed. Public search and source reading are available in the installed native Agent through the [Desktop web tool integration](research/desktop-public-web-tools.md). Search progress records started/completed/failed tool names without queries or result bodies.
+
+## Asynchronous coordination, corrections and output
+
+[Asynchronous collaboration](ASYNC_COLLABORATION.md) documents nonblocking assignment receipts, result joins, safe Owner corrections and real streamed text. The shared Run budget includes all continuations. Interrupted trees still fail on restart; external side effects are never automatically replayed.

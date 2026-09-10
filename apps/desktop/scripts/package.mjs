@@ -27,7 +27,9 @@ const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const identity = desktopPackageIdentity(process.argv.slice(2));
 const workspaceRoot = join(appRoot, "..", "..");
 const rendererEntry = join(appRoot, "dist", "renderer", "index.html");
-const nativeRuntime = process.platform === "darwin" ? join(appRoot, "native-runtime") : undefined;
+const nativeRuntime = ["darwin", "win32"].includes(process.platform)
+  ? join(appRoot, "native-runtime")
+  : undefined;
 const desktopIconBase = join(appRoot, "resources", "openbot-icon");
 const desktopIconPng = `${desktopIconBase}.png`;
 const packageManifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
@@ -56,7 +58,13 @@ await Promise.all([
   ...(nativeRuntime
     ? [
         access(join(nativeRuntime, "apps/server/dist/index.js")),
-        access(join(nativeRuntime, "postgres/bin/postgres")),
+        access(
+          join(
+            nativeRuntime,
+            "postgres/bin",
+            process.platform === "win32" ? "postgres.exe" : "postgres",
+          ),
+        ),
       ]
     : []),
   access(rendererEntry),
@@ -72,6 +80,9 @@ if (workerCompanionSource !== undefined) {
 
 const packagePaths = await packager({
   appBundleId: identity.appBundleId,
+  extendInfo: {
+    NSMicrophoneUsageDescription: "Record a voice attachment when you press the microphone button.",
+  },
   appVersion: packageManifest.version,
   arch: process.arch,
   asar: true,
@@ -81,6 +92,10 @@ const packagePaths = await packager({
   extraResource: [desktopIconPng],
   afterCopyExtraResources: [
     async ({ buildPath }) => {
+      await copyContainedResource(
+        join(workspaceRoot, "licenses/runtime"),
+        packagedDesktopResource(buildPath, process.platform, "runtime-notices", identity),
+      );
       if (process.platform === "darwin") {
         // The DMG contains the app, not Packager's surrounding directory. Keep runtime notices
         // inside it, using the exact unpacked runtime rather than npm's optional local dist cache.

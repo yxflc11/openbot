@@ -1,13 +1,18 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
 import type { PluginService } from "./plugin-service.js";
 import { decidePluginCallSchema, PluginError, removePluginSchema } from "./plugin-types.js";
 
 /** Mount at /api/v1 after the parent Server's Owner/session/Origin middleware. */
 export function createPluginRoutes(service: PluginService) {
   const routes = new Hono();
-  for (const path of ["/plugins", "/plugins/*", "/plugin-calls/*"])
+  for (const path of [
+    "/plugins",
+    "/plugins/*",
+    "/plugin-calls/*",
+    "/channels/:channelId/bots/:botId/plugin-content",
+  ])
     routes.use(
       path,
       bodyLimit({
@@ -32,6 +37,29 @@ export function createPluginRoutes(service: PluginService) {
     }
     return context.json({ error: "插件操作未完成，请检查服务后重试。", code: "unavailable" }, 503);
   });
+  const contentScope = z
+    .object({ channelId: z.string().uuid(), botId: z.string().uuid() })
+    .strict();
+  routes.get("/channels/:channelId/bots/:botId/plugin-content", async (context) => {
+    const scope = contentScope.parse({
+      channelId: context.req.param("channelId"),
+      botId: context.req.param("botId"),
+    });
+    return context.json(await service.ownerContentCatalog(scope));
+  });
+  routes.post("/channels/:channelId/bots/:botId/plugin-content", async (context) => {
+    const scope = contentScope.parse({
+      channelId: context.req.param("channelId"),
+      botId: context.req.param("botId"),
+    });
+    return context.json(
+      await service.ownerReadContent(
+        scope,
+        await context.req.json(),
+        AbortSignal.any([context.req.raw.signal, AbortSignal.timeout(30_000)]),
+      ),
+    );
+  });
   routes.get("/plugins", async (context) => context.json(await service.snapshot()));
   routes.post("/plugins/preview", async (context) =>
     context.json(
@@ -51,6 +79,21 @@ export function createPluginRoutes(service: PluginService) {
       },
       201,
     ),
+  );
+  routes.post("/plugins/:id/update/preview", async (context) => {
+    const { revision } = removePluginSchema.parse(await context.req.json());
+    return context.json(
+      await service.previewUpdate(context.req.param("id"), revision, context.req.raw.signal),
+    );
+  });
+  routes.post("/plugins/:id/update", async (context) =>
+    context.json({
+      plugin: await service.applyUpdate(
+        context.req.param("id"),
+        await context.req.json(),
+        context.req.raw.signal,
+      ),
+    }),
   );
   routes.patch("/plugins/:id", async (context) =>
     context.json({

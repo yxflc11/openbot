@@ -1,11 +1,3 @@
-import {
-  activeCollaborationChain,
-  channelColleagues,
-  createDelegatedRun,
-} from "./postgres-agent-collaboration.js";
-import type { DelegateTaskInput } from "./agent-collaboration.js";
-import type { SkillReference } from "./agent-skills.js";
-import { skillCatalog, assertSkillReferences, readSkillDocument } from "./postgres-agent-skills.js";
 import { randomUUID } from "node:crypto";
 import {
   artifacts as artifactsTable,
@@ -19,6 +11,7 @@ import {
 } from "@openbot/db";
 import type { KnowledgeProposalDraft, Run, RunModelUsage, RunProgress } from "@openbot/domain";
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import type { DelegateTaskInput } from "./agent-collaboration.js";
 import {
   type AgentKnowledge,
   boundedKnowledgeText,
@@ -31,9 +24,17 @@ import {
   nativeFailureMessages,
   runModelUsageSchema,
 } from "./agent-observations.js";
+import type { SkillReference } from "./agent-skills.js";
+import { assertSteeringApplied, readSteering, submitSteering } from "./agent-steering.js";
 import type { PersistedArtifact } from "./artifact-storage.js";
 import { StoreConflictError, StoreNotFoundError } from "./control-plane-store.js";
 import type { AgentRunStore } from "./native-agent.js";
+import {
+  activeCollaborationChain,
+  channelColleagues,
+  createDelegatedRun,
+} from "./postgres-agent-collaboration.js";
+import { assertSkillReferences, readSkillDocument, skillCatalog } from "./postgres-agent-skills.js";
 import { toMessage, toRun } from "./postgres-store.js";
 import { scanSensitiveText } from "./sensitive-content.js";
 
@@ -53,6 +54,17 @@ const membership = (run: Run) =>
 /** Separate from Worker claims: a model can never acquire a Node or a computer profile here. */
 export class PostgresAgentStore implements AgentRunStore {
   constructor(readonly db: Database) {}
+  async lookup(runId: string): Promise<Run | undefined> {
+    const [row] = await this.db.select().from(runs).where(eq(runs.id, runId));
+    return row ? toRun(row) : undefined;
+  }
+  async steer(runId: string, instruction: string) {
+    return submitSteering(this.db, runId, instruction);
+  }
+  async steering(run: Run) {
+    await this.assertScope(run);
+    return readSteering(this.db, run);
+  }
   async colleagues(run: Run) {
     return channelColleagues(this.db, run);
   }
@@ -78,7 +90,21 @@ export class PostgresAgentStore implements AgentRunStore {
   }
   async claim(candidate: Run, since: string): Promise<Run | undefined> {
     return this.db.transaction(async (tx) => {
-      // Serialize native claims in each channel across concurrent pollers, not just this process.
+      // A global transaction lease bounds concurrent root claims across Server pollers.
+      await tx.execute(sql`select pg_advisory_xact_lock(731, 6)`);
+      const activeRoots = await tx
+        .select({ id: runs.id })
+        .from(runs)
+        .where(
+          and(
+            eq(runs.executionProfile, "none"),
+            eq(runs.status, "running"),
+            isNull(runs.parentRunId),
+          ),
+        )
+        .limit(6);
+      if (activeRoots.length >= 6) return undefined;
+      // Serialize each Bot in its channel; independent identities can work concurrently.
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${candidate.channelId}, 731))`,
       );
@@ -88,6 +114,7 @@ export class PostgresAgentStore implements AgentRunStore {
         .where(
           and(
             eq(runs.channelId, candidate.channelId),
+            eq(runs.botId, candidate.botId),
             eq(runs.executionProfile, "none"),
             eq(runs.status, "running"),
           ),
@@ -501,6 +528,7 @@ export class PostgresAgentStore implements AgentRunStore {
     proposalInput?: KnowledgeProposalDraft,
     references: KnowledgeReference[] = [],
     skillReferences: SkillReference[] = [],
+    appliedSteeringIds: string[] = [],
   ) {
     if (references.length > 8) throw new NativeExecutionError("task_limit");
     const proposal =
@@ -536,6 +564,7 @@ export class PostgresAgentStore implements AgentRunStore {
         throw new StoreConflictError("Delegated tasks must finish before their parent completes.");
       const [member] = await tx.select().from(channelBots).where(membership(run)).for("share");
       if (!member) throw new NativeExecutionError("scope_revoked");
+      await assertSteeringApplied(tx, run, appliedSteeringIds);
       const now = new Date();
       const [row] = await tx
         .update(runs)

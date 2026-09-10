@@ -1,4 +1,4 @@
-import type { UploadedComposerAttachment } from "./composer-context";
+import { ATTACHMENT_MEDIA_TYPES, type UploadedComposerAttachment } from "./composer-context";
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
 
@@ -56,9 +56,9 @@ export async function getChannelAttachment(
     !Number.isSafeInteger(value.sizeBytes) ||
     value.sizeBytes <= 0 ||
     !/^[a-f0-9]{64}$/u.test(value.sha256) ||
-    !["text/plain", "image/png", "image/jpeg", "application/pdf"].includes(value.mediaType) ||
+    !ATTACHMENT_MEDIA_TYPES.includes(value.mediaType) ||
     value.sizeBytes >
-      (value.mediaType === "application/pdf"
+      (!value.mediaType.startsWith("image/") && value.mediaType !== "text/plain"
         ? 10 * 1024 * 1024
         : value.mediaType === "text/plain"
           ? 256 * 1024
@@ -110,4 +110,73 @@ export function splitMessageAttachments(content: string): { text: string; ids: s
     .replace(/\n{3,}/gu, "\n\n")
     .trim();
   return { text, ids };
+}
+
+export async function updateAttachment(
+  attachment: UploadedComposerAttachment,
+  operation: "extract" | "ocr" | "transcribe" | "delete" | "restore",
+  password?: string,
+  signal?: AbortSignal,
+): Promise<UploadedComposerAttachment> {
+  const process = ["extract", "ocr", "transcribe"].includes(operation);
+  const response = await fetch(
+    `${attachmentPath(attachment.channelId, attachment.id)}${process ? "/process" : operation === "restore" ? "/restore" : ""}`,
+    {
+      method: operation === "delete" ? "DELETE" : "POST",
+      credentials: "include",
+      redirect: "error",
+      headers: { "Content-Type": "application/json" },
+      ...(process
+        ? { body: JSON.stringify({ operation, ...(password ? { password } : {}) }) }
+        : {}),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(95000)])
+        : AbortSignal.timeout(95000),
+    },
+  );
+  const data = new TextDecoder().decode(
+    await readBounded(new Response(response.body, { status: 200 }), 16384),
+  );
+  if (!response.ok) {
+    const error = JSON.parse(data) as { error?: string };
+    throw new Error(typeof error.error === "string" ? error.error.slice(0, 300) : "附件操作失败。");
+  }
+  return getChannelAttachment(
+    attachment.channelId,
+    attachment.id,
+    signal ?? new AbortController().signal,
+  );
+}
+export async function downloadAttachment(attachment: UploadedComposerAttachment): Promise<void> {
+  const desktop = window.openbotDesktop;
+  if (desktop) {
+    if (!desktop.saveAttachment) throw new Error("请更新桌面版以下载原附件。");
+    const result = await desktop.saveAttachment({
+      channelId: attachment.channelId,
+      attachmentId: attachment.id,
+    });
+    if (result.status !== "saved" && result.status !== "cancelled")
+      throw new Error(
+        result.status === "exists" ? "文件已存在，请换一个保存位置。" : "附件保存失败。",
+      );
+    return;
+  }
+  const response = await fetch(`${attachmentPath(attachment.channelId, attachment.id)}/content`, {
+    credentials: "include",
+    redirect: "error",
+    signal: AbortSignal.timeout(30000),
+  });
+  const bytes = await readBounded(response, attachment.sizeBytes);
+  if (bytes.length !== attachment.sizeBytes) throw new Error("附件长度不匹配。");
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  if (
+    Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("") !== attachment.sha256
+  )
+    throw new Error("附件校验失败。");
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = attachment.name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

@@ -109,7 +109,7 @@
   flex: 0 1 auto;
   width: fit-content;
   min-width: 0;
-  max-width: min(86%, 960px);
+  max-width: min(calc(100% - 124px), 960px);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -217,48 +217,6 @@
 }
 .app-shell .channel-workspace.channel-native .message-row:focus .rich-message {
   box-shadow: 0 0 0 2px #c6c6c6;
-}
-.app-shell .channel-workspace.channel-native .message-actions {
-  position: absolute;
-  z-index: 5;
-  top: 100%;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  width: max-content;
-  max-width: 100%;
-  margin: 0;
-  padding: 2px 4px;
-  border-radius: 9px;
-  background: #fafafaf5;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 100ms ease;
-}
-.app-shell .channel-workspace.channel-native .message-row:hover .message-actions,
-.app-shell .channel-workspace.channel-native .message-row:focus-within .message-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-.app-shell .channel-workspace.channel-native .message-actions button,
-.app-shell .channel-workspace.channel-native .message-actions .message-run-status {
-  margin: 0;
-  padding: 4px 6px;
-  border: 0;
-  background: transparent;
-  border-radius: 5px;
-  color: #777;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.app-shell .channel-workspace.channel-native .message-actions button:hover {
-  background: #e8e8e8;
-  color: #222;
-}
-.app-shell .channel-workspace.channel-native .message-actions time {
-  color: #999;
-  font-size: 10px;
 }
 .app-shell .channel-workspace.channel-native .message-work-details {
   font-size: 11px;
@@ -594,7 +552,7 @@
   }
   .app-shell .channel-workspace.channel-native .message-content,
   .app-shell .channel-workspace.channel-native .message-row.human .message-content {
-    max-width: 88%;
+    max-width: calc(100% - 114px);
   }
   .app-shell .channel-workspace.channel-native .message-composer {
     width: calc(100% - 20px);
@@ -608,10 +566,62 @@
   .app-shell .channel-workspace.channel-native .work-ellipsis i {
     animation: none;
   }
-  .app-shell .channel-workspace.channel-native .message-actions {
-    transition: none;
-  }
 }
 :root[data-reduced-motion="true"] .app-shell .channel-workspace.channel-native .work-ellipsis i {
   animation: none;
+}
+
+.app-shell .channel-native .streaming-message .rich-message::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 12px;
+  margin-left: 4px;
+  vertical-align: baseline;
+  background: currentColor;
+  opacity: 0.35;
+}
+.app-shell .channel-native .run-steering {
+  position: relative;
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+.app-shell .channel-native .run-steering > button {
+  padding: 5px 7px;
+  border: 1px solid #ddd;
+  border-radius: 7px;
+  background: transparent;
+  color: #666;
+}
+.app-shell .channel-native .run-steering form {
+  position: absolute;
+  z-index: 6;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  gap: 8px;
+  width: min(320px, calc(100vw - 70px));
+  padding: 14px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 28px #00000012;
+}
+.app-shell .channel-native .run-steering textarea {
+  min-height: 72px;
+  resize: vertical;
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  color: #222;
+  font: inherit;
+  font-size: 13px;
+}
+.app-shell .channel-native .run-steering small,
+.app-shell .channel-native .run-steering p {
+  max-width: 220px;
+  color: #777;
+  font-size: 11px;
+  line-height: 1.5;
 }

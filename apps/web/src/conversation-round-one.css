@@ -72,13 +72,7 @@
   padding: 8px 12px;
   color: #626a74;
 }
-.app-shell .conversation-round-one .message-actions {
-  padding-top: 9px;
-}
-.app-shell .conversation-round-one .message-actions button {
-  font-size: 11px;
-  color: #78808a;
-}
+
 .app-shell .conversation-round-one .message-run-status {
   display: flex;
   align-items: center;

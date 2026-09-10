@@ -64,7 +64,7 @@ jobs:
   portable:
     name: Portable (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -113,10 +113,37 @@ jobs:
             --version 0.0.0
           echo "OPENBOT_DESKTOP_MACOS_WORKER_COMPANION=$companion_root/OpenBot Worker Host.app" \
             >> "$GITHUB_ENV"
+      - name: Build and verify the auditable Windows PostgreSQL runtime
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $runtime = Join-Path $env:RUNNER_TEMP 'openbot-windows-postgresql'
+          ./scripts/build-windows-postgresql.ps1 -OutputDirectory $runtime
+          "OPENBOT_WINDOWS_POSTGRES_RUNTIME=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Verify retained 17.10 cluster data with the new Windows database
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-windows-postgresql-upgrade.ps1 -RuntimeDirectory "$env:OPENBOT_WINDOWS_POSTGRES_RUNTIME"
+      - name: Retain PostgreSQL source, license notices, and build provenance
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-postgresql-source-and-provenance-${{ github.sha }}
+          path: |
+            ${{ env.OPENBOT_WINDOWS_POSTGRES_RUNTIME }}/licenses
+            ${{ env.OPENBOT_WINDOWS_POSTGRES_RUNTIME }}/openbot-postgresql-build.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Package the unsigned Desktop development artifact
         run: npm run package --workspace @openbot/desktop
       - name: Make the unsigned Desktop installers from the verified package
         run: npm run make:installers --workspace @openbot/desktop
+      - name: Validate Windows per-user installation and native Server lifecycle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json).version
+          ./scripts/check-windows-desktop-install.ps1 -Installer "$env:GITHUB_WORKSPACE/apps/desktop/out/installers/win32-x64/openbot-desktop-$version-win32-x64.exe" -PackagedDirectory "$env:GITHUB_WORKSPACE/apps/desktop/out/OpenBot-win32-x64" -Electron "$env:GITHUB_WORKSPACE/node_modules/electron/dist/electron.exe" -SmokeScript "$env:GITHUB_WORKSPACE/apps/desktop/scripts/windows-native-smoke.mjs"
       - name: Parse the Windows bootstrap with the native PowerShell parser
         if: runner.os == 'Windows'
         shell: pwsh
@@ -233,6 +260,21 @@ jobs:
         env:
           OPENBOT_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_test
           OPENBOT_DIRECT_TEST_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_direct_test_ci
+
+      - name: Verify asynchronous Bot collaboration in a disposable PostgreSQL database
+        run: |
+          node --input-type=module -e 'import postgres from "postgres"; const sql = postgres(process.env.OPENBOT_DATABASE_URL); try { await sql.unsafe("CREATE DATABASE openbot_collab_test_ci"); } finally { await sql.end(); }'
+          npm exec --workspace @openbot/server -- vitest run src/agent-collaboration.integration.test.ts
+        env:
+          OPENBOT_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_test
+          OPENBOT_COLLAB_TEST_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_collab_test_ci
+      - name: Verify reactions and member removal in a disposable PostgreSQL database
+        run: |
+          node --input-type=module -e 'import postgres from "postgres"; const sql = postgres(process.env.OPENBOT_DATABASE_URL); try { await sql.unsafe("CREATE DATABASE openbot_interactions_test_ci"); } finally { await sql.end(); }'
+          npm exec --workspace @openbot/server -- vitest run src/channel-interactions.integration.test.ts
+        env:
+          OPENBOT_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_test
+          OPENBOT_INTERACTIONS_TEST_DATABASE_URL: postgres://openbot:openbot-ci-only@127.0.0.1:5432/openbot_interactions_test_ci
 
   server-container:
     name: Server container (${{ matrix.name }})

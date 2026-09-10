@@ -13,15 +13,52 @@ const TEXT_EXTENSIONS = new Set(
     " ",
   ),
 );
+export const attachmentMediaTypes = [
+  "text/plain",
+  "image/png",
+  "image/jpeg",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.oasis.opendocument.presentation",
+  "audio/mpeg",
+  "audio/wav",
+  "audio/mp4",
+  "audio/webm",
+  "video/mp4",
+  "video/webm",
+] as const;
 const metadataSchema = z
   .object({
     id: z.string().uuid(),
     channelId: z.string().uuid(),
     name: z.string().min(1).max(160),
-    mediaType: z.enum(["text/plain", "image/png", "image/jpeg", "application/pdf"]),
+    mediaType: z.enum(attachmentMediaTypes),
     sizeBytes: z.number().int().positive().max(MAX_ATTACHMENT_BYTES),
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
     createdAt: z.iso.datetime(),
+    deletedAt: z.iso.datetime().optional(),
+    processing: z
+      .object({
+        operation: z.enum(["extract", "ocr", "transcribe"]),
+        characters: z.number().int().min(0).max(262144),
+        truncated: z.boolean(),
+        processedAt: z.iso.datetime(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+const derivedSchema = z
+  .object({
+    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    text: z.string().max(262144),
+    operation: z.enum(["extract", "ocr", "transcribe"]),
+    truncated: z.boolean(),
+    processedAt: z.iso.datetime(),
   })
   .strict();
 export type ChannelAttachment = z.infer<typeof metadataSchema>;
@@ -33,7 +70,28 @@ export class AttachmentError extends Error {
     super(message);
   }
 }
+export interface DerivedAttachmentText {
+  sha256: string;
+  text: string;
+  operation: "extract" | "ocr" | "transcribe";
+  truncated: boolean;
+  processedAt: string;
+}
 export interface ChannelAttachmentStorage {
+  withActiveReferences?<T>(channelId: string, ids: string[], persist: () => Promise<T>): Promise<T>;
+  list?(channelId: string): Promise<ChannelAttachment[]>;
+  setDeleted?(channelId: string, id: string, deleted: boolean): Promise<ChannelAttachment>;
+  cleanup?(
+    channelId: string,
+    before: string,
+    isReferenced: (id: string) => Promise<boolean>,
+  ): Promise<{ removed: number; retained: number }>;
+  derived?(channelId: string, id: string): Promise<DerivedAttachmentText | undefined>;
+  saveDerived?(
+    channelId: string,
+    id: string,
+    value: DerivedAttachmentText,
+  ): Promise<ChannelAttachment>;
   persist(channelId: string, name: string, bytes: Uint8Array): Promise<ChannelAttachment>;
   metadata(channelId: string, id: string): Promise<ChannelAttachment>;
   read(channelId: string, id: string): Promise<{ attachment: ChannelAttachment; bytes: Buffer }>;
@@ -123,7 +181,122 @@ export class FileChannelAttachmentStorage implements ChannelAttachmentStorage {
       throw new AttachmentError("Attachment bytes failed integrity validation.", 404);
     }
   }
-  #path(id: string, extension: "bin" | "json") {
+  withActiveReferences<T>(channelId: string, ids: string[], persist: () => Promise<T>): Promise<T> {
+    if (
+      ids.length > MAX_TASK_ATTACHMENTS ||
+      new Set(ids).size !== ids.length ||
+      ids.some((id) => !UUID.test(id))
+    )
+      return Promise.reject(new AttachmentError("Invalid attachment reference set."));
+    // Creation and cleanup share this lock. The callback persists only Server-owned DB records;
+    // it must not re-enter storage mutations. Existing runs retain read access after soft deletion.
+    return this.#mutate(async () => {
+      let bytes = 0;
+      for (const id of ids) {
+        const attachment = await this.metadata(channelId, id);
+        if (attachment.deletedAt)
+          throw new AttachmentError(
+            "A deleted attachment cannot be added to a new task. Restore it first.",
+          );
+        bytes += attachment.sizeBytes;
+        if (bytes > MAX_TASK_ATTACHMENT_BYTES)
+          throw new AttachmentError("Task attachments exceed 20 MiB.", 413);
+        await this.read(channelId, id);
+      }
+      return persist();
+    });
+  }
+  async list(channelId: string): Promise<ChannelAttachment[]> {
+    if (!UUID.test(channelId)) throw new AttachmentError("Invalid channel identity.");
+    let entries: string[];
+    try {
+      entries = await readdir(this.#root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    const result: ChannelAttachment[] = [];
+    for (const name of entries
+      .filter((name) => /^[0-9a-f-]{36}\.json$/iu.test(name))
+      .slice(0, this.limits.files)) {
+      try {
+        result.push(await this.metadata(channelId, name.slice(0, -5)));
+      } catch {
+        /* Other channels and invalid entries reveal no metadata. */
+      }
+    }
+    return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+  setDeleted(channelId: string, id: string, deleted: boolean): Promise<ChannelAttachment> {
+    return this.#mutate(async () => {
+      const attachment = await this.metadata(channelId, id);
+      const next = { ...attachment };
+      if (deleted) next.deletedAt ??= new Date().toISOString();
+      else delete next.deletedAt;
+      await writeFileAtomic(this.#path(id, "json"), JSON.stringify(next), { mode: 0o600 });
+      return next;
+    });
+  }
+  async derived(channelId: string, id: string): Promise<DerivedAttachmentText | undefined> {
+    const attachment = await this.metadata(channelId, id);
+    if (!attachment.processing) return undefined;
+    const path = this.#path(id, "text.json");
+    if ((await stat(path)).size > 2 * 1024 * 1024)
+      throw new AttachmentError("Derived text exceeds limit.", 413);
+    const value = derivedSchema.parse(JSON.parse(await readFile(path, "utf8")));
+    if (value.sha256 !== attachment.sha256)
+      throw new AttachmentError("Derived text digest does not match.", 404);
+    return value;
+  }
+  saveDerived(
+    channelId: string,
+    id: string,
+    input: DerivedAttachmentText,
+  ): Promise<ChannelAttachment> {
+    return this.#mutate(async () => {
+      const value = derivedSchema.parse(input);
+      const attachment = await this.metadata(channelId, id);
+      if (value.sha256 !== attachment.sha256 || attachment.deletedAt)
+        throw new AttachmentError("Attachment changed or was deleted.", 404);
+      await writeFileAtomic(this.#path(id, "text.json"), JSON.stringify(value), { mode: 0o600 });
+      const next = {
+        ...attachment,
+        processing: {
+          operation: value.operation,
+          characters: value.text.length,
+          truncated: value.truncated,
+          processedAt: value.processedAt,
+        },
+      };
+      await writeFileAtomic(this.#path(id, "json"), JSON.stringify(next), { mode: 0o600 });
+      return next;
+    });
+  }
+  cleanup(channelId: string, before: string, isReferenced: (id: string) => Promise<boolean>) {
+    return this.#mutate(async () => {
+      let removed = 0;
+      let retained = 0;
+      for (const attachment of await this.list(channelId)) {
+        if (!attachment.deletedAt || attachment.deletedAt >= before) continue;
+        if (await isReferenced(attachment.id)) {
+          retained += 1;
+          continue;
+        }
+        // Metadata is removed last; a crash may leave a visible unavailable item, never foreign bytes.
+        await rm(this.#path(attachment.id, "bin"), { force: true });
+        await rm(this.#path(attachment.id, "text.json"), { force: true });
+        await rm(this.#path(attachment.id, "json"), { force: true });
+        removed += 1;
+      }
+      return { removed, retained };
+    });
+  }
+  #mutate<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.#queue.then(operation);
+    this.#queue = result.catch(() => undefined);
+    return result;
+  }
+  #path(id: string, extension: "bin" | "json" | "text.json") {
     if (!UUID.test(id)) throw new AttachmentError("Invalid attachment identity.");
     return join(this.#root, `${id}.${extension}`);
   }
@@ -176,6 +349,37 @@ export function validateAttachment(
       return "application/pdf";
     throw new AttachmentError("PDF signature is invalid.", 415);
   }
+  if (bytes.byteLength > MAX_ATTACHMENT_BYTES)
+    throw new AttachmentError("Attachment exceeds 10 MiB.", 413);
+  const office: Record<string, ChannelAttachment["mediaType"]> = {
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    odt: "application/vnd.oasis.opendocument.text",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    odp: "application/vnd.oasis.opendocument.presentation",
+  };
+  if (office[extension]) {
+    if (!buffer.subarray(0, 4).equals(Buffer.from([80, 75, 3, 4])))
+      throw new AttachmentError("Office container signature is invalid.", 415);
+    return office[extension];
+  }
+  if (
+    extension === "wav" &&
+    buffer.subarray(0, 4).toString() === "RIFF" &&
+    buffer.subarray(8, 12).toString() === "WAVE"
+  )
+    return "audio/wav";
+  if (
+    extension === "mp3" &&
+    (buffer.subarray(0, 3).toString() === "ID3" ||
+      (buffer[0] === 255 && ((buffer[1] ?? 0) & 224) === 224))
+  )
+    return "audio/mpeg";
+  if (["mp4", "m4a"].includes(extension) && buffer.subarray(4, 8).toString() === "ftyp")
+    return extension === "m4a" ? "audio/mp4" : "video/mp4";
+  if (extension === "webm" && buffer.subarray(0, 4).equals(Buffer.from([26, 69, 223, 163])))
+    return "video/webm";
   throw new AttachmentError("This attachment format is not supported.", 415);
 }
 

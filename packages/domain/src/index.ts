@@ -1,5 +1,8 @@
+import type { MessageReaction } from "./channel-interactions.js";
 import type { ModelProviderId } from "./model-providers.js";
+
 export * from "./model-providers.js";
+
 import type {
   NodeArchitecture,
   NodeCapabilityDescriptor,
@@ -586,7 +589,24 @@ export type AuthSessionSnapshot =
       expiresAt: string;
     };
 
+export interface RunOutput {
+  runId: EntityId;
+  channelId: EntityId;
+  botId: EntityId;
+  sequence: number;
+  text: string;
+  reset: boolean;
+}
+
 export type ChannelRealtimeEvent =
+  | {
+      type: "message.reactions";
+      channelId: EntityId;
+      messageId: EntityId;
+      reactions: MessageReaction[];
+    }
+  | { type: "channel.updated"; channelId: EntityId; channel: Channel }
+  | ({ type: "run.output" } & RunOutput)
   | {
       type: "channel.ready";
       channelId: EntityId;
@@ -721,3 +741,5 @@ export type ReviewKnowledgeProposalInput =
       content: string;
       modelUseEnabled: boolean;
     };
+
+export * from "./channel-interactions.js";

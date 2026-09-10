@@ -1,0 +1,23 @@
+:root {
+  --sl-font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --sl-color-accent-low: #ededf0;
+  --sl-color-accent: #555560;
+  --sl-color-accent-high: #303036;
+  --sl-content-width: 48rem;
+}
+:root[data-theme="light"] {
+  --sl-color-white: #171717;
+  --sl-color-black: #fff;
+  --sl-color-bg: #fff;
+  --sl-color-bg-nav: #fff;
+  --sl-color-bg-sidebar: #fafafa;
+}
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #28282e;
+  --sl-color-accent: #aaaab5;
+  --sl-color-accent-high: #e3e3eb;
+}
+.sl-markdown-content :is(h1, h2, h3) {
+  letter-spacing: -0.025em;
+}

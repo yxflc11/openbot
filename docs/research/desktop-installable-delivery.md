@@ -119,3 +119,9 @@ when response length is unknown. Select the existing released tool's fixed behav
 versions are bounded. Older systems can use the documented native-asset download path. No source
 copied, new dependency or operating-system change. Test rejected/malformed versions before any
 network call and retain minimum-version fixtures in both Bash native lanes.
+
+## Explicit Windows-only release scope (2026-09-10)
+
+The user requests Windows-only alpha.6 delivery. Re-reviewed the existing `prepare-desktop-release.mjs` authority/manifest tests, hash-pinned checkout v7.0.1 and setup-node v7.0.0 workflow actions, [GitHub workflow_dispatch boolean inputs](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onworkflow_dispatchinputs), and [gh release create](https://cli.github.com/manual/gh_release_create). Reuse existing released GitHub Actions/CLI and OpenBot installer manifest verification; no new dependency, protocol or copied source.
+
+Add an explicit `windowsOnly` boolean and final `--windows-only` CLI flag, selected by workflow `windows_only`. Default assembly continues to require all three native targets. Windows scope requires the Windows installer and records exactly one target; it does not treat missing Windows bytes as success or claim other platforms were included. Preserve successful same-repository main-push CI authority, exact source commit/version, manifest and file hash checks, refusal to replace an existing release, and reviewable draft prerelease creation. Correct release notes to describe Windows local Server/PostgreSQL and the selected scope. This change prepares a draft; publication remains a separate authorized release action.

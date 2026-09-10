@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { examplePluginView } from "./plugin-example-view.js";
 
 /** Standalone third-party process: the note collection belongs to this example, not OpenBot. */
 export async function startExamplePlugin(
@@ -60,6 +61,52 @@ export async function startExamplePlugin(
           notes.push(text);
           return { content: [{ type: "text", text: `Saved note ${notes.length}.` }] };
         },
+      );
+      mcp.registerResource(
+        "notebook",
+        "notes://current",
+        {
+          description: "Read the example notebook as plain text.",
+          mimeType: "text/plain",
+        },
+        async (uri) => ({
+          contents: [
+            { uri: uri.href, mimeType: "text/plain", text: notes.join("\n") || "No notes yet." },
+          ],
+        }),
+      );
+      mcp.registerPrompt(
+        "review_note",
+        {
+          description: "Prepare a review prompt for a note selected by the user.",
+          argsSchema: { note: z.string().min(1).max(1000) },
+        },
+        async ({ note }) => ({
+          messages: [
+            {
+              role: "user",
+              content: { type: "text", text: `Review this note for clarity: ${note}` },
+            },
+          ],
+        }),
+      );
+      mcp.registerResource(
+        "notebook_view",
+        "ui://notebook/view.html",
+        {
+          description: "An offline notebook viewer with no network or device permissions.",
+          mimeType: "text/html;profile=mcp-app",
+        },
+        async (uri) => ({
+          contents: [
+            {
+              uri: uri.href,
+              mimeType: "text/html;profile=mcp-app",
+              text: examplePluginView,
+              _meta: { ui: { csp: { connectDomains: [], resourceDomains: [] } } },
+            },
+          ],
+        }),
       );
       const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
       response.on("close", () => {

@@ -30,7 +30,7 @@ async function fakeResources(opts: NativeServerOptions) {
     await writeFile(join(opts.runtimeRoot, "postgres/bin", name), "not executable");
 }
 describe("Native Server boundary", () => {
-  it.each(["win32", "linux"])("does not install on %s", async (platform) => {
+  it.each(["linux", "freebsd"])("does not install on %s", async (platform) => {
     const opts = await options();
     const service = new NativeServerController({ ...opts, platform });
     expect(await service.start()).toEqual({ status: "failed", code: "unsupported_platform" });
@@ -82,3 +82,29 @@ describe("Native Server boundary", () => {
     },
   );
 });
+
+it("reports retained installation without decrypting or modifying its bootstrap", async () => {
+  const opts = await options();
+  await mkdir(join(opts.dataRoot, "postgres"), { recursive: true, mode: 0o700 });
+  await writeFile(join(opts.dataRoot, "postgres", "PG_VERSION"), "17");
+  await writeFile(join(opts.dataRoot, "bootstrap.json"), "existing encrypted data", {
+    mode: 0o600,
+  });
+  const service = new NativeServerController(opts);
+  expect(service.getState()).toEqual({ status: "idle", initialized: true });
+  expect(opts.decrypt).not.toHaveBeenCalled();
+  expect(opts.encrypt).not.toHaveBeenCalled();
+  expect(await readFile(join(opts.dataRoot, "bootstrap.json"), "utf8")).toBe(
+    "existing encrypted data",
+  );
+});
+it.skipIf(process.platform === "win32")(
+  "classifies denied OS credential access separately without launching a service",
+  async () => {
+    const opts = await options();
+    await fakeResources(opts);
+    const service = new NativeServerController(opts);
+    expect(await service.start()).toEqual({ status: "failed", code: "credential_unavailable" });
+    expect(opts.launchServer).not.toHaveBeenCalled();
+  },
+);

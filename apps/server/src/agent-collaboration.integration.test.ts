@@ -1,11 +1,11 @@
 import { createDatabase } from "@openbot/db";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
-import { PostgresAgentStore } from "./postgres-agent-store.js";
-import { PostgresControlPlaneStore } from "./postgres-store.js";
-import { NativeAgentRunner } from "./native-agent.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChannelRealtimeHub } from "./channel-realtime-hub.js";
 import type { ModelSettingsService } from "./model-settings.js";
+import { NativeAgentRunner } from "./native-agent.js";
+import { PostgresAgentStore } from "./postgres-agent-store.js";
+import { PostgresControlPlaneStore } from "./postgres-store.js";
 
 function required<T>(value: T | undefined): T {
   if (value === undefined) throw new Error("Required collaboration fixture is missing.");
@@ -81,6 +81,133 @@ describe.skipIf(!url)("PostgreSQL channel Bot collaboration", () => {
     if (!root) throw new Error("Failed to claim root.");
     return { control, native, other, members, channel, root, since };
   }
+  it("claims different channel Bots concurrently while retaining same-Bot serialization", async () => {
+    const f = await fixture();
+    const independent = await f.control.submitTask(f.channel.id, {
+      content: "Independent",
+      botId: required(f.members[1]).id,
+    });
+    const duplicate = await f.control.submitTask(f.channel.id, {
+      content: "Same identity",
+      botId: f.root.botId,
+    });
+    const [other, busy] = await Promise.all([
+      f.other.claim(independent.run, f.since),
+      f.native.claim(duplicate.run, f.since),
+    ]);
+    expect(other?.status).toBe("running");
+    expect(busy).toBeUndefined();
+  });
+  it("persists ordered exact-task steering and rejects losing final answers or terminal corrections", async () => {
+    const f = await fixture();
+    const first = await f.native.steer(f.root.id, "Use Chinese");
+    expect(await f.other.steering(f.root)).toEqual([first]);
+    const child = await f.native.delegate(f.root, {
+      botId: required(f.members[1]).id,
+      task: "Independent",
+    });
+    expect(await f.native.steering(child.run)).toEqual([]);
+    await f.native.complete(child.run, "Child done");
+    await expect(f.native.complete(f.root, "Lost correction")).rejects.toThrow(
+      /newer Owner instruction/,
+    );
+    const second = await f.other.steer(f.root.id, "Keep it brief");
+    await expect(
+      f.native.complete(f.root, "Outdated", [], undefined, [], [], [first.id]),
+    ).rejects.toThrow(/newer Owner instruction/);
+    await f.native.complete(
+      f.root,
+      "应用两条追加指令",
+      [],
+      undefined,
+      [],
+      [],
+      [first.id, second.id],
+    );
+    await expect(f.native.steer(f.root.id, "Too late")).rejects.toThrow(/active native/);
+    expect(
+      (await f.control.listMessages(f.channel.id)).map((message) => message.content),
+    ).not.toContain("Lost correction");
+  });
+  it("atomically caps concurrent steering submissions at eight and rejects blank input", async () => {
+    const f = await fixture();
+    const attempts = await Promise.allSettled(
+      Array.from({ length: 10 }, (_, i) =>
+        (i % 2 ? f.native : f.other).steer(f.root.id, `Correction ${i}`),
+      ),
+    );
+    expect(attempts.filter((item) => item.status === "fulfilled")).toHaveLength(8);
+    expect(await f.native.steering(f.root)).toHaveLength(8);
+    await expect(f.native.steer(f.root.id, " ")).rejects.toThrow();
+  });
+  it("starts a colleague without blocking parent work and joins its persisted result before final synthesis", async () => {
+    const f = await fixture();
+    await required(database).client`update runs set status = 'queued' where id = ${f.root.id}`;
+    let release!: () => void;
+    const childBarrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const childModel = new MockLanguageModelV4({
+      doGenerate: async () => {
+        await childBarrier;
+        return answer("Independent colleague result");
+      },
+    });
+    let step = 0;
+    const parentModel = new MockLanguageModelV4({
+      doGenerate: async () => {
+        step++;
+        if (step === 1)
+          return call("start_task", {
+            botId: required(f.members[1]).id,
+            task: "Research asynchronously",
+          });
+        if (step === 2) {
+          await vi.waitFor(() => expect(childModel.doGenerateCalls).toHaveLength(1));
+          release();
+          return call("read_task_status", {});
+        }
+        if (step === 3) return answer("Draft before join");
+        return answer("Synthesis with colleague result");
+      },
+    });
+    const settings = {
+      agentSettings: async () => ({
+        provider: "openai",
+        model: "fixture",
+        apiKey: "fixture",
+        revision: "1",
+        agentEnabledAt: f.since,
+      }),
+      onChange: () => () => {},
+    } as unknown as ModelSettingsService;
+    let modelCount = 0;
+    const runner = new NativeAgentRunner(
+      f.native,
+      settings,
+      new ChannelRealtimeHub(),
+      vi.fn(),
+      () => (modelCount++ === 0 || modelCount > 2 ? parentModel : childModel),
+      { webSearch: () => undefined },
+    );
+    try {
+      runner.start();
+      await vi.waitFor(
+        async () => expect((await f.native.lookup(f.root.id))?.status).toBe("completed"),
+        { timeout: 10000 },
+      );
+      const texts = (await f.control.listMessages(f.channel.id)).map((message) => message.content);
+      expect(texts).toContain("Independent colleague result");
+      expect(texts).toContain("Synthesis with colleague result");
+      expect(texts).not.toContain("Draft before join");
+      expect(JSON.stringify(parentModel.doGenerateCalls.at(-1)?.prompt)).toContain(
+        "Independent colleague result",
+      );
+    } finally {
+      release();
+      await runner.stop();
+    }
+  });
   it("atomically creates exact recipients and preserves direct-channel authority", async () => {
     const f = await fixture();
     const selected = f.members.slice(1, 3).map((bot) => bot.id);
@@ -192,7 +319,7 @@ describe.skipIf(!url)("PostgreSQL channel Bot collaboration", () => {
       ]),
     );
   });
-  it("binds author and recipient identities, persists provenance, and retains the root channel lease", async () => {
+  it("binds author and recipient identities, persists provenance, and retains same-Bot serialization", async () => {
     const f = await fixture();
     const child = await f.native.delegate(f.root, {
       botId: required(f.members[1]).id,
@@ -215,7 +342,10 @@ describe.skipIf(!url)("PostgreSQL channel Bot collaboration", () => {
       name: "Researcher",
       role: "Researcher",
     });
-    const next = await f.control.submitTask(f.channel.id, { content: "Next human task" });
+    const next = await f.control.submitTask(f.channel.id, {
+      content: "Next human task",
+      botId: f.root.botId,
+    });
     expect(await f.other.claim(next.run, f.since)).toBeUndefined();
     const completed = await f.native.complete(child.run, "Verified result");
     expect(completed.message).toMatchObject({

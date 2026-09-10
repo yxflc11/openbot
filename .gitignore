@@ -27,3 +27,7 @@ backups/
 
 # Packaged native Desktop runtime, recreated from locked dependencies.
 apps/desktop/native-runtime/
+
+# Static website and isolated product demonstration builds.
+apps/site/.astro/
+apps/web/dist-demo/

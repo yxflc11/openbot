@@ -24,8 +24,11 @@ export async function prepareDesktopRelease({
   outputDirectory,
   version,
   sourceCommit,
+  windowsOnly = false,
 }) {
-  const targets = ["darwin-arm64", "win32-x64", "linux-x64"];
+  if (typeof windowsOnly !== "boolean")
+    throw new Error("Windows-only scope must be an explicit boolean.");
+  const targets = windowsOnly ? ["win32-x64"] : ["darwin-arm64", "win32-x64", "linux-x64"];
   const children = await readdir(inputDirectory);
   const allFiles = [];
   const manifests = [];
@@ -56,10 +59,18 @@ export async function prepareDesktopRelease({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [input, output, runPath, version, repository] = process.argv.slice(2);
-  if (!input || !output || !runPath || !version || !repository || process.argv.length !== 7) {
+  const [input, output, runPath, version, repository, scope] = process.argv.slice(2);
+  if (
+    !input ||
+    !output ||
+    !runPath ||
+    !version ||
+    !repository ||
+    (scope !== undefined && scope !== "--windows-only") ||
+    ![7, 8].includes(process.argv.length)
+  ) {
     throw new Error(
-      "Usage: prepare-desktop-release <downloads> <new-output-dir> <run-json> <version> <owner/repo>",
+      "Usage: prepare-desktop-release <downloads> <new-output-dir> <run-json> <version> <owner/repo> [--windows-only]",
     );
   }
   const sourceCommit = validateDesktopReleaseRun(
@@ -72,6 +83,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       outputDirectory: resolve(output),
       version,
       sourceCommit,
+      windowsOnly: scope === "--windows-only",
     }),
   );
 }

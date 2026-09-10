@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "postgresql": {
+    "version": "17.11",
+    "url": "https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2",
+    "sha256": "dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979",
+    "checksumUrl": "https://ftp.postgresql.org/pub/source/v17.11/postgresql-17.11.tar.bz2.sha256",
+    "modified": false
+  },
+  "buildTools": {
+    "meson": {
+      "version": "1.9.1",
+      "commit": "751b09390996163348612f0b106114256305ee40",
+      "url": "https://files.pythonhosted.org/packages/9c/07/b48592d325cb86682829f05216e4efb2dc881762b8f1bafb48b57442307a/meson-1.9.1-py3-none-any.whl",
+      "sha256": "f824ab770c041a202f532f69e114c971918ed2daff7ea56583d80642564598d0"
+    },
+    "ninja": {
+      "version": "1.13.2",
+      "commit": "3441b633c2fe2c494e958780ba0f4227b1327634",
+      "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip",
+      "sha256": "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65"
+    },
+    "winFlexBison": {
+      "version": "2.5.25",
+      "commit": "1176da2adaf972b2216b1ac8dd611e128fe80bc5",
+      "url": "https://github.com/lexxmark/winflexbison/releases/download/v2.5.25/win_flex_bison-2.5.25.zip",
+      "sha256": "8d324b62be33604b2c45ad1dd34ab93d722534448f55a16ca7292de32b6ac135"
+    }
+  },
+  "snowballLicense": {
+    "url": "https://raw.githubusercontent.com/snowballstem/snowball/48a67a2831005f49c48ec29a5837640e23e54e6b/COPYING"
+  },
+  "microsoftToolchainTerms": [
+    "https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution",
+    "https://www.microsoft.com/licensing/guidance/Visual-Studio"
+  ],
+  "notices": [
+    {
+      "path": "Bison-GPL-3.0.txt",
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    {
+      "path": "Bison-output-exception.txt",
+      "sha256": "22f515d0dd6c2a0edfb821a6a4a3311407866466a2892a3949420a0df7aaa87e"
+    },
+    {
+      "path": "Embedded-source-notices.txt",
+      "sha256": "2bbf5fe8536b307f480c10acd0540f6616dd0043eba3ff164ce60d8eba8ce41f"
+    },
+    {
+      "path": "Flex-COPYING",
+      "sha256": "97fd685958d93be7f8dab939bb8161dbd6afb0718c63bfc337c24321aea44273"
+    },
+    {
+      "path": "IANA-timezone.txt",
+      "sha256": "0a1f8e68d121df11142b60306e996751518f31c9e0af17c53c2f9edcfe8460f9"
+    },
+    {
+      "path": "PostgreSQL-COPYRIGHT",
+      "sha256": "3d6af92ff8a4c2cdf69afb1cf44edea727922f5cd0cf8b5f72b11cdecac8fdfd"
+    },
+    {
+      "path": "README.md",
+      "sha256": "d18353ef2bbca1e7c9efc0c4635fb67343b5ff62e04439c9270fb2332223dea9"
+    },
+    {
+      "path": "README.zh-CN.md",
+      "sha256": "4ebc6151d8ac7f3c986aba03b8773e68971c9f2b2b31fbed2fcb11c4bd094b08"
+    },
+    {
+      "path": "Regex-COPYRIGHT",
+      "sha256": "5027cfe4f54842896b01ca6be28becc9a018623aaadc0f5b51350da71118cb0e"
+    },
+    {
+      "path": "Snowball-COPYING",
+      "sha256": "f6f9e4c0e737728ca980de8595ded046d5e077017c1bb0ee05dc794a01434dae"
+    },
+    {
+      "path": "embedded-notice-sources.json",
+      "sha256": "b092abc8fb089d9672c571790bc2081ae24754c35cf2a11bf2bf3bbd9d62a0a3"
+    }
+  ]
+}

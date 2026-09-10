@@ -1,4 +1,6 @@
 import type { Env, Hono } from "hono";
+import { z } from "zod";
+import type { AttachmentProcessingService } from "./attachment-processing.js";
 import {
   AttachmentError,
   type ChannelAttachmentStorage,
@@ -7,6 +9,8 @@ import {
 
 export interface ChannelAttachmentRouteDependencies {
   storage: ChannelAttachmentStorage;
+  processing?: AttachmentProcessingService;
+  isReferenced?(channelId: string, attachmentId: string): Promise<boolean>;
   channelExists(channelId: string): Promise<boolean>;
 }
 
@@ -16,6 +20,97 @@ export function registerChannelAttachmentRoutes<E extends Env>(
   dependencies: ChannelAttachmentRouteDependencies,
 ): void {
   const prefix = "/api/v1/channels/:channelId/attachments";
+  app.get(prefix, async (context) => {
+    const channelId = context.req.param("channelId");
+    if (!(await dependencies.channelExists(channelId)))
+      return context.json({ error: "Channel not found." }, 404);
+    if (!dependencies.storage.list)
+      return context.json({ error: "Attachment listing unavailable." }, 503);
+    return context.json({ attachments: await dependencies.storage.list(channelId) });
+  });
+  app.post(`${prefix}/cleanup`, async (context) => {
+    try {
+      const channelId = context.req.param("channelId");
+      if (!(await dependencies.channelExists(channelId)))
+        throw new AttachmentError("Channel not found.", 404);
+      if (!dependencies.storage.cleanup || !dependencies.isReferenced)
+        throw new AttachmentError("Reference-safe cleanup is unavailable.", 503);
+      const input = z
+        .object({ olderThanDays: z.number().int().min(7).max(365) })
+        .strict()
+        .parse(await boundedJson(context.req.raw));
+      const before = new Date(Date.now() - input.olderThanDays * 86400000).toISOString();
+      return context.json(
+        await dependencies.storage.cleanup(channelId, before, (id) =>
+          dependencies.isReferenced
+            ? dependencies.isReferenced(channelId, id)
+            : Promise.resolve(true),
+        ),
+      );
+    } catch (error) {
+      return context.json(
+        { error: error instanceof AttachmentError ? error.message : "Invalid cleanup request." },
+        error instanceof AttachmentError ? error.status : 400,
+      );
+    }
+  });
+  app.post(`${prefix}/:attachmentId/process`, async (context) => {
+    try {
+      const channelId = context.req.param("channelId");
+      if (!(await dependencies.channelExists(channelId)))
+        throw new AttachmentError("Channel not found.", 404);
+      if (!dependencies.processing)
+        throw new AttachmentError("Attachment processing unavailable.", 503);
+      const input = z
+        .object({
+          operation: z.enum(["extract", "ocr", "transcribe"]),
+          password: z.string().max(256).optional(),
+        })
+        .strict()
+        .parse(await boundedJson(context.req.raw));
+      return context.json({
+        attachment: await dependencies.processing.process(
+          channelId,
+          context.req.param("attachmentId"),
+          input,
+          context.req.raw.signal,
+        ),
+      });
+    } catch (error) {
+      return context.json(
+        {
+          error: error instanceof AttachmentError ? error.message : "Attachment processing failed.",
+        },
+        error instanceof AttachmentError ? error.status : 400,
+      );
+    }
+  });
+  for (const operation of ["delete", "restore"] as const) {
+    const handler = async (context: import("hono").Context<E>) => {
+      try {
+        const channelId = context.req.param("channelId");
+        const attachmentId = context.req.param("attachmentId");
+        if (!channelId || !attachmentId || !(await dependencies.channelExists(channelId)))
+          throw new AttachmentError("Channel not found.", 404);
+        if (!dependencies.storage.setDeleted)
+          throw new AttachmentError("Attachment lifecycle unavailable.", 503);
+        return context.json({
+          attachment: await dependencies.storage.setDeleted(
+            channelId,
+            attachmentId,
+            operation === "delete",
+          ),
+        });
+      } catch (error) {
+        return context.json(
+          { error: error instanceof AttachmentError ? error.message : "Attachment update failed." },
+          error instanceof AttachmentError ? error.status : 503,
+        );
+      }
+    };
+    if (operation === "delete") app.delete(`${prefix}/:attachmentId`, handler);
+    else app.post(`${prefix}/:attachmentId/restore`, handler);
+  }
   app.post(prefix, async (context) => {
     try {
       const channelId = context.req.param("channelId");
@@ -106,4 +201,24 @@ async function readUpload(request: Request): Promise<Buffer> {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
+}
+
+async function boundedJson(request: Request): Promise<unknown> {
+  const reader = request.body?.getReader();
+  if (!reader) throw new AttachmentError("Missing JSON body.");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const item = await reader.read();
+      if (item.done) break;
+      size += item.value.byteLength;
+      if (size > 4096) throw new AttachmentError("Attachment request exceeds limit.", 413);
+      chunks.push(item.value);
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }

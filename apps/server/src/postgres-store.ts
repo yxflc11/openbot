@@ -1,4 +1,3 @@
-import { parseSkillDocument } from "./agent-skills.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   approvals as approvalsTable,
@@ -57,6 +56,7 @@ import type {
 import type { RunFailureCode } from "@openbot/protocol";
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { runModelUsageSchema } from "./agent-observations.js";
+import { parseSkillDocument } from "./agent-skills.js";
 import type {
   ActivateEmployeeImportCommand,
   ArtifactRecord,
@@ -1765,7 +1765,8 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           transaction
             .select({ id: channels.id, directBotId: channels.directBotId })
             .from(channels)
-            .where(eq(channels.id, channelId)),
+            .where(eq(channels.id, channelId))
+            .for("update"),
           transaction.select({ id: bots.id }).from(bots).where(eq(bots.id, botId)),
         ]);
         if (channelRows.length === 0) {

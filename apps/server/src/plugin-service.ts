@@ -16,6 +16,7 @@ import {
   type PluginConnector,
 } from "./plugin-transport.js";
 import {
+  applyPluginUpdateSchema,
   boundedJson,
   callPluginSchema,
   grantPluginSchema,
@@ -27,6 +28,9 @@ import {
   type PluginManifest,
   pluginEndpointInputSchema,
   pluginManifest,
+  pluginPromptResultSchema,
+  pluginResourceResultSchema,
+  readPluginContentSchema,
   updatePluginSchema,
 } from "./plugin-types.js";
 
@@ -37,10 +41,16 @@ interface WaitingCall {
   signal: AbortSignal;
   settle(decision: "approve" | "reject"): void;
 }
+export interface OwnerContentScope {
+  channelId: string;
+  botId: string;
+}
+
 export interface PluginServiceOptions {
   store: FilePluginStore;
   assertScope(run: Run): Promise<void>;
   botExists(botId: string): Promise<boolean>;
+  assertOwnerContentScope?(scope: OwnerContentScope): Promise<void>;
   localEndpoints?: readonly string[];
   connector?: PluginConnector;
   approvalTimeoutMs?: number;
@@ -70,11 +80,246 @@ export class PluginService {
     const endpoint = normalizePluginEndpoint(input.endpoint, this.options.localEndpoints).href;
     const client = await this.#connector(endpoint, input.token, signal);
     try {
-      return pluginManifest(input.name, endpoint, await client.tools(signal));
+      return await this.#manifest(input.name, endpoint, client, signal);
     } catch (error) {
       throw error instanceof PluginError ? error : new PluginError("unavailable");
     } finally {
       await client.close().catch(() => {});
+    }
+  }
+
+  async #manifest(
+    name: string,
+    endpoint: string,
+    client: Awaited<ReturnType<PluginConnector>>,
+    signal: AbortSignal,
+  ): Promise<PluginManifest> {
+    const tools = await client.tools(signal);
+    const resources = (await client.resources?.(signal)) ?? [];
+    const prompts = (await client.prompts?.(signal)) ?? [];
+    return pluginManifest(name, endpoint, tools, resources, prompts);
+  }
+
+  async previewUpdate(id: string, revision: string, signal: AbortSignal) {
+    const plugin = this.#find(await this.options.store.read(), id, revision);
+    const manifest = await this.preview(
+      {
+        name: plugin.name,
+        endpoint: plugin.endpoint,
+        ...(plugin.token ? { token: plugin.token } : {}),
+      },
+      signal,
+    );
+    return {
+      currentDigest: plugin.digest,
+      revision,
+      changed: manifest.digest !== plugin.digest,
+      manifest,
+    };
+  }
+
+  async applyUpdate(id: string, value: unknown, signal: AbortSignal): Promise<InstalledPlugin> {
+    const input = applyPluginUpdateSchema.parse(value);
+    const preview = await this.previewUpdate(id, input.revision, signal);
+    if (preview.manifest.digest !== input.reviewedDigest) throw new PluginError("conflict");
+    const result = await this.options.store.transaction((state) => {
+      signal.throwIfAborted();
+      const plugin = this.#find(state, id, input.revision);
+      // Every changed capability is newly reviewed; old grants must never migrate implicitly.
+      delete plugin.resources;
+      delete plugin.prompts;
+      Object.assign(plugin, preview.manifest, {
+        revision: randomUUID(),
+        enabled: false,
+        grants: [],
+      });
+      recordPluginAudit(state, { phase: "updated", pluginId: id });
+      return publicPlugin(plugin);
+    });
+    this.#revoke(id);
+    return result;
+  }
+
+  async contentCatalog(run: Run) {
+    await this.options.assertScope(run);
+    return this.#contentCatalog(run.botId);
+  }
+  async ownerContentCatalog(scope: OwnerContentScope) {
+    await this.#assertOwnerScope(scope);
+    return this.#contentCatalog(scope.botId);
+  }
+  async #assertOwnerScope(scope: OwnerContentScope): Promise<void> {
+    if (!this.options.assertOwnerContentScope) throw new PluginError("forbidden");
+    await this.options.assertOwnerContentScope(scope);
+  }
+  async #contentCatalog(botId: string) {
+    const items: Array<{
+      pluginId: string;
+      revision: string;
+      pluginName: string;
+      kind: "resource" | "prompt";
+      name: string;
+      description: string;
+      mimeType?: string;
+      arguments?: NonNullable<PluginManifest["prompts"]>[number]["arguments"];
+    }> = [];
+    let truncated = false;
+    for (const plugin of (await this.options.store.read()).plugins.filter((item) => item.enabled)) {
+      const grant = plugin.grants.find((item) => item.botId === botId);
+      const declared = [
+        ...(plugin.resources ?? [])
+          .filter((item) => grant?.resources?.includes(item.uri))
+          .map((item) => ({
+            kind: "resource" as const,
+            name: item.uri,
+            description: item.description,
+            ...(item.mimeType ? { mimeType: item.mimeType } : {}),
+          })),
+        ...(plugin.prompts ?? [])
+          .filter((item) => grant?.prompts?.includes(item.name))
+          .map((item) => ({
+            kind: "prompt" as const,
+            name: item.name,
+            description: item.description,
+            arguments: item.arguments,
+          })),
+      ];
+      for (const item of declared) {
+        const entry = {
+          pluginId: plugin.id,
+          revision: plugin.revision,
+          pluginName: plugin.name,
+          ...item,
+        };
+        if (
+          items.length >= 32 ||
+          Buffer.byteLength(JSON.stringify([...items, entry])) > 12 * 1024
+        ) {
+          truncated = true;
+          continue;
+        }
+        items.push(entry);
+      }
+    }
+    return { items, truncated };
+  }
+
+  async readContent(run: Run, value: unknown, signal: AbortSignal) {
+    return this.#readContent(run, value, signal, () => this.options.assertScope(run));
+  }
+  async ownerReadContent(scope: OwnerContentScope, value: unknown, signal: AbortSignal) {
+    return this.#readContent(scope, value, signal, () => this.#assertOwnerScope(scope));
+  }
+  async #readContent(
+    run: OwnerContentScope & { id?: string },
+    value: unknown,
+    signal: AbortSignal,
+    assertScope: () => Promise<void>,
+  ) {
+    const input = readPluginContentSchema.parse(JSON.parse(boundedJson(value, 12 * 1024)));
+    await assertScope();
+    const authorize = (state: PluginState) => {
+      const plugin = this.#find(state, input.pluginId, input.revision);
+      const grant = plugin.grants.find((item) => item.botId === run.botId);
+      if (
+        !plugin.enabled ||
+        !(input.kind === "resource"
+          ? grant?.resources?.includes(input.name)
+          : grant?.prompts?.includes(input.name))
+      )
+        throw new PluginError("forbidden");
+      return plugin;
+    };
+    const plugin = authorize(await this.options.store.read());
+    if (input.kind === "resource" && Object.keys(input.arguments).length)
+      throw new PluginError("invalid");
+    if (input.kind === "prompt") {
+      const args = plugin.prompts?.find((item) => item.name === input.name)?.arguments;
+      if (
+        !args ||
+        Object.keys(input.arguments).some((key) => !args.some((arg) => arg.name === key)) ||
+        args.some((arg) => arg.required && !(arg.name in input.arguments))
+      )
+        throw new PluginError("invalid");
+    }
+    if (this.#active.size >= 16) throw new PluginError("unavailable");
+    const id = randomUUID();
+    const abort = new AbortController();
+    const deadline = AbortSignal.any([signal, abort.signal, AbortSignal.timeout(30_000)]);
+    this.#active.set(id, { pluginId: plugin.id, abort });
+    let client: Awaited<ReturnType<PluginConnector>> | undefined;
+    try {
+      client = await this.#connector(plugin.endpoint, plugin.token, deadline);
+      const current = await this.#manifest(plugin.name, plugin.endpoint, client, deadline);
+      if (current.digest !== plugin.digest) throw new PluginError("conflict");
+      await assertScope();
+      await this.options.store.transaction((state) => {
+        deadline.throwIfAborted();
+        authorize(state);
+        recordPluginAudit(state, {
+          phase: `${input.kind}_reading`,
+          pluginId: plugin.id,
+          botId: run.botId,
+          runId: run.id,
+          callId: id,
+        });
+      });
+      const raw =
+        input.kind === "resource"
+          ? await client.readResource?.(input.name, deadline)
+          : await client.getPrompt?.(input.name, input.arguments, deadline);
+      const result =
+        input.kind === "resource"
+          ? pluginResourceResultSchema.parse(raw)
+          : pluginPromptResultSchema.parse(raw);
+      const isApp =
+        input.kind === "resource" &&
+        plugin.resources?.some(
+          (item) => item.uri === input.name && item.mimeType === "text/html;profile=mcp-app",
+        );
+      boundedJson(result, isApp ? 160 * 1024 : 12 * 1024);
+      if (
+        "contents" in result &&
+        result.contents.some(
+          (item) =>
+            item.uri !== input.name || (item.mimeType === "text/html;profile=mcp-app" && !isApp),
+        )
+      )
+        throw new PluginError("invalid");
+      if (
+        isApp &&
+        (!input.name.startsWith("ui://") ||
+          !("contents" in result) ||
+          result.contents.length !== 1 ||
+          result.contents[0]?.mimeType !== "text/html;profile=mcp-app")
+      )
+        throw new PluginError("invalid");
+      deadline.throwIfAborted();
+      await assertScope();
+      await this.options.store.transaction((state) => {
+        deadline.throwIfAborted();
+        authorize(state);
+        recordPluginAudit(state, {
+          phase: `${input.kind}_read`,
+          pluginId: plugin.id,
+          botId: run.botId,
+          runId: run.id,
+          callId: id,
+        });
+      });
+      // This is data, including prompt messages. The caller must never promote it to system authority.
+      return {
+        plugin: plugin.name,
+        kind: input.kind,
+        name: input.name,
+        result,
+        untrusted: true as const,
+      };
+    } catch (error) {
+      throw error instanceof PluginError ? error : new PluginError("unavailable");
+    } finally {
+      this.#active.delete(id);
+      await client?.close().catch(() => {});
     }
   }
 
@@ -127,14 +372,28 @@ export class PluginService {
   async grant(id: string, botId: string, value: unknown): Promise<InstalledPlugin> {
     const input = grantPluginSchema.parse(value);
     if (!(await this.options.botExists(botId))) throw new PluginError("not_found");
-    if (new Set(input.tools.map((item) => item.name)).size !== input.tools.length)
+    if (
+      new Set(input.tools.map((item) => item.name)).size !== input.tools.length ||
+      new Set(input.resources).size !== input.resources.length ||
+      new Set(input.prompts).size !== input.prompts.length
+    )
       throw new PluginError("invalid");
     const result = await this.options.store.transaction((state) => {
       const plugin = this.#find(state, id, input.revision);
-      if (input.tools.some((grant) => !plugin.tools.some((tool) => tool.name === grant.name)))
+      if (
+        input.tools.some((grant) => !plugin.tools.some((tool) => tool.name === grant.name)) ||
+        input.resources.some((uri) => !plugin.resources?.some((item) => item.uri === uri)) ||
+        input.prompts.some((name) => !plugin.prompts?.some((item) => item.name === name))
+      )
         throw new PluginError("invalid");
       plugin.grants = plugin.grants.filter((grant) => grant.botId !== botId);
-      if (input.tools.length) plugin.grants.push({ botId, tools: input.tools });
+      if (input.tools.length || input.resources.length || input.prompts.length)
+        plugin.grants.push({
+          botId,
+          tools: input.tools,
+          resources: input.resources,
+          prompts: input.prompts,
+        });
       if (plugin.grants.length > 128) throw new PluginError("invalid");
       plugin.revision = randomUUID();
       recordPluginAudit(state, { phase: "grants_changed", pluginId: id, botId });
@@ -204,7 +463,7 @@ export class PluginService {
     let client: Awaited<ReturnType<PluginConnector>> | undefined;
     try {
       client = await this.#connector(plugin.endpoint, plugin.token, deadline);
-      const current = pluginManifest(plugin.name, plugin.endpoint, await client.tools(deadline));
+      const current = await this.#manifest(plugin.name, plugin.endpoint, client, deadline);
       if (current.digest !== plugin.digest) throw new PluginError("conflict");
       await this.#check(run, plugin.id, plugin.revision, input.toolName, deadline);
       const mode = plugin.grants
@@ -213,11 +472,7 @@ export class PluginService {
       if (mode !== "read" && mode !== "confirm") throw new PluginError("forbidden");
       if (mode === "confirm") {
         await this.#waitApproval(run, plugin, id, input.toolName, input.arguments, deadline);
-        const refreshed = pluginManifest(
-          plugin.name,
-          plugin.endpoint,
-          await client.tools(deadline),
-        );
+        const refreshed = await this.#manifest(plugin.name, plugin.endpoint, client, deadline);
         if (refreshed.digest !== plugin.digest) throw new PluginError("conflict");
       }
       await this.options.assertScope(run);

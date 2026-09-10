@@ -1,4 +1,15 @@
-import type { Artifact, Bot, Channel, Message, Run, RunFrame, RunProgress } from "@openbot/domain";
+import type {
+  Artifact,
+  Bot,
+  Channel,
+  Message,
+  MessageReaction,
+  ReactionEmoji,
+  Run,
+  RunFrame,
+  RunProgress,
+  RunOutput,
+} from "@openbot/domain";
 import {
   type FormEvent,
   Fragment,
@@ -14,11 +25,21 @@ import {
 import {
   createMessage,
   getEmployeeProfile,
+  getRunOutput,
   listMessages,
+  listChannelReactions,
+  setMessageReaction,
   listRuns,
   type RealtimeConnectionState,
   subscribeToChannelEvents,
 } from "../api";
+import { mergeRunOutput } from "../run-output-state";
+import { RunSteering } from "./RunSteering";
+import { AttachmentsManagerDialog } from "./AttachmentsManager";
+import { VoiceRecorder } from "./VoiceRecorder";
+import { MessageActionBar } from "./MessageActionBar";
+import { MessageReactions } from "./MessageReactions";
+import { RichMessage } from "./RichMessage";
 import { composeTaskText } from "../composer-context";
 import { type ConversationSession, createConversationSession } from "../conversation-session";
 import { shortcutLabel } from "../desktop-shortcuts";
@@ -57,6 +78,8 @@ export function ChannelWorkspace({
   artifacts,
   progress,
   onJoin,
+  onRemove,
+  onChannel,
   onInspectRun,
   onOpenBot,
   onFrame,
@@ -71,6 +94,8 @@ export function ChannelWorkspace({
   artifacts: Artifact[];
   progress: RunProgress[];
   onJoin(botId: string): Promise<void>;
+  onRemove?(botId: string): Promise<void>;
+  onChannel?(channel: Channel): void;
   onInspectRun(runId: string): void;
   onOpenBot(botId: string): void;
   onFrame(frame: RunFrame): void;
@@ -103,8 +128,24 @@ export function ChannelWorkspace({
     () => indexRunCollaboration(channel.id, runs, messages),
     [channel.id, runs, messages],
   );
+  const artifactMessageByRun = useMemo(() => {
+    const result = new Map<string, string>();
+    for (const message of messages) {
+      if (
+        message.runId &&
+        message.authorType === "bot" &&
+        message.authorId === runsById.get(message.runId)?.botId &&
+        !collaboration.delegationByMessage.has(message.id)
+      )
+        result.set(message.runId, message.id);
+    }
+    return result;
+  }, [messages, runsById, collaboration]);
   const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
   const [readAttempt, setReadAttempt] = useState(0);
+  const [reactions, setReactions] = useState<MessageReaction[]>([]);
+  const [filesOpen, setFilesOpen] = useState(false);
+  const [outputs, setOutputs] = useState<ReadonlyMap<string, RunOutput>>(new Map());
   const [awayFromLatest, setAwayFromLatest] = useState(!conversation.scroll.atBottom);
   const messageList = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -245,6 +286,27 @@ export function ChannelWorkspace({
         conversation.merge(messageItems, runItems);
         conversation.loaded();
         for (const run of runItems) if (run.channelId === channel.id) onRun(run);
+        void listChannelReactions(channel.id, controller.signal)
+          .then((items) => {
+            if (!controller.signal.aborted && requestedRevision === revision) setReactions(items);
+          })
+          .catch(() => undefined);
+        await Promise.allSettled(
+          runItems
+            .filter(
+              (run) =>
+                run.channelId === channel.id &&
+                run.executionProfile === "none" &&
+                ["queued", "running"].includes(run.status),
+            )
+            .map(async (run) => {
+              const output = await getRunOutput(run.id, controller.signal);
+              if (!controller.signal.aborted && output)
+                setOutputs((current) =>
+                  mergeRunOutput(current, output, channel.id, conversation.getSnapshot().runs),
+                );
+            }),
+        );
       } catch (cause: unknown) {
         if (controller.signal.aborted || requestedRevision !== revision) return;
         conversation.loaded(cause instanceof Error ? cause.message : "无法读取频道消息。");
@@ -265,6 +327,22 @@ export function ChannelWorkspace({
         conversation.merge([], [run]);
         onRun(run, projectedArtifacts);
       },
+      onOutput(output) {
+        if (!controller.signal.aborted)
+          setOutputs((current) =>
+            mergeRunOutput(current, output, channel.id, conversation.getSnapshot().runs),
+          );
+      },
+      onReactions(messageId, items) {
+        if (!controller.signal.aborted)
+          setReactions((current) => [
+            ...current.filter((item) => item.messageId !== messageId),
+            ...items,
+          ]);
+      },
+      onChannel(updated) {
+        if (!controller.signal.aborted) onChannel?.(updated);
+      },
       onReady() {
         if (!controller.signal.aborted) void syncChannel();
       },
@@ -277,7 +355,7 @@ export function ChannelWorkspace({
       controller.abort();
       unsubscribe();
     };
-  }, [channel.id, conversation, onFrame, onProgress, onRun, readAttempt]);
+  }, [channel.id, conversation, onFrame, onProgress, onRun, onChannel, readAttempt]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: message count changes invalidate DOM scroll geometry.
   useLayoutEffect(() => {
@@ -296,7 +374,7 @@ export function ChannelWorkspace({
             : "smooth",
       });
     }
-  }, [conversation, loading, messages.length, preferences.reduceMotion]);
+  }, [conversation, loading, messages.length, outputs, preferences.reduceMotion]);
 
   useLayoutEffect(() => {
     const list = messageList.current;
@@ -438,12 +516,16 @@ export function ChannelWorkspace({
               channel={channel}
               bots={bots}
               onJoin={onJoin}
+              {...(onRemove ? { onRemove } : {})}
               onOpenBot={onOpenBot}
             />
             {headerAction}
           </div>
         </header>
       ) : null}
+      {filesOpen && (
+        <AttachmentsManagerDialog channelId={channel.id} onClose={() => setFilesOpen(false)} />
+      )}
       <PluginCallApprovals channelId={channel.id} bots={bots} onInspectRun={onInspectRun} />
       <section
         className="conversation-panel channel-conversation"
@@ -507,6 +589,15 @@ export function ChannelWorkspace({
                 ) : null}
                 <MessageRow
                   message={message}
+                  reactions={reactions.filter((item) => item.messageId === message.id)}
+                  onReactionChange={async (emoji, active) => {
+                    const items = await setMessageReaction(channel.id, message.id, emoji, active);
+                    if (mounted.current)
+                      setReactions((current) => [
+                        ...current.filter((item) => item.messageId !== message.id),
+                        ...items,
+                      ]);
+                  }}
                   groupStart={!sameMessageGroup(messages[index - 1], message)}
                   groupEnd={!sameMessageGroup(message, messages[index + 1])}
                   direct={Boolean(channel.directBotId)}
@@ -524,7 +615,7 @@ export function ChannelWorkspace({
                       ? []
                       : (artifactsByRun.get(message.runId) ?? []).filter((artifact) =>
                           message.authorType === "bot"
-                            ? message.authorId === runsById.get(message.runId ?? "")?.botId
+                            ? message.id === artifactMessageByRun.get(message.runId ?? "")
                             : artifact.mediaType === "image/png",
                         )
                   }
@@ -564,6 +655,32 @@ export function ChannelWorkspace({
               </Fragment>
             ))
           )}
+          {runs
+            .filter(
+              (run) =>
+                isActiveRun(run) &&
+                outputs.get(run.id)?.text &&
+                botsById.has(run.botId) &&
+                !artifactMessageByRun.has(run.id),
+            )
+            .map((run) => (
+              <article
+                className="message-row bot group-start group-end streaming-message"
+                key={`output-${run.id}`}
+                aria-label={`${botsById.get(run.botId)?.name} 正在回复`}
+                aria-busy="true"
+              >
+                <div className="message-avatar">
+                  <RobotAvatar bot={botsById.get(run.botId) as Bot} compact />
+                </div>
+                <div className="message-content">
+                  <header className="message-sender">
+                    <strong>{botsById.get(run.botId)?.name} · 正在回复</strong>
+                  </header>
+                  <RichMessage content={outputs.get(run.id)?.text ?? ""} />
+                </div>
+              </article>
+            ))}
           {visibleWork.length > 0 ? (
             <section className="channel-work-activity" aria-label="频道任务动态">
               {visibleWork.map((run) => (
@@ -591,6 +708,7 @@ export function ChannelWorkspace({
                       <i />
                     </span>
                   ) : null}
+                  <RunSteering run={run} botName={botsById.get(run.botId)?.name ?? "Bot"} />
                   <NativeRunControls
                     compact
                     run={run}
@@ -754,7 +872,16 @@ export function ChannelWorkspace({
                       fileInput.current?.click();
                     }}
                   >
-                    添加附件<small>文本与代码 256 KB · 图片 5 MB · PDF 10 MB</small>
+                    添加附件<small>文本、图片、Office、PDF、音频和视频</small>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (addMenu.current) addMenu.current.open = false;
+                      setFilesOpen(true);
+                    }}
+                  >
+                    频道文件<small>下载、提取文字、转写和管理回收站</small>
                   </button>
                   <button
                     type="button"
@@ -771,6 +898,12 @@ export function ChannelWorkspace({
                   </button>
                 </div>
               </details>
+              <VoiceRecorder
+                channelId={channel.id}
+                disabled={sending || uploadingAttachments}
+                getAttachments={() => conversation.getSnapshot().draft.attachments ?? []}
+                onChange={(attachments) => conversation.edit({ attachments })}
+              />
               <ComposerAttachmentPicker
                 channelId={channel.id}
                 attachments={draft.attachments ?? []}
@@ -905,6 +1038,8 @@ export function ChannelWorkspace({
 
 function MessageRow({
   message,
+  reactions,
+  onReactionChange,
   groupStart,
   groupEnd,
   direct,
@@ -924,6 +1059,8 @@ function MessageRow({
   onOpenBot,
 }: {
   message: Message;
+  reactions: MessageReaction[];
+  onReactionChange(emoji: ReactionEmoji, active: boolean): Promise<void>;
   groupStart: boolean;
   groupEnd: boolean;
   direct: boolean;
@@ -943,7 +1080,6 @@ function MessageRow({
   onOpenBot(botId: string): void;
 }) {
   const { values: preferences } = useWorkspacePreferences();
-  const [copyStatus, setCopyStatus] = useState("");
   const name = message.authorType === "human" ? "你" : (author?.name ?? "OpenBot");
   return (
     <article
@@ -1015,38 +1151,19 @@ function MessageRow({
             />
           </details>
         ) : null}
-        <div className="message-actions">
-          <button type="button" onClick={onReply} aria-label={`回复 ${name} 的消息`} title="回复">
-            ↩ 回复
-          </button>
-          <button
-            type="button"
-            title="复制消息"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(message.content);
-                setCopyStatus("已复制");
-              } catch {
-                setCopyStatus("复制失败");
-              }
-            }}
-          >
-            {copyStatus || "复制"}
-          </button>
-          {run && !delegation ? (
-            <button
-              className={`message-run-status ${run.status}`}
-              type="button"
-              title={progress?.message ?? run.title}
-              onClick={() => onInspectRun(run.id)}
-            >
-              {runStatusLabel(run.status)} · 详情
-            </button>
-          ) : null}
-          <time dateTime={message.createdAt}>
-            {formatMessageTime(message.createdAt, preferences.hour12)}
-          </time>
-        </div>
+        <MessageReactions
+          messageId={message.id}
+          reactions={reactions}
+          onChange={onReactionChange}
+        />
+        <MessageActionBar
+          message={message}
+          onReply={onReply}
+          onInspectRun={onInspectRun}
+          run={run}
+          reactions={reactions}
+          onReactionChange={onReactionChange}
+        />
       </div>
     </article>
   );

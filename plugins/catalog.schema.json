@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenBot reviewed plugin catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "plugins"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "plugins": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "description",
+          "license",
+          "status",
+          "capabilities",
+          "transport",
+          "source",
+          "guide"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$" },
+          "name": { "type": "string", "maxLength": 80 },
+          "description": { "type": "string", "maxLength": 500 },
+          "license": { "type": "string", "maxLength": 100 },
+          "status": { "enum": ["example", "reviewed"] },
+          "capabilities": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "enum": ["tools", "resources", "prompts", "apps"] }
+          },
+          "transport": { "const": "streamable-http" },
+          "guide": { "type": "string", "format": "uri" },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["repository", "ref", "path", "sha256"],
+            "properties": {
+              "repository": { "type": "string", "format": "uri" },
+              "ref": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "path": { "type": "string", "maxLength": 256 },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

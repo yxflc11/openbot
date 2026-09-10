@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import type { UploadedComposerAttachment } from "../composer-context";
 import {
   formatAttachmentSize,
   getChannelAttachment,
   splitMessageAttachments,
 } from "../channel-attachment-client";
+import type { UploadedComposerAttachment } from "../composer-context";
+import { AttachmentActions } from "./AttachmentActions";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { RichMessage } from "./RichMessage";
 import "./MessageAttachments.css";
@@ -51,6 +52,7 @@ function MessageAttachmentCard({ channelId, id }: { channelId: string; id: strin
             <strong title={attachment.name}>{attachment.name}</strong>
             <small>{formatAttachmentSize(attachment.sizeBytes)}</small>
           </span>
+          <AttachmentActions attachment={attachment} onChange={setAttachment} lifecycle />
         </>
       ) : (
         <span className="attachment-card-caption">

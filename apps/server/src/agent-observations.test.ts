@@ -23,7 +23,7 @@ describe("provider-reported usage", () => {
     expect(runModelUsageSchema.safeParse({ ...usage, raw: { secret: "not stored" } }).success).toBe(
       false,
     );
-    expect(runModelUsageSchema.safeParse({ ...usage, steps: 6 }).success).toBe(false);
+    expect(runModelUsageSchema.safeParse({ ...usage, steps: 9 }).success).toBe(false);
     expect(runModelUsageSchema.safeParse({ ...usage, provider: "private-host" }).success).toBe(
       false,
     );

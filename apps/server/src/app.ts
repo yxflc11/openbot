@@ -1,6 +1,17 @@
+import type { AttachmentProcessingService } from "./attachment-processing.js";
+import type { ChannelInteractionStore } from "./channel-interactions-store.js";
+import { createChannelInteractionRoutes } from "./channel-interactions-routes.js";
+import type { Channel } from "@openbot/domain";
 import type { PluginService } from "./plugin-service.js";
 import { createPluginRoutes } from "./plugin-routes.js";
-import type { ChannelAttachmentStorage } from "./channel-attachments.js";
+import {
+  taskAttachmentIds,
+  AttachmentError,
+  type ChannelAttachmentStorage,
+} from "./channel-attachments.js";
+import type { RunOutput } from "@openbot/domain";
+import { steerNativeRunInputSchema } from "@openbot/protocol";
+import type { SteeringInstruction } from "./agent-steering.js";
 import { registerChannelAttachmentRoutes } from "./channel-attachment-routes.js";
 import { importSkillSchema, parseSkillDocument } from "./agent-skills.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -91,8 +102,14 @@ import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 export interface AppDependencies {
   plugins?: PluginService;
   attachments?: ChannelAttachmentStorage;
+  attachmentProcessing?: AttachmentProcessingService;
+  attachmentReferenced?: (channelId: string, id: string) => Promise<boolean>;
+  channelInteractions?: ChannelInteractionStore;
+  onChannelMemberRemoved?: (result: { channel: Channel; cancelledRuns: Run[] }) => void;
   knowledge?: Pick<PostgresKnowledgeStore, "list" | "review">;
   cancelNativeRun?: (runId: string) => Promise<Run>;
+  steerNativeRun?: (runId: string, instruction: string) => Promise<SteeringInstruction>;
+  nativeRunOutput?: (runId: string) => Promise<RunOutput | undefined>;
   automations?: AutomationStore;
   modelSettings?: ModelSettingsService;
   allowedOrigins: string[];
@@ -154,7 +171,7 @@ export function createApp(dependencies: AppDependencies) {
       permissionsPolicy: {
         camera: [],
         geolocation: [],
-        microphone: [],
+        microphone: ["self"],
         payment: [],
         usb: [],
       },
@@ -203,9 +220,27 @@ export function createApp(dependencies: AppDependencies) {
   if (dependencies.attachments)
     registerChannelAttachmentRoutes(app, {
       storage: dependencies.attachments,
+      ...(dependencies.attachmentProcessing
+        ? { processing: dependencies.attachmentProcessing }
+        : {}),
+      ...(dependencies.attachmentReferenced
+        ? { isReferenced: dependencies.attachmentReferenced }
+        : {}),
       channelExists: async (channelId) =>
         (await dependencies.store.listChannels()).some((channel) => channel.id === channelId),
     });
+
+  if (dependencies.channelInteractions)
+    app.route(
+      "/api/v1",
+      createChannelInteractionRoutes({
+        store: dependencies.channelInteractions,
+        realtime,
+        ...(dependencies.onChannelMemberRemoved
+          ? { onRemoved: dependencies.onChannelMemberRemoved }
+          : {}),
+      }),
+    );
 
   if (dependencies.plugins) app.route("/api/v1", createPluginRoutes(dependencies.plugins));
 
@@ -524,6 +559,34 @@ export function createApp(dependencies: AppDependencies) {
     return context.json({ run });
   });
 
+  app.post("/api/v1/runs/:runId/steer", async (context) => {
+    const parsedId = z.string().uuid().safeParse(context.req.param("runId"));
+    if (!parsedId.success)
+      throw new RequestValidationError("Task id is invalid.", { runId: ["Invalid task id."] });
+    const runId = parsedId.data;
+    const input = await parseRequest(context.req.raw, steerNativeRunInputSchema, 18000);
+    if (taskAttachmentIds(input.instruction).length > 0)
+      return context.json(
+        { error: "Additional attachments require a new task; steering accepts text only." },
+        400,
+      );
+    if (!dependencies.steerNativeRun)
+      return context.json({ error: "Task steering is unavailable." }, 503);
+    return context.json(
+      { steering: await dependencies.steerNativeRun(runId, input.instruction) },
+      202,
+    );
+  });
+
+  app.get("/api/v1/runs/:runId/output", async (context) => {
+    const parsedId = z.string().uuid().safeParse(context.req.param("runId"));
+    if (!parsedId.success)
+      throw new RequestValidationError("Task id is invalid.", { runId: ["Invalid task id."] });
+    const runId = parsedId.data;
+    context.header("Cache-Control", "private, no-store");
+    return context.json({ output: (await dependencies.nativeRunOutput?.(runId)) ?? null });
+  });
+
   app.get("/api/v1/runs/:runId/frame", (context) => {
     const stored = dependencies.runFrames?.get(context.req.param("runId"));
     if (stored === undefined) throw new StoreNotFoundError("Live frame not found.");
@@ -611,7 +674,22 @@ export function createApp(dependencies: AppDependencies) {
 
   app.post("/api/v1/channels/:channelId/messages", async (context) => {
     const input = await parseRequest(context.req.raw, createMessageInputSchema);
-    const result = await dependencies.store.submitTask(context.req.param("channelId"), input);
+    const channelId = context.req.param("channelId");
+    const ids = taskAttachmentIds(input.content);
+    const persist = () => dependencies.store.submitTask(channelId, input);
+    if (ids.length && !dependencies.attachments?.withActiveReferences)
+      return context.json({ error: "Attachment reference validation is unavailable." }, 503);
+    let result: Awaited<ReturnType<typeof persist>>;
+    try {
+      result =
+        ids.length && dependencies.attachments?.withActiveReferences
+          ? await dependencies.attachments.withActiveReferences(channelId, ids, persist)
+          : await persist();
+    } catch (error) {
+      if (error instanceof AttachmentError)
+        return context.json({ error: error.message }, error.status);
+      throw error;
+    }
     realtime.publish({
       type: "message.created",
       channelId: result.message.channelId,
@@ -972,6 +1050,8 @@ export function createApp(dependencies: AppDependencies) {
     if (error instanceof StoreValidationError) {
       return context.json({ error: error.message }, 422);
     }
+    if (error instanceof AttachmentError)
+      return context.json({ error: error.message }, error.status);
     if (error instanceof RequestValidationError) {
       return context.json({ error: error.message, fields: error.fields }, 422);
     }

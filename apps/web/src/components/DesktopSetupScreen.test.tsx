@@ -29,7 +29,7 @@ describe("Desktop role selection", () => {
       }
     },
   );
-  it.each(["win32", "linux", undefined])(
+  it.each(["linux", undefined])(
     "offers a usable client default on %s even with a retained host plan",
     async (platform) => {
       const onSave = vi.fn(async (plan) => ({ status: "configured" as const, plan }));

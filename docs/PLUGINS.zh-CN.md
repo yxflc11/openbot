@@ -1,9 +1,9 @@
-# 第三方 MCP 工具插件
+# 第三方 MCP 插件
 
 [English](PLUGINS.md) · [简体中文](PLUGINS.zh-CN.md)
 
 OpenBot 通过 MCP 让 Bot 调用外部服务的工具，例如查询业务数据、转换内容，或经你批准后执行写入。
-SKILL.md 提供工作指令，MCP 插件提供可调用工具。安装是在 Server 登记连接，不会把代码下载到 Desktop，
+SKILL.md 提供工作指令，MCP 插件提供工具、资源、提示词和隔离的 HTML 界面。安装是在 Server 登记连接，不会把代码下载到 Desktop，
 也不会启动插件子进程。
 
 ## 使用流程
@@ -20,7 +20,7 @@ SKILL.md 提供工作指令，MCP 插件提供可调用工具。安装是在 Ser
    OpenBot 不会自动重试结果不明的操作。
 
 调用身份来自真实任务，模型不能改用其他 Bot 或频道。工具声明变化会阻止旧调用，要求重新审核。
-更换地址、凭据或目录时，移除连接后重新预览安装，旧授权不会沿用；移除不会删除第三方保存的数据。
+目录变化时可预览并应用更新，成功后停用插件并清空所有授权。更换地址或凭据时，移除连接后重新预览安装；移除不会删除第三方保存的数据。
 
 外部服务接收工具参数，不会自动获得整个工作区或其他服务密钥；所选模型接收工具结果。
 结果是不可信资料，不能据此批准操作或扩大权限。外部服务可能虚报工具行为，OpenBot 的授权检查不是它的代码沙箱，
@@ -70,7 +70,7 @@ OpenBot 固定官方 SDK **1.30.0**，提交 `2d889f2b329e46680ec9bdd565de4616c4
 | --- | --- |
 | 传输 | 一个精确地址；每次预览/调用建立新 SDK 客户端，不支持重定向、Cookie、代理、重连重放。返回完成的 JSON 或有界 POST SSE；不打开长期 GET 推送流。 |
 | 认证 | 可选独立 bearer token，在 Server 加密保存；未实现 OAuth 和动态凭据发现。 |
-| 工具目录 | 一页完整的 1–32 个唯一工具，不分页，目录最多 64 KiB。 |
+| 工具目录 | 每种能力一页完整目录，最多各 32 个工具、资源和提示词，至少一项，合计最多 64 KiB；不接分页或 URI 模板。 |
 | 名称与说明 | 名称 1–64 个英文字母、数字、点、下划线或连字符；说明最多 2,000 字符，模型目录使用有界摘要。 |
 | 参数结构 | 根 object 的 JSON Schema，最多 12 KiB 且有限深度；支持对象、数组、标量、范围、必填、枚举；拒绝引用、`$id`、正则、format、请求头镜像扩展。 |
 | 参数与结果 | 参数最多 8 KiB 并校验结构；结果为文本块，可附结构化 JSON，合计最多 12 KiB；不接图片、音频、资源或界面代码，`isError` 会使调用失败。 |
@@ -78,8 +78,7 @@ OpenBot 固定官方 SDK **1.30.0**，提交 `2d889f2b329e46680ec9bdd565de4616c4
 | 数量 | 最多 16 插件；每插件 32 工具、128 个员工授权项；16 并发调用；Agent 目录最多 16 工具和 12 KiB，并标记截断。 |
 | 权限 | `call_plugin` 共享原生 Agent 工具次数，不获得额外执行、递归或后台权限。 |
 
-本轮只接工具，不提供 sampling、elicitation、roots、stdio、任务扩展、resources/prompts、插件 HTML/JS、
-安装包或市场分发。建议读写拆成不同工具，在后端再次验证参数与授权，说明真实副作用。
+本适配器不提供 sampling、elicitation、roots、stdio、任务扩展、资源订阅、二进制资源或自动执行安装包。建议读写拆成不同工具，在后端再次验证参数与授权，说明真实副作用。
 Annotations 帮助审阅但不保证行为。不要把原始账户密码放入模型工具参数，使用 Owner 单独配置的服务 token。
 
 ## Owner API
@@ -89,10 +88,14 @@ Annotations 帮助审阅但不保证行为。不要把原始账户密码放入�
 | 请求 | 输入/输出 |
 | --- | --- |
 | `GET /plugins` | `{ plugins, pendingCalls }` |
-| `POST /plugins/preview` | `{ name, endpoint, token? }` → `{ name, endpoint, tools, digest }` |
+| `POST /plugins/preview` | `{ name, endpoint, token? }` → `{ name, endpoint, tools, resources?, prompts?, digest }` |
 | `POST /plugins` | `{ name, endpoint, token?, reviewedDigest }` → `201 { plugin }` |
 | `PATCH /plugins/:id` | `{ revision, enabled }` → `{ plugin }` |
-| `PUT /plugins/:id/grants/:botId` | `{ revision, tools: [{ name, mode: "read" 或 "confirm" }] }` → `{ plugin }`；空数组撤销 |
+| `PUT /plugins/:id/grants/:botId` | `{ revision, tools: [{ name, mode: "read" 或 "confirm" }], resources?: [uri], prompts?: [name] }` → `{ plugin }`；全部为空时撤销 |
+| `POST /plugins/:id/update/preview` | `{ revision }` → `{ currentDigest, revision, changed, manifest }`，不修改安装 |
+| `POST /plugins/:id/update` | `{ revision, reviewedDigest }` → `{ plugin }`，停用并清空全部授权 |
+| `GET /channels/:channelId/bots/:botId/plugin-content` | 已有频道成员和该 Bot 的内容授权 → `{ items, truncated }`，无需先启动任务 |
+| `POST /channels/:channelId/bots/:botId/plugin-content` | `{ pluginId, revision, kind: "resource" 或 "prompt", name, arguments? }` → 不可信文本/界面资料 |
 | `DELETE /plugins/:id` | `{ revision }` → `{ deleted: true }` |
 | `POST /plugin-calls/:id/decision` | `{ decision: "approve" 或 "reject" }` → `{ decided: true }` |
 
@@ -109,3 +112,20 @@ Annotations 帮助审阅但不保证行为。不要把原始账户密码放入�
 `plugin-service.test.ts` 使用真实本机 HTTP MCP 服务和官方 SDK 验证发现、精确审核、安装、员工授权、计算、
 批准前不写入、批准只消费一次、停用。反例覆盖错误员工、版本/目录变化、参数、超时、取消、撤销、加密存储和
 不影响邻接 API 的请求大小限制。这是本机协议闭环，不代表所有第三方服务和模型账号已经实测。
+
+
+## 资源、提示词与隔离界面
+
+使用标准 `resources/list` / `resources/read` 和 `prompts/list` / `prompts/get`。为每名 Bot 单独勾选资源 URI、提示词名称；工具授权不会自动授权其关联界面。资源 URI 只交给原 MCP 服务，绝不当作 OpenBot 本地文件或任意网址打开。读取前与返回前都检查完整声明摘要、Bot/频道成员身份和当前授权；取消、停用或撤销授权后丢弃晚到的结果。
+
+普通资源和提示词结果最多 12 KiB。资源必须返回与请求 URI 一致的文本。提示词支持最多 16 个命名字符串参数、16 条 user/assistant 文本消息；缺失必填或包含未知参数时不发送请求。提示词应由 Owner 主动选择，始终是不可信资料，不能提升为系统指令。
+
+HTML 界面使用 `ui://` 资源和 `text/html;profile=mcp-app` MIME，完整响应最多 160 KiB，单个 HTML 字符串最多 128 KiB。工具可声明 `_meta.ui.resourceUri`，关联关系计入审核摘要。Server 只返回不可信 HTML 数据，不执行代码；宿主负责 MCP Apps 生命周期及与应用源隔离。CSP/网络/设备声明不会自行获得授权，初始宿主策略禁止外部网络与设备访问；使用可选 Apps 能力前请核对宿主支持范围。
+
+运行示例还提供 `notes://current`、用户主动选择的 `review_note(note)` 和 `ui://notebook/view.html`。资源和提示词测试使用真实本机 MCP SDK HTTP 服务，证明传输与授权链路，并不代表所有第三方应用都已兼容。
+
+## 更新插件
+
+更新从已安装的精确地址重新读取声明，不下载程序，也不自动更新第三方服务器。预览展示替换后的目录及摘要是否变化；应用时必须提供该摘要和安装 revision。成功后清空全部 Bot 授权并停用，即使声明版本未变化也需要重新授权启用。并发修改或预览后目录变化返回 `409`，保留旧安装。凭据保留但绝不回传。
+
+当前界面宿主使用官方 MCP Apps 1.7.5 AppBridge：双层隔离 iframe，支持本地交互与已授权资源读取；不开放工具调用、发消息、模型上下文修改或外部网络/设备。

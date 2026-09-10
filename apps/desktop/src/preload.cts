@@ -1,8 +1,8 @@
 import type {
-  EmployeeTemplateSaveInput,
   DesktopNavigationCommand,
   DesktopNavigationMenuState,
   DesktopSidebarMaterialState,
+  EmployeeTemplateSaveInput,
   OpenBotDesktopBridge,
 } from "./runtime-contract.js";
 
@@ -46,6 +46,21 @@ const runtimeInfo = Object.freeze({
   shellVersion,
 });
 const bridge: OpenBotDesktopBridge = Object.freeze({
+  beginVoiceCapture: () => {
+    // This check runs in the isolated preload, not in renderer-supplied JavaScript.
+    if (
+      !(navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation
+        ?.isActive
+    )
+      return Promise.resolve(false);
+    return ipcRenderer.invoke("openbot:begin-voice-capture");
+  },
+  endVoiceCapture: () => ipcRenderer.invoke("openbot:end-voice-capture"),
+  saveAttachment: (input: { channelId: string; attachmentId: string }) =>
+    ipcRenderer.invoke("openbot:save-attachment", {
+      channelId: input.channelId,
+      attachmentId: input.attachmentId,
+    }),
   restoreLocalSession: () => ipcRenderer.invoke("openbot:restore-local-session"),
   saveReport: (artifactId: string) => {
     if (

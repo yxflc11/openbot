@@ -721,19 +721,19 @@ describe("native Agent loop", () => {
     expect(f.store.tasks).not.toHaveBeenCalled();
     expect(model.doGenerateCalls).toHaveLength(1);
   });
-  it("fails when five tool steps do not reach a final answer", async () => {
+  it("fails when eight tool steps do not reach a final answer", async () => {
     const f = fixture();
     const model = new MockLanguageModelV4({ doGenerate: calls() });
     await expect(executeAgentRun({ ...f, model })).rejects.toThrow(/limits/);
-    expect(model.doGenerateCalls).toHaveLength(5);
+    expect(model.doGenerateCalls).toHaveLength(8);
   });
-  it("bounds parallel tools to eight actual reads", async () => {
+  it("bounds parallel tools to sixteen actual reads", async () => {
     const f = fixture();
     const model = new MockLanguageModelV4({
-      doGenerate: [calls("read_channel_context", "{}", 9), answer()],
+      doGenerate: [calls("read_channel_context", "{}", 17), answer()],
     });
     await expect(executeAgentRun({ ...f, model })).rejects.toThrow();
-    expect(f.store.context).toHaveBeenCalledTimes(8);
+    expect(f.store.context).toHaveBeenCalledTimes(16);
     expect(model.doGenerateCalls).toHaveLength(1);
   });
   it("does not retry a provider error", async () => {
@@ -828,7 +828,7 @@ describe("native Agent loop", () => {
       await runner.stop();
     }
   });
-  it("bounds concurrency, serializes channels, and aborts active inference when settings change", async () => {
+  it("bounds concurrency, serializes channel Bot identities, and aborts active inference when settings change", async () => {
     const f = fixture();
     const queued = [
       run,
@@ -874,17 +874,227 @@ describe("native Agent loop", () => {
     const runner = new NativeAgentRunner(f.store, settings, realtime, vi.fn(), () => model);
     runner.start();
     try {
-      await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(2));
+      await vi.waitFor(() => expect(model.doGenerateCalls).toHaveLength(3));
       expect(vi.mocked(f.store.claim).mock.calls.map(([candidate]) => candidate.id)).toEqual([
         "run",
         "other-channel",
+        "third-channel",
       ]);
       expect(f.store.queued).toHaveBeenCalledWith(config.agentEnabledAt);
       config.revision = "replaced";
       changed?.();
-      await vi.waitFor(() => expect(f.store.fail).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(f.store.fail).toHaveBeenCalledTimes(3));
       expect(f.store.complete).not.toHaveBeenCalled();
       expect(JSON.stringify(events)).not.toContain("fixture-key");
+    } finally {
+      await runner.stop();
+    }
+  });
+});
+
+describe("asynchronous native output and corrections", () => {
+  it("reads only an exact enabled resource and hides Owner prompts and app HTML", async () => {
+    const f = fixture();
+    const pluginId = "11111111-1111-4111-8111-111111111111",
+      revision = "22222222-2222-4222-8222-222222222222";
+    const input = { pluginId, revision, name: "resource://facts" };
+    const plugins = {
+      catalog: vi.fn(async () => ({ tools: [], truncated: false })),
+      call: vi.fn(),
+      contentCatalog: vi.fn(async () => ({
+        items: [
+          {
+            ...input,
+            kind: "resource" as const,
+            pluginName: "Facts",
+            description: "Scoped facts",
+            mimeType: "text/plain",
+          },
+          {
+            ...input,
+            kind: "prompt" as const,
+            name: "PRIVATE_OWNER_PROMPT",
+            pluginName: "Facts",
+            description: "Owner choice",
+          },
+          {
+            ...input,
+            kind: "resource" as const,
+            name: "ui://PRIVATE_APP",
+            pluginName: "Facts",
+            description: "App",
+            mimeType: "text/html;profile=mcp-app",
+          },
+        ],
+        truncated: false,
+      })),
+      readContent: vi.fn(async () => ({
+        contents: [{ uri: input.name, text: "Verified plugin facts" }],
+      })),
+    };
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        calls("read_plugin_resource", JSON.stringify(input)),
+        answer("Facts summarized"),
+      ],
+    });
+    await executeAgentRun({ ...f, plugins, model });
+    expect(plugins.readContent).toHaveBeenCalledWith(run, { ...input, kind: "resource" }, f.signal);
+    const first = JSON.stringify(model.doGenerateCalls[0]?.prompt);
+    expect(first).not.toContain("PRIVATE_OWNER_PROMPT");
+    expect(first).not.toContain("PRIVATE_APP");
+    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain("Verified plugin facts");
+  });
+  it("fails closed when a resource grant is revoked before its read", async () => {
+    const f = fixture();
+    const input = {
+      pluginId: "11111111-1111-4111-8111-111111111111",
+      revision: "22222222-2222-4222-8222-222222222222",
+      name: "resource://facts",
+    };
+    const { PluginError } = await import("./plugin-types.js");
+    const plugins = {
+      catalog: vi.fn(async () => ({ tools: [], truncated: false })),
+      call: vi.fn(),
+      contentCatalog: vi.fn(async () => ({
+        items: [
+          { ...input, kind: "resource" as const, pluginName: "Facts", description: "Scoped facts" },
+        ],
+        truncated: false,
+      })),
+      readContent: vi.fn(async () => {
+        throw new PluginError("forbidden");
+      }),
+    };
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        calls("read_plugin_resource", JSON.stringify(input)),
+        answer("Must not complete"),
+      ],
+    });
+    await expect(executeAgentRun({ ...f, plugins, model })).rejects.toThrow();
+    expect(model.doGenerateCalls).toHaveLength(1);
+  });
+  it("publishes actual text deltas before completion and never reasoning", async () => {
+    const f = fixture();
+    const output = vi.fn();
+    const model = new MockLanguageModelV4({
+      doStream: {
+        stream: new ReadableStream({
+          start(c) {
+            c.enqueue({ type: "stream-start", warnings: [] });
+            c.enqueue({ type: "reasoning-start", id: "private" });
+            c.enqueue({ type: "reasoning-delta", id: "private", delta: "PRIVATE REASONING" });
+            c.enqueue({ type: "reasoning-end", id: "private" });
+            c.enqueue({ type: "text-start", id: "answer" });
+            c.enqueue({ type: "text-delta", id: "answer", delta: "Hello" });
+            c.enqueue({ type: "text-delta", id: "answer", delta: " world" });
+            c.enqueue({ type: "text-end", id: "answer" });
+            c.enqueue({ type: "finish", finishReason: { unified: "stop", raw: "stop" }, usage });
+            c.close();
+          },
+        }),
+      },
+    });
+    expect((await executeAgentRun({ ...f, model, publishOutput: output })).text).toBe(
+      "Hello world",
+    );
+    expect(output.mock.calls).toContainEqual(["Hello", false]);
+    expect(output.mock.calls).toContainEqual(["Hello world", false]);
+    expect(JSON.stringify(output.mock.calls)).not.toContain("PRIVATE REASONING");
+  });
+  it("does not log private provider errors through the SDK default streaming observer", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const f = fixture();
+    const model = new MockLanguageModelV4({
+      doStream: {
+        stream: new ReadableStream({
+          start(c) {
+            c.enqueue({ type: "stream-start", warnings: [] });
+            c.enqueue({ type: "error", error: new Error("PRIVATE PROVIDER BODY") });
+            c.close();
+          },
+        }),
+      },
+    });
+    try {
+      await expect(executeAgentRun({ ...f, model, publishOutput: vi.fn() })).rejects.toThrow();
+      expect(logged).not.toHaveBeenCalled();
+    } finally {
+      logged.mockRestore();
+    }
+  });
+  it("injects exact task corrections at the next step and retains them on later steps", async () => {
+    const f = fixture();
+    let correction = false;
+    f.store.steering = vi.fn(async () =>
+      correction
+        ? [
+            {
+              id: "steer",
+              runId: run.id,
+              channelId: run.channelId,
+              botId: run.botId,
+              instruction: "Use Chinese",
+              createdAt: run.createdAt,
+            },
+          ]
+        : [],
+    );
+    f.store.context = vi.fn(async () => {
+      correction = true;
+      return [];
+    });
+    const model = new MockLanguageModelV4({
+      doGenerate: [calls(), calls("read_task_status"), answer("中文答复")],
+    });
+    const result = await executeAgentRun({ ...f, model });
+    expect(result.appliedSteeringIds).toEqual(["steer"]);
+    expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).not.toContain("Use Chinese");
+    expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain("Use Chinese");
+    expect(JSON.stringify(model.doGenerateCalls[2]?.prompt)).toContain("Use Chinese");
+  });
+  it("recomputes before committing when an Owner correction wins the final transaction race", async () => {
+    const f = fixture();
+    vi.mocked(f.store.queued).mockResolvedValueOnce([run]).mockResolvedValue([]);
+    const { PendingSteeringError } = await import("./agent-steering.js");
+    vi.mocked(f.store.complete)
+      .mockRejectedValueOnce(new PendingSteeringError())
+      .mockResolvedValue({
+        run: { ...run, status: "completed" },
+        message: {
+          id: "reply",
+          channelId: run.channelId,
+          authorType: "bot",
+          authorId: run.botId,
+          content: "Corrected",
+          createdAt: run.createdAt,
+        },
+      });
+    const settings = {
+      agentSettings: async () => ({
+        provider: "openai",
+        model: "fixture",
+        apiKey: "fixture",
+        revision: "1",
+        agentEnabled: true,
+        agentEnabledAt: run.createdAt,
+      }),
+      onChange: () => () => {},
+    } as unknown as ModelSettingsService;
+    const model = new MockLanguageModelV4({ doGenerate: [answer("Draft"), answer("Corrected")] });
+    const runner = new NativeAgentRunner(
+      f.store,
+      settings,
+      new ChannelRealtimeHub(),
+      vi.fn(),
+      () => model,
+    );
+    try {
+      runner.start();
+      await vi.waitFor(() => expect(f.store.complete).toHaveBeenCalledTimes(2));
+      expect(f.store.fail).not.toHaveBeenCalled();
+      expect(JSON.stringify(model.doGenerateCalls[1]?.prompt)).toContain("Draft");
     } finally {
       await runner.stop();
     }

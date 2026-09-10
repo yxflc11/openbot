@@ -1,11 +1,12 @@
 import { type RefObject, useEffect, useRef, useState } from "react";
+import { formatAttachmentSize } from "../channel-attachment-client";
 import {
-  type ComposerAttachment,
   COMPOSER_ATTACHMENT_ACCEPT,
+  type ComposerAttachment,
   uploadComposerAttachment,
   validateComposerAttachmentBatch,
 } from "../composer-context";
-import { formatAttachmentSize } from "../channel-attachment-client";
+import { AttachmentActions } from "./AttachmentActions";
 import { AttachmentPreview } from "./AttachmentPreview";
 import "./MessageAttachments.css";
 
@@ -204,6 +205,18 @@ export function ComposerAttachmentPicker(props: ComposerAttachmentPickerProps) {
                 · {attachment.id ? "已上传" : "文本附件"}
               </small>
             </span>
+            {attachment.id ? (
+              <AttachmentActions
+                attachment={attachment}
+                onChange={(next) =>
+                  latest.current.onChange(
+                    latest.current
+                      .getAttachments()
+                      .map((item) => (item.id === next.id ? next : item)),
+                  )
+                }
+              />
+            ) : null}
             <button
               type="button"
               className="attachment-remove-button"

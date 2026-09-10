@@ -653,3 +653,25 @@ export const knowledgeProposals = pgTable(
     ),
   ],
 );
+
+export const messageReactions = pgTable(
+  "message_reactions",
+  {
+    messageId: text("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.emoji] }),
+    index("message_reactions_channel_idx").on(table.channelId, table.messageId),
+    check(
+      "message_reactions_emoji_valid",
+      sql`${table.emoji} IN ('👍', '❤️', '😂', '🎉', '🤔', '👀')`,
+    ),
+  ],
+);

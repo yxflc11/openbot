@@ -7,6 +7,8 @@ import {
   boundedJson,
   type InstalledPlugin,
   PluginError,
+  pluginPromptSchema,
+  pluginResourceSchema,
   pluginToolGrantSchema,
   pluginToolSchema,
 } from "./plugin-types.js";
@@ -42,12 +44,16 @@ const stateSchema = z
             createdAt: z.string(),
             token: z.string().max(2048).optional(),
             tools: z.array(pluginToolSchema).max(32),
+            resources: z.array(pluginResourceSchema).max(32).optional(),
+            prompts: z.array(pluginPromptSchema).max(32).optional(),
             grants: z
               .array(
                 z
                   .object({
                     botId: z.string().max(128),
                     tools: z.array(pluginToolGrantSchema).max(32),
+                    resources: z.array(z.string().max(2048)).max(32).optional(),
+                    prompts: z.array(z.string().max(64)).max(32).optional(),
                   })
                   .strict(),
               )

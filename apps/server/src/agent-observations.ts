@@ -1,5 +1,5 @@
-import { modelProviderIds } from "@openbot/domain";
 import type { RunModelUsage } from "@openbot/domain";
+import { modelProviderIds } from "@openbot/domain";
 import type { LanguageModelUsage } from "ai";
 import { z } from "zod";
 
@@ -11,7 +11,7 @@ export const runModelUsageSchema = z
       .min(1)
       .max(128)
       .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*(?:\/[A-Za-z0-9][A-Za-z0-9._:-]*)?$/u),
-    steps: z.number().int().min(1).max(5),
+    steps: z.number().int().min(1).max(8),
     inputTokens: z.number().int().min(0).max(1_000_000_000).nullable(),
     outputTokens: z.number().int().min(0).max(1_000_000_000).nullable(),
   })
@@ -43,12 +43,18 @@ export function addReportedUsage(
 }
 
 export const nativeFailureMessages = {
-  plugin_rejected: "The Owner rejected the plugin call. No approved execution was dispatched for that call.",
-  plugin_approval_expired: "The plugin call approval expired before execution. Submit a new task if it is still needed.",
-  plugin_changed: "Plugin tools or Bot grants changed. Review the installed plugin and submit a new task.",
-  plugin_unavailable: "The plugin call could not be confirmed. Check the plugin service; OpenBot did not automatically retry it.",
-  attachment_model_unsupported: "Image/PDF input is not enabled for this provider or model. Choose a compatible OpenAI or Anthropic model, or attach a text version.",
-  attachment_unavailable: "A task attachment is missing, outside this channel, damaged or exceeds its limits. Attach the file again before submitting a new task.",
+  plugin_rejected:
+    "The Owner rejected the plugin call. No approved execution was dispatched for that call.",
+  plugin_approval_expired:
+    "The plugin call approval expired before execution. Submit a new task if it is still needed.",
+  plugin_changed:
+    "Plugin tools or Bot grants changed. Review the installed plugin and submit a new task.",
+  plugin_unavailable:
+    "The plugin call could not be confirmed. Check the plugin service; OpenBot did not automatically retry it.",
+  attachment_model_unsupported:
+    "Image/PDF input is not enabled for this provider or model. Choose a compatible OpenAI or Anthropic model, or attach a text version.",
+  attachment_unavailable:
+    "A task attachment is missing, outside this channel, damaged or exceeds its limits. Attach the file again before submitting a new task.",
   model_credentials:
     "Model credentials were rejected. Verify the provider key in Settings before submitting a new task.",
   model_rate_limit: "The model provider rate limit was reached. Wait before submitting a new task.",

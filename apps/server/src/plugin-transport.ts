@@ -11,7 +11,13 @@ import {
   boundedJson,
   checkPluginSchema,
   PluginError,
+  type PluginPrompt,
+  type PluginResource,
   type PluginTool,
+  pluginPromptResultSchema,
+  pluginPromptSchema,
+  pluginResourceResultSchema,
+  pluginResourceSchema,
   pluginToolSchema,
 } from "./plugin-types.js";
 
@@ -67,7 +73,7 @@ export function pluginFetch(
   const endpointUrl = normalizePluginEndpoint(endpoint, localEndpoints);
   return async (input, init) => {
     if (String(input) !== endpointUrl.href) throw new PluginError("forbidden");
-    // Server push streams are unnecessary for this bounded tools-only client.
+    // Server push streams are unnecessary for this bounded request/response client.
     if (init?.method === "GET") return new Response(null, { status: 405 });
     if (
       init?.method !== "POST" ||
@@ -176,6 +182,10 @@ export function pluginFetch(
 
 export interface PluginConnection {
   tools(signal: AbortSignal): Promise<PluginTool[]>;
+  resources?(signal: AbortSignal): Promise<PluginResource[]>;
+  prompts?(signal: AbortSignal): Promise<PluginPrompt[]>;
+  readResource?(uri: string, signal: AbortSignal): Promise<unknown>;
+  getPrompt?(name: string, args: Record<string, string>, signal: AbortSignal): Promise<unknown>;
   call(name: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
   close(): Promise<void>;
 }
@@ -229,6 +239,7 @@ export function mcpPluginConnector(localEndpoints: readonly string[] = []): Plug
     }
     return {
       async tools(callSignal) {
+        if (!client.getServerCapabilities()?.tools) return [];
         const result = await client.listTools({}, { signal: callSignal, timeout: 30_000 });
         if (result.nextCursor || result.tools.length > 32)
           throw new PluginError("invalid", "插件工具目录过大，当前最多支持完整的32项工具。");
@@ -238,11 +249,54 @@ export function mcpPluginConnector(localEndpoints: readonly string[] = []): Plug
             description: tool.description ?? "",
             inputSchema: tool.inputSchema,
             ...(tool.annotations ? { annotations: tool.annotations } : {}),
+            ...(tool._meta?.ui &&
+            typeof tool._meta.ui === "object" &&
+            "resourceUri" in tool._meta.ui
+              ? { resourceUri: tool._meta.ui.resourceUri }
+              : {}),
           });
           checkPluginSchema(checked.inputSchema);
           new AjvJsonSchemaValidator().getValidator(checked.inputSchema);
           return checked;
         });
+      },
+      async resources(callSignal) {
+        if (!client.getServerCapabilities()?.resources) return [];
+        const result = await client.listResources({}, { signal: callSignal, timeout: 30_000 });
+        if (result.nextCursor || result.resources.length > 32) throw new PluginError("invalid");
+        return result.resources.map((item) =>
+          pluginResourceSchema.parse({
+            uri: item.uri,
+            name: item.name,
+            description: item.description ?? "",
+            ...(item.mimeType ? { mimeType: item.mimeType } : {}),
+          }),
+        );
+      },
+      async prompts(callSignal) {
+        if (!client.getServerCapabilities()?.prompts) return [];
+        const result = await client.listPrompts({}, { signal: callSignal, timeout: 30_000 });
+        if (result.nextCursor || result.prompts.length > 32) throw new PluginError("invalid");
+        return result.prompts.map((item) =>
+          pluginPromptSchema.parse({
+            name: item.name,
+            description: item.description ?? "",
+            arguments: item.arguments ?? [],
+          }),
+        );
+      },
+      async readResource(uri, callSignal) {
+        const result = await client.readResource({ uri }, { signal: callSignal, timeout: 30_000 });
+        boundedJson(result, 160 * 1024);
+        return pluginResourceResultSchema.parse(result);
+      },
+      async getPrompt(name, args, callSignal) {
+        const result = await client.getPrompt(
+          { name, arguments: args },
+          { signal: callSignal, timeout: 30_000 },
+        );
+        boundedJson(result, 12 * 1024);
+        return pluginPromptResultSchema.parse(result);
       },
       async call(name, args, callSignal) {
         const result = await client.callTool({ name, arguments: args }, undefined, {

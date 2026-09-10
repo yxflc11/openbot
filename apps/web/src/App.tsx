@@ -1,3 +1,5 @@
+import type { Channel } from "@openbot/domain";
+import { removeChannelMember } from "./api";
 import type {
   Approval,
   ApprovalDecision,
@@ -579,6 +581,16 @@ export function AuthenticatedWorkspace({
     };
   }, [conversationSession]);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
+  const projectChannel = useCallback((channel: Channel) => {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            channels: current.channels.map((item) => (item.id === channel.id ? channel : item)),
+          }
+        : current,
+    );
+  }, []);
   const [dialog, setDialog] = useState<Dialog>();
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
   const [error, setError] = useState<string>();
@@ -858,6 +870,14 @@ export function AuthenticatedWorkspace({
     showNotice("Bot 已加入频道。");
   }
 
+  async function handleRemoveBot(botId: string) {
+    if (!selectedChannelId) return;
+    const result = await removeChannelMember(selectedChannelId, botId);
+    for (const run of result.cancelledRuns) projectRun(run);
+    await refresh();
+    showNotice("Bot 已移出频道，相关活动任务已停止，历史记录已保留。");
+  }
+
   async function handleDecideApproval(approvalId: string, decision: ApprovalDecision) {
     const resolution = await decideApproval(approvalId, decision);
     setWorkspace((current) =>
@@ -1001,6 +1021,7 @@ export function AuthenticatedWorkspace({
               channel={selectedChannel}
               bots={workspace.bots}
               onJoin={handleJoinBot}
+              onRemove={handleRemoveBot}
               onOpenBot={openEmployee}
               showTitle
             />
@@ -1086,6 +1107,16 @@ export function AuthenticatedWorkspace({
         <AutomationsScreen bots={workspace.bots} channels={workspace.channels} />
       ) : destination === "skills" ? (
         <SkillLibraryScreen
+          channels={workspace.channels}
+          onInsertMaterial={(channelId, botId, text) => {
+            const conversation = conversationSession.channel(channelId, botId);
+            const draft = conversation.getSnapshot().draft;
+            const next = [draft.text, text].filter(Boolean).join("\n\n");
+            if (next.length > 8000)
+              throw new Error("资料超过草稿剩余容量，请先缩短草稿或复制需要的片段。");
+            conversation.edit({ text: next, targetBotId: botId, targetBotIds: [botId] });
+            selectChannel(channelId);
+          }}
           onBack={navigation.back}
           onCreateBot={() => setDialog("bot")}
           onImportBot={() => setEmployeeImportOpen(true)}
@@ -1113,7 +1144,9 @@ export function AuthenticatedWorkspace({
           bots={workspace.bots}
           artifacts={workspace.artifacts}
           progress={workspace.progress}
+          onChannel={projectChannel}
           onJoin={handleJoinBot}
+          onRemove={handleRemoveBot}
           onInspectRun={setSelectedRunId}
           onOpenBot={openEmployee}
           onFrame={projectFrame}

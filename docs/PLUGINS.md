@@ -1,10 +1,9 @@
-# Third-party MCP tool plugins
+# Third-party MCP plugins
 
 [English](PLUGINS.md) · [简体中文](PLUGINS.zh-CN.md)
 
 OpenBot connects Bots to external tools through MCP. Plugins can query services, transform data,
-or perform approved operations in their own backends. SKILL.md supplies instructions; MCP supplies
-callable tools. Installing a plugin registers a Server connection, without downloading code into
+or perform approved operations in their own backends. MCP also supplies resources, reusable prompts and isolated HTML views; SKILL.md supplies instructions. Installing a plugin registers a Server connection, without downloading code into
 Desktop or launching a subprocess.
 
 ## Owner workflow
@@ -26,8 +25,7 @@ Desktop or launching a subprocess.
    Already transmitted operations may have taken effect. Uncertain calls are never retried.
 
 The Run determines Bot/channel identity; model parameters cannot choose another identity. Changed
-tool declarations invalidate old calls. To change an endpoint, token or catalog, remove and
-preview/install the connection again; old grants are not retained. Removal disconnects OpenBot;
+declarations invalidate old calls. For changed catalogs, preview and apply an update: installation is disabled and every grant is cleared. To change an endpoint or token, remove and preview/install the connection again. Removal disconnects OpenBot;
 it does not erase third-party data.
 
 An external service receives tool arguments, not an automatic workspace dump or other providers'
@@ -72,7 +70,7 @@ See the [research](research/third-party-mcp-plugins.md).
 | --- | --- |
 | Transport | One exact endpoint; fresh SDK client per preview/call, no redirects, cookies, proxy, reconnection or replay. Return completed JSON or bounded POST SSE responses; permanent GET push streams are disabled. |
 | Authentication | Optional dedicated bearer token encrypted on the Server. OAuth and dynamic credential discovery are not implemented. |
-| Discovery | One complete page of 1–32 unique tools, catalog ≤64 KiB, no pagination. |
+| Discovery | One complete page per capability, up to 32 tools, 32 resources and 32 prompts; at least one declaration, catalog ≤64 KiB. No pagination or URI templates. |
 | Names/description | Names: 1–64 ASCII letters, digits, dot, underscore or hyphen. Descriptions ≤2,000 characters; Agent sees bounded excerpts. |
 | Input schema | Object-root JSON Schema ≤12 KiB and bounded depth. Simple objects, arrays, scalars, bounds, required and enums work. References, `$id`, regex patterns, formats and header-mirroring extensions are rejected. |
 | Arguments/results | Arguments ≤8 KiB and validated. Results: text blocks plus optional structured JSON ≤12 KiB; no images/audio/resources/renderer code. `isError` fails the call. |
@@ -80,8 +78,7 @@ See the [research](research/third-party-mcp-plugins.md).
 | Capacity | 16 installations; 32 tools and 128 Bot grant entries per plugin; 16 concurrent calls. Agent catalog ≤16 tools and 12 KiB, with truncation flagged. |
 | Authority | `call_plugin` shares the native Agent tool budget; no additional execution, recursion or background authority. |
 
-This tools slice does not expose sampling, elicitation, roots, stdio, task extensions,
-resources/prompts, plugin HTML/JavaScript or package/marketplace installation. Separate read and
+This adapter does not expose sampling, elicitation, roots, stdio, task extensions, resource subscriptions, binary resource content, or automatic package execution. Separate read and
 write tools, validate arguments and authorization in your backend, and describe actual effects.
 Annotations assist human review but do not prove behavior. Put dedicated service authentication
 in connection configuration rather than asking the model for account passwords.
@@ -94,10 +91,14 @@ Tokens are input-only and never returned in plugin lists or audit records.
 | Request | Body / response |
 | --- | --- |
 | `GET /plugins` | `{ plugins, pendingCalls }` |
-| `POST /plugins/preview` | `{ name, endpoint, token? }` → manifest `{ name, endpoint, tools, digest }` |
+| `POST /plugins/preview` | `{ name, endpoint, token? }` → manifest `{ name, endpoint, tools, resources?, prompts?, digest }` |
 | `POST /plugins` | `{ name, endpoint, token?, reviewedDigest }` → `201 { plugin }` |
 | `PATCH /plugins/:id` | `{ revision, enabled }` → `{ plugin }` |
-| `PUT /plugins/:id/grants/:botId` | `{ revision, tools: [{ name, mode: "read" | "confirm" }] }` → `{ plugin }`; empty tools revokes |
+| `PUT /plugins/:id/grants/:botId` | `{ revision, tools: [{ name, mode: "read" | "confirm" }], resources?: [uri], prompts?: [name] }` → `{ plugin }`; all empty revokes |
+| `POST /plugins/:id/update/preview` | `{ revision }` → `{ currentDigest, revision, changed, manifest }`; no mutation |
+| `POST /plugins/:id/update` | `{ revision, reviewedDigest }` → `{ plugin }`; disabled with all grants removed |
+| `GET /channels/:channelId/bots/:botId/plugin-content` | Existing channel membership and Bot grants → `{ items, truncated }`; no prior Run required |
+| `POST /channels/:channelId/bots/:botId/plugin-content` | `{ pluginId, revision, kind: "resource" or "prompt", name, arguments? }` → untrusted material/view content |
 | `DELETE /plugins/:id` | `{ revision }` → `{ deleted: true }` |
 | `POST /plugin-calls/:id/decision` | `{ decision: "approve" | "reject" }` → `{ decided: true }` |
 
@@ -118,3 +119,20 @@ exact review, install, Bot grant, calculation, approval-before-write, one-time c
 disable. Negative tests cover wrong Bot, stale revisions/catalogs, bad arguments, timeout, cancel,
 revocation, encrypted persistence and neighboring route body limits. This is local protocol
 integration evidence, not validation of every third-party service or model account.
+
+
+## Resources, prompts and isolated views
+
+Use standard `resources/list` / `resources/read` and `prompts/list` / `prompts/get`. Grant exact resource URIs and prompt names to each Bot; a tool grant does not implicitly grant its associated view. A resource URI is passed only to its own MCP server and is never opened as an OpenBot local file or arbitrary URL. Reads recheck the full declaration digest, Bot/channel membership and current grant before dispatch and before returning content. Cancellation, disable and grant changes discard late results.
+
+Plain resources and prompt results are limited to 12 KiB. Resources must return text for the exact requested URI. Prompts support up to 16 named string arguments and 16 user/assistant text messages; missing required or unknown arguments are rejected before transmission. Prompt templates are explicitly selected by the Owner, remain untrusted material and must not become system instructions.
+
+HTML views use `ui://` resources with MIME `text/html;profile=mcp-app`, up to 160 KiB for the complete envelope and 128 KiB per HTML string. Tools can declare `_meta.ui.resourceUri`; that association is included in review digests. The server returns untrusted HTML as data, never executes it. The host must enforce the MCP Apps lifecycle and isolate it from the application origin. Requested CSP/network/device metadata is not permission: the initial host profile denies external network and device access. See the host's supported capability documentation before relying on optional Apps features.
+
+The example also exposes `notes://current`, user-selected `review_note(note)`, and `ui://notebook/view.html`. The resource and prompt integration tests use a real local MCP SDK HTTP server. This proves the transport and authority path, not compatibility with every third-party app.
+
+## Updating a plugin
+
+An update refreshes declarations from the existing exact endpoint; it does not download a program or automatically update the external server. Preview shows the replacement manifest and whether its digest changed. Apply requires that exact fresh digest and the installed revision. Success clears all Bot grants and disables the connection, including when the declared version is unchanged; review and regrant capabilities before enabling it. Concurrent changes or catalog changes between preview and apply return `409`, preserving the prior installation. Credentials are retained but never returned.
+
+The current view host uses official MCP Apps 1.7.5 AppBridge, two isolated iframe layers, local interaction and individually granted resource reads. It does not advertise tool calls, message sending, model-context mutation or external network/device access.

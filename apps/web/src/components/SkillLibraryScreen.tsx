@@ -1,4 +1,4 @@
-import type { Bot, EmployeeSkill, EmployeeSkillState } from "@openbot/domain";
+import type { Bot, Channel, EmployeeSkill, EmployeeSkillState } from "@openbot/domain";
 import { type ReactNode, useEffect, useState } from "react";
 import { getEmployeeProfile } from "../api";
 import { EmployeeSkillImport } from "./EmployeeSkillImport";
@@ -43,14 +43,24 @@ export function SkillLibraryScreen({
   onBack,
   onCreateBot,
   onImportBot,
+  channels = [],
+  onInsertMaterial,
 }: {
   bots: Bot[];
+  channels?: Channel[];
+  onInsertMaterial?(channelId: string, botId: string, text: string): void;
   onOpenBot(botId: string): void;
   headerAction?: ReactNode;
   onBack?(): void;
   onCreateBot?(): void;
   onImportBot?(): void;
 }) {
+  const [contentChannelId, setContentChannelId] = useState(channels[0]?.id ?? "");
+  const [contentBotId, setContentBotId] = useState("");
+  const contentChannel = channels.find((channel) => channel.id === contentChannelId);
+  const scopeBotId = contentChannel?.botIds.includes(contentBotId)
+    ? contentBotId
+    : contentChannel?.botIds[0];
   const [tab, setTab] = useState<"skills" | "bots">("skills");
   const [adding, setAdding] = useState(false);
   const [importBotId, setImportBotId] = useState(bots[0]?.id ?? "");
@@ -161,7 +171,51 @@ export function SkillLibraryScreen({
             )}
           </div>
         </section>
-        <PluginManagerPanel bots={bots} />
+        {channels.length > 0 && (
+          <div className="plugin-content-scope">
+            <label>
+              使用插件的频道{" "}
+              <select
+                value={contentChannelId}
+                onChange={(event) => setContentChannelId(event.target.value)}
+              >
+                {channels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>
+                    {channel.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Bot{" "}
+              <select
+                value={scopeBotId ?? ""}
+                onChange={(event) => setContentBotId(event.target.value)}
+              >
+                {bots
+                  .filter((bot) => contentChannel?.botIds.includes(bot.id))
+                  .map((bot) => (
+                    <option key={bot.id} value={bot.id}>
+                      {bot.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+        )}
+        <PluginManagerPanel
+          bots={bots}
+          scope={
+            scopeBotId && contentChannel
+              ? { channelId: contentChannel.id, botId: scopeBotId }
+              : undefined
+          }
+          onInsertMaterial={
+            scopeBotId && contentChannel && onInsertMaterial
+              ? (text) => onInsertMaterial(contentChannel.id, scopeBotId, text)
+              : undefined
+          }
+        />
         <div
           className="plugin-tabs"
           role="tablist"

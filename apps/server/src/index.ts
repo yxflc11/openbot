@@ -1,3 +1,8 @@
+import { AttachmentProcessingService } from "./attachment-processing.js";
+import { PostgresChannelInteractions } from "./channel-interactions-store.js";
+import { PluginError } from "./plugin-types.js";
+import { messages, runs } from "@openbot/db";
+import { and, eq, ilike } from "drizzle-orm";
 import { FilePluginStore } from "./plugin-store.js";
 import { PluginService } from "./plugin-service.js";
 import { join } from "node:path";
@@ -83,6 +88,11 @@ const nativeStore = new PostgresAgentStore(database.db);
 const plugins = new PluginService({
   store: new FilePluginStore(join(env.OPENBOT_OBJECT_STORE_PATH, "plugins", "state.json")),
   assertScope: (run) => nativeStore.assertScope(run),
+  assertOwnerContentScope: async ({ channelId, botId }) => {
+    const channel = (await store.listChannels()).find((item) => item.id === channelId);
+    if (!channel?.botIds.includes(botId))
+      throw new PluginError("forbidden", "Bot is not a member of this channel.");
+  },
   botExists: async (botId) => (await store.listBots()).some((bot) => bot.id === botId),
   localEndpoints: env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS,
 });
@@ -98,6 +108,7 @@ const nativeAgent = modelSettings
         ),
       undefined,
       {
+        streamOutput: true,
         artifacts: artifactStorage,
         attachments,
         plugins,
@@ -139,7 +150,44 @@ const automationScheduler = new AutomationScheduler(
 );
 const app = createApp({
   attachments,
+  attachmentProcessing: new AttachmentProcessingService({
+    storage: attachments,
+    ...(modelSettings ? { settings: () => modelSettings.agentSettings() } : {}),
+  }),
+  attachmentReferenced: async (channelId, id) => {
+    // Read the complete persisted corpus, not the bounded UI history projection.
+    const [messageRows, runRows] = await Promise.all([
+      database.db
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.channelId, channelId), ilike(messages.content, `%${id}%`)))
+        .limit(1),
+      database.db
+        .select({ id: runs.id })
+        .from(runs)
+        .where(and(eq(runs.channelId, channelId), ilike(runs.instruction, `%${id}%`)))
+        .limit(1),
+    ]);
+    return messageRows.length > 0 || runRows.length > 0;
+  },
+  channelInteractions: new PostgresChannelInteractions(database.db),
+  onChannelMemberRemoved: ({ cancelledRuns }) => {
+    for (const run of cancelledRuns) {
+      nativeAgent?.cancel(run.id);
+      if (run.nodeId) nodeRegistry.cancelRun(run.nodeId, run.id, "Channel membership removed.");
+      realtime.publish({ type: "run.updated", channelId: run.channelId, run });
+      workspaceRealtime.publish({ type: "run.updated", run });
+    }
+  },
   plugins,
+  steerNativeRun: (runId, instruction) => nativeStore.steer(runId, instruction),
+  nativeRunOutput: async (runId) => {
+    const run = await nativeStore.lookup(runId);
+    if (!run || run.executionProfile !== "none") return undefined;
+    if (!["queued", "running"].includes(run.status)) return undefined;
+    await nativeStore.assertScope(run);
+    return nativeAgent?.output(runId);
+  },
   knowledge: new PostgresKnowledgeStore(database.db),
   cancelNativeRun: async (runId) => {
     const { run, descendants } = await nativeStore.cancelWithDescendants(runId);
@@ -253,3 +301,28 @@ function requestShutdown(signal: string): void {
 
 process.once("SIGINT", () => requestShutdown("SIGINT"));
 process.once("SIGTERM", () => requestShutdown("SIGTERM"));
+
+// Windows utility processes cannot receive a graceful POSIX signal. Only the owning
+// process can use this fixed IPC operation; no network endpoint or arbitrary action exists.
+const parentPort = (
+  process as NodeJS.Process & {
+    parentPort?: { on(event: "message", listener: (event: { data: unknown }) => void): void };
+  }
+).parentPort;
+const parentShutdown = (message: unknown) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    Object.keys(message).length === 1 &&
+    (message as { type?: unknown }).type === "openbot-server-shutdown"
+  ) {
+    // A subscribed Node IPC channel holds the event loop open. Drain storage and
+    // children first, then terminate the utility process to acknowledge completion.
+    void shutdown("parent").then(
+      () => process.exit(0),
+      () => process.exit(1),
+    );
+  }
+};
+parentPort?.on("message", (event) => parentShutdown(event.data));
+process.on("message", parentShutdown);

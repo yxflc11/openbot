@@ -17,7 +17,7 @@ export function DesktopSetupScreen({
   onSave(plan: DesktopSetupPlanInput): Promise<SaveDesktopSetupPlanResult>;
   onCancel?: (() => void) | undefined;
 }) {
-  const canHost = platform === "darwin";
+  const canHost = platform === "darwin" || platform === "win32";
   const [mode, setMode] = useState<"host" | "client">(
     canHost && (state.status !== "configured" || state.plan.mode === "host") ? "host" : "client",
   );
@@ -114,7 +114,7 @@ export function DesktopSetupScreen({
         <p className="login-note">
           {canHost
             ? "模型和工作电脑可以随时在设置中调整。"
-            : "本版本在这台电脑上提供远程客户端；本地服务安装目前仅适用于 macOS。"}
+            : "本版本在这台电脑上提供远程客户端；本地服务安装适用于 Windows 和 macOS。"}
         </p>
       </section>
     </main>

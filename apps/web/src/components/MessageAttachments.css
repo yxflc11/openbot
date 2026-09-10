@@ -131,3 +131,38 @@
   max-height: 74vh;
   object-fit: contain;
 }
+
+.attachment-actions {
+  font-size: 12px;
+  min-width: 0;
+}
+.attachment-actions summary {
+  cursor: pointer;
+  color: #666;
+}
+.attachment-actions-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  max-width: 320px;
+}
+.attachment-actions-body label {
+  display: grid;
+  gap: 4px;
+}
+.attachment-actions-body input {
+  min-width: 0;
+  width: 100%;
+}
+.attachment-actions-body button {
+  font-size: 12px;
+  min-height: 28px;
+}
+.message-attachment-card:has(.attachment-actions[open]),
+.composer-attachment-card:has(.attachment-actions[open]) {
+  flex-wrap: wrap;
+}
+.attachment-actions[open] {
+  flex-basis: 100%;
+}

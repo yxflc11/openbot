@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import {
   listPlugins,
   type Plugin,
+  type PluginContentScope,
   type PluginGrant,
   type PluginManifest,
   type PluginTool,
@@ -10,21 +11,33 @@ import {
   pluginRequest,
 } from "../plugin-api";
 import "./PluginManagerPanel.css";
+import {
+  PluginCatalogLinks,
+  PluginContentDeclarations,
+  PluginContentPanel,
+  PluginUpdatePanel,
+} from "./PluginPlatformPanels";
 
-export function PluginManagerPanel({ bots }: { bots: Bot[] }) {
+export interface PluginManagerProps {
+  bots: Bot[];
+  scope?: PluginContentScope | undefined;
+  onInsertMaterial?: ((text: string) => void) | undefined;
+}
+
+export function PluginManagerPanel(props: PluginManagerProps) {
   const [open, setOpen] = useState(false);
   return (
     <details className="plugin-manager" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
-        <strong>工具插件</strong>
-        <span>连接 MCP 服务，为 Bot 分配工具</span>
+        <strong>插件</strong>
+        <span>连接 MCP 服务，为 Bot 分配工具、资源与界面</span>
       </summary>
-      {open ? <PluginManager bots={bots} /> : null}
+      {open ? <PluginManager {...props} /> : null}
     </details>
   );
 }
 
-export function PluginManager({ bots }: { bots: Bot[] }) {
+export function PluginManager({ bots, scope, onInsertMaterial }: PluginManagerProps) {
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -66,7 +79,7 @@ export function PluginManager({ bots }: { bots: Bot[] }) {
   return (
     <div className="plugin-manager-body">
       <div className="plugin-manager-toolbar">
-        <p>工具服务与 SKILL.md 分开管理。安装后先停用，再为指定 Bot 授权。</p>
+        <p>连接工具、资源、提示词和隔离界面。安装后为指定 Bot 分配权限。</p>
         <button type="button" className="secondary-button" onClick={() => setAdding(!adding)}>
           添加工具插件
         </button>
@@ -79,6 +92,7 @@ export function PluginManager({ bots }: { bots: Bot[] }) {
           刷新
         </button>
       </div>
+      <PluginCatalogLinks />
       {adding ? (
         <PluginInstallForm
           onInstalled={() => {
@@ -154,16 +168,23 @@ export function PluginManager({ bots }: { bots: Bot[] }) {
             )}
           </div>
           <PluginToolList tools={plugin.tools} />
+          <PluginContentDeclarations manifest={plugin} />
+          <PluginUpdatePanel
+            key={`update:${plugin.id}:${plugin.revision}`}
+            plugin={plugin}
+            onApplied={() => setAttempt((value) => value + 1)}
+          />
+          <PluginContentPanel plugin={plugin} scope={scope} onInsertMaterial={onInsertMaterial} />
           <PluginGrantEditor
             key={`${plugin.id}:${plugin.revision}`}
             plugin={plugin}
             bots={bots}
             disabled={busy || loading}
-            onSave={(botId, tools) =>
+            onSave={(botId, tools, content) =>
               mutate(
                 `plugins/${encodeURIComponent(plugin.id)}/grants/${encodeURIComponent(botId)}`,
                 "PUT",
-                { revision: plugin.revision, tools },
+                { revision: plugin.revision, tools, ...content },
               )
             }
           />
@@ -291,6 +312,7 @@ export function PluginInstallForm({ onInstalled }: { onInstalled(): void }) {
           </h4>
           <p className="plugin-endpoint">{manifest.endpoint}</p>
           <PluginToolList tools={manifest.tools} />
+          <PluginContentDeclarations manifest={manifest} />
           <label className="plugin-review-check">
             <input
               type="checkbox"
@@ -348,11 +370,21 @@ export function PluginGrantEditor({
   plugin: Plugin;
   bots: Bot[];
   disabled: boolean;
-  onSave(botId: string, tools: PluginGrant[]): Promise<void>;
+  onSave(
+    botId: string,
+    tools: PluginGrant[],
+    content: { resources: string[]; prompts: string[] },
+  ): Promise<void>;
 }) {
   const [botId, setBotId] = useState(bots[0]?.id ?? "");
   const [grants, setGrants] = useState<PluginGrant[]>(
     plugin.grants.find((grant) => grant.botId === botId)?.tools ?? [],
+  );
+  const [resources, setResources] = useState<string[]>(
+    plugin.grants.find((grant) => grant.botId === botId)?.resources ?? [],
+  );
+  const [prompts, setPrompts] = useState<string[]>(
+    plugin.grants.find((grant) => grant.botId === botId)?.prompts ?? [],
   );
   const [saved, setSaved] = useState(false);
   return (
@@ -362,7 +394,7 @@ export function PluginGrantEditor({
       onSubmit={(event) => {
         event.preventDefault();
         if (!botId || disabled) return;
-        void onSave(botId, grants)
+        void onSave(botId, grants, { resources, prompts })
           .then(() => setSaved(true))
           .catch(() => undefined);
       }}
@@ -378,6 +410,8 @@ export function PluginGrantEditor({
             const id = event.target.value;
             setBotId(id);
             setGrants(plugin.grants.find((grant) => grant.botId === id)?.tools ?? []);
+            setResources(plugin.grants.find((grant) => grant.botId === id)?.resources ?? []);
+            setPrompts(plugin.grants.find((grant) => grant.botId === id)?.prompts ?? []);
             setSaved(false);
           }}
         >
@@ -410,6 +444,42 @@ export function PluginGrantEditor({
             <option value="confirm">每次调用前确认</option>
             <option value="read">允许持续只读调用</option>
           </select>
+        </label>
+      ))}
+      {(plugin.resources ?? []).map((resource) => (
+        <label className="plugin-review-check" key={resource.uri}>
+          <input
+            type="checkbox"
+            disabled={disabled || !botId}
+            checked={resources.includes(resource.uri)}
+            onChange={(event) => {
+              setResources((current) =>
+                event.target.checked
+                  ? [...current, resource.uri]
+                  : current.filter((uri) => uri !== resource.uri),
+              );
+              setSaved(false);
+            }}
+          />
+          {resource.mimeType === "text/html;profile=mcp-app" ? "界面" : "资源"}：{resource.name}
+        </label>
+      ))}
+      {(plugin.prompts ?? []).map((prompt) => (
+        <label className="plugin-review-check" key={prompt.name}>
+          <input
+            type="checkbox"
+            disabled={disabled || !botId}
+            checked={prompts.includes(prompt.name)}
+            onChange={(event) => {
+              setPrompts((current) =>
+                event.target.checked
+                  ? [...current, prompt.name]
+                  : current.filter((name) => name !== prompt.name),
+              );
+              setSaved(false);
+            }}
+          />
+          提示词：{prompt.name}
         </label>
       ))}
       <p>

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-const toolName = z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/u);
+export const toolName = z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/u);
 export const pluginEndpointInputSchema = z
   .object({
     name: z.string().trim().min(1).max(80),
@@ -19,12 +19,85 @@ export const installPluginSchema = pluginEndpointInputSchema
     reviewedDigest: z.string().regex(/^[a-f0-9]{64}$/u),
   })
   .strict();
+export const pluginResourceSchema = z
+  .object({
+    uri: z.string().min(1).max(2048),
+    name: z.string().min(1).max(128),
+    description: z.string().max(2000),
+    mimeType: z.string().max(128).optional(),
+  })
+  .strict();
+export const pluginPromptSchema = z
+  .object({
+    name: toolName,
+    description: z.string().max(2000),
+    arguments: z
+      .array(
+        z
+          .object({
+            name: toolName,
+            description: z.string().max(1000).optional(),
+            required: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .max(16),
+  })
+  .strict();
+export const pluginResourceResultSchema = z
+  .object({
+    contents: z
+      .array(
+        z
+          .object({
+            uri: z.string().max(2048),
+            mimeType: z.string().max(128).optional(),
+            text: z.string().max(128 * 1024),
+            _meta: z.record(z.string(), z.unknown()).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(16),
+  })
+  .strict();
+export const pluginPromptResultSchema = z
+  .object({
+    description: z.string().max(2000).optional(),
+    messages: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant"]),
+            content: z.object({ type: z.literal("text"), text: z.string().max(12000) }).strict(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(16),
+  })
+  .strict();
+export type PluginResource = z.infer<typeof pluginResourceSchema>;
+export type PluginPrompt = z.infer<typeof pluginPromptSchema>;
+export const readPluginContentSchema = z
+  .object({
+    pluginId: z.string().uuid(),
+    revision: z.string().uuid(),
+    kind: z.enum(["resource", "prompt"]),
+    name: z.string().min(1).max(2048),
+    arguments: z.record(toolName, z.string().max(4000)).default({}),
+  })
+  .strict();
+export const applyPluginUpdateSchema = z
+  .object({ revision: z.string().uuid(), reviewedDigest: z.string().regex(/^[a-f0-9]{64}$/u) })
+  .strict();
 export const pluginToolSchema = z
   .object({
     name: toolName,
     description: z.string().max(2000),
     inputSchema: z.record(z.string(), z.unknown()),
     annotations: z.record(z.string(), z.unknown()).optional(),
+    resourceUri: z.string().startsWith("ui://").max(2048).optional(),
   })
   .strict();
 export const pluginToolGrantSchema = z
@@ -43,6 +116,8 @@ export const grantPluginSchema = z
   .object({
     revision: z.string().uuid(),
     tools: z.array(pluginToolGrantSchema).max(32),
+    resources: z.array(z.string().min(1).max(2048)).max(32).default([]),
+    prompts: z.array(toolName).max(32).default([]),
   })
   .strict();
 export const removePluginSchema = z.object({ revision: z.string().uuid() }).strict();
@@ -57,6 +132,8 @@ export interface PluginManifest {
   name: string;
   endpoint: string;
   tools: PluginTool[];
+  resources?: PluginResource[] | undefined;
+  prompts?: PluginPrompt[] | undefined;
   digest: string;
 }
 export interface InstalledPlugin extends PluginManifest {
@@ -64,7 +141,12 @@ export interface InstalledPlugin extends PluginManifest {
   revision: string;
   enabled: boolean;
   createdAt: string;
-  grants: { botId: string; tools: PluginToolGrant[] }[];
+  grants: {
+    botId: string;
+    tools: PluginToolGrant[];
+    resources?: string[] | undefined;
+    prompts?: string[] | undefined;
+  }[];
 }
 export interface PendingPluginCall {
   id: string;
@@ -141,15 +223,37 @@ export function pluginManifest(
   name: string,
   endpoint: string,
   tools: PluginTool[],
+  resources: PluginResource[] = [],
+  prompts: PluginPrompt[] = [],
 ): PluginManifest {
   const ordered = [...tools].sort((a, b) => a.name.localeCompare(b.name));
   if (
-    !ordered.length ||
+    !(ordered.length + resources.length + prompts.length) ||
     ordered.length > 32 ||
     new Set(ordered.map((tool) => tool.name)).size !== ordered.length
   )
     throw new PluginError("invalid");
-  const body = { name, endpoint, tools: ordered };
+  if (
+    resources.length > 32 ||
+    prompts.length > 32 ||
+    new Set(resources.map((item) => item.uri)).size !== resources.length ||
+    new Set(prompts.map((item) => item.name)).size !== prompts.length ||
+    prompts.some(
+      (item) => new Set(item.arguments.map((arg) => arg.name)).size !== item.arguments.length,
+    )
+  )
+    throw new PluginError("invalid");
+  const body = {
+    name,
+    endpoint,
+    tools: ordered,
+    ...(resources.length
+      ? { resources: [...resources].sort((a, b) => a.uri.localeCompare(b.uri)) }
+      : {}),
+    ...(prompts.length
+      ? { prompts: [...prompts].sort((a, b) => a.name.localeCompare(b.name)) }
+      : {}),
+  };
   const digest = createHash("sha256")
     .update(boundedJson(canonical(body), 64 * 1024))
     .digest("hex");

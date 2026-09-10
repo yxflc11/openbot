@@ -20,6 +20,7 @@ interface Options {
   fetch: DesktopServerFetcher;
   active(): boolean;
   choosePath(name: string): Promise<string | undefined>;
+  chooseAttachmentPath?(name: string): Promise<string | undefined>;
 }
 
 /** The renderer chooses an artifact identity; only the native dialog can choose a local path. */
@@ -30,6 +31,117 @@ export class DesktopReportSaver {
     if (typeof value !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(value))
       return { status: "unavailable" };
     return this.#save(value) as Promise<ReportSaveResult>;
+  }
+  async saveAttachment(input: unknown): Promise<ReportSaveResult> {
+    const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
+    if (!input || typeof input !== "object" || Array.isArray(input))
+      return { status: "unavailable" };
+    const value = input as Record<string, unknown>;
+    if (
+      Object.keys(value).sort().join() !== "attachmentId,channelId" ||
+      typeof value.channelId !== "string" ||
+      typeof value.attachmentId !== "string" ||
+      !uuid.test(value.channelId) ||
+      !uuid.test(value.attachmentId)
+    )
+      return { status: "unavailable" };
+    if (this.#busy) return { status: "busy" };
+    const connection = this.options.connection();
+    if (connection.status !== "configured" || !this.options.active())
+      return { status: "unavailable" };
+    this.#busy = true;
+    const sameConnection = () => {
+      const current = this.options.connection();
+      return (
+        this.options.active() &&
+        current.status === "configured" &&
+        current.serverUrl === connection.serverUrl
+      );
+    };
+    try {
+      const url = new URL(
+        `/api/v1/channels/${value.channelId}/attachments/${value.attachmentId}`,
+        connection.serverUrl,
+      );
+      const request = {
+        credentials: "include" as const,
+        redirect: "manual" as const,
+        signal: AbortSignal.timeout(30000),
+      };
+      const metadata = await this.options.fetch(url.href, request);
+      if (
+        metadata.status !== 200 ||
+        !metadata.headers.get("content-type")?.startsWith("application/json")
+      )
+        throw new Error("Invalid attachment metadata");
+      const { attachment } = JSON.parse(
+        (await readBoundedAttachment(metadata, 16384)).toString("utf8"),
+      ) as {
+        attachment: {
+          id: string;
+          channelId: string;
+          name: string;
+          sha256: string;
+          sizeBytes: number;
+        };
+      };
+      if (
+        !attachment ||
+        attachment.id !== value.attachmentId ||
+        attachment.channelId !== value.channelId ||
+        !/^[\p{L}\p{N}][\p{L}\p{N} ._()-]{0,159}$/u.test(attachment.name) ||
+        !/^[a-f0-9]{64}$/u.test(attachment.sha256) ||
+        !Number.isSafeInteger(attachment.sizeBytes) ||
+        attachment.sizeBytes < 1 ||
+        attachment.sizeBytes > 10 * 1024 * 1024
+      )
+        throw new Error("Invalid attachment descriptor");
+      const response = await this.options.fetch(`${url.href}/content`, request);
+      if (
+        response.status !== 200 ||
+        response.headers.get("content-type") !== "application/octet-stream"
+      )
+        throw new Error("Invalid attachment content");
+      const bytes = await readBoundedAttachment(response, attachment.sizeBytes);
+      if (
+        bytes.length !== attachment.sizeBytes ||
+        createHash("sha256").update(bytes).digest("hex") !== attachment.sha256
+      )
+        throw new Error("Attachment integrity check failed");
+      if (!sameConnection()) return { status: "unavailable" };
+      const path = await (this.options.chooseAttachmentPath ?? this.options.choosePath)(
+        attachment.name,
+      );
+      if (path === undefined) return { status: "cancelled" };
+      if (
+        !isAbsolute(path) ||
+        extname(path) !== extname(attachment.name) ||
+        !sameConnection() ||
+        !(await isDesktopSessionAuthenticated(connection, this.options.fetch)) ||
+        !sameConnection()
+      )
+        return { status: "unavailable" };
+      const handle = await open(path, "wx", 0o600);
+      try {
+        await handle.writeFile(bytes);
+        await handle.sync();
+      } catch (error) {
+        await handle.close();
+        await unlink(path).catch(() => undefined);
+        throw error;
+      }
+      await handle.close();
+      return { status: "saved" };
+    } catch (error) {
+      return {
+        status:
+          error instanceof Error && "code" in error && error.code === "EEXIST"
+            ? "exists"
+            : "unavailable",
+      };
+    } finally {
+      this.#busy = false;
+    }
   }
   async saveEmployeeTemplate(value: unknown): Promise<EmployeeTemplateSaveResult> {
     if (!isEmployeeTemplateSaveInput(value)) return { status: "unavailable" };
@@ -222,6 +334,26 @@ async function readEmployeeTemplate(response: Response, reviewToken: string): Pr
       throw new Error("Employee template did not match its reviewed bytes.");
     JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
     return bytes;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
+async function readBoundedAttachment(response: Response, limit: number): Promise<Buffer> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Missing attachment body");
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const item = await reader.read();
+      if (item.done) break;
+      size += item.value.byteLength;
+      if (size > limit) throw new Error("Attachment response exceeds bound");
+      chunks.push(item.value);
+    }
+    return Buffer.concat(chunks);
   } finally {
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();

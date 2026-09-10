@@ -4,13 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Successful main push CI run with all three installer artifacts
+        description: Successful main push CI run containing the selected installer artifacts
         required: true
         type: string
       version:
         description: Desktop version in that commit, for example 0.1.0-alpha.2
         required: true
         type: string
+      windows_only:
+        description: Prepare only the verified Windows x64 installer
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,6 +38,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_RUN_ID: ${{ inputs.run_id }}
       RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_WINDOWS_ONLY: ${{ inputs.windows_only }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,11 +59,19 @@ jobs:
             const sha = validateDesktopReleaseRun(run, process.env.GH_REPO);
             fs.appendFileSync(process.env.GITHUB_ENV, "RELEASE_SOURCE_COMMIT=" + sha + "\n");
           '
-      - name: Retrieve and verify the complete native installer set
+      - name: Retrieve and verify the selected native installer set
         shell: bash
         run: |
-          gh run download "$RELEASE_RUN_ID" --pattern "openbot-installers-*-$RELEASE_SOURCE_COMMIT" --dir "$RUNNER_TEMP/downloads"
-          node scripts/prepare-desktop-release.mjs "$RUNNER_TEMP/downloads" "$RUNNER_TEMP/release" "$RUNNER_TEMP/source-run.json" "$RELEASE_VERSION" "$GH_REPO"
+          scope=()
+          pattern="openbot-installers-*-$RELEASE_SOURCE_COMMIT"
+          if [[ "$RELEASE_WINDOWS_ONLY" == true ]]; then
+            scope+=(--windows-only)
+            name="openbot-installers-win32-x64-$RELEASE_SOURCE_COMMIT"
+            gh run download "$RELEASE_RUN_ID" --name "$name" --dir "$RUNNER_TEMP/downloads/$name"
+          else
+            gh run download "$RELEASE_RUN_ID" --pattern "$pattern" --dir "$RUNNER_TEMP/downloads"
+          fi
+          node scripts/prepare-desktop-release.mjs "$RUNNER_TEMP/downloads" "$RUNNER_TEMP/release" "$RUNNER_TEMP/source-run.json" "$RELEASE_VERSION" "$GH_REPO" "${scope[@]}"
       - name: Create a reviewable draft prerelease without replacing existing assets
         shell: bash
         run: |
@@ -66,14 +80,23 @@ jobs:
             echo '::error::This Desktop release already exists; refusing to replace it.'
             exit 1
           fi
+          if [[ "$RELEASE_WINDOWS_ONLY" == true ]]; then
+            platforms='Windows x64 only. This release contains no macOS or Linux installer.'
+            install='Windows: open the EXE for a per-user installation.'
+          else
+            platforms='macOS arm64, Windows x64 and Linux x64 installers. macOS and Windows include the local Server; Linux connects to a separately deployed Server.'
+            install='macOS: open the DMG and drag OpenBot into Applications. Windows: open the EXE for a per-user installation. Linux: install the DEB or run the AppImage.'
+          fi
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
           OpenBot Desktop $RELEASE_VERSION — unsigned development installers.
 
           Source: $RELEASE_SOURCE_COMMIT
           Verified CI: https://github.com/$GH_REPO/actions/runs/$RELEASE_RUN_ID
 
-          macOS arm64 includes the local Server and PostgreSQL; Windows x64 and Linux x64 connect to a separately deployed Server. Installing the client does not grant computer-control authority. Signing, notarization and real-device conformance remain pending. No automatic updater is enabled.
+          $platforms
 
-          Install: macOS — open the DMG and drag OpenBot into Applications; Windows — open the EXE for a per-user installation; Linux — install the DEB with your package manager or run the AppImage. See the Desktop installation guide in the repository. Verify downloads against SHA256SUMS; the manifest records the exact source and target.
+          Windows includes the local OpenBot Server and source-built PostgreSQL 17.11. Initial setup, DPAPI credentials, database migrations, retained restart and NSIS installation are checked by the linked Windows CI. Installing Desktop does not grant computer-control authority. Code signing and real-device conformance remain separate; no automatic updater is enabled.
+
+          Install: $install Verify downloads against SHA256SUMS; desktop-manifest.json records the exact source and included targets. See docs/WINDOWS_DESKTOP.md in the source repository.
           EOF
           gh release create "$tag" "$RUNNER_TEMP/release/"* --target "$RELEASE_SOURCE_COMMIT" --title "OpenBot Desktop $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" --draft --prerelease --latest=false

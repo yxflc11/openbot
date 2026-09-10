@@ -1,8 +1,9 @@
 export {
+  browserClickApprovalMatches,
   hasBrowserClickIntent,
   parseBrowserClickInstruction,
-  browserClickApprovalMatches,
 } from "./browser-click.js";
+
 import { z } from "zod";
 import { nodeArchitectureSchema, nodePlatformSchema, protocolVersion } from "./node-metadata.js";
 
@@ -250,6 +251,21 @@ export const runProgressSchema = z
   })
   .strict();
 
+export const nativeRunOutputSchema = z
+  .object({
+    runId: z.string().uuid(),
+    channelId: z.string().uuid(),
+    botId: z.string().uuid(),
+    sequence: z.number().int().nonnegative(),
+    text: z.string().max(8000),
+    reset: z.boolean(),
+  })
+  .strict();
+
+export const steerNativeRunInputSchema = z
+  .object({ instruction: z.string().trim().min(1).max(4000) })
+  .strict();
+
 export const runFrameSchema = z
   .object({
     type: z.literal("run.frame"),
@@ -478,12 +494,16 @@ export const runEventTypeSchema = z.enum([
   "CHANNEL_CREATED",
   "BOT_CREATED",
   "BOT_JOINED_CHANNEL",
+  "BOT_REMOVED_FROM_CHANNEL",
+  "MESSAGE_REACTION_CHANGED",
   "MESSAGE_CREATED",
   "RUN_CREATED",
   "RUN_ASSIGNED",
   "RUN_REQUEUED",
   "RUN_STARTED",
   "RUN_PROGRESS",
+  "RUN_STEERING_SUBMITTED",
+  "RUN_STEERING_APPLIED",
   "RUN_PLAN_UPDATED",
   "NODE_BOUND",
   "APPROVAL_REQUESTED",
@@ -958,4 +978,5 @@ function isBoundedJsonValue(root: unknown): boolean {
   return true;
 }
 
+export * from "./channel-interactions.js";
 export * from "./provider-conformance.js";

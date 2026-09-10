@@ -13,7 +13,11 @@ vi.mock("../plugin-api", () => ({
 
 vi.mock("../api", () => ({
   createMessage: vi.fn(),
+  getRunOutput: vi.fn(async () => null),
+  steerRun: vi.fn(),
   listMessages: vi.fn(),
+  listChannelReactions: vi.fn(async () => []),
+  setMessageReaction: vi.fn(async () => []),
   listRuns: vi.fn(),
   subscribeToChannelEvents: vi.fn(() => vi.fn()),
 }));
@@ -439,7 +443,7 @@ describe("ChannelWorkspace recipient and attachment interactions", () => {
     try {
       await interact(() =>
         rendered.container
-          .querySelector<HTMLButtonElement>('[aria-label="回复 Coder 的消息"]')
+          .querySelector<HTMLButtonElement>('.message-row.bot [aria-label="回复"]')
           ?.click(),
       );
       expect(session.channel("a").getSnapshot().draft).toMatchObject({

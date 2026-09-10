@@ -1,0 +1,17 @@
+# Research: persisted reactions and member removal
+
+- Status: Accepted
+- Date: 2026-09-10
+- Security boundary: Owner/session/Origin authorization precedes channel operations; PostgreSQL owns membership, reactions and cancellation. Historical messages are retained.
+
+GitHub queries: `repo:matrix-org/matrix-spec m.reaction membership leave`; primary references: https://spec.matrix.org/v1.17/client-server-api/#mreaction and https://github.com/matrix-org/matrix-spec/tree/v1.17. Reviewed Matrix v1.17 (Apache-2.0) event relations/membership and open issue #2252: redaction is not membership removal. This is a semantics reference, not a federation implementation or imported source. Existing PostgreSQL 17 / ec3f6a6a7dd82a8ce455a0710ef75172f9f318d1 (PostgreSQL License), Drizzle 0.45.2, React 19.2.8 and Hono 4.13.5 reuse entries were checked. PostgreSQL uniqueness/transactions are the first viable standard implementation for the local single-Owner boundary; adding a Matrix homeserver would introduce unrelated identities, federation and synchronization authority.
+
+Use a bounded fixed emoji vocabulary with idempotent Owner set/unset operations, exact channel/message checks and composite database uniqueness. Never invent multiple human participants or Bot votes. Native buttons expose pressed state and a keyboard-accessible picker. Reactions are channel SSE state plus a reconnect snapshot.
+
+Remove membership explicitly under the channel coordination lease. Lock/cancel active target tasks and descendants before deleting membership; expire pending approvals and publish cancellation only after commit. Keep historical messages, artifacts, task records and the Bot profile. Reject fixed direct-channel membership changes. Re-adding does not resume cancelled work. Tests cover real database persistence, concurrent duplicate reactions, wrong-channel rejection, direct-channel refusal, task-tree revocation, historical retention and accessible UI controls. No source copied or substantially adapted; no dependencies added.
+
+## Bubble-side action bar
+
+The user's follow-up screenshot places three action icons outside the bubble at its vertical center. Implement that arrangement with OpenBot-authored SVG icons; put copy/task status in the overflow menu and emoji selection in its own menu. This is a screenshot reference, not a claim of measured native pixel parity in every state. Reuse React 19.2.8 `createPortal` (https://react.dev/reference/react-dom/createPortal) and WAI-ARIA menu-button semantics (https://www.w3.org/WAI/ARIA/apg/patterns/menu-button/; previously reviewed APG 7e4034b2). Body portals and bounded fixed positioning avoid transcript clipping; keyboard arrows/Escape, focus restoration and outside dismissal are tested. Selected reaction summaries stay below the bubble, while action controls do not reserve vertical space.
+
+Final route review found and fixed an overbroad body-limit middleware: the 1 KiB reaction cap now matches only the reaction endpoint, so it cannot cap ordinary messages or unrelated attachment APIs. A composed-router test sends a larger ordinary message through the neighboring route. Member join/removal now serialize through the channel row as well as their existing transaction guards. Four isolated PostgreSQL suites passed together (49 tests); focused channel route/component checks passed. UI geometry still requires integrated rendered acceptance.

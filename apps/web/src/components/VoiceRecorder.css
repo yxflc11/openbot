@@ -1,0 +1,123 @@
+.voice-recorder {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.voice-start {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #85888d;
+  padding: 7px;
+  cursor: pointer;
+}
+.voice-start:disabled {
+  opacity: 0.4;
+}
+.voice-panel {
+  position: absolute;
+  z-index: 9;
+  bottom: calc(100% + 12px);
+  left: 0;
+  width: min(300px, calc(100vw - 54px));
+  padding: 14px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 6px 22px #0002;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+}
+.voice-panel p {
+  margin: 0;
+}
+.voice-panel small {
+  font-size: 11px;
+  color: #777;
+  line-height: 1.6;
+}
+.voice-panel audio {
+  width: 100%;
+  height: 34px;
+}
+.voice-panel button {
+  background: #f2f2f2;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font: inherit;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.voice-panel > div {
+  display: flex;
+  gap: 8px;
+}
+.voice-error {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  padding: 10px;
+  width: 260px;
+  background: #fff;
+  border: 1px solid #e5d5d5;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #a44336;
+  z-index: 10;
+}
+.channel-files-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #0003;
+}
+.channel-files-window {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 14px;
+  width: min(760px, 100%);
+  max-height: 85vh;
+  overflow: auto;
+  padding: 22px;
+  box-shadow: 0 20px 70px #0002;
+}
+.channel-files-window > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.channel-files-window h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.channel-files-window > header > button {
+  border: 1px solid #ddd;
+  border-radius: 7px;
+  padding: 7px 12px;
+  background: #fff;
+  cursor: pointer;
+}
+.plugin-content-scope {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  font-size: 13px;
+}
+.plugin-content-scope select {
+  max-width: 220px;
+  margin-left: 8px;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "id": "openbot-example",
+      "name": "OpenBot MCP example",
+      "description": "Local development example: calculation, reviewed note writes, a notebook resource, a prompt and an isolated interactive view. No hosted endpoint.",
+      "license": "MIT",
+      "status": "example",
+      "capabilities": ["tools", "resources", "prompts", "apps"],
+      "transport": "streamable-http",
+      "source": {
+        "repository": "https://github.com/yxflc11/openbot",
+        "ref": "desktop-v0.1.0-alpha.6",
+        "path": "apps/server/src/plugin-example.ts",
+        "sha256": "a319358e1509255e4bcf4ffd97eb1b3b554f579bb35d772b01a82474ea1cdfd3"
+      },
+      "guide": "https://yxflc11.github.io/openbot/plugins/quickstart/"
+    }
+  ]
+}

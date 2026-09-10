@@ -129,7 +129,10 @@ describe("plugin Owner management", () => {
           .querySelector("form")
           ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
       );
-      expect(save).toHaveBeenCalledWith(bot.id, [{ name: "write", mode: "confirm" }]);
+      expect(save).toHaveBeenCalledWith(bot.id, [{ name: "write", mode: "confirm" }], {
+        resources: [],
+        prompts: [],
+      });
     } finally {
       await view.unmount();
     }
