@@ -951,5 +951,6 @@ describe.skipIf(!databaseUrl)("PostgreSQL automation transaction", () => {
     expect(
       await database.client`select id from messages where run_id=${overflow.active.id} and author_type='bot'`,
     ).toHaveLength(0);
-  });
+    // This case executes 51 real, sequential task/claim/completion transactions.
+  }, 15_000);
 });
