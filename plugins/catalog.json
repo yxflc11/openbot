@@ -15,7 +15,7 @@
         "path": "apps/server/src/plugin-example.ts",
         "sha256": "a319358e1509255e4bcf4ffd97eb1b3b554f579bb35d772b01a82474ea1cdfd3"
       },
-      "guide": "https://yxflc11.github.io/openbot/plugins/quickstart/"
+      "guide": "https://yxflc11.github.io/openbot-website/plugins/quickstart/"
     }
   ]
 }

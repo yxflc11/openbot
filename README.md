@@ -71,7 +71,7 @@ npm run dev:web
 
 Open <http://localhost:5173>, configure a supported model and explicitly enable the native Agent, then create a `none`-profile Bot and a channel. Native model work does not need a Worker. Computer-backed work requires a separately enrolled Worker and executable Provider; see [Node enrollment](docs/NODE_ENROLLMENT.md) and [Provider conformance](docs/PROVIDER_CONFORMANCE.md). Container deployment is documented in [Server container](docs/SERVER_CONTAINER.md).
 
-Build the website with `npm run build --workspace @openbot/site`; its build includes the isolated product demo. The demo uses sample data, blocks external API requests and never connects to a model or real workspace.
+The website is maintained and built in [openbot-website](https://github.com/yxflc11/openbot-website); follow its README for installation, demo preparation and `npm run build`. The demo uses sample data, blocks external API requests and never connects to a model or real workspace.
 
 ## Architecture and contribution
 

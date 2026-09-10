@@ -71,7 +71,7 @@ npm run dev:web
 
 打开 <http://localhost:5173>，配置支持的模型并明确启用原生 Agent，然后创建 `none` 配置的 Bot 与频道。原生模型任务不需要 Worker；电脑任务需要单独登记的 Worker 和可执行 Provider，见 [Node 登记](docs/NODE_ENROLLMENT.zh-CN.md)和 [Provider 一致性](docs/PROVIDER_CONFORMANCE.zh-CN.md)。容器部署见 [Server 容器](docs/SERVER_CONTAINER.zh-CN.md)。
 
-运行 `npm run build --workspace @openbot/site` 构建官网，过程包含独立产品演示。演示使用示例数据、禁止外部 API 请求，不连接真实工作区或模型。
+官网在 [openbot-website](https://github.com/yxflc11/openbot-website) 独立仓库中维护和构建；依照该仓库 README 安装依赖、准备演示并运行 `npm run build`。演示使用示例数据、禁止外部 API 请求，不连接真实工作区或模型。
 
 ## 架构与贡献
 
