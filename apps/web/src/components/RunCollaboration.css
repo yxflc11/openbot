@@ -1,0 +1,77 @@
+.delegation-notice,
+.delegated-reply-context,
+.run-collaboration {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 10px;
+  color: #737373;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.delegation-notice > .robot-avatar,
+.run-collaboration button > .robot-avatar {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+.delegation-notice button,
+.delegated-reply-context button,
+.run-collaboration button {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: #454545;
+  cursor: pointer;
+}
+.delegation-notice button,
+.delegated-reply-context button {
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.delegated-reply-context small {
+  font-size: inherit;
+}
+.run-collaboration {
+  margin-top: 10px;
+}
+.run-collaboration ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.run-collaboration li {
+  min-width: 0;
+  max-width: 100%;
+}
+.run-collaboration button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 16px;
+  background: #f5f5f4;
+  text-align: left;
+}
+.collaboration-task-state {
+  color: #737373;
+}
+.run-collaboration button:hover,
+.delegation-notice button:hover,
+.delegated-reply-context button:hover {
+  background: #ededeb;
+}
+.run-collaboration button:focus-visible,
+.delegation-notice button:focus-visible,
+.delegated-reply-context button:focus-visible {
+  outline: 2px solid #496884;
+  outline-offset: 3px;
+}

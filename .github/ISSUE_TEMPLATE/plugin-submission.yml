@@ -1,0 +1,42 @@
+name: Plugin submission / 插件提交
+description: Propose a reviewed MCP integration for OpenBot / 提交可审核的 MCP 集成
+title: "[Plugin]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "A submission does not install or authorize a plugin. Do not include tokens or private data. 提交不等于安装或授权，请勿包含密钥与私人数据。"
+  - type: input
+    id: source
+    attributes:
+      label: Public source repository / 公开源码
+      description: Include an exact release tag or commit. / 包含精确发布标签或 commit。
+    validations:
+      required: true
+  - type: input
+    id: license
+    attributes:
+      label: License and dependency notices / 许可证与依赖声明
+    validations:
+      required: true
+  - type: textarea
+    id: capability
+    attributes:
+      label: Capability and external effects / 能力与外部影响
+      description: List tools, resources, prompts, views, authentication and every write or external transmission.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Setup, platform scope and verification / 配置、平台范围与验证
+      description: Provide reproducible success, rejection, timeout, cancellation and revoked-grant tests.
+    validations:
+      required: true
+  - type: textarea
+    id: maintenance
+    attributes:
+      label: Maintenance and upstream reuse / 维护计划与上游复用
+      description: Identify the maintainer, update policy, official protocol version and reviewed dependencies.
+    validations:
+      required: true

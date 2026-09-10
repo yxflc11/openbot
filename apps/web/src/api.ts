@@ -1,3 +1,5 @@
+import { reactionEmojis } from "@openbot/domain";
+import { getOpenBotDesktopBridge } from "./desktop-runtime";
 import type { ModelProviderId } from "@openbot/domain";
 import type {
   Approval,
@@ -25,12 +27,15 @@ import type {
   ExecutionNode,
   KnowledgeProposal,
   Message,
+  MessageReaction,
+  ReactionEmoji,
   NodeEnrollmentToken,
   NodeIdentitySummary,
   ReviewKnowledgeProposalInput,
   Run,
   RunFrame,
   RunProgress,
+  RunOutput,
   SubmitTaskResult,
   UpdateEmployeeMemoryInput,
   UpdateEmployeeProfileDetailsInput,
@@ -84,6 +89,77 @@ export async function cancelNativeRun(runId: string): Promise<Run> {
     body: JSON.stringify({}),
   });
   return result.run;
+}
+
+export async function listChannelReactions(
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<MessageReaction[]> {
+  const result = await request<{ reactions: MessageReaction[] }>(
+    `/api/v1/channels/${encodeURIComponent(channelId)}/reactions`,
+    signal ? { signal } : undefined,
+  );
+  if (!isMessageReactions(result.reactions)) throw new Error("回应列表无效。");
+  return result.reactions;
+}
+export async function setMessageReaction(
+  channelId: string,
+  messageId: string,
+  emoji: ReactionEmoji,
+  active: boolean,
+): Promise<MessageReaction[]> {
+  const result = await request<{ reactions: MessageReaction[] }>(
+    `/api/v1/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ emoji, active }),
+    },
+  );
+  if (
+    !isMessageReactions(result.reactions) ||
+    result.reactions.some((item) => item.messageId !== messageId)
+  )
+    throw new Error("回应结果无效。");
+  return result.reactions;
+}
+export async function removeChannelMember(
+  channelId: string,
+  botId: string,
+): Promise<{ channel: Channel; cancelledRuns: Run[] }> {
+  return request(
+    `/api/v1/channels/${encodeURIComponent(channelId)}/bots/${encodeURIComponent(botId)}`,
+    { method: "DELETE" },
+  );
+}
+function isMessageReactions(value: unknown): value is MessageReaction[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 1200 &&
+    value.every(
+      (item) =>
+        item &&
+        typeof item.messageId === "string" &&
+        item.actor === "owner" &&
+        reactionEmojis.includes(item.emoji),
+    )
+  );
+}
+
+export async function steerRun(runId: string, instruction: string): Promise<void> {
+  await request(`/api/v1/runs/${encodeURIComponent(runId)}/steer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instruction }),
+  });
+}
+
+export async function getRunOutput(runId: string, signal?: AbortSignal): Promise<RunOutput | null> {
+  const result = await request<{ output: RunOutput | null }>(
+    `/api/v1/runs/${encodeURIComponent(runId)}/output`,
+    signal ? { signal } : undefined,
+  );
+  return result.output;
 }
 
 export function subscribeToUnauthorized(handler: () => void): () => void {
@@ -232,7 +308,27 @@ export async function getEmployeeExportPreview(
 export async function downloadEmployeeTemplate(
   botId: string,
   preview: EmployeeExportPreview,
-): Promise<void> {
+): Promise<"saved" | "cancelled"> {
+  const desktop = getOpenBotDesktopBridge();
+  if (desktop) {
+    const result = await desktop.saveEmployeeTemplate?.({
+      botId,
+      packageId: preview.packageId,
+      generatedAt: preview.generatedAt,
+      downloadReviewToken: preview.downloadReviewToken,
+    });
+    if (result?.status === "saved" || result?.status === "cancelled") return result.status;
+    if (result?.status === "changed")
+      throw new ApiError("员工内容在审核后发生变化，请刷新预览。", 412);
+    throw new ApiError(
+      result?.status === "exists"
+        ? "文件已存在，请换一个文件名。"
+        : result?.status === "busy"
+          ? "请先完成当前保存操作。"
+          : "无法保存员工模板，请检查连接或更新 Desktop。",
+      0,
+    );
+  }
   const parameters = new URLSearchParams({
     packageId: preview.packageId,
     generatedAt: preview.generatedAt,
@@ -265,6 +361,7 @@ export async function downloadEmployeeTemplate(
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+  return "saved";
 }
 
 async function browserSha256Hex(bytes: ArrayBuffer): Promise<string> {
@@ -409,6 +506,9 @@ export function subscribeToChannelEvents(
     onMessage(message: Message): void;
     onFrame(frame: RunFrame): void;
     onProgress(progress: RunProgress): void;
+    onOutput?(output: RunOutput): void;
+    onReactions?(messageId: string, reactions: MessageReaction[]): void;
+    onChannel?(channel: Channel): void;
     onRun(run: Run, artifacts: Artifact[]): void;
     onReady(): void;
     onState(state: RealtimeConnectionState): void;
@@ -453,6 +553,45 @@ export function subscribeToChannelEvents(
     markLive();
     handlers.onFrame(payload.frame);
   };
+  const onOutput = (event: Event) => {
+    const payload = parseEventPayload(event);
+    if (!isRunOutputProjection(payload, channelId)) return;
+    markLive();
+    handlers.onOutput?.(payload);
+  };
+  const onReactions = (event: Event) => {
+    const value = parseEventPayload(event) as Record<string, unknown> | null;
+    if (
+      !value ||
+      value.type !== "message.reactions" ||
+      value.channelId !== channelId ||
+      typeof value.messageId !== "string" ||
+      !isMessageReactions(value.reactions) ||
+      value.reactions.some((item) => item.messageId !== value.messageId)
+    )
+      return;
+    markLive();
+    handlers.onReactions?.(value.messageId, value.reactions);
+  };
+  const onChannel = (event: Event) => {
+    const value = parseEventPayload(event) as {
+      type?: string;
+      channelId?: string;
+      channel?: Channel;
+    } | null;
+    if (
+      !value ||
+      value.type !== "channel.updated" ||
+      value.channelId !== channelId ||
+      value.channel?.id !== channelId ||
+      !Array.isArray(value.channel.botIds) ||
+      value.channel.botIds.length > 100 ||
+      !value.channel.botIds.every((id) => typeof id === "string")
+    )
+      return;
+    markLive();
+    handlers.onChannel?.(value.channel);
+  };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
     source?.close();
@@ -479,6 +618,9 @@ export function subscribeToChannelEvents(
     nextSource.addEventListener("run.updated", onRun);
     nextSource.addEventListener("run.progress", onProgress);
     nextSource.addEventListener("run.frame", onFrame);
+    nextSource.addEventListener("run.output", onOutput);
+    nextSource.addEventListener("message.reactions", onReactions);
+    nextSource.addEventListener("channel.updated", onChannel);
   };
 
   handlers.onState("connecting");
@@ -493,6 +635,23 @@ export function subscribeToChannelEvents(
     window.clearInterval(watchdog);
     if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
   };
+}
+
+export function isRunOutputProjection(value: unknown, channelId: string): value is RunOutput {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    item.channelId === channelId &&
+    typeof item.runId === "string" &&
+    typeof item.botId === "string" &&
+    typeof item.sequence === "number" &&
+    Number.isSafeInteger(item.sequence) &&
+    item.sequence >= 0 &&
+    typeof item.text === "string" &&
+    item.text.length <= 8000 &&
+    typeof item.reset === "boolean" &&
+    (!item.reset || item.text === "")
+  );
 }
 
 export function subscribeToWorkspaceEvents(handlers: {

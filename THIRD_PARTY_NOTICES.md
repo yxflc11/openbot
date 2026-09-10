@@ -21,6 +21,10 @@ and notices.
 - `signal-exit` 4.1.0 — Copyright 2015–2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors; ISC
   License. This is the sole runtime dependency of `write-file-atomic` in the Desktop application
   ASAR.
+- `@modelcontextprotocol/sdk` 1.30.0 — Copyright (c) 2024 Anthropic, PBC; MIT License.
+  Official MCP client/server and validation APIs are used without copied implementation code.
+  Its LICENSE remains in production dependencies; the MIT terms are reproduced below.
+  See [plugin research](docs/research/third-party-mcp-plugins.md).
 
 - Vercel AI SDK `ai` 7.0.93, `@ai-sdk/openai` 4.0.60, `@ai-sdk/anthropic` 4.0.49, `@ai-sdk/moonshotai` 3.0.45,
   `@ai-sdk/provider` 4.0.10, `@ai-sdk/provider-utils` 5.0.36 and the SDK's transitive
@@ -155,3 +159,46 @@ INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
 OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
 TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
+
+## Document extraction, OCR and MCP Apps
+
+- officeparser 7.8.0 — Copyright (c) 2019 Harsh Ankur; MIT. Used unchanged for bounded Office
+  document extraction in a separate process.
+- pdfjs-dist 6.2.108 — Mozilla/PDF.js contributors; Apache-2.0. The distribution also includes
+  Foxit fonts (BSD-style notice), Liberation fonts (SIL OFL 1.1), Adobe CMaps, ICC profiles
+  (CC0), and separately licensed OpenJPEG, QCMS and PDFium/JBIG2 decoders. Their complete
+  packaged license files are retained alongside the main license.
+- tesseract.js 7.0.0 and tesseract.js-core 7.0.0 — Apache-2.0 package licenses; unchanged OCR
+  engine/runtime. The WebAssembly runtime retains upstream third-party implementation terms.
+- `@tesseract.js-data/eng` / `@tesseract.js-data/chi_sim` 1.0.0 — OCR trained data from
+  naptha/tessdata / tesseract-ocr. The npm archives omit LICENSE and their metadata says MIT;
+  the canonical data repository identifies its data as Apache-2.0. Its full upstream license is
+  retained at source revision `806cd9adc8c6e8abc11c782db1818c990576bebc` rather than treating
+  package metadata as the license for trained data.
+- `@modelcontextprotocol/ext-apps` 1.7.5, commit `92f46a574568a3ddac7600343b7d3c4c4ed7b588` —
+  unchanged official AppBridge and PostMessageTransport. Its LICENSE records an Apache-2.0/MIT
+  transition, documentation CC-BY-4.0; the npm package's short MIT field is incomplete. The full
+  notice is retained. No upstream host implementation was copied into OpenBot source.
+
+All of these retained texts and their file hashes are in [licenses/runtime](licenses/runtime/README.md),
+which Desktop packaging includes as `native-server/runtime-notices`. This supplement does not
+replace the original packages' notices or relicense their contents under OpenBot's MIT license.
+
+## Windows PostgreSQL source-build scope
+
+Windows Desktop builds the unmodified official PostgreSQL 17.11 source with Meson/MSVC.
+NLS/gettext/iconv, ICU, OpenSSL, XML/XSLT, external procedural languages and compression
+libraries are disabled through upstream public build options. No EDB/npm Windows binary repack
+is included. The Microsoft C runtime is statically linked under the licensed MSVC toolchain's
+distributable-code terms; Windows APIs remain operating-system components.
+
+[licenses/windows-postgresql](licenses/windows-postgresql/README.md) retains the PostgreSQL,
+regex, Snowball, IANA, embedded-source and parser-output notices plus exact source/tool hashes.
+Each Windows build includes the official source archive, build script/options, regression log,
+DLL-import inventory and per-file hashes. The GNU parser tools are build-only; Bison's generated
+output exception is preserved. The old EDB archive's byte provenance and unresolved LGPL source
+gap are retained only as rejected-candidate evidence and excluded from runtime packaging.
+
+The build manifest is written only after upstream regression and dependency checks pass.
+Windows installation and restart conformance are established separately by the CI harness.
+See the [source-build decision](docs/research/windows-postgresql-redistribution.md).

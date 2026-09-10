@@ -13,6 +13,7 @@ import {
   safeStorage,
   session,
   shell,
+  systemPreferences,
   utilityProcess,
   type WebContents,
 } from "electron";
@@ -31,6 +32,7 @@ import {
   isDesktopAssetRequestMethod,
   resolveDesktopAssetPath,
 } from "./local-content.js";
+import { DesktopMicrophonePolicy } from "./microphone-policy.js";
 import { DesktopLocalWorkerController } from "./local-worker-controller.js";
 import { MacOSWorkerCompanion } from "./macos-worker-companion.js";
 import { NativeServerController } from "./native-server.js";
@@ -51,11 +53,7 @@ import {
   DESKTOP_SIDEBAR_MATERIAL_CHANGED_CHANNEL,
   DESKTOP_SIDEBAR_MATERIAL_STATE_CHANNEL,
 } from "./runtime-contract.js";
-import {
-  createDesktopWebPreferences,
-  DESKTOP_PERMISSION_DECISION,
-  DESKTOP_WINDOW_OPEN_DECISION,
-} from "./security-policy.js";
+import { createDesktopWebPreferences, DESKTOP_WINDOW_OPEN_DECISION } from "./security-policy.js";
 import { DesktopEventStreamLifecycle } from "./server-proxy.js";
 import { FileDesktopSetupPlanStore } from "./setup-plan.js";
 import { DesktopSetupPlanController } from "./setup-plan-controller.js";
@@ -102,11 +100,26 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const eventStreams = new DesktopEventStreamLifecycle();
+const microphonePolicy = new DesktopMicrophonePolicy();
 
 function lockDownSession(desktopSession: Session): void {
-  desktopSession.setPermissionCheckHandler(() => DESKTOP_PERMISSION_DECISION);
-  desktopSession.setPermissionRequestHandler((_contents, _permission, callback) => {
-    callback(DESKTOP_PERMISSION_DECISION);
+  desktopSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    microphonePolicy.allows({
+      contentsId: contents?.id,
+      permission,
+      ...details,
+      mediaTypes: details.mediaType ? [details.mediaType] : undefined,
+    }),
+  );
+  desktopSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(
+      microphonePolicy.allows({
+        contentsId: contents.id,
+        permission,
+        ...details,
+        mediaTypes: "mediaTypes" in details ? details.mediaTypes : undefined,
+      }),
+    );
   });
   desktopSession.on("will-download", (event) => event.preventDefault());
 }
@@ -139,6 +152,33 @@ function registerDesktopIpc(
   setupPlanController: DesktopSetupPlanController,
   localWorkerController: DesktopLocalWorkerController,
 ): void {
+  ipcMain.handle("openbot:begin-voice-capture", async (event) => {
+    const window = mainWindow;
+    if (
+      !window ||
+      window.isDestroyed() ||
+      !window.isFocused() ||
+      !isTrustedDesktopIpcSender(event, window.webContents)
+    )
+      return false;
+    const generation = microphonePolicy.beginAttempt();
+    if (
+      process.platform === "darwin" &&
+      !(await systemPreferences.askForMediaAccess("microphone").catch(() => false))
+    )
+      return false;
+    if (
+      quitting ||
+      window !== mainWindow ||
+      window.isDestroyed() ||
+      !isTrustedDesktopIpcSender(event, window.webContents)
+    )
+      return false;
+    return microphonePolicy.arm(window.webContents.id, generation);
+  });
+  ipcMain.handle("openbot:end-voice-capture", (event) => {
+    if (isTrustedDesktopIpcSender(event, mainWindow?.webContents)) microphonePolicy.revoke();
+  });
   const reportSaver = new DesktopReportSaver({
     connection: () => connectionController.getState(),
     fetch: (input, init) => {
@@ -146,25 +186,57 @@ function registerDesktopIpc(
       return desktopSession.fetch(input, init);
     },
     active: () => !quitting && mainWindow !== undefined && !mainWindow.isDestroyed(),
-    choosePath: async (name) => {
+    chooseAttachmentPath: async (name) => {
       const window = mainWindow;
       if (!window || window.isDestroyed()) return undefined;
       const result = await dialog.showSaveDialog(window, {
-        title: "保存报告",
-        buttonLabel: "保存",
+        title: "Save original attachment",
+        buttonLabel: "Save",
         defaultPath: name,
-        filters: [{ name: "Markdown 报告", extensions: ["md"] }],
-        message: "选择新文件名保存报告；已有文件不会被覆盖。",
+        message: "Existing files will not be overwritten.",
         showsTagField: false,
       });
       return result.canceled ? undefined : result.filePath;
     },
+    choosePath: async (name) => {
+      const window = mainWindow;
+      if (!window || window.isDestroyed()) return undefined;
+      const image = name.endsWith(".png");
+      const employee = name.endsWith(".json");
+      const result = await dialog.showSaveDialog(window, {
+        title: employee ? "保存员工模板" : image ? "保存图片" : "保存报告",
+        buttonLabel: "保存",
+        defaultPath: name,
+        filters: [
+          employee
+            ? { name: "OpenBot 员工模板", extensions: ["json"] }
+            : image
+              ? { name: "PNG 图片", extensions: ["png"] }
+              : { name: "Markdown 报告", extensions: ["md"] },
+        ],
+        message: "选择新文件名保存；已有文件不会被覆盖。",
+        showsTagField: false,
+      });
+      return result.canceled ? undefined : result.filePath;
+    },
+  });
+  ipcMain.removeHandler("openbot:save-attachment");
+  ipcMain.handle("openbot:save-attachment", (event, input: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
+      throw new Error("Desktop IPC sender is not allowed.");
+    return reportSaver.saveAttachment(input);
   });
   ipcMain.removeHandler("openbot:save-report");
   ipcMain.handle("openbot:save-report", (event, artifactId: unknown) => {
     if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
       throw new Error("Desktop IPC sender is not allowed.");
     return reportSaver.save(artifactId);
+  });
+  ipcMain.removeHandler("openbot:save-employee-template");
+  ipcMain.handle("openbot:save-employee-template", (event, input: unknown) => {
+    if (!isTrustedDesktopIpcSender(event, mainWindow?.webContents))
+      throw new Error("Desktop IPC sender is not allowed.");
+    return reportSaver.saveEmployeeTemplate(input);
   });
   ipcMain.removeHandler(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL);
   ipcMain.handle(DESKTOP_NAVIGATION_MENU_STATE_CHANNEL, (event, value: unknown) => {
@@ -282,12 +354,14 @@ async function createMainWindow(activeSession: Session): Promise<void> {
   window.on("blur", () => navigationMenu?.refresh());
   window.webContents.on("did-start-navigation", (details) => {
     if (details.isMainFrame) {
+      microphonePolicy.revoke();
       eventStreams.clear();
       navigationMenu?.reset();
     }
   });
   window.webContents.on("did-finish-load", () => navigationMenu?.refresh());
   window.webContents.on("render-process-gone", () => {
+    microphonePolicy.revoke();
     eventStreams.clear();
     navigationMenu?.reset();
   });
@@ -310,6 +384,7 @@ async function createMainWindow(activeSession: Session): Promise<void> {
   window.on("focus", refreshMaterial);
   window.once("ready-to-show", () => window.show());
   window.once("closed", () => {
+    microphonePolicy.revoke();
     eventStreams.clear();
     nativeTheme.removeListener("updated", refreshMaterial);
     if (sidebarMaterial === material) sidebarMaterial = undefined;
@@ -366,11 +441,13 @@ async function startDesktop(): Promise<void> {
     dataRoot: join(app.getPath("userData"), "openbot", "local-server"),
     platform: process.platform,
     encrypt: (value) => {
-      if (!safeStorage.isEncryptionAvailable()) throw new Error("Keychain is unavailable.");
+      if (!safeStorage.isEncryptionAvailable())
+        throw new Error("Operating-system secret storage is unavailable.");
       return safeStorage.encryptString(value).toString("base64");
     },
     decrypt: (value) => {
-      if (!safeStorage.isEncryptionAvailable()) throw new Error("Keychain is unavailable.");
+      if (!safeStorage.isEncryptionAvailable())
+        throw new Error("Operating-system secret storage is unavailable.");
       return safeStorage.decryptString(Buffer.from(value, "base64"));
     },
     launchServer: async (env) => {
@@ -426,7 +503,9 @@ async function startDesktop(): Promise<void> {
               clearTimeout(timer);
               resolve();
             });
-            child.kill();
+            if (process.platform === "win32")
+              child.postMessage({ type: "openbot-server-shutdown" });
+            else child.kill();
           });
         },
       };

@@ -37,8 +37,8 @@ export function ExportEmployeeDialog({
     setDownloading(true);
     setError(undefined);
     try {
-      await downloadEmployeeTemplate(employee.id, preview);
-      onDownloaded(preview.fileName);
+      const result = await downloadEmployeeTemplate(employee.id, preview);
+      if (result === "saved") onDownloaded(preview.fileName);
     } catch (cause) {
       const apiError = cause as ApiError;
       if (apiError.status === 412) {

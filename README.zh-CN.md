@@ -4,63 +4,51 @@
 
 # OpenBot
 
-**通过 Desktop 与 Web 使用的自托管数字员工工作区。**
+**让有名字的 Bot 在频道里协作的自托管工作区。**
 
 [English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Português (Brasil)](README.pt-BR.md)
 
 [![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
-[![Status: pre-alpha](https://img.shields.io/badge/status-pre--alpha-f59e0b.svg)](#项目状态)
 
-OpenBot 让有名字的 AI 员工在你控制的电脑上工作。频道、对话、员工档案、任务、审批和结果都保存在
-自己的工作区。Desktop 和 Web 共用 React 界面，连接同一个具有最终授权权的 OpenBot Server。
+创建有独立身份、职责、经审核记忆和技能的同事。在频道交代任务，让 Bot 邀请另一位 Bot 帮忙，查看回复过程并下载成果。Desktop 与 Web 共用真实 React 工作区，Server 负责身份、权限、路由、审批和审计。
 
-同一个 Desktop 可以随着各平台实现的完善，组合启用 **Client（客户端）**、**Server（服务端）**
-和 **Worker（工作节点）**。Client 用于指挥与监督；Worker 和 Provider 在已登记电脑上执行；
-Server 负责身份、路由、授权和审计。界面能显示桌面，并不代表获得了操作电脑的权限。
+**当前源码版本为 Desktop `0.1.0-alpha.6`。** 频道协作、丰富附件、MCP 扩展接口和双语官网均已实现。安装器是否已发布以 [Desktop 发行页](https://github.com/yxflc11/openbot/releases)为准，源码提交与安装器发布分别管理。[逐功能交付清单](docs/RELEASE_COMPLETION.zh-CN.md)列出实现与验证边界。开发安装包未签名，没有自动更新通道，也不宣称任意桌面控制已获认证。
 
-> [!WARNING]
-> OpenBot 仍处于 pre-alpha。Desktop 产物是未签名开发包，不是经过签名的公开安装器。
-> 浏览器 Provider 可打开明确网址并返回截图，另有需明确启用并审批的实验性单按钮点击。
-> 原生桌面输入和无人值守表单尚未实现。不要连接支付方式、主账号或生产凭证。
+官网：[English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/)。官网由独立的 openbot-website 仓库部署，产品安装包另行验证发布。现在可先阅读[源码文档索引](docs/README.zh-CN.md)。当前候选版维护英文与中文文档，日文和葡萄牙文 README 仍对应较早快照。
 
-## Windows、macOS 与 Linux Desktop
+## 可以做什么
 
-三端使用相同的 Electron 44.2.0 应用和共享频道工作区。
+| 部件 | 当前行为 |
+| --- | --- |
+| 频道与私聊 | 选择一位或多位 Bot、引用回复、保留草稿与阅读位置、查看任务历史、管理群组成员。 |
+| Bot 分工 | 以接收方自己的身份启动子任务，继续独立工作，并在最终交付前汇总同事结果。最多六个根任务并发，每棵树两层委派、四个后代。 |
+| 任务操作 | 提供方真实文字草稿、任务详情、停止/重新提交；每个原生任务累计最多八条明确追加指令，在模型步骤边界生效。MiniMax 保留受控最终回复路径。 |
+| 消息操作 | 悬停或聚焦气泡侧边显示表情、回复和更多；复制与详情放入菜单。表情目前属于单一工作区 Owner。 |
+| 附件与语音 | 添加原件、本地提取 Office/PDF 文字、本地图片 OCR、明确选择媒体转写、录音试听、下载原件/成果和管理回收站。 |
+| Bot 档案 | 编辑职责/简介；查看证据与演化记录；增删改类型化记忆，明确选择模型可使用的记忆，审核经验提案和技能版本。 |
+| 技能 | 导入单个 `SKILL.md`，审核完整版本后允许 Agent 在现有工具范围内使用；不执行任意脚本，也不额外授予权限。 |
+| 分享 Bot | 预览并下载可移植档案和已验证技能元数据；导入创建新身份并经过审核。包内不含记忆、对话、凭据、实时授权或技能指令文件。 |
+| 插件 | 接入标准 MCP 工具、文本资源、Owner 选择的提示词和隔离 Apps；审阅声明/更新，按 Bot 授权并审批配置为需确认的外部操作。 |
+| 自动化 | 创建固定间隔计划，暂停/恢复/删除，查看最近结果并避免任务重叠；Server 需要持续运行。 |
+| 设置 | 11 家模型服务预设、保留加密凭据、单独启用 Agent，以及工作区外观、导航和发送偏好。 |
+| 官网 | 产品介绍、可搜索的中英文手册、扩展协议/贡献指南，以及复用真实频道组件的隔离交互演示；官网已独立部署。 |
 
-| 目标平台 | Desktop 客户端 | 本地 Server 安装 | 本地 Worker 集成 |
-| --- | --- | --- | --- |
-| macOS arm64 | 连接已有 Server、原生导航与工作区界面 | 内置 PostgreSQL 和 Server；应用自行管理本地数据，无需 Docker | 通过随包提供的 macOS Worker companion 引导配对 |
-| Windows x64 | 连接已有 Server 与共享工作区界面 | 使用单独部署的 Server | 原生 Windows Host 已有构建与契约测试证据；Desktop 内一体安装仍待实现 |
-| Linux x64 | 连接已有 Server 与共享工作区界面 | 使用单独部署的 Server | 单独部署 Node/服务；Desktop 内一体安装仍待实现 |
+这些是有明确边界的功能，不代表无限 Agent、任意电脑输入、多真人协作、完整 MCP、崩溃后自动重放或 Grok 所有状态逐像素一致。详细行为和源码依据见[交付清单](docs/RELEASE_COMPLETION.zh-CN.md)。
 
-CI 矩阵构建并打包以上目标。可下载包是**开发验证产物**，不代表真实设备的桌面控制认证。
-macOS Intel 和其他 Desktop 架构不在此托管矩阵中。本地 macOS 服务启动已有 arm64 验证；
-Windows、Linux 首次启动提供远程客户端流程。
+## Windows 候选版与已有平台
 
-### 下载开发包
+本次新增原生平台工作只面向 **Windows x64**。alpha.6 源码提供按用户安装的 NSIS 安装器、内置 Server/PostgreSQL、DPAPI 初始化凭据、私有数据 ACL、正常停止和保留数据重启。[Windows 托管验证](https://github.com/yxflc11/openbot/actions/runs/34497646235)已通过安装后的运行时、加密凭据、数据库迁移、保留数据重启和安装器生命周期检查；它不代表交互硬件或代码签名认证。安装 Desktop 不会登记 Worker，也不会授予电脑控制权。见 [Windows Desktop](docs/WINDOWS_DESKTOP.zh-CN.md)。
 
-**下载入口：[Desktop 下载与安装](docs/DESKTOP_INSTALLATION.zh-CN.md)** — 包含各平台文件名、
-安装步骤、命令安装入口、首次模型配置与升级/数据说明。macOS arm64 的 DMG、Windows x64 的
-当前用户 EXE、Linux x64 的 AppImage/DEB 已有原生 CI 构建路径。公开安装包将在
-[Desktop Releases](https://github.com/yxflc11/openbot/releases) 提供；只有 `desktop-v...`
-Release 实际含有附件时才算已发布。成功 CI 中的安装器产物保留 14 天。
+保留已有 macOS arm64 本地服务/companion 和 Linux 远程客户端代码；本次不新增 macOS/Linux 适配，也不扩大其一致性结论。Worker Host 与电脑 Provider 仍有独立的登记和验证边界。
 
-在 [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) 中打开目标提交对应的
-成功运行，下载 `openbot-desktop-<platform>-<arch>-<commit>.tar.gz` 产物。
-需要登录 GitHub；产物保留七天。使用 `tar -xzf <archive>` 解压以保留可执行权限和符号链接，
-然后打开目录中的 macOS `OpenBot.app`、Windows `openbot.exe` 或 Linux `openbot`。
-仍须遵守操作系统对未签名应用的要求。
+精确文件名与升级方式见 [Desktop 安装](docs/DESKTOP_INSTALLATION.zh-CN.md)。只从目标 commit 对应的成功 [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) 获取构建产物，或从实际含有对应安装包与 `SHA256SUMS` 的 [Desktop Release](https://github.com/yxflc11/openbot/releases) 下载。存在构建脚本或源码 tag 不等于安装器已发布。
 
-每个平台仅在本平台包检查通过后上传。上面的 tar 归档是应用目录；单独的
-`openbot-installers-...` 产物包含安装器与校验值。目前没有自动更新通道。
-旧的 `v0.1.0-alpha.1` GitHub Release 仍是仅含源码的基础快照。
+## 构建与运行
 
-### 从源码构建
+使用 CI 基线 **Node.js 22.22.2、npm 10.9.9**，或满足 [package.json](package.json) 的 Node 版本，按锁文件安装：
 
-使用 Node.js 24 LTS（满足[声明的版本范围](package.json)）和 npm：
-
-```bash
+```sh
 git clone https://github.com/yxflc11/openbot.git
 cd openbot
 npm ci
@@ -68,116 +56,39 @@ npm run check
 npm run package --workspace @openbot/desktop
 ```
 
-在目标操作系统上构建，输出位于 `apps/desktop/out/`。macOS 包含本地 Server 与固定版本的
-PostgreSQL 运行时。普通源码打包默认不含可选 Worker companion，除非
-`OPENBOT_DESKTOP_MACOS_WORKER_COMPANION` 指向已验证的应用包；macOS CI 会先构建它。
+在目标操作系统构建 Desktop，输出位于 `apps/desktop/out/`。Windows 原生准备需要 [Windows Desktop](docs/WINDOWS_DESKTOP.zh-CN.md) 所述的已验证 PostgreSQL 源码构建包，托管 workflow 会生成并校验。重新构建应用不会替换工作区配置和数据。
 
-macOS 可选“作为服务电脑”初始化本地服务，或选“连接服务电脑”接入已有 Server。
-Windows、Linux 提供连接流程。远程连接需输入可信的 HTTPS Server 地址并以 Owner 登录。
-完整流程与数据生命周期见 [Desktop 安装引导](docs/DESKTOP_ONBOARDING.zh-CN.md)。
+单独运行 Server、PostgreSQL 和 Web：
 
-## 项目状态
-
-| 领域 | 源码已实现 | 后续工作 |
-| --- | --- | --- |
-| Desktop 与 Web | 频道、Bot、审批、任务检查器、统一前进/后退导航、原生菜单、对话草稿与滚动恢复、技能库、持久化界面偏好 | 通知、本地化完善和更多无障碍/设备验证 |
-| macOS 本地服务 | 应用自有 PostgreSQL 与 Server、加密初始化身份、保留数据重启、显式切换远程客户端 | 跨平台服务引导、经认证的远程共享、备份、升级与登录服务恢复 |
-| 模型 / 原生 Agent | Owner 明确启用、加密 OpenAI/Anthropic/OpenRouter 配置、有界模型/工具/观察循环、频道/明确网页读取、可下载 Markdown 报告、持久化回复、停止/重提与模型用量 | 真实模型验证、更多受控工具和外部 Agent 适配器 |
-| 自动任务 | PostgreSQL 定时记录、暂停/恢复/删除、有界间隔、停机后最多补交一次到期任务、复用授权路由 | 多 Server 协调和更多调度语义 |
-| 员工档案 | 职责/简介编辑、带日期进化档案、技能审核、Owner 管理的类型化记忆、任务经验审阅与明确模型使用开关、绑定审核的导出/导入与实验性 DSSE 签名 | 自主学习、可执行技能、选择性复制和公开信任分发 |
-| Worker 协议 | 出站连接、一次性配对、吊销、带版本能力路由、进度、画面和产物 | 持有证明身份、完整服务/设备一致性与签名分发 |
-| 电脑执行 | URL 截图及可信测试站点的可选审核按钮点击 | 浏览器出口隔离、原生桌面 Provider、签名单次 lease 和独占接管 |
-
-[原生 Agent](docs/NATIVE_AGENT.zh-CN.md) 在 Owner 明确启用后执行新建的 `none` 配置任务。
-OpenBot 尚未提供 Hermes/Pi/OpenClaw 运行时适配器、插件安装生命周期
-或任意桌面控制。Cua、Lume、coder 仍是扩展边界。可选办公室可视化继续延后。
-
-员工进化和学习方向明确受到
-[Hermes Agent 学习图谱](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)
-启发。OpenBot 自行负责证据、审核和迁移模型，不声称原创了这一概念。
-
-[本次交付证据与尚未实现的能力](docs/DELIVERY_STATUS.zh-CN.md)。
-
-## 开发与独立部署
-
-Desktop 是可选入口。单独运行 Server、PostgreSQL 和 Web：
-
-```bash
+```sh
 cp .env.example .env
 # 将 OPENBOT_OWNER_PASSWORD 设置为至少 15 个字符的随机密码。
-npm ci
 npm run db:up
 npm run dev:server
 # 另开终端：
 npm run dev:web
 ```
 
-打开 <http://localhost:5173>，创建 Bot 和频道，然后在“节点”中配对 Worker。
-Server 主机也可运行 `npm run node:enrollment-token -- local-development-node` 签发一次性令牌。
-按 [Node 登记](docs/NODE_ENROLLMENT.zh-CN.md) 启动 `npm run dev:node`，
-配对成功后删除初始化令牌。未配置执行 Provider 时任务会保持排队。
-使用 `npm run db:stop` 停止 PostgreSQL。
+打开 <http://localhost:5173>，配置支持的模型并明确启用原生 Agent，然后创建 `none` 配置的 Bot 与频道。原生模型任务不需要 Worker；电脑任务需要单独登记的 Worker 和可执行 Provider，见 [Node 登记](docs/NODE_ENROLLMENT.zh-CN.md)和 [Provider 一致性](docs/PROVIDER_CONFORMANCE.zh-CN.md)。容器部署见 [Server 容器](docs/SERVER_CONTAINER.zh-CN.md)。
 
-启用现有浏览器流程时，在 Node 的 loopback 地址运行固定版本
-[CopilotKit/OpenBot agent-computer](https://github.com/CopilotKit/openbot/tree/257c1280d684089be9adb0b35cce262efc7064bf/agent-computer)，
-配置 `OPENBOT_DOCKER_COMPUTER_URL`、`OPENBOT_DOCKER_COMPUTER_TOKEN` 和
-`OPENBOT_DOCKER_ALLOW_PRIVATE_HOSTS=false`，再在频道发送明确的公网 URL 获取截图。
+官网在 [openbot-website](https://github.com/yxflc11/openbot-website) 独立仓库中维护和构建；依照该仓库 README 安装依赖、准备演示并运行 `npm run build`。演示使用示例数据、禁止外部 API 请求，不连接真实工作区或模型。
 
-容器部署见 [Server 容器](docs/SERVER_CONTAINER.zh-CN.md)。定时工作见
-[自动任务](docs/AUTOMATIONS.zh-CN.md)：Server 必须持续运行，定时记录不增加权限；原生执行需单独[启用 Agent](docs/NATIVE_AGENT.zh-CN.md)。
-
-默认关闭的交互流程见[审核后点击一次浏览器按钮](docs/CONTROLLED_BROWSER.zh-CN.md)。
-
-## 安全与架构
+## 架构与贡献
 
 ```text
-Desktop / Web -> Server -> 获授权的任务路由
-                   ^                |
-                   +-- Worker 主动出站连接 -> Providers
+Desktop / Web -> Server -> 原生 Agent 与受限 MCP 连接
+                   |
+                   +-> 已登记 Worker -> 可执行 Provider
+                   |
+                   +-> PostgreSQL、对象存储与审计
 ```
 
-Server 是唯一真相源。渲染进程、模型、网页、技能、Provider 和 Worker Host 都不可信。
-敏感副作用必须经过显式策略和审批；能力声明不授予权限。
-Desktop 使用本地资源、沙箱渲染进程、有类型的 IPC 和经过验证的打包 fuse。
+Server 是唯一权限中心。模型、附件、网页、技能、插件和 Worker 都是不可信输入，工具能力不等于授权。远程部署使用可信 HTTPS、严格 Origin 与安全 Cookie，数据库和电脑后端保持私有。参见[安全政策](SECURITY.md)与[威胁模型](docs/SECURITY.md)。
 
-远程部署需要 HTTPS、`OPENBOT_SECURE_COOKIES=true`、收紧
-`OPENBOT_ALLOWED_ORIGINS` 并使用可信私网。数据库和电脑后端应保持私有。
-Node 凭证仍是 bearer secret；配对不代表持有证明或 mTLS。
-参见 [安全政策](SECURITY.md)、[威胁模型](docs/SECURITY.md)与
-[Provider 一致性](docs/PROVIDER_CONFORMANCE.zh-CN.md)。
+从[贡献指南](CONTRIBUTING.zh-CN.md)、[仓库地图](docs/REPOSITORY_MAP.zh-CN.md)、[当前架构](docs/ARCHITECTURE.zh-CN.md)、[工程审查](docs/REPOSITORY_AUDIT.zh-CN.md)和[开源复用规则](docs/OPEN_SOURCE_REUSE.zh-CN.md)开始。插件作者可直接实现标准 MCP Streamable HTTP，不需要专属 OpenBot SDK，见[插件作者契约](docs/PLUGINS.zh-CN.md)及 [openbot-website](https://github.com/yxflc11/openbot-website) `src/content/docs` 中的官网扩展指南。
 
-## 贡献与文档
+员工演化和学习方向明确借鉴 [Hermes Agent 的学习图](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)，OpenBot 不宣称原创该概念。办公室可视化仍是延期的可选插件。
 
-使用功能分支与 PR。变更行为前调研并固定上游版本、保留声明、同步英文与维护中的翻译，
-运行 `npm run check` 和 `npm audit`。
-先阅读 [贡献指南](CONTRIBUTING.zh-CN.md)和[开源复用规则](docs/OPEN_SOURCE_REUSE.zh-CN.md)。
+## 许可与名称
 
-| 路径 | 职责 |
-| --- | --- |
-| `apps/desktop`、`apps/web` | Electron 壳与共用 React 界面 |
-| `apps/server`、`apps/node` | 权威控制平面与执行 daemon |
-| `apps/worker-host-macos`、`apps/worker-host-windows` | 窄原生服务集成 |
-| `packages/*`、`providers/*` | 共享领域、协议、存储、策略和执行适配器 |
-| `deploy/`、`docs/` | 部署资源、契约、调研与验收证据 |
-
-文档入口：[产品](docs/PRODUCT.md)、[架构](docs/ARCHITECTURE.md)、
-[路线图](docs/ROADMAP.md)、[API](docs/API.zh-CN.md)、[跨平台主机](docs/CROSS_PLATFORM.zh-CN.md)、
-[数据库运维](docs/DATABASE.zh-CN.md)和[员工包签名](docs/EMPLOYEE_SIGNING.zh-CN.md)。
-
-## 许可证与命名
-
-采用 [MIT License](LICENSE)，上游声明保存在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-`OpenBot` 是工作名称，已有包括 CopilotKit/OpenBot 在内的其他项目使用；稳定发布前需要选定
-可区分的名称。本项目与 xAI、腾讯、CopilotKit、OpenClaw 或其他参考项目不存在隶属关系。
-
-现在可以通过 [SKILL.md 导入与 Owner 全文审核](docs/REVIEWED_SKILLS.zh-CN.md)，让 Agent 按需使用技能指令流程。
-
-### Desktop 模型服务
-
-设置 → 模型 API 现提供 11 家服务预设：OpenAI、Anthropic、Google Gemini、DeepSeek、Kimi、
-OpenRouter、硅基流动、阿里云百炼、智谱 / Z.AI、MiniMax、火山方舟。
-选择 API Key 对应区域，从常用模型中选择或手填模型 ID，再保存加密配置。
-支持的服务可以获取有界模型列表，不生成付费内容；尚无已验证列表接口的服务会明确提示仅保存配置、
-未在线验证。切换厂商或区域会清空密钥输入。已有 Kimi 配置和本地数据继续兼容。
-本次 Desktop 使用一个由 Server 管理的默认模型，未加入逐员工连接或任意自定义主机。
-见[接入调查](docs/research/desktop-model-presets.md)。
+采用 [MIT License](LICENSE)，必要上游声明保存在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。`OpenBot` 是其他项目也在使用的工作名称，稳定版的可区分名称仍需项目决定。本项目与 xAI、腾讯、CopilotKit、OpenClaw 等参考项目不存在隶属关系。

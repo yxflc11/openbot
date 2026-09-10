@@ -77,7 +77,24 @@ export interface DesktopNavigationMenuState {
   canGoForward: boolean;
   settingsAvailable: boolean;
 }
+export type EmployeeTemplateSaveInput = Readonly<{
+  botId: string;
+  packageId: string;
+  generatedAt: string;
+  downloadReviewToken: string;
+}>;
+export type EmployeeTemplateSaveResult = Readonly<{
+  status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" | "changed";
+}>;
+
 export interface OpenBotDesktopBridge {
+  beginVoiceCapture?(): Promise<boolean>;
+  endVoiceCapture?(): Promise<void>;
+  saveAttachment?(input: {
+    channelId: string;
+    attachmentId: string;
+  }): Promise<Readonly<{ status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" }>>;
+  saveEmployeeTemplate?(input: EmployeeTemplateSaveInput): Promise<EmployeeTemplateSaveResult>;
   restoreLocalSession?(): Promise<Readonly<{ status: "restored" | "unavailable" }>>;
   saveReport?(
     artifactId: string,
@@ -126,10 +143,19 @@ export function getOpenBotDesktopBridge(): OpenBotDesktopBridge | undefined {
 }
 
 export type NativeServerState =
-  | Readonly<{ status: "idle" }>
-  | Readonly<{ status: "installing"; step: "checking" | "database" | "server" | "connecting" }>
+  | Readonly<{ status: "idle"; initialized?: boolean }>
+  | Readonly<{
+      status: "installing";
+      mode?: "initialize" | "resume";
+      step: "checking" | "database" | "server" | "connecting";
+    }>
   | Readonly<{ status: "ready"; serverUrl: string }>
   | Readonly<{
       status: "failed";
-      code: "unsupported_platform" | "installation_failed" | "service_stopped" | "stopping";
+      code:
+        | "unsupported_platform"
+        | "installation_failed"
+        | "credential_unavailable"
+        | "service_stopped"
+        | "stopping";
     }>;

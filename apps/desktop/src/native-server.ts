@@ -1,13 +1,24 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
+import { channel } from "node:diagnostics_channel";
+import { existsSync } from "node:fs";
+import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import postgresClient from "postgres";
 import { LocalSessionRecovery } from "./local-session-recovery.js";
 import { RestrictedJsonFile } from "./restricted-json-file.js";
 import type { NativeServerState } from "./runtime-contract.js";
+import {
+  verifyWindowsPrivateDirectory,
+  windowsNativeEnvironment,
+} from "./windows-native-security.js";
+import { startWindowsPostgres, type WindowsPostgresProcess } from "./windows-postgres.js";
+
+const startupDiagnostics = channel("openbot.desktop.native-startup");
+
+class NativeCredentialError extends Error {}
 
 interface BootstrapSecrets {
   databasePassword: string;
@@ -35,6 +46,7 @@ export class NativeServerController {
   #state: NativeServerState = { status: "idle" };
   #pending: Promise<NativeServerState> | undefined;
   #postgres: ChildProcess | undefined;
+  #windowsPostgres: WindowsPostgresProcess | undefined;
   #server: ManagedServerProcess | undefined;
   #stopping = false;
   #ownedUrl: string | undefined;
@@ -47,6 +59,12 @@ export class NativeServerController {
     if (this.#state.status === "ready" && !this.#server?.isAlive()) {
       this.#state = { status: "failed", code: "service_stopped" };
     }
+    if (
+      this.#state.status === "idle" &&
+      existsSync(join(this.#options.dataRoot, "bootstrap.json")) &&
+      existsSync(join(this.#options.dataRoot, "postgres", "PG_VERSION"))
+    )
+      return Object.freeze({ ...this.#state, initialized: true });
     return Object.freeze({ ...this.#state });
   }
   owns(url: string): boolean {
@@ -63,9 +81,18 @@ export class NativeServerController {
     if (this.#state.status === "ready" && this.#server?.isAlive())
       return Promise.resolve(this.getState());
     this.#pending = this.#start()
-      .catch(async () => {
+      .catch(async (error: unknown) => {
+        // Trusted main-process diagnostics never cross the renderer state/IPC boundary.
+        if (startupDiagnostics.hasSubscribers)
+          startupDiagnostics.publish({ state: this.#state, error });
         await this.#stopChildren();
-        this.#state = { status: "failed", code: "installation_failed" };
+        this.#state = {
+          status: "failed",
+          code:
+            error instanceof NativeCredentialError
+              ? "credential_unavailable"
+              : "installation_failed",
+        };
         return this.getState();
       })
       .finally(() => {
@@ -75,19 +102,24 @@ export class NativeServerController {
   }
 
   async #start(): Promise<NativeServerState> {
-    if (this.#options.platform !== "darwin") {
+    if (!["darwin", "win32"].includes(this.#options.platform)) {
       this.#state = { status: "failed", code: "unsupported_platform" };
       return this.getState();
     }
     await this.#stopChildren();
-    this.#state = { status: "installing", step: "checking" };
+    const mode = existsSync(join(this.#options.dataRoot, "postgres", "PG_VERSION"))
+      ? "resume"
+      : "initialize";
+    this.#state = { status: "installing", mode, step: "checking" };
     const { runtimeRoot, dataRoot } = this.#options;
     const bin = join(runtimeRoot, "postgres/bin");
-    for (const name of ["initdb", "postgres"]) {
-      const file = await lstat(join(bin, name));
+    const windows = this.#options.platform === "win32";
+    const executable = (name: string) => join(bin, windows ? `${name}.exe` : name);
+    for (const name of ["initdb", "postgres", ...(windows ? ["pg_ctl"] : [])]) {
+      const file = await lstat(executable(name));
       if (!file.isFile() || file.isSymbolicLink()) throw new Error("Native executable missing.");
     }
-    await privateDirectory(dataRoot);
+    await privateDirectory(dataRoot, this.#options.platform);
     const secretFile = new RestrictedJsonFile<string>(join(dataRoot, "bootstrap.json"), {
       label: "Encrypted local bootstrap",
       maximumBytes: 8192,
@@ -103,19 +135,35 @@ export class NativeServerController {
     const clusterExists = await exists(cluster);
     if (!retained && clusterExists) throw new Error("Existing cluster has no bootstrap identity.");
     const secrets = retained
-      ? parseSecrets(this.#options.decrypt(retained))
+      ? decryptBootstrap(this.#options, retained)
       : {
           databasePassword: randomBytes(32).toString("hex"),
           ownerPassword: randomBytes(32).toString("hex"),
           modelKey: randomBytes(32).toString("hex"),
         };
-    if (!retained) await secretFile.save(this.#options.encrypt(JSON.stringify(secrets)));
-    this.#state = { status: "installing", step: "database" };
+    if (!retained) {
+      let encrypted: string;
+      try {
+        encrypted = this.#options.encrypt(JSON.stringify(secrets));
+      } catch {
+        throw new NativeCredentialError("OS secret storage is unavailable.");
+      }
+      await secretFile.save(encrypted);
+    }
+    this.#state = { status: "installing", mode, step: "database" };
     if (!clusterExists) {
       const staging = await mkdtemp(join(dataRoot, ".initializing-"));
       try {
+        const passwordFile = join(staging, "initdb-password");
+        if (windows) {
+          await verifyWindowsPrivateDirectory(staging, true);
+          await writeFile(passwordFile, `${secrets.databasePassword}\n`, {
+            flag: "wx",
+            mode: 0o600,
+          });
+        }
         await runBounded(
-          join(bin, "initdb"),
+          executable("initdb"),
           [
             "-D",
             join(staging, "postgres"),
@@ -124,44 +172,62 @@ export class NativeServerController {
             "--auth=scram-sha-256",
             "--encoding=UTF8",
             "--locale=C",
-            "--pwfile=/dev/stdin",
+            windows ? `--pwfile=${passwordFile}` : "--pwfile=/dev/stdin",
           ],
-          `${secrets.databasePassword}\n`,
+          windows ? undefined : `${secrets.databasePassword}\n`,
         );
+        if (windows) await verifyWindowsPrivateDirectory(join(staging, "postgres"), true);
         await rename(join(staging, "postgres"), cluster);
       } finally {
         await rm(staging, { recursive: true, force: true });
       }
     } else {
-      await privateDirectory(cluster);
+      await privateDirectory(cluster, this.#options.platform);
       if ((await readFile(join(cluster, "PG_VERSION"), "utf8")).trim() !== "17")
         throw new Error("Cluster requires an explicit upgrade.");
     }
     if (this.#stopping) throw new Error("Stopping.");
     const dbPort = await availablePort();
-    this.#postgres = spawn(
-      join(bin, "postgres"),
-      ["-D", cluster, "-h", "127.0.0.1", "-p", String(dbPort), "-k", ""],
-      {
-        env: nativeEnvironment(),
-        stdio: "ignore",
-        shell: false,
-      },
-    );
-    const postgres = this.#postgres;
-    let pgFailed = false;
-    postgres.on("error", () => {
-      pgFailed = true;
-    });
-    postgres.on("exit", () => {
+    const databaseExited = () => {
       if (!this.#stopping && this.#state.status === "ready") {
         this.#state = { status: "failed", code: "service_stopped" };
         void this.#stopChildren();
       }
-    });
+    };
+    let pgFailed = false;
+    if (windows) {
+      this.#windowsPostgres = await startWindowsPostgres(
+        runtimeRoot,
+        dataRoot,
+        dbPort,
+        databaseExited,
+      );
+    } else {
+      this.#postgres = spawn(
+        executable("postgres"),
+        ["-D", cluster, "-h", "127.0.0.1", "-p", String(dbPort), "-k", ""],
+        {
+          env: nativeEnvironment(),
+          stdio: "ignore",
+          shell: false,
+          windowsHide: true,
+        },
+      );
+      this.#postgres.on("error", () => {
+        pgFailed = true;
+      });
+      this.#postgres.on("exit", databaseExited);
+    }
+    const postgres = this.#postgres;
+    const windowsPostgres = this.#windowsPostgres;
     const databaseUrl = `postgres://openbot:${secrets.databasePassword}@127.0.0.1:${dbPort}/postgres`;
     await waitUntil(async () => {
-      if (pgFailed || postgres.exitCode !== null || postgres.signalCode !== null || this.#stopping)
+      if (
+        pgFailed ||
+        (postgres && (postgres.exitCode !== null || postgres.signalCode !== null)) ||
+        (windowsPostgres && !windowsPostgres.isAlive()) ||
+        this.#stopping
+      )
         throw new Error("Postgres stopped.");
       const connection = postgresClient(databaseUrl, {
         max: 1,
@@ -177,7 +243,7 @@ export class NativeServerController {
         await connection.end({ timeout: 1 });
       }
     });
-    this.#state = { status: "installing", step: "server" };
+    this.#state = { status: "installing", mode, step: "server" };
     const port = await availablePort();
     const url = `http://127.0.0.1:${port}`;
     this.#server = await this.#options.launchServer({
@@ -190,11 +256,14 @@ export class NativeServerController {
       OPENBOT_OBJECT_STORE_PATH: join(dataRoot, "objects"),
       OPENBOT_MODEL_SETTINGS_PATH: join(dataRoot, "model-settings.json"),
       OPENBOT_MODEL_ENCRYPTION_KEY: secrets.modelKey,
+      ...(process.env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS
+        ? { OPENBOT_PLUGIN_LOCAL_ENDPOINTS: process.env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS }
+        : {}),
       ...(process.env.TAVILY_API_KEY ? { TAVILY_API_KEY: process.env.TAVILY_API_KEY } : {}),
       OPENBOT_LOG_LEVEL: "error",
     });
     this.#ownedUrl = url;
-    this.#state = { status: "installing", step: "connecting" };
+    this.#state = { status: "installing", mode, step: "connecting" };
     await waitUntil(async () => {
       if (this.#stopping || !this.#server?.isAlive()) throw new Error("Server stopped.");
       try {
@@ -229,6 +298,9 @@ export class NativeServerController {
     await server?.stop().catch(() => undefined);
     const postgres = this.#postgres;
     this.#postgres = undefined;
+    const windowsPostgres = this.#windowsPostgres;
+    this.#windowsPostgres = undefined;
+    if (windowsPostgres) await windowsPostgres.stop();
     if (postgres) await stopPostgres(postgres);
   }
 }
@@ -242,16 +314,17 @@ function parseSecrets(value: string): BootstrapSecrets {
     throw new Error("Invalid local bootstrap.");
   return parsed;
 }
-async function privateDirectory(path: string): Promise<void> {
+async function privateDirectory(path: string, platform: string): Promise<void> {
+  const created = !(await exists(path));
   await mkdir(path, { recursive: true, mode: 0o700 });
   const entry = await lstat(path);
   if (
     !entry.isDirectory() ||
     entry.isSymbolicLink() ||
-    (entry.mode & 0o077) !== 0 ||
-    entry.uid !== process.getuid?.()
+    (platform !== "win32" && ((entry.mode & 0o077) !== 0 || entry.uid !== process.getuid?.()))
   )
     throw new Error("Unsafe local data directory.");
+  if (platform === "win32") await verifyWindowsPrivateDirectory(path, created);
 }
 async function exists(path: string): Promise<boolean> {
   try {
@@ -263,7 +336,9 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 function nativeEnvironment(): Record<string, string> {
-  return { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" };
+  return process.platform === "win32"
+    ? windowsNativeEnvironment()
+    : { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C" };
 }
 export async function availablePort(): Promise<number> {
   const listener = createServer();
@@ -287,10 +362,19 @@ export function runBounded(
   timeout = 30_000,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const captureDiagnostics = startupDiagnostics.hasSubscribers;
+    let diagnosticBytes = 0;
+    const diagnosticChunks: Buffer[] = [];
     const child = spawn(executable, args, {
       env: nativeEnvironment(),
-      stdio: ["pipe", "ignore", "ignore"],
+      stdio: ["pipe", "ignore", captureDiagnostics ? "pipe" : "ignore"],
       shell: false,
+      windowsHide: true,
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      const bounded = chunk.subarray(0, Math.max(0, 16_384 - diagnosticBytes));
+      diagnosticBytes += bounded.length;
+      if (bounded.length) diagnosticChunks.push(bounded);
     });
     const timer = setTimeout(() => child.kill("SIGKILL"), timeout);
     child.stdin?.on("error", () => undefined);
@@ -300,6 +384,13 @@ export function runBounded(
     });
     child.once("close", (code) => {
       clearTimeout(timer);
+      if (code !== 0 && captureDiagnostics) {
+        startupDiagnostics.publish({
+          operation: basename(executable),
+          code,
+          stderr: Buffer.concat(diagnosticChunks).toString("utf8"),
+        });
+      }
       code === 0 ? resolve() : reject(new Error("Native operation failed."));
     });
     child.stdin?.end(input);
@@ -328,4 +419,14 @@ async function stopPostgres(child: ChildProcess): Promise<void> {
     });
     child.kill("SIGINT");
   });
+}
+
+function decryptBootstrap(options: NativeServerOptions, retained: string): BootstrapSecrets {
+  let decrypted: string;
+  try {
+    decrypted = options.decrypt(retained);
+  } catch {
+    throw new NativeCredentialError("OS secret storage is unavailable.");
+  }
+  return parseSecrets(decrypted);
 }

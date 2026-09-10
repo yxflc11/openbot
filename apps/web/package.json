@@ -8,13 +8,17 @@
     "build:desktop": "tsc --noEmit -p tsconfig.json && vite build --mode desktop",
     "dev": "vite",
     "preview": "vite preview",
-    "test": "vitest run src --passWithNoTests",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "test": "vitest run src --passWithNoTests --maxWorkers=2",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:demo": "tsc --noEmit -p tsconfig.json && vite build --config vite.demo.config.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@openbot/domain": "0.0.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "4.5.4"
   },
   "devDependencies": {
     "@types/react": "19.2.18",

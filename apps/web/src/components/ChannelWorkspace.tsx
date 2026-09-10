@@ -1,6 +1,18 @@
-import type { Artifact, Bot, Channel, Message, Run, RunFrame, RunProgress } from "@openbot/domain";
+import type {
+  Artifact,
+  Bot,
+  Channel,
+  Message,
+  MessageReaction,
+  ReactionEmoji,
+  Run,
+  RunFrame,
+  RunProgress,
+  RunOutput,
+} from "@openbot/domain";
 import {
   type FormEvent,
+  Fragment,
   type KeyboardEvent,
   type ReactNode,
   useEffect,
@@ -13,23 +25,49 @@ import {
 import {
   createMessage,
   getEmployeeProfile,
+  getRunOutput,
   listMessages,
+  listChannelReactions,
+  setMessageReaction,
   listRuns,
   type RealtimeConnectionState,
   subscribeToChannelEvents,
 } from "../api";
-import { composeTaskText, readComposerAttachment } from "../composer-context";
+import { mergeRunOutput } from "../run-output-state";
+import { RunSteering } from "./RunSteering";
+import { AttachmentsManagerDialog } from "./AttachmentsManager";
+import { VoiceRecorder } from "./VoiceRecorder";
+import { MessageActionBar } from "./MessageActionBar";
+import { MessageReactions } from "./MessageReactions";
+import { RichMessage } from "./RichMessage";
+import { composeTaskText } from "../composer-context";
 import { type ConversationSession, createConversationSession } from "../conversation-session";
 import { shortcutLabel } from "../desktop-shortcuts";
+import {
+  addRecipient,
+  removeRecipient,
+  selectEveryone,
+  selectedRecipientIds,
+} from "../recipient-utils";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { useWorkspacePreferences } from "../workspace-preferences";
+import "./ChannelMessagePresentation.css";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChannelMembersMenu } from "./ChannelMembersMenu";
+import { ComposerAttachmentPicker } from "./ComposerAttachmentPicker";
 import { HashIcon, PlusIcon, SendIcon, SkillIcon } from "./Icons";
+import { MessageAttachments } from "./MessageAttachments";
 import { NativeRunControls } from "./NativeRunControls";
 import { OpenBotMark } from "./OpenBotMark";
-import { RichMessage } from "./RichMessage";
+import { PluginCallApprovals } from "./PluginCallApprovals";
 import { RobotAvatar } from "./RobotAvatar";
+import {
+  type CollaborationRun,
+  DelegatedReplyContext,
+  DelegationNotice,
+  indexRunCollaboration,
+  RunCollaboration,
+} from "./RunCollaboration";
 
 export function ChannelWorkspace({
   headerAction,
@@ -40,6 +78,8 @@ export function ChannelWorkspace({
   artifacts,
   progress,
   onJoin,
+  onRemove,
+  onChannel,
   onInspectRun,
   onOpenBot,
   onFrame,
@@ -54,6 +94,8 @@ export function ChannelWorkspace({
   artifacts: Artifact[];
   progress: RunProgress[];
   onJoin(botId: string): Promise<void>;
+  onRemove?(botId: string): Promise<void>;
+  onChannel?(channel: Channel): void;
   onInspectRun(runId: string): void;
   onOpenBot(botId: string): void;
   onFrame(frame: RunFrame): void;
@@ -82,15 +124,37 @@ export function ChannelWorkspace({
     [messages],
   );
   const runsById = useMemo(() => new Map(runs.map((run) => [run.id, run])), [runs]);
+  const collaboration = useMemo(
+    () => indexRunCollaboration(channel.id, runs, messages),
+    [channel.id, runs, messages],
+  );
+  const artifactMessageByRun = useMemo(() => {
+    const result = new Map<string, string>();
+    for (const message of messages) {
+      if (
+        message.runId &&
+        message.authorType === "bot" &&
+        message.authorId === runsById.get(message.runId)?.botId &&
+        !collaboration.delegationByMessage.has(message.id)
+      )
+        result.set(message.runId, message.id);
+    }
+    return result;
+  }, [messages, runsById, collaboration]);
   const [realtimeState, setRealtimeState] = useState<RealtimeConnectionState>("connecting");
   const [readAttempt, setReadAttempt] = useState(0);
+  const [reactions, setReactions] = useState<MessageReaction[]>([]);
+  const [filesOpen, setFilesOpen] = useState(false);
+  const [outputs, setOutputs] = useState<ReadonlyMap<string, RunOutput>>(new Map());
   const [awayFromLatest, setAwayFromLatest] = useState(!conversation.scroll.atBottom);
   const messageList = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const composer = useRef<HTMLFormElement>(null);
   const restored = useRef(false);
   const viewportSize = useRef({ width: 0, height: 0 });
   const mounted = useRef(false);
-  const targetBot = botsById.get(draft.targetBotId);
+  const recipientIds = selectedRecipientIds(draft);
+  const targetBot = recipientIds.length === 1 ? botsById.get(recipientIds[0] ?? "") : undefined;
   const [mentionQuery, setMentionQuery] = useState<string>();
   const [mentionIndex, setMentionIndex] = useState(0);
   const [contextError, setContextError] = useState<string>();
@@ -100,23 +164,51 @@ export function ChannelWorkspace({
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const addMenu = useRef<HTMLDetailsElement>(null);
   const matchingMembers = members.filter(
     (bot) =>
       mentionQuery !== undefined &&
       bot.name.toLocaleLowerCase().includes(mentionQuery.toLocaleLowerCase()),
   );
-  const activeRun = runs.find((run) => isActiveRun(run));
-  const activeBot = activeRun ? botsById.get(activeRun.botId) : undefined;
-  const activeProgress = activeRun
-    ? progress.filter((item) => item.runId === activeRun.id).at(-1)
-    : undefined;
+  const showEveryone =
+    mentionQuery !== undefined &&
+    members.length > 1 &&
+    (!mentionQuery ||
+      "所有人".includes(mentionQuery) ||
+      "everyone".startsWith(mentionQuery.toLowerCase()));
+  const mentionCount = matchingMembers.length + (showEveryone ? 1 : 0);
+  const skillBotId = targetBot?.id;
+  const invalidRecipient = recipientIds.some(
+    (id) => !channel.botIds.includes(id) || !botsById.has(id),
+  );
+  function chooseEveryone() {
+    try {
+      conversation.edit({
+        ...selectEveryone(channel.botIds),
+        text: draft.text.replace(/(?:^|\s)@[^@\n]*$/, "").trimEnd(),
+      });
+      setMentionQuery(undefined);
+      setMentionIndex(0);
+      setContextError(undefined);
+      textarea.current?.focus();
+    } catch (cause) {
+      setContextError(cause instanceof Error ? cause.message : "无法选择所有人。");
+    }
+  }
+  const activeRun = runs.find((run) => run.status === "running") ?? runs.find(isActiveRun);
   const contextLength = composeTaskText(draft.text, draft.attachments, draft.skills).length;
   function chooseMention(bot: Bot) {
-    conversation.edit({
-      targetBotId: bot.id,
-      text: draft.text.replace(/(?:^|\s)@[^@\n]*$/, "").trimEnd(),
-    });
+    try {
+      conversation.edit({
+        ...addRecipient(draft, bot.id, channel.botIds),
+        text: draft.text.replace(/(?:^|\s)@[^@\n]*$/, "").trimEnd(),
+      });
+      setContextError(undefined);
+    } catch (cause) {
+      setContextError(cause instanceof Error ? cause.message : "无法添加接收者。");
+      return;
+    }
     setMentionQuery(undefined);
     setMentionIndex(0);
     textarea.current?.focus();
@@ -125,13 +217,13 @@ export function ChannelWorkspace({
   useEffect(() => {
     setSkillsOpen(false);
     setSkillChoices([]);
-  }, [draft.targetBotId]);
+  }, [skillBotId]);
   useEffect(() => {
-    if (!skillsOpen || !draft.targetBotId) return;
+    if (!skillsOpen || !skillBotId) return;
     const controller = new AbortController();
     setSkillsLoading(true);
     setContextError(undefined);
-    void getEmployeeProfile(draft.targetBotId, controller.signal)
+    void getEmployeeProfile(skillBotId, controller.signal)
       .then((profile) => {
         if (!controller.signal.aborted)
           setSkillChoices(profile.skills.filter((skill) => skill.state === "verified"));
@@ -143,7 +235,7 @@ export function ChannelWorkspace({
         if (!controller.signal.aborted) setSkillsLoading(false);
       });
     return () => controller.abort();
-  }, [skillsOpen, draft.targetBotId]);
+  }, [skillsOpen, skillBotId]);
   const artifactsByRun = useMemo(() => {
     const result = new Map<string, Artifact[]>();
     for (const artifact of artifacts) {
@@ -158,21 +250,19 @@ export function ChannelWorkspace({
     for (const item of progress) result.set(item.runId, item);
     return result;
   }, [progress]);
-  const unlinkedRuns = runs.filter(
-    (run) =>
-      isActiveRun(run) &&
-      run.id !== activeRun?.id &&
-      !messages.some((message) => message.runId === run.id),
+  const latestCompletedRequest = runs.reduce(
+    (latest, run) =>
+      run.status === "completed" && !run.parentRunId
+        ? Math.max(latest, Date.parse(run.createdAt))
+        : latest,
+    0,
   );
-
-  useEffect(() => {
-    if (
-      draft.targetBotId &&
-      (!channel.botIds.includes(draft.targetBotId) || !botsById.has(draft.targetBotId))
-    ) {
-      conversation.edit({ targetBotId: "" });
-    }
-  }, [conversation, channel.botIds, botsById, draft.targetBotId]);
+  const visibleWork = runs.filter(
+    (run) =>
+      isActiveRun(run) ||
+      ((run.status === "failed" || run.status === "cancelled") &&
+        Date.parse(run.createdAt) >= latestCompletedRequest),
+  );
 
   useEffect(() => {
     mounted.current = true;
@@ -196,6 +286,27 @@ export function ChannelWorkspace({
         conversation.merge(messageItems, runItems);
         conversation.loaded();
         for (const run of runItems) if (run.channelId === channel.id) onRun(run);
+        void listChannelReactions(channel.id, controller.signal)
+          .then((items) => {
+            if (!controller.signal.aborted && requestedRevision === revision) setReactions(items);
+          })
+          .catch(() => undefined);
+        await Promise.allSettled(
+          runItems
+            .filter(
+              (run) =>
+                run.channelId === channel.id &&
+                run.executionProfile === "none" &&
+                ["queued", "running"].includes(run.status),
+            )
+            .map(async (run) => {
+              const output = await getRunOutput(run.id, controller.signal);
+              if (!controller.signal.aborted && output)
+                setOutputs((current) =>
+                  mergeRunOutput(current, output, channel.id, conversation.getSnapshot().runs),
+                );
+            }),
+        );
       } catch (cause: unknown) {
         if (controller.signal.aborted || requestedRevision !== revision) return;
         conversation.loaded(cause instanceof Error ? cause.message : "无法读取频道消息。");
@@ -216,6 +327,22 @@ export function ChannelWorkspace({
         conversation.merge([], [run]);
         onRun(run, projectedArtifacts);
       },
+      onOutput(output) {
+        if (!controller.signal.aborted)
+          setOutputs((current) =>
+            mergeRunOutput(current, output, channel.id, conversation.getSnapshot().runs),
+          );
+      },
+      onReactions(messageId, items) {
+        if (!controller.signal.aborted)
+          setReactions((current) => [
+            ...current.filter((item) => item.messageId !== messageId),
+            ...items,
+          ]);
+      },
+      onChannel(updated) {
+        if (!controller.signal.aborted) onChannel?.(updated);
+      },
       onReady() {
         if (!controller.signal.aborted) void syncChannel();
       },
@@ -228,7 +355,7 @@ export function ChannelWorkspace({
       controller.abort();
       unsubscribe();
     };
-  }, [channel.id, conversation, onFrame, onProgress, onRun, readAttempt]);
+  }, [channel.id, conversation, onFrame, onProgress, onRun, onChannel, readAttempt]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: message count changes invalidate DOM scroll geometry.
   useLayoutEffect(() => {
@@ -247,7 +374,7 @@ export function ChannelWorkspace({
             : "smooth",
       });
     }
-  }, [conversation, loading, messages.length, preferences.reduceMotion]);
+  }, [conversation, loading, messages.length, outputs, preferences.reduceMotion]);
 
   useLayoutEffect(() => {
     const list = messageList.current;
@@ -279,7 +406,7 @@ export function ChannelWorkspace({
       const padding =
         (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
       input.style.height = "auto";
-      input.style.height = `${Math.max(2 * lineHeight + padding, Math.min(input.scrollHeight, 8 * lineHeight + padding))}px`;
+      input.style.height = `${Math.max(lineHeight + padding, Math.min(input.scrollHeight, 8 * lineHeight + padding))}px`;
     };
     resize();
     let width = input.clientWidth;
@@ -300,12 +427,14 @@ export function ChannelWorkspace({
     event.preventDefault();
     if (
       sending ||
+      uploadingAttachments ||
       mentionQuery !== undefined ||
-      !members.some((bot) => bot.id === draft.targetBotId)
+      members.length === 0 ||
+      recipientIds.some((id) => !members.some((bot) => bot.id === id))
     )
       return;
     const result = await conversation.send((input) => createMessage(channel.id, input));
-    if (result && mounted.current) onRun(result.run);
+    if (result && mounted.current) for (const run of result.runs ?? [result.run]) onRun(run);
   }
   function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (
@@ -323,16 +452,17 @@ export function ChannelWorkspace({
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
         setMentionIndex((value) =>
-          Math.max(
-            0,
-            Math.min(matchingMembers.length - 1, value + (event.key === "ArrowDown" ? 1 : -1)),
-          ),
+          Math.max(0, Math.min(mentionCount - 1, value + (event.key === "ArrowDown" ? 1 : -1))),
         );
         return;
       }
-      if ((event.key === "Enter" || event.key === "Tab") && matchingMembers[mentionIndex]) {
+      if ((event.key === "Enter" || event.key === "Tab") && mentionCount > 0) {
         event.preventDefault();
-        chooseMention(matchingMembers[mentionIndex]);
+        if (showEveryone && mentionIndex === 0) chooseEveryone();
+        else {
+          const choice = matchingMembers[mentionIndex - (showEveryone ? 1 : 0)];
+          if (choice) chooseMention(choice);
+        }
         return;
       }
     }
@@ -357,9 +487,18 @@ export function ChannelWorkspace({
     }
     setAwayFromLatest(false);
   }
+  function showMessage(id: string) {
+    const row = document.getElementById(`channel-message-${id}`);
+    if (!row) return;
+    conversation.scroll.atBottom = false;
+    row.scrollIntoView?.({ block: "center", behavior: "auto" });
+    row.focus({ preventScroll: true });
+    if (messageList.current) conversation.scroll.top = messageList.current.scrollTop;
+    setAwayFromLatest(true);
+  }
   return (
     <main
-      className={`workspace-main channel-workspace conversation-round-one${globalHeader ? " has-global-header" : ""}`}
+      className={`workspace-main channel-workspace channel-native${globalHeader ? " has-global-header" : ""}`}
     >
       {!globalHeader ? (
         <header className="channel-conversation-header">
@@ -377,33 +516,17 @@ export function ChannelWorkspace({
               channel={channel}
               bots={bots}
               onJoin={onJoin}
+              {...(onRemove ? { onRemove } : {})}
               onOpenBot={onOpenBot}
             />
             {headerAction}
           </div>
         </header>
       ) : null}
-      {activeRun && (
-        <div className="active-task-strip">
-          {activeBot && <RobotAvatar bot={activeBot} compact />}
-          <strong>
-            {botsById.get(activeRun.botId)?.name ?? "Bot"} · {runStatusLabel(activeRun.status)}
-          </strong>
-          <span className="task-spinner" aria-hidden="true" />
-          <span className="active-task-stage">{activeProgress?.message ?? activeRun.title}</span>
-          <button type="button" onClick={() => onInspectRun(activeRun.id)}>
-            查看详情
-          </button>
-          <NativeRunControls
-            compact
-            run={activeRun}
-            onRun={(run) => {
-              conversation.merge([], [run]);
-              onRun(run);
-            }}
-          />
-        </div>
+      {filesOpen && (
+        <AttachmentsManagerDialog channelId={channel.id} onClose={() => setFilesOpen(false)} />
       )}
+      <PluginCallApprovals channelId={channel.id} bots={bots} onInspectRun={onInspectRun} />
       <section
         className="conversation-panel channel-conversation"
         aria-label={`${channel.name} 消息`}
@@ -451,51 +574,150 @@ export function ChannelWorkspace({
                   ? "先从顶部菜单添加一名 Bot。"
                   : channel.directBotId
                     ? "直接交代第一件工作。"
-                    : "输入 @ 提及 Bot，开始第一件工作。"}
+                    : "直接发送到频道，或 @ 指定协作伙伴。"}
               </p>
             </div>
           ) : (
-            messages.map((message) => (
-              <MessageRow
-                key={message.id}
-                message={message}
-                author={message.authorId === undefined ? undefined : botsById.get(message.authorId)}
-                replyTarget={
-                  message.replyToMessageId === undefined
-                    ? undefined
-                    : messageById.get(message.replyToMessageId)
-                }
-                botsById={botsById}
-                artifacts={
-                  message.runId === undefined
-                    ? []
-                    : (artifactsByRun.get(message.runId) ?? []).filter(
-                        (artifact) =>
-                          artifact.mediaType === "image/png" || message.authorType === "bot",
-                      )
-                }
-                run={message.runId === undefined ? undefined : runsById.get(message.runId)}
-                progress={
-                  message.runId === undefined ? undefined : latestProgressByRun.get(message.runId)
-                }
-                onReply={() => {
-                  conversation.edit({ replyTo: message });
-                  textarea.current?.focus();
-                }}
-                onInspectRun={onInspectRun}
-                onOpenBot={onOpenBot}
-              />
+            messages.map((message, index) => (
+              <Fragment key={message.id}>
+                {needsTimeDivider(messages[index - 1], message) ? (
+                  <div className="message-time-divider">
+                    <time dateTime={message.createdAt}>
+                      {formatDivider(message.createdAt, preferences.hour12)}
+                    </time>
+                  </div>
+                ) : null}
+                <MessageRow
+                  message={message}
+                  reactions={reactions.filter((item) => item.messageId === message.id)}
+                  onReactionChange={async (emoji, active) => {
+                    const items = await setMessageReaction(channel.id, message.id, emoji, active);
+                    if (mounted.current)
+                      setReactions((current) => [
+                        ...current.filter((item) => item.messageId !== message.id),
+                        ...items,
+                      ]);
+                  }}
+                  groupStart={!sameMessageGroup(messages[index - 1], message)}
+                  groupEnd={!sameMessageGroup(message, messages[index + 1])}
+                  direct={Boolean(channel.directBotId)}
+                  author={
+                    message.authorId === undefined ? undefined : botsById.get(message.authorId)
+                  }
+                  replyTarget={
+                    message.replyToMessageId === undefined
+                      ? undefined
+                      : messageById.get(message.replyToMessageId)
+                  }
+                  botsById={botsById}
+                  artifacts={
+                    message.runId === undefined
+                      ? []
+                      : (artifactsByRun.get(message.runId) ?? []).filter((artifact) =>
+                          message.authorType === "bot"
+                            ? message.id === artifactMessageByRun.get(message.runId ?? "")
+                            : artifact.mediaType === "image/png",
+                        )
+                  }
+                  run={message.runId === undefined ? undefined : runsById.get(message.runId)}
+                  delegation={collaboration.delegationByMessage.get(message.id)}
+                  delegatedRun={
+                    message.runId ? collaboration.linkedRuns.get(message.runId) : undefined
+                  }
+                  parentRun={
+                    message.runId && collaboration.linkedRuns.get(message.runId)?.parentRunId
+                      ? runsById.get(collaboration.linkedRuns.get(message.runId)?.parentRunId ?? "")
+                      : undefined
+                  }
+                  childRuns={
+                    message.runId && runsById.get(message.runId)?.sourceMessageId === message.id
+                      ? (collaboration.childrenByParent.get(message.runId) ?? [])
+                      : []
+                  }
+                  progress={
+                    message.runId === undefined ? undefined : latestProgressByRun.get(message.runId)
+                  }
+                  onReply={() => {
+                    conversation.edit({
+                      replyTo: message,
+                      ...(message.authorType === "bot" &&
+                      message.authorId &&
+                      channel.botIds.includes(message.authorId)
+                        ? { targetBotId: message.authorId, targetBotIds: [message.authorId] }
+                        : {}),
+                    });
+                    textarea.current?.focus();
+                  }}
+                  onShowMessage={showMessage}
+                  onInspectRun={onInspectRun}
+                  onOpenBot={onOpenBot}
+                />
+              </Fragment>
             ))
           )}
-          {unlinkedRuns.length > 0 ? (
-            <section className="unlinked-run-status" aria-label="其他正在执行的任务">
-              {unlinkedRuns.map((run) => (
-                <button type="button" key={run.id} onClick={() => onInspectRun(run.id)}>
-                  <strong>
-                    {botsById.get(run.botId)?.name ?? "Bot"} · {runStatusLabel(run.status)}
-                  </strong>
-                  <span>{latestProgressByRun.get(run.id)?.message ?? run.title}</span>
-                </button>
+          {runs
+            .filter(
+              (run) =>
+                isActiveRun(run) &&
+                outputs.get(run.id)?.text &&
+                botsById.has(run.botId) &&
+                !artifactMessageByRun.has(run.id),
+            )
+            .map((run) => (
+              <article
+                className="message-row bot group-start group-end streaming-message"
+                key={`output-${run.id}`}
+                aria-label={`${botsById.get(run.botId)?.name} 正在回复`}
+                aria-busy="true"
+              >
+                <div className="message-avatar">
+                  <RobotAvatar bot={botsById.get(run.botId) as Bot} compact />
+                </div>
+                <div className="message-content">
+                  <header className="message-sender">
+                    <strong>{botsById.get(run.botId)?.name} · 正在回复</strong>
+                  </header>
+                  <RichMessage content={outputs.get(run.id)?.text ?? ""} />
+                </div>
+              </article>
+            ))}
+          {visibleWork.length > 0 ? (
+            <section className="channel-work-activity" aria-label="频道任务动态">
+              {visibleWork.map((run) => (
+                <div className={`channel-work-item ${run.status}`} key={run.id}>
+                  {botsById.get(run.botId) ? (
+                    <RobotAvatar bot={botsById.get(run.botId) as Bot} compact />
+                  ) : null}
+                  <div>
+                    <button type="button" onClick={() => onInspectRun(run.id)}>
+                      <strong>{botsById.get(run.botId)?.name ?? "Bot"}</strong>
+                      <span>
+                        {run.status === "queued" && activeRun?.id !== run.id
+                          ? "等待接续"
+                          : runStatusLabel(run.status)}
+                      </span>
+                    </button>
+                    <p>
+                      {latestProgressByRun.get(run.id)?.message ?? run.errorMessage ?? run.title}
+                    </p>
+                  </div>
+                  {run.status === "running" ? (
+                    <span className="work-ellipsis" aria-hidden="true">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                  ) : null}
+                  <RunSteering run={run} botName={botsById.get(run.botId)?.name ?? "Bot"} />
+                  <NativeRunControls
+                    compact
+                    run={run}
+                    onRun={(next) => {
+                      conversation.merge([], [next]);
+                      onRun(next);
+                    }}
+                  />
+                </div>
               ))}
             </section>
           ) : null}
@@ -510,7 +732,7 @@ export function ChannelWorkspace({
             {capacityError}
           </p>
         ) : null}
-        <form className="message-composer" onSubmit={sendMessage}>
+        <form className="message-composer" ref={composer} onSubmit={sendMessage}>
           {draft.replyTo ? (
             <div className="composer-reply">
               <span>回复 {messageAuthorName(draft.replyTo, botsById)}</span>
@@ -524,80 +746,109 @@ export function ChannelWorkspace({
               </button>
             </div>
           ) : null}
-          {targetBot && !channel.directBotId && (
-            <div className="composer-mention">
-              <span>@{targetBot.name}</span>
-              <button
-                type="button"
-                aria-label="移除接收 Bot"
-                onClick={() => {
-                  conversation.edit({ targetBotId: "" });
-                  setMentionQuery("");
-                  textarea.current?.focus();
-                }}
-              >
-                ×
-              </button>
-            </div>
-          )}
-          {mentionQuery !== undefined && (
-            <div
-              className="mention-options"
-              role="listbox"
-              id={`mentions-${channel.id}`}
-              aria-label="提及 Bot"
-            >
-              {matchingMembers.map((bot, index) => (
-                <button
-                  role="option"
-                  aria-selected={index === mentionIndex}
-                  id={`mention-${bot.id}`}
-                  key={bot.id}
-                  type="button"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => chooseMention(bot)}
-                >
-                  <RobotAvatar bot={bot} compact />
-                  <span>
-                    {bot.name}
-                    <small>{bot.role}</small>
+          <div className="composer-writing-row">
+            {recipientIds.length > 0 && !channel.directBotId && (
+              <div className="composer-recipients">
+                {recipientIds.map((id) => (
+                  <span className="composer-mention" key={id}>
+                    {botsById.get(id) ? (
+                      <RobotAvatar bot={botsById.get(id) as Bot} compact />
+                    ) : null}
+                    <span>{botsById.get(id)?.name ?? "已离开的 Bot"}</span>
+                    <button
+                      type="button"
+                      aria-label={`移除接收 Bot ${botsById.get(id)?.name ?? id}`}
+                      onClick={() => {
+                        conversation.edit(removeRecipient(draft, id));
+                        setContextError(undefined);
+                        textarea.current?.focus();
+                      }}
+                    >
+                      ×
+                    </button>
                   </span>
-                </button>
-              ))}
-              {matchingMembers.length === 0 && <p>没有匹配的频道 Bot</p>}
-            </div>
-          )}
-          <textarea
-            ref={textarea}
-            id={`message-${channel.id}`}
-            aria-label="消息内容"
-            value={draft.text}
-            maxLength={8000}
-            rows={2}
-            disabled={members.length === 0 || Boolean(capacityError)}
-            placeholder={
-              members.length === 0
-                ? "先从顶部菜单添加一名 Bot"
-                : channel.directBotId
-                  ? `给 ${targetBot?.name ?? "Bot"} 发消息`
-                  : "输入 @ 提及 Bot，或继续输入消息…"
-            }
-            aria-controls={mentionQuery !== undefined ? `mentions-${channel.id}` : undefined}
-            aria-activedescendant={
-              mentionQuery !== undefined && matchingMembers[mentionIndex]
-                ? `mention-${matchingMembers[mentionIndex]?.id}`
-                : undefined
-            }
-            onChange={(event) => {
-              conversation.edit({ text: event.target.value });
-              const query = channel.directBotId
-                ? undefined
-                : /(?:^|\s)@([^@\n]*)$/.exec(event.target.value)?.[1];
-              setMentionQuery(query);
-              setMentionIndex(0);
-            }}
-            onKeyDown={handleComposerKeyDown}
-          />
+                ))}
+              </div>
+            )}
+            {mentionQuery !== undefined && (
+              <div
+                className="mention-options"
+                role="listbox"
+                id={`mentions-${channel.id}`}
+                aria-label="提及 Bot"
+              >
+                {showEveryone ? (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={mentionIndex === 0}
+                    id={`mention-everyone-${channel.id}`}
+                    className="mention-everyone"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={chooseEveryone}
+                  >
+                    <HashIcon />
+                    <span>
+                      所有人<small>{members.length} 位频道成员</small>
+                    </span>
+                  </button>
+                ) : null}
+                {matchingMembers.map((bot, index) => (
+                  <button
+                    role="option"
+                    aria-selected={index + (showEveryone ? 1 : 0) === mentionIndex}
+                    id={`mention-${bot.id}`}
+                    key={bot.id}
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => chooseMention(bot)}
+                  >
+                    <RobotAvatar bot={bot} compact />
+                    <span>
+                      {bot.name}
+                      <small>{bot.role}</small>
+                    </span>
+                  </button>
+                ))}
+                {matchingMembers.length === 0 && <p>没有匹配的频道 Bot</p>}
+              </div>
+            )}
+            <textarea
+              ref={textarea}
+              id={`message-${channel.id}`}
+              aria-label="消息内容"
+              value={draft.text}
+              maxLength={8000}
+              rows={1}
+              disabled={members.length === 0 || Boolean(capacityError)}
+              placeholder={
+                members.length === 0
+                  ? "先从顶部菜单添加一名 Bot"
+                  : channel.directBotId
+                    ? `给 ${targetBot?.name ?? "Bot"} 发消息`
+                    : `给 ${channel.name} 发消息`
+              }
+              aria-controls={mentionQuery !== undefined ? `mentions-${channel.id}` : undefined}
+              aria-activedescendant={
+                mentionQuery === undefined
+                  ? undefined
+                  : showEveryone && mentionIndex === 0
+                    ? `mention-everyone-${channel.id}`
+                    : matchingMembers[mentionIndex - (showEveryone ? 1 : 0)]
+                      ? `mention-${matchingMembers[mentionIndex - (showEveryone ? 1 : 0)]?.id}`
+                      : undefined
+              }
+              onChange={(event) => {
+                conversation.edit({ text: event.target.value });
+                const query = channel.directBotId
+                  ? undefined
+                  : /(?:^|\s)@([^@\n]*)$/.exec(event.target.value)?.[1];
+                setMentionQuery(query);
+                setMentionIndex(0);
+              }}
+              onKeyDown={handleComposerKeyDown}
+            />
+          </div>
           <div className="composer-toolbar">
             <div className="composer-context-controls">
               <details
@@ -621,7 +872,16 @@ export function ChannelWorkspace({
                       fileInput.current?.click();
                     }}
                   >
-                    添加文本附件<small>TXT、MD、CSV、JSON · 最多 6 KB</small>
+                    添加附件<small>文本、图片、Office、PDF、音频和视频</small>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (addMenu.current) addMenu.current.open = false;
+                      setFilesOpen(true);
+                    }}
+                  >
+                    频道文件<small>下载、提取文字、转写和管理回收站</small>
                   </button>
                   <button
                     type="button"
@@ -638,55 +898,23 @@ export function ChannelWorkspace({
                   </button>
                 </div>
               </details>
-              <input
-                hidden
-                ref={fileInput}
-                type="file"
-                accept=".txt,.md,.csv,.json"
-                aria-label="选择文本附件"
-                onChange={async (event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  if (!file) return;
-                  setContextError(undefined);
-                  const revision = conversation.getSnapshot().draft.revision;
-                  try {
-                    if ((draft.attachments?.length ?? 0) >= 3)
-                      throw new Error("最多添加 3 个文本附件。");
-                    const attachment = await readComposerAttachment(file);
-                    const latest = conversation.getSnapshot().draft;
-                    if (latest.revision !== revision)
-                      throw new Error("草稿已改变，请重新添加附件。");
-                    if ((latest.attachments?.length ?? 0) >= 3)
-                      throw new Error("最多添加 3 个文本附件。");
-                    if (latest.attachments?.some((item) => item.name === attachment.name))
-                      throw new Error("已添加同名附件，请先移除后重试。");
-                    const attachments = [...(latest.attachments ?? []), attachment];
-                    if (composeTaskText(latest.text, attachments, latest.skills).length > 8000)
-                      throw new Error("消息与附件合计不能超过 8000 字符。");
-                    conversation.edit({ attachments });
-                  } catch (cause) {
-                    setContextError(cause instanceof Error ? cause.message : "无法读取附件。");
-                  }
-                }}
+              <VoiceRecorder
+                channelId={channel.id}
+                disabled={sending || uploadingAttachments}
+                getAttachments={() => conversation.getSnapshot().draft.attachments ?? []}
+                onChange={(attachments) => conversation.edit({ attachments })}
+              />
+              <ComposerAttachmentPicker
+                channelId={channel.id}
+                attachments={draft.attachments ?? []}
+                getAttachments={() => conversation.getSnapshot().draft.attachments ?? []}
+                onChange={(attachments) => conversation.edit({ attachments })}
+                inputRef={fileInput}
+                dropTargetRef={composer}
+                disabled={sending}
+                onUploadingChange={setUploadingAttachments}
               />
               <div className="composer-chips">
-                {draft.attachments?.map((file, index) => (
-                  <span className="context-chip" key={file.name} title={file.text}>
-                    <span>↗ {file.name}</span>
-                    <button
-                      type="button"
-                      aria-label={`移除附件 ${file.name}`}
-                      onClick={() =>
-                        conversation.edit({
-                          attachments: draft.attachments?.filter((_, item) => item !== index) ?? [],
-                        })
-                      }
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
                 {draft.skills?.map((skill) => (
                   <span className="context-chip" key={skill.id}>
                     <SkillIcon />
@@ -711,9 +939,10 @@ export function ChannelWorkspace({
               type="submit"
               disabled={
                 sending ||
+                uploadingAttachments ||
                 Boolean(capacityError) ||
                 members.length === 0 ||
-                !draft.targetBotId ||
+                recipientIds.some((id) => !members.some((bot) => bot.id === id)) ||
                 !draft.text.trim() ||
                 contextLength > 8000 ||
                 mentionQuery !== undefined
@@ -770,9 +999,9 @@ export function ChannelWorkspace({
               )}
             </div>
           )}
-          {contextError && (
+          {(contextError || invalidRecipient) && (
             <p className="composer-error" role="alert">
-              {contextError}
+              {invalidRecipient ? "接收 Bot 已离开频道，请重新选择后发送。" : contextError}
             </p>
           )}
           {contextLength > 8000 && (
@@ -809,31 +1038,56 @@ export function ChannelWorkspace({
 
 function MessageRow({
   message,
+  reactions,
+  onReactionChange,
+  groupStart,
+  groupEnd,
+  direct,
   author,
   replyTarget,
   botsById,
   artifacts,
   run,
+  delegation,
+  delegatedRun,
+  parentRun,
+  childRuns,
   progress,
   onReply,
+  onShowMessage,
   onInspectRun,
   onOpenBot,
 }: {
   message: Message;
+  reactions: MessageReaction[];
+  onReactionChange(emoji: ReactionEmoji, active: boolean): Promise<void>;
+  groupStart: boolean;
+  groupEnd: boolean;
+  direct: boolean;
   author: Bot | undefined;
   replyTarget: Message | undefined;
   botsById: Map<string, Bot>;
   artifacts: Artifact[];
   run: Run | undefined;
+  delegation: CollaborationRun | undefined;
+  delegatedRun: CollaborationRun | undefined;
+  parentRun: Run | undefined;
+  childRuns: CollaborationRun[];
   progress: RunProgress | undefined;
   onReply(): void;
+  onShowMessage(id: string): void;
   onInspectRun(runId: string): void;
   onOpenBot(botId: string): void;
 }) {
   const { values: preferences } = useWorkspacePreferences();
   const name = message.authorType === "human" ? "你" : (author?.name ?? "OpenBot");
   return (
-    <article className={`message-row ${message.authorType}`}>
+    <article
+      id={`channel-message-${message.id}`}
+      tabIndex={-1}
+      aria-label={`${name} 的消息`}
+      className={`message-row ${message.authorType}${groupStart ? " group-start" : " group-continuation"}${groupEnd ? " group-end" : ""}${direct ? " direct-message" : ""}`}
+    >
       <div className="message-avatar">
         {author ? (
           <button
@@ -850,18 +1104,36 @@ function MessageRow({
         )}
       </div>
       <div className="message-content">
-        <header>
+        <header className="message-sender">
           <strong>{name}</strong>
           <time dateTime={message.createdAt}>
             {formatMessageTime(message.createdAt, preferences.hour12)}
           </time>
         </header>
-        {replyTarget ? (
-          <blockquote>
-            {messageAuthorName(replyTarget, botsById)}：{replyTarget.content}
-          </blockquote>
+        {delegation ? (
+          <DelegationNotice run={delegation} botsById={botsById} onInspectRun={onInspectRun} />
         ) : null}
-        <RichMessage content={message.content} />
+        {delegatedRun && message.authorType === "bot" && message.authorId === delegatedRun.botId ? (
+          <DelegatedReplyContext
+            run={delegatedRun}
+            parent={parentRun}
+            botsById={botsById}
+            onInspectRun={onInspectRun}
+          />
+        ) : null}
+        {replyTarget ? (
+          <button
+            type="button"
+            className="message-quote"
+            onClick={() => onShowMessage(replyTarget.id)}
+            aria-label={`跳转到 ${messageAuthorName(replyTarget, botsById)} 的原消息`}
+          >
+            <blockquote>
+              {messageAuthorName(replyTarget, botsById)}：{replyTarget.content}
+            </blockquote>
+          </button>
+        ) : null}
+        <MessageAttachments content={message.content} channelId={message.channelId} />
         {artifacts.length > 0 ? (
           <div className="message-artifacts">
             {artifacts.map((artifact) => (
@@ -869,23 +1141,29 @@ function MessageRow({
             ))}
           </div>
         ) : null}
-        {run ? (
-          <button
-            className={`message-run-status ${run.status}`}
-            type="button"
-            onClick={() => onInspectRun(run.id)}
-          >
-            <span className="run-status-dot" aria-hidden="true" />
-            <strong>{runStatusLabel(run.status)}</strong>
-            <span>{progress?.message ?? run.title}</span>
-            <span aria-hidden="true">›</span>
-          </button>
+        {childRuns.length ? (
+          <details className="message-work-details">
+            <summary>协作 · {childRuns.length} 位 Bot</summary>
+            <RunCollaboration
+              childRuns={childRuns}
+              botsById={botsById}
+              onInspectRun={onInspectRun}
+            />
+          </details>
         ) : null}
-        <div className="message-actions">
-          <button type="button" onClick={onReply}>
-            ↩ 回复
-          </button>
-        </div>
+        <MessageReactions
+          messageId={message.id}
+          reactions={reactions}
+          onChange={onReactionChange}
+        />
+        <MessageActionBar
+          message={message}
+          onReply={onReply}
+          onInspectRun={onInspectRun}
+          run={run}
+          reactions={reactions}
+          onReactionChange={onReactionChange}
+        />
       </div>
     </article>
   );
@@ -902,6 +1180,34 @@ function formatMessageTime(value: string, hour12: boolean) {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12 }).format(
     new Date(value),
   );
+}
+
+function needsTimeDivider(previous: Message | undefined, message: Message) {
+  if (!previous) return true;
+  return (
+    new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() > 5 * 60_000
+  );
+}
+
+function sameMessageGroup(previous: Message | undefined, message: Message | undefined) {
+  return Boolean(
+    previous &&
+      message &&
+      previous.authorType === message.authorType &&
+      previous.authorId === message.authorId &&
+      !message.replyToMessageId &&
+      !needsTimeDivider(previous, message),
+  );
+}
+
+function formatDivider(value: string, hour12: boolean) {
+  const date = new Date(value);
+  const today = new Date();
+  const day =
+    date.toDateString() === today.toDateString()
+      ? "今天"
+      : new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(date);
+  return `${day} ${formatMessageTime(value, hour12)}`;
 }
 
 function realtimeLabel(state: RealtimeConnectionState) {

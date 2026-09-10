@@ -1,5 +1,6 @@
 import type { Bot, Channel } from "@openbot/domain";
 import { useEffect, useRef, useState } from "react";
+import "./MessageReactions.css";
 import { HashIcon } from "./Icons";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -9,18 +10,21 @@ export function ChannelMembersMenu({
   bots,
   onJoin,
   onOpenBot,
+  onRemove,
 }: {
   showTitle?: boolean;
   channel: Channel;
   bots: Bot[];
   onJoin(botId: string): Promise<void>;
   onOpenBot(botId: string): void;
+  onRemove?(botId: string): Promise<void>;
 }) {
   const disclosure = useRef<HTMLDetailsElement>(null);
   const members = bots.filter((bot) => channel.botIds.includes(bot.id));
   const available = bots.filter((bot) => !channel.botIds.includes(bot.id));
   const [selected, setSelected] = useState(available[0]?.id ?? "");
   const [joining, setJoining] = useState(false);
+  const [removing, setRemoving] = useState<string>();
   const [error, setError] = useState<string>();
   const target = available.some((bot) => bot.id === selected) ? selected : (available[0]?.id ?? "");
   useEffect(() => {
@@ -68,20 +72,42 @@ export function ChannelMembersMenu({
         </h2>
         <div className="channel-members-list">
           {members.map((bot) => (
-            <button
-              type="button"
-              key={bot.id}
-              onClick={() => {
-                if (disclosure.current) disclosure.current.open = false;
-                onOpenBot(bot.id);
-              }}
-            >
-              <RobotAvatar bot={bot} compact />
-              <span>
-                {bot.name}
-                <small>{bot.role}</small>
-              </span>
-            </button>
+            <div className="channel-member-row" key={bot.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (disclosure.current) disclosure.current.open = false;
+                  onOpenBot(bot.id);
+                }}
+              >
+                <RobotAvatar bot={bot} compact />
+                <span>
+                  {bot.name}
+                  <small>{bot.role}</small>
+                </span>
+              </button>
+              {onRemove && !channel.directBotId ? (
+                <button
+                  type="button"
+                  className="channel-member-remove"
+                  aria-label={`Remove ${bot.name} from channel`}
+                  title="移出频道并停止该 Bot 的活动任务，保留历史消息"
+                  disabled={Boolean(removing) || joining}
+                  onClick={() => {
+                    if (removing) return;
+                    setRemoving(bot.id);
+                    setError(undefined);
+                    void onRemove(bot.id)
+                      .catch((cause: unknown) =>
+                        setError(cause instanceof Error ? cause.message : "无法移出频道。"),
+                      )
+                      .finally(() => setRemoving(undefined));
+                  }}
+                >
+                  {removing === bot.id ? "移除中…" : "移除"}
+                </button>
+              ) : null}
+            </div>
           ))}
           {members.length === 0 ? <p>频道还没有 Bot</p> : null}
         </div>

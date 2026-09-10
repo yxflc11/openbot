@@ -9,7 +9,8 @@
       "!apps/desktop/native-runtime",
       "!**/coverage",
       "!**/node_modules",
-      "!package-lock.json"
+      "!package-lock.json",
+      "!apps/web/dist-demo"
     ]
   },
   "formatter": {

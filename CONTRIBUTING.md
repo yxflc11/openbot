@@ -23,6 +23,8 @@ OpenBot currently reviews contributions in this order:
 Start with the [contributor work packages](docs/CONTRIBUTOR_TASKS.md) if you want a bounded task with
 acceptance criteria.
 
+Start with the [repository map](docs/REPOSITORY_MAP.md) for module ownership, contracts and focused checks.
+
 ## Find an area to contribute
 
 | Interest | Main paths |
@@ -48,7 +50,7 @@ expected behavior, milestone, and permission boundary are recorded before implem
 
 ## Local development
 
-Requirements: Node.js 22+, npm 10+, and Docker with Docker Compose.
+Requirements: Node.js 22.22.2 (the CI baseline), npm 10.9.9, and Docker with Docker Compose. Other Node.js releases must satisfy the exact engine range in `package.json`. Use `npm ci` to reproduce the committed lockfile.
 
 ```bash
 git clone https://github.com/yxflc11/openbot.git
@@ -59,7 +61,7 @@ cp .env.example .env
 Replace `OPENBOT_OWNER_PASSWORD` in `.env`, then run:
 
 ```bash
-npm install
+npm ci
 npm run db:up
 npm run dev
 ```

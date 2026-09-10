@@ -1,7 +1,10 @@
-import type { EmployeeExportPreview } from "@openbot/domain";
+// @vitest-environment jsdom
+import type { Bot, EmployeeExportPreview } from "@openbot/domain";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
-import { ExportPreviewDetails } from "./ExportEmployeeDialog";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { downloadEmployeeTemplate, getEmployeeExportPreview } from "../api";
+import { interact, renderComponent } from "../test/render-component";
+import { ExportEmployeeDialog, ExportPreviewDetails } from "./ExportEmployeeDialog";
 
 const preview: EmployeeExportPreview = {
   format: "openbot.employee/v1",
@@ -72,5 +75,66 @@ describe("ExportPreviewDetails", () => {
 
     expect(html).toContain("模板未提供简介。");
     expect(html).toContain("没有已验证技能会进入模板。");
+  });
+});
+
+vi.mock("../api", () => ({
+  downloadEmployeeTemplate: vi.fn(),
+  getEmployeeExportPreview: vi.fn(),
+}));
+beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = vi.fn();
+  HTMLDialogElement.prototype.close = vi.fn();
+  vi.mocked(getEmployeeExportPreview).mockResolvedValue(preview);
+});
+afterEach(() => vi.resetAllMocks());
+
+describe("Employee export native save outcomes", () => {
+  const employee = { id: "bot-a", name: "Researcher", role: "Research", status: "idle" } as Bot;
+  it.each(["saved", "cancelled"] as const)(
+    "reports completion only for a saved file: %s",
+    async (status) => {
+      vi.mocked(downloadEmployeeTemplate).mockResolvedValue(status);
+      const onDownloaded = vi.fn();
+      const view = await renderComponent(
+        <ExportEmployeeDialog employee={employee} onClose={vi.fn()} onDownloaded={onDownloaded} />,
+      );
+      try {
+        await interact(() =>
+          view.container.querySelector<HTMLButtonElement>(".primary-button")?.click(),
+        );
+        expect(downloadEmployeeTemplate).toHaveBeenCalledExactlyOnceWith(employee.id, preview);
+        if (status === "saved")
+          expect(onDownloaded).toHaveBeenCalledExactlyOnceWith(preview.fileName);
+        else expect(onDownloaded).not.toHaveBeenCalled();
+        expect(view.container.querySelector('[role="alert"]')).toBeNull();
+      } finally {
+        await view.unmount();
+      }
+    },
+  );
+  it("refreshes a changed package preview and requires another explicit download", async () => {
+    vi.mocked(downloadEmployeeTemplate).mockRejectedValue({ status: 412, message: "Changed" });
+    vi.mocked(getEmployeeExportPreview)
+      .mockResolvedValueOnce(preview)
+      .mockResolvedValueOnce({ ...preview, packageId: "00000000-0000-4000-8000-000000000088" });
+    const onDownloaded = vi.fn();
+    const view = await renderComponent(
+      <ExportEmployeeDialog employee={employee} onClose={vi.fn()} onDownloaded={onDownloaded} />,
+    );
+    try {
+      await interact(() =>
+        view.container.querySelector<HTMLButtonElement>(".primary-button")?.click(),
+      );
+      expect(getEmployeeExportPreview).toHaveBeenCalledTimes(2);
+      expect(downloadEmployeeTemplate).toHaveBeenCalledTimes(1);
+      expect(onDownloaded).not.toHaveBeenCalled();
+      expect(view.container.querySelector('[role="alert"]')?.textContent).toContain("预览已刷新");
+      expect(view.container.querySelector<HTMLButtonElement>(".primary-button")?.disabled).toBe(
+        false,
+      );
+    } finally {
+      await view.unmount();
+    }
   });
 });

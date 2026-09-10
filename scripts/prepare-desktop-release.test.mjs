@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -101,4 +104,59 @@ test("does not assemble a partial, altered or wrong-commit release", async (t) =
   await assert.rejects(readFile(join(options.outputDirectory, "desktop-manifest.json")), {
     code: "ENOENT",
   });
+});
+
+test("explicit Windows-only release requires and describes exactly the Windows artifact", async (t) => {
+  const options = await fixture(t);
+  for (const target of ["darwin-arm64", "linux-x64"])
+    await rm(join(options.inputDirectory, `openbot-installers-${target}-${sourceCommit}`), {
+      recursive: true,
+    });
+  await assert.rejects(prepareDesktopRelease(options), /Missing/u);
+  assert.equal((await prepareDesktopRelease({ ...options, windowsOnly: true })).assetCount, 1);
+  const manifest = JSON.parse(
+    await readFile(join(options.outputDirectory, "desktop-manifest.json"), "utf8"),
+  );
+  assert.equal(manifest.targets.length, 1);
+  assert.equal(manifest.targets[0].platform, "win32");
+  assert.equal(manifest.targets[0].arch, "x64");
+  assert.equal(
+    (await readFile(join(options.outputDirectory, "SHA256SUMS"), "utf8")).trim().split("\n").length,
+    1,
+  );
+});
+
+test("Windows-only scope never bypasses missing, altered or swapped Windows artifacts", async (t) => {
+  const options = await fixture(t);
+  await assert.rejects(prepareDesktopRelease({ ...options, windowsOnly: "true" }), /boolean/u);
+  const directory = join(options.inputDirectory, `openbot-installers-win32-x64-${sourceCommit}`);
+  await writeFile(join(directory, installerFileNames(version, "win32", "x64")[0]), "tampered");
+  await assert.rejects(prepareDesktopRelease({ ...options, windowsOnly: true }), /checksum/u);
+  await rm(directory, { recursive: true });
+  await assert.rejects(prepareDesktopRelease({ ...options, windowsOnly: true }), /Missing/u);
+  await assert.rejects(readFile(join(options.outputDirectory, "desktop-manifest.json")), {
+    code: "ENOENT",
+  });
+});
+
+test("CLI accepts only the explicit final Windows flag and assembles its selected manifest", async (t) => {
+  const options = await fixture(t);
+  const runPath = join(options.inputDirectory, "run.json");
+  await writeFile(runPath, JSON.stringify(run));
+  const script = fileURLToPath(new URL("./prepare-desktop-release.mjs", import.meta.url));
+  const args = [
+    script,
+    options.inputDirectory,
+    options.outputDirectory,
+    runPath,
+    version,
+    "yxflc11/openbot",
+  ];
+  await assert.rejects(promisify(execFile)(process.execPath, [...args, "--unknown"]), /Usage/u);
+  await promisify(execFile)(process.execPath, [...args, "--windows-only"]);
+  const manifest = JSON.parse(
+    await readFile(join(options.outputDirectory, "desktop-manifest.json"), "utf8"),
+  );
+  assert.equal(manifest.targets.length, 1);
+  assert.equal(manifest.targets[0].platform, "win32");
 });

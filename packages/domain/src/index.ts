@@ -1,5 +1,8 @@
+import type { MessageReaction } from "./channel-interactions.js";
 import type { ModelProviderId } from "./model-providers.js";
+
 export * from "./model-providers.js";
+
 import type {
   NodeArchitecture,
   NodeCapabilityDescriptor,
@@ -476,6 +479,9 @@ export interface NodeEnrollmentToken {
 
 export interface Run {
   id: EntityId;
+  parentRunId?: EntityId;
+  rootRunId?: EntityId;
+  delegatedByBotId?: EntityId;
   channelId: EntityId;
   botId: EntityId;
   sourceMessageId?: EntityId;
@@ -583,7 +589,24 @@ export type AuthSessionSnapshot =
       expiresAt: string;
     };
 
+export interface RunOutput {
+  runId: EntityId;
+  channelId: EntityId;
+  botId: EntityId;
+  sequence: number;
+  text: string;
+  reset: boolean;
+}
+
 export type ChannelRealtimeEvent =
+  | {
+      type: "message.reactions";
+      channelId: EntityId;
+      messageId: EntityId;
+      reactions: MessageReaction[];
+    }
+  | { type: "channel.updated"; channelId: EntityId; channel: Channel }
+  | ({ type: "run.output" } & RunOutput)
   | {
       type: "channel.ready";
       channelId: EntityId;
@@ -687,12 +710,14 @@ export interface CreateChannelInput {
 export interface CreateMessageInput {
   content: string;
   botId?: EntityId | undefined;
+  botIds?: EntityId[] | undefined;
   replyToMessageId?: EntityId | undefined;
 }
 
 export interface SubmitTaskResult {
   message: Message;
   run: Run;
+  runs?: Run[];
 }
 
 /** A model-authored proposal is never active memory before an Owner review. */
@@ -716,3 +741,5 @@ export type ReviewKnowledgeProposalInput =
       content: string;
       modelUseEnabled: boolean;
     };
+
+export * from "./channel-interactions.js";

@@ -1,4 +1,3 @@
-import { parseSkillDocument } from "./agent-skills.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   approvals as approvalsTable,
@@ -57,6 +56,7 @@ import type {
 import type { RunFailureCode } from "@openbot/protocol";
 import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { runModelUsageSchema } from "./agent-observations.js";
+import { parseSkillDocument } from "./agent-skills.js";
 import type {
   ActivateEmployeeImportCommand,
   ArtifactRecord,
@@ -72,7 +72,7 @@ import {
   StoreValidationError,
 } from "./control-plane-store.js";
 import { scanSensitiveText } from "./sensitive-content.js";
-import { selectChannelAssignee } from "./task-routing.js";
+import { selectChannelAssignees } from "./task-routing.js";
 
 type Database = ReturnType<typeof import("@openbot/db")["createDatabase"]>["db"];
 
@@ -1273,16 +1273,14 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
       }
       const id = randomUUID();
       const now = new Date();
-      await transaction
-        .insert(channels)
-        .values({
-          id,
-          name: bot.name,
-          directBotId: botId,
-          description: "",
-          createdAt: now,
-          updatedAt: now,
-        });
+      await transaction.insert(channels).values({
+        id,
+        name: bot.name,
+        directBotId: botId,
+        description: "",
+        createdAt: now,
+        updatedAt: now,
+      });
       await transaction.insert(channelBots).values({ channelId: id, botId, joinedAt: now });
       await transaction.insert(runEvents).values([
         {
@@ -1767,7 +1765,8 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
           transaction
             .select({ id: channels.id, directBotId: channels.directBotId })
             .from(channels)
-            .where(eq(channels.id, channelId)),
+            .where(eq(channels.id, channelId))
+            .for("update"),
           transaction.select({ id: bots.id }).from(bots).where(eq(bots.id, botId)),
         ]);
         if (channelRows.length === 0) {
@@ -1878,6 +1877,9 @@ export function toRun(row: typeof runs.$inferSelect | typeof runs.$inferInsert):
   const usage = runModelUsageSchema.safeParse(row.modelUsage);
   return {
     ...(usage.success ? { modelUsage: usage.data } : {}),
+    ...(row.parentRunId ? { parentRunId: row.parentRunId } : {}),
+    ...(row.rootRunId ? { rootRunId: row.rootRunId } : {}),
+    ...(row.delegatedByBotId ? { delegatedByBotId: row.delegatedByBotId } : {}),
     ...(row.errorCode ? { errorCode: row.errorCode } : {}),
     id: row.id,
     channelId: row.channelId,
@@ -2291,10 +2293,23 @@ export async function submitTaskInTransaction(
     .select({ id: channels.id, directBotId: channels.directBotId })
     .from(channels)
     .where(eq(channels.id, channelId))
-    .limit(1);
+    .limit(1)
+    .for("update");
   if (channelRows.length === 0) {
     throw new StoreNotFoundError("Channel not found.");
   }
+
+  // Serialize source timestamps within a channel so rapid queued inputs have an exact boundary.
+  const [previousInput] = await transaction
+    .select({ createdAt: messages.createdAt })
+    .from(messages)
+    .where(
+      and(eq(messages.channelId, channelId), inArray(messages.authorType, ["human", "system"])),
+    )
+    .orderBy(desc(messages.createdAt))
+    .limit(1);
+  if (previousInput && previousInput.createdAt.getTime() >= now.getTime())
+    now.setTime(previousInput.createdAt.getTime() + 1);
 
   const directBotId = channelRows[0]?.directBotId ?? undefined;
   if (directBotId !== undefined && input.botId !== undefined && input.botId !== directBotId) {
@@ -2322,31 +2337,29 @@ export async function submitTaskInTransaction(
     .from(channelBots)
     .innerJoin(bots, eq(channelBots.botId, bots.id))
     .where(eq(channelBots.channelId, channelId))
-    .orderBy(asc(channelBots.joinedAt), asc(bots.createdAt), asc(bots.id));
-  const assignee = selectChannelAssignee(candidates, directBotId ?? input.botId);
-  if (assignee === undefined) {
-    throw new StoreValidationError(
-      input.botId === undefined
-        ? "Add a Bot to this channel before assigning a task."
-        : "The selected Bot is not a member of this channel.",
-    );
-  }
-  const selectedBotId = assignee.id;
-  const selectedExecutionProfile = assignee.computerProfile as Bot["computerProfile"];
-
-  await transaction.insert(messages).values(message);
-  await transaction.insert(runs).values({
-    id: runId,
+    .orderBy(asc(channelBots.joinedAt), asc(bots.createdAt), asc(bots.id))
+    .for("share");
+  const assignees = selectChannelAssignees(candidates, input, directBotId);
+  const createdRuns: Run[] = assignees.map((assignee, index) => ({
+    id: index === 0 ? runId : randomUUID(),
     channelId,
     botId: assignee.id,
     sourceMessageId: message.id,
-    executionProfile: assignee.computerProfile,
+    executionProfile: assignee.computerProfile as Bot["computerProfile"],
     instruction: input.content,
     title: taskTitle(input.content),
     status: "queued",
-    createdAt: now,
-    updatedAt: now,
-  });
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  }));
+  await transaction.insert(messages).values(message);
+  await transaction.insert(runs).values(
+    createdRuns.map((run) => ({
+      ...run,
+      createdAt: now,
+      updatedAt: now,
+    })),
+  );
   await transaction.insert(runEvents).values([
     {
       id: randomUUID(),
@@ -2358,34 +2371,25 @@ export async function submitTaskInTransaction(
         ...(automationId === undefined ? {} : { automationId }),
       },
     },
-    {
+    ...createdRuns.map((run) => ({
       id: randomUUID(),
-      runId,
+      runId: run.id,
       channelId,
-      botId: assignee.id,
+      botId: run.botId,
       type: "RUN_CREATED",
       payload: {
         sourceMessageId: message.id,
         ...(automationId === undefined ? {} : { automationId }),
-        title: taskTitle(input.content),
-        executionProfile: assignee.computerProfile,
+        title: run.title,
+        executionProfile: run.executionProfile,
       },
-    },
+    })),
   ]);
-
+  const firstRun = createdRuns[0];
+  if (!firstRun) throw new StoreValidationError("A task requires a Bot recipient.");
   return {
     message: toMessage(message),
-    run: {
-      id: runId,
-      channelId,
-      botId: selectedBotId,
-      sourceMessageId: message.id,
-      executionProfile: selectedExecutionProfile,
-      instruction: input.content,
-      title: taskTitle(input.content),
-      status: "queued",
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    },
+    run: firstRun,
+    ...(input.botIds === undefined ? {} : { runs: createdRuns }),
   };
 }

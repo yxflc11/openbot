@@ -26,6 +26,76 @@ function result(channelId = "a"): SubmitTaskResult {
 }
 
 describe("workspace conversation session", () => {
+  it("submits multiple exact recipients and merges all returned runs without duplicate primary runs", async () => {
+    const a = createConversationSession().channel("a");
+    a.edit({ text: "work together", targetBotIds: ["bot-a", "bot-b"] });
+    const primary = result();
+    const second = { ...primary.run, id: "run-a-2", botId: "bot-b" };
+    const submit = vi.fn(async () => ({ ...primary, runs: [primary.run, second] }));
+    await a.send(submit);
+    expect(submit).toHaveBeenCalledWith({ content: "work together", botIds: ["bot-a", "bot-b"] });
+    expect(
+      a
+        .getSnapshot()
+        .runs.map((run) => run.id)
+        .sort(),
+    ).toEqual(["run-a", "run-a-2"]);
+    expect(a.getSnapshot().messages).toHaveLength(1);
+    expect(a.getSnapshot().draft.targetBotIds).toEqual(["bot-a", "bot-b"]);
+  });
+  it("omits recipient fields for Server-owned channel routing", async () => {
+    const a = createConversationSession().channel("a");
+    a.edit({ text: "channel work" });
+    const submit = vi.fn(async () => result());
+    await a.send(submit);
+    expect(submit).toHaveBeenCalledWith({ content: "channel work" });
+  });
+  it("clears scoped skills when recipients change and lets old single-target controls replace multiple targets", () => {
+    const a = createConversationSession().channel("a", "bot-a");
+    const skills = [{ id: "skill-a", name: "A", version: "1" }];
+    a.edit({ skills });
+    a.edit({ targetBotIds: ["bot-a", "bot-b"] });
+    expect(a.getSnapshot().draft.skills).toEqual([]);
+    expect(a.getSnapshot().draft.targetBotId).toBe("bot-a");
+    a.edit({ targetBotId: "bot-c" });
+    expect(a.getSnapshot().draft.targetBotIds).toEqual(["bot-c"]);
+    a.edit({ skills });
+    a.edit({ text: "unchanged recipients" });
+    expect(a.getSnapshot().draft.skills).toEqual(skills);
+    a.edit({ targetBotIds: [] });
+    expect(a.getSnapshot().draft).toMatchObject({ targetBotId: "", targetBotIds: [], skills: [] });
+  });
+  it("preserves a newer recipient selection while a prior multi-recipient send settles", async () => {
+    const a = createConversationSession().channel("a");
+    a.edit({ text: "first", targetBotIds: ["bot-a", "bot-b"] });
+    const response = deferred<SubmitTaskResult>();
+    const submit = vi.fn(() => response.promise);
+    const sending = a.send(submit);
+    a.edit({ text: "next", targetBotIds: ["bot-c"] });
+    response.resolve(result());
+    await sending;
+    expect(submit).toHaveBeenCalledWith({ content: "first", botIds: ["bot-a", "bot-b"] });
+    expect(a.getSnapshot().draft).toMatchObject({ text: "next", targetBotIds: ["bot-c"] });
+  });
+  it("rejects an invalid extra Run atomically without losing the draft or merging a partial response", async () => {
+    const a = createConversationSession().channel("a");
+    a.edit({ text: "keep", targetBotIds: ["bot-a", "bot-b"] });
+    await a.send(async () => ({ ...result(), runs: [result().run, result("b").run] }));
+    expect(a.getSnapshot().runs).toEqual([]);
+    expect(a.getSnapshot().messages).toEqual([]);
+    expect(a.getSnapshot().draft.text).toBe("keep");
+    expect(a.getSnapshot().sendError).toContain("不匹配");
+  });
+  it("does not accept duplicated or excessive recipients in draft edits", () => {
+    const a = createConversationSession().channel("a", "bot-a");
+    a.edit({ text: "keep" });
+    a.edit({ text: "invalid", targetBotIds: ["bot-a", "bot-a"] });
+    expect(a.getSnapshot().draft.text).toBe("keep");
+    expect(a.getSnapshot().sendError).toContain("重复");
+    a.edit({ targetBotIds: ["a", "b", "c", "d", "e", "f", "g"] });
+    expect(a.getSnapshot().draft.targetBotId).toBe("bot-a");
+    expect(a.getSnapshot().sendError).toContain("6");
+  });
   it("retains newer text, target and reply when an older submission settles", async () => {
     const session = createConversationSession();
     const a = session.channel("a", "bot-a");

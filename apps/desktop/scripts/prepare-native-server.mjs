@@ -3,9 +3,17 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { collectProductionPackageGraph } from "../../../scripts/node-linux-release.mjs";
 
+import { nativeOptionalPackageApplies } from "./native-runtime-policy.mjs";
+import { stageWindowsPostgres } from "./windows-postgres-runtime.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const output = join(root, "apps/desktop/native-runtime");
-if (process.platform !== "darwin" || !["arm64", "x64"].includes(process.arch)) {
+if (
+  !(
+    (process.platform === "darwin" && ["arm64", "x64"].includes(process.arch)) ||
+    (process.platform === "win32" && process.arch === "x64")
+  )
+) {
   console.log("Native Server omitted: this platform ships the remote client.");
   process.exit(0);
 }
@@ -18,6 +26,7 @@ await cp(join(root, "apps/desktop/resources/native-notices"), join(output, "nati
   recursive: true,
 });
 await cp(join(root, "THIRD_PARTY_NOTICES.md"), join(output, "THIRD_PARTY_NOTICES.md"));
+await cp(join(root, "licenses/runtime"), join(output, "runtime-notices"), { recursive: true });
 await mkdir(join(output, "node_modules/@openbot"), { recursive: true });
 for (const key of graph.workspaceKeys) {
   const destination = join(output, key);
@@ -29,42 +38,54 @@ for (const key of graph.workspaceKeys) {
   }
   const name = lock.packages[key].name;
   const link = join(output, "node_modules", name);
-  await symlink(relative(dirname(link), destination), link);
+  if (process.platform === "win32") {
+    await cp(destination, link, { recursive: true });
+  } else await symlink(relative(dirname(link), destination), link);
 }
 for (const key of graph.packageKeys) {
+  const entry = lock.packages[key];
+  if (entry.optional && !nativeOptionalPackageApplies(entry, process.platform, process.arch))
+    continue;
   await mkdir(dirname(join(output, key)), { recursive: true });
   await cp(join(root, key), join(output, key), { recursive: true, verbatimSymlinks: true });
 }
-const binaryRoot = join(root, "node_modules/@embedded-postgres", `darwin-${process.arch}`);
-const manifest = JSON.parse(await readFile(join(binaryRoot, "package.json"), "utf8"));
-if (manifest.version !== "17.10.0-beta.17")
-  throw new Error("Unexpected PostgreSQL binary version.");
-await cp(join(binaryRoot, "native"), join(output, "postgres"), {
-  recursive: true,
-  verbatimSymlinks: true,
-});
-await cp(join(binaryRoot, "LICENSE.md"), join(output, "postgres/PACKAGER-LICENSE.md"));
-// npm strips symlinks. Recreate only links within the already locked binary package, at build time.
-const links = JSON.parse(await readFile(join(output, "postgres/pg-symlinks.json"), "utf8"));
-for (const { source, target } of links) {
-  const toLocal = (value) => {
-    if (
-      typeof value !== "string" ||
-      !value.startsWith("native/") ||
-      value.includes("..") ||
-      isAbsolute(value)
-    ) {
-      throw new Error("PostgreSQL link escaped package.");
+if (process.platform === "win32") {
+  await stageWindowsPostgres(
+    process.env.OPENBOT_WINDOWS_POSTGRES_RUNTIME,
+    join(output, "postgres"),
+  );
+} else {
+  const binaryRoot = join(root, "node_modules/@embedded-postgres", `darwin-${process.arch}`);
+  const manifest = JSON.parse(await readFile(join(binaryRoot, "package.json"), "utf8"));
+  if (manifest.version !== "17.10.0-beta.17")
+    throw new Error("Unexpected PostgreSQL binary version.");
+  await cp(join(binaryRoot, "native"), join(output, "postgres"), {
+    recursive: true,
+    verbatimSymlinks: true,
+  });
+  await cp(join(binaryRoot, "LICENSE.md"), join(output, "postgres/PACKAGER-LICENSE.md"));
+  // npm strips symlinks. Recreate only links within the already locked binary package, at build time.
+  const links = JSON.parse(await readFile(join(output, "postgres/pg-symlinks.json"), "utf8"));
+  for (const { source, target } of links) {
+    const toLocal = (value) => {
+      if (
+        typeof value !== "string" ||
+        !value.startsWith("native/") ||
+        value.includes("..") ||
+        isAbsolute(value)
+      ) {
+        throw new Error("PostgreSQL link escaped package.");
+      }
+      return join(output, "postgres", value.slice(7));
+    };
+    const targetPath = toLocal(target);
+    const sourcePath = toLocal(source);
+    try {
+      await lstat(targetPath);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      await symlink(relative(dirname(targetPath), sourcePath), targetPath);
     }
-    return join(output, "postgres", value.slice(7));
-  };
-  const targetPath = toLocal(target);
-  const sourcePath = toLocal(source);
-  try {
-    await lstat(targetPath);
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-    await symlink(relative(dirname(targetPath), sourcePath), targetPath);
   }
 }
 await readFile(join(output, "apps/server/dist/index.js"));

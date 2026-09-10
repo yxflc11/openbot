@@ -27,3 +27,6 @@ backups/
 
 # Packaged native Desktop runtime, recreated from locked dependencies.
 apps/desktop/native-runtime/
+
+# Isolated product demonstration build.
+apps/web/dist-demo/

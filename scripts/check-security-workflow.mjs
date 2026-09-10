@@ -92,7 +92,7 @@ export function validateSecurityWorkflow(workflow) {
   const requiredPortableFragments = [
     "name: Portable ($" + "{{ matrix.name }})",
     "runs-on: $" + "{{ matrix.runner }}",
-    "timeout-minutes: 30",
+    "timeout-minutes: 50",
     "fail-fast: false",
     "- name: Linux x64\n            runner: ubuntu-24.04",
     "- name: Windows x64\n            runner: windows-2025",

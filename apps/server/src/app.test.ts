@@ -57,7 +57,7 @@ import type {
   OwnerSessionStore,
   StoredOwnerSession,
 } from "./session-store.js";
-import { selectChannelAssignee } from "./task-routing.js";
+import { selectChannelAssignees } from "./task-routing.js";
 import { WorkspaceRealtimeHub } from "./workspace-realtime-hub.js";
 
 const testOrigin = "http://localhost:5173";
@@ -1862,6 +1862,47 @@ describe("server app", () => {
     });
   });
 
+  it("dispatches every exact recipient from one human message and rejects invalid sets atomically", async () => {
+    const store = createTestStore();
+    const members = await Promise.all(
+      ["Research", "Review"].map((name) =>
+        store.createBot({ name, role: name, computerProfile: "none" }),
+      ),
+    );
+    const channel = await store.createChannel({
+      name: "Group",
+      description: "",
+      botIds: members.map((bot) => bot.id),
+    });
+    const dispatchRun = vi.fn();
+    const app = createTestApp({ store, dispatchRun });
+    const cookie = await login(app);
+    const post = (input: unknown) =>
+      app.request(`/api/v1/channels/${channel.id}/messages`, {
+        method: "POST",
+        headers: authenticatedHeaders(cookie),
+        body: JSON.stringify(input),
+      });
+    const response = await post({ content: "Work together", botIds: members.map((bot) => bot.id) });
+    expect(response.status).toBe(201);
+    const result = (await response.json()) as { message: Message; run: Run; runs: Run[] };
+    expect(result.runs.map((run) => run.botId)).toEqual(members.map((bot) => bot.id));
+    expect(result.runs.every((run) => run.sourceMessageId === result.message.id)).toBe(true);
+    expect(result.run).toEqual(result.runs[0]);
+    expect(dispatchRun).toHaveBeenCalledTimes(2);
+    expect(await store.listMessages(channel.id)).toHaveLength(1);
+    for (const input of [
+      { botIds: [members[0]?.id, "00000000-0000-4000-8000-000000000099"] },
+      { botIds: [members[0]?.id, members[0]?.id] },
+      { botIds: [members[0]?.id], botId: members[1]?.id },
+      { botIds: [] },
+    ])
+      expect([400, 422]).toContain((await post({ content: "Invalid", ...input })).status);
+    expect(await store.listMessages(channel.id)).toHaveLength(1);
+    expect(await store.listRuns(channel.id)).toHaveLength(2);
+    expect(dispatchRun).toHaveBeenCalledTimes(2);
+  });
+
   it("stores and lists a local channel message", async () => {
     const store = createTestStore();
     const bot = await store.createBot({
@@ -2945,14 +2986,14 @@ function createTestStore(): ControlPlaneStore {
       const candidates = channel.botIds
         .map((botId) => bots.find((bot) => bot.id === botId))
         .filter((bot): bot is Bot => bot !== undefined);
-      const assignee = selectChannelAssignee(candidates, input.botId);
-      if (assignee === undefined) {
-        throw new StoreValidationError(
-          input.botId === undefined
-            ? "Add a Bot to this channel before assigning a task."
-            : "The selected Bot is not a member of this channel.",
-        );
-      }
+      const assignees = selectChannelAssignees(candidates, input, channel.directBotId);
+      if (
+        input.replyToMessageId !== undefined &&
+        !messages.some(
+          (message) => message.id === input.replyToMessageId && message.channelId === channelId,
+        )
+      )
+        throw new StoreValidationError("The replied message does not belong to this channel.");
       const runId = id();
       const message: Message = {
         id: id(),
@@ -2966,8 +3007,8 @@ function createTestStore(): ControlPlaneStore {
         createdAt: new Date().toISOString(),
       };
       messages.push(message);
-      const run: Run = {
-        id: runId,
+      const createdRuns: Run[] = assignees.map((assignee, index) => ({
+        id: index === 0 ? runId : id(),
         channelId,
         botId: assignee.id,
         sourceMessageId: message.id,
@@ -2977,9 +3018,11 @@ function createTestStore(): ControlPlaneStore {
         status: "queued",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      };
-      runs.push(run);
-      return { message, run };
+      }));
+      runs.push(...createdRuns);
+      const run = createdRuns[0];
+      if (!run) throw new StoreValidationError("A task requires a Bot recipient.");
+      return { message, run, ...(input.botIds === undefined ? {} : { runs: createdRuns }) };
     },
     async assignRun(runId: string, nodeId: string) {
       const run = runs.find((item) => item.id === runId);

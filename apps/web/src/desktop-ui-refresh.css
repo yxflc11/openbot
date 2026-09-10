@@ -515,7 +515,9 @@
   width: min(700px, 90vw);
   border: 1px solid #dce3ec;
   padding: 24px;
-  border-radius: 18px;
+  border-radius: 14px;
+  max-height: 85vh;
+  overflow: auto;
 }
 .share-dialog header,
 .share-dialog footer {
@@ -536,7 +538,7 @@
 }
 .share-dialog p {
   font-size: 13px;
-  color: #748096;
+  color: #596476;
 }
 .desktop-workspace.full-page-destination {
   display: block;
@@ -633,4 +635,52 @@
 :root[data-desktop="win32"] .desktop-workspace .sidebar,
 :root[data-desktop="linux"] .desktop-workspace .sidebar {
   background: #f1f4f7;
+}
+
+.share-dialog section + section {
+  border-top: 1px solid #e1e6ed;
+  margin-top: 20px;
+  padding-top: 16px;
+}
+.share-dialog h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.share-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow: auto;
+}
+.share-file-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e1e6ed;
+  flex-wrap: wrap;
+}
+.share-file-list li > div {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.share-file-list strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.share-file-list small {
+  display: block;
+  margin-top: 4px;
+  color: #596476;
+}
+.share-template-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.share-template-actions select {
+  flex: 1 1 160px;
+  min-width: 0;
 }

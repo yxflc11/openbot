@@ -724,3 +724,23 @@ describe("Provider conformance reports", () => {
     ).toBe(false);
   });
 });
+
+describe("multiple channel recipients", () => {
+  const first = "00000000-0000-4000-8000-000000000001";
+  const second = "00000000-0000-4000-8000-000000000002";
+  it("accepts exact unique recipients without a legacy botId", () => {
+    expect(createMessageInputSchema.parse({ content: "Review", botIds: [second, first] })).toEqual({
+      content: "Review",
+      botIds: [second, first],
+    });
+  });
+  it.each([
+    { botIds: [] },
+    { botIds: [first, first] },
+    { botIds: ["invalid"] },
+    { botIds: [first], botId: second },
+    { botIds: Array.from({ length: 7 }, (_, i) => `00000000-0000-4000-8000-00000000000${i}`) },
+  ])("rejects invalid recipient shape %j", (input) => {
+    expect(createMessageInputSchema.safeParse({ content: "Review", ...input }).success).toBe(false);
+  });
+});

@@ -342,15 +342,7 @@
   font-size: 13px;
   line-height: 1.75;
 }
-.app-shell .message-actions {
-  opacity: 1;
-  gap: 12px;
-  padding-top: 7px;
-}
-.app-shell .message-actions button {
-  color: #65758a;
-  font-size: 10px;
-}
+
 .app-shell .message-avatar .openbot-mark {
   width: 30px;
   height: 30px;

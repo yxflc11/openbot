@@ -78,8 +78,8 @@ test("rejects a missing platform or moving runner label", () => {
 
 test("rejects a matrix member that is allowed to fail", () => {
   const changed = workflow.replace(
-    "    timeout-minutes: 30\n    strategy:\n      fail-fast: false",
-    "    timeout-minutes: 30\n    continue-on-error: true\n    strategy:\n      fail-fast: false",
+    "    timeout-minutes: 50\n    strategy:\n      fail-fast: false",
+    "    timeout-minutes: 50\n    continue-on-error: true\n    strategy:\n      fail-fast: false",
   );
   assert.throws(() => validateSecurityWorkflow(changed), /members must be required/);
 });

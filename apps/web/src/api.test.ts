@@ -1,3 +1,4 @@
+import { getOpenBotDesktopBridge } from "./desktop-runtime";
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -7,7 +8,10 @@ import {
   updateEmployeeSkillState,
 } from "./api";
 
+vi.mock("./desktop-runtime", () => ({ getOpenBotDesktopBridge: vi.fn() }));
+
 afterEach(() => {
+  vi.mocked(getOpenBotDesktopBridge).mockReset();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -247,4 +251,28 @@ describe("native Agent progress", () => {
     expect(isRunProgressProjection(progress, "other")).toBe(false);
     expect(isRunProgressProjection({ ...progress, nodeId: 42 }, "channel")).toBe(false);
   });
+});
+
+describe("native Employee package download", () => {
+  it.each(["saved", "cancelled", "changed", "exists", "busy", "unavailable", "missing"])(
+    "preserves native result semantics without browser download: %s",
+    async (status) => {
+      const saveEmployeeTemplate = vi.fn(async () => ({ status }));
+      vi.mocked(getOpenBotDesktopBridge).mockReturnValue({
+        saveEmployeeTemplate: status === "missing" ? undefined : saveEmployeeTemplate,
+      } as unknown as NonNullable<ReturnType<typeof getOpenBotDesktopBridge>>);
+      const fetcher = vi.spyOn(globalThis, "fetch");
+      const result = downloadEmployeeTemplate("employee-1", exportPreview());
+      if (status === "saved" || status === "cancelled") await expect(result).resolves.toBe(status);
+      else await expect(result).rejects.toMatchObject({ status: status === "changed" ? 412 : 0 });
+      if (status !== "missing")
+        expect(saveEmployeeTemplate).toHaveBeenCalledExactlyOnceWith({
+          botId: "employee-1",
+          packageId: exportPreview().packageId,
+          generatedAt: exportPreview().generatedAt,
+          downloadReviewToken: exportPreview().downloadReviewToken,
+        });
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 });

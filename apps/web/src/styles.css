@@ -3919,30 +3919,7 @@ select:focus-visible {
 .rich-message td:last-child {
   border-right: 0;
 }
-.message-actions {
-  display: flex;
-  min-height: 20px;
-  align-items: center;
-  gap: 10px;
-  margin-top: 6px;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-.message-row:focus-within .message-actions,
-.message-row:hover .message-actions {
-  opacity: 1;
-}
-.message-actions button {
-  padding: 2px 0;
-  border: 0;
-  color: #7d858e;
-  background: transparent;
-  cursor: pointer;
-  font-size: 9px;
-}
-.message-actions button:hover {
-  color: var(--blue);
-}
+
 .message-artifacts {
   display: flex;
   gap: 8px;
@@ -5038,9 +5015,7 @@ select:focus-visible {
   .rich-table-wrap {
     max-width: calc(100vw - 94px);
   }
-  .message-actions {
-    opacity: 1;
-  }
+
   .message-composer {
     width: calc(100% - 24px);
     margin-bottom: 10px;

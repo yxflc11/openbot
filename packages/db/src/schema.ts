@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -400,6 +401,9 @@ export const runs = pgTable(
   "runs",
   {
     id: text("id").primaryKey(),
+    parentRunId: text("parent_run_id").references((): AnyPgColumn => runs.id),
+    rootRunId: text("root_run_id").references((): AnyPgColumn => runs.id),
+    delegatedByBotId: text("delegated_by_bot_id").references(() => bots.id),
     channelId: text("channel_id")
       .notNull()
       .references(() => channels.id),
@@ -421,6 +425,12 @@ export const runs = pgTable(
     ...timestamps,
   },
   (table) => [
+    check(
+      "runs_delegation_shape",
+      sql`(${table.parentRunId} IS NULL AND ${table.rootRunId} IS NULL AND ${table.delegatedByBotId} IS NULL) OR (${table.parentRunId} IS NOT NULL AND ${table.rootRunId} IS NOT NULL AND ${table.delegatedByBotId} IS NOT NULL AND ${table.parentRunId} <> ${table.id} AND ${table.rootRunId} <> ${table.id} AND ${table.executionProfile} = 'none' AND ${table.nodeId} IS NULL)`,
+    ),
+    index("runs_root_idx").on(table.rootRunId),
+    index("runs_parent_idx").on(table.parentRunId),
     index("runs_created_idx").on(table.createdAt),
     index("runs_channel_created_idx").on(table.channelId, table.createdAt),
     index("runs_bot_idx").on(table.botId),
@@ -431,8 +441,8 @@ export const runs = pgTable(
       .where(
         sql`${table.status} = 'queued' AND ${table.nodeId} IS NULL AND ${table.executionProfile} <> 'none'`,
       ),
-    uniqueIndex("runs_source_message_idx")
-      .on(table.sourceMessageId)
+    uniqueIndex("runs_source_message_bot_idx")
+      .on(table.sourceMessageId, table.botId)
       .where(sql`${table.sourceMessageId} IS NOT NULL`),
     check("runs_title_not_blank", sql`length(btrim(${table.title})) > 0`),
     check("runs_instruction_not_blank", sql`length(btrim(${table.instruction})) > 0`),
@@ -640,6 +650,28 @@ export const knowledgeProposals = pgTable(
     check(
       "knowledge_proposals_review_valid",
       sql`(${table.status} = 'pending' AND ${table.reviewedAt} IS NULL AND ${table.memoryId} IS NULL) OR (${table.status} = 'accepted' AND ${table.reviewedAt} IS NOT NULL AND ${table.memoryId} IS NOT NULL) OR (${table.status} = 'rejected' AND ${table.reviewedAt} IS NOT NULL AND ${table.memoryId} IS NULL)`,
+    ),
+  ],
+);
+
+export const messageReactions = pgTable(
+  "message_reactions",
+  {
+    messageId: text("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.emoji] }),
+    index("message_reactions_channel_idx").on(table.channelId, table.messageId),
+    check(
+      "message_reactions_emoji_valid",
+      sql`${table.emoji} IN ('👍', '❤️', '😂', '🎉', '🤔', '👀')`,
     ),
   ],
 );

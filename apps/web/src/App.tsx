@@ -1,3 +1,5 @@
+import type { Channel } from "@openbot/domain";
+import { removeChannelMember } from "./api";
 import type {
   Approval,
   ApprovalDecision,
@@ -579,11 +581,22 @@ export function AuthenticatedWorkspace({
     };
   }, [conversationSession]);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot>();
+  const projectChannel = useCallback((channel: Channel) => {
+    setWorkspace((current) =>
+      current
+        ? {
+            ...current,
+            channels: current.channels.map((item) => (item.id === channel.id ? channel : item)),
+          }
+        : current,
+    );
+  }, []);
   const [dialog, setDialog] = useState<Dialog>();
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [sharing, setSharing] = useState(false);
+  const [sharedBotId, setSharedBotId] = useState<string>();
   const directRequest = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: leaving a view invalidates an in-flight direct-conversation open.
   useEffect(
@@ -741,14 +754,18 @@ export function AuthenticatedWorkspace({
       !dialog &&
       !selectedRunId &&
       !employeeImportOpen &&
-      !employeeExportOpen,
+      !employeeExportOpen &&
+      !sharing &&
+      !sharedBotId,
     settingsAvailable:
       active &&
       onSettings !== undefined &&
       !dialog &&
       !selectedRunId &&
       !employeeImportOpen &&
-      !employeeExportOpen,
+      !employeeExportOpen &&
+      !sharing &&
+      !sharedBotId,
     canGoBack: navigation.canGoBack,
     canGoForward: navigation.canGoForward,
     onBack: navigation.back,
@@ -853,6 +870,14 @@ export function AuthenticatedWorkspace({
     showNotice("Bot 已加入频道。");
   }
 
+  async function handleRemoveBot(botId: string) {
+    if (!selectedChannelId) return;
+    const result = await removeChannelMember(selectedChannelId, botId);
+    for (const run of result.cancelledRuns) projectRun(run);
+    await refresh();
+    showNotice("Bot 已移出频道，相关活动任务已停止，历史记录已保留。");
+  }
+
   async function handleDecideApproval(approvalId: string, decision: ApprovalDecision) {
     const resolution = await decideApproval(approvalId, decision);
     setWorkspace((current) =>
@@ -953,7 +978,7 @@ export function AuthenticatedWorkspace({
 
   return (
     <div
-      className={`app-shell desktop-workspace ${fullPage ? "full-page-destination" : ""} ${showDetails ? "" : "without-context"} ${preferences.leftPanelOpen ? "" : "without-sidebar"}`}
+      className={`app-shell desktop-workspace ${destination === "chat" && selectedChannel ? "channel-view" : ""} ${fullPage ? "full-page-destination" : ""} ${showDetails ? "" : "without-context"} ${preferences.leftPanelOpen ? "" : "without-sidebar"}`}
     >
       <header className="workspace-toolbar">
         <nav className="toolbar-navigation" aria-label="页面与侧栏导航">
@@ -996,6 +1021,7 @@ export function AuthenticatedWorkspace({
               channel={selectedChannel}
               bots={workspace.bots}
               onJoin={handleJoinBot}
+              onRemove={handleRemoveBot}
               onOpenBot={openEmployee}
               showTitle
             />
@@ -1026,9 +1052,14 @@ export function AuthenticatedWorkspace({
         </div>
         <div className="toolbar-layout">
           {selectedChannel && (
-            <button className="toolbar-share" type="button" onClick={() => setSharing(true)}>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="分享"
+              title="分享"
+              onClick={() => setSharing(true)}
+            >
               <ShareIcon />
-              <span>分享</span>
             </button>
           )}
           <button
@@ -1076,6 +1107,16 @@ export function AuthenticatedWorkspace({
         <AutomationsScreen bots={workspace.bots} channels={workspace.channels} />
       ) : destination === "skills" ? (
         <SkillLibraryScreen
+          channels={workspace.channels}
+          onInsertMaterial={(channelId, botId, text) => {
+            const conversation = conversationSession.channel(channelId, botId);
+            const draft = conversation.getSnapshot().draft;
+            const next = [draft.text, text].filter(Boolean).join("\n\n");
+            if (next.length > 8000)
+              throw new Error("资料超过草稿剩余容量，请先缩短草稿或复制需要的片段。");
+            conversation.edit({ text: next, targetBotId: botId, targetBotIds: [botId] });
+            selectChannel(channelId);
+          }}
           onBack={navigation.back}
           onCreateBot={() => setDialog("bot")}
           onImportBot={() => setEmployeeImportOpen(true)}
@@ -1103,7 +1144,9 @@ export function AuthenticatedWorkspace({
           bots={workspace.bots}
           artifacts={workspace.artifacts}
           progress={workspace.progress}
+          onChannel={projectChannel}
           onJoin={handleJoinBot}
+          onRemove={handleRemoveBot}
           onInspectRun={setSelectedRunId}
           onOpenBot={openEmployee}
           onFrame={projectFrame}
@@ -1159,8 +1202,15 @@ export function AuthenticatedWorkspace({
 
       {sharing && selectedChannel && (
         <ShareConversationDialog
+          key={selectedChannel.id}
           channel={selectedChannel}
           bots={workspace.bots}
+          artifacts={workspace.artifacts}
+          runs={workspace.runs}
+          onShareBot={(botId) => {
+            setSharing(false);
+            setSharedBotId(botId);
+          }}
           onClose={() => setSharing(false)}
         />
       )}
@@ -1199,6 +1249,16 @@ export function AuthenticatedWorkspace({
       ) : null}
       {dialog === "node" ? (
         <NodeManagerDialog onlineNodes={workspace.nodes} onClose={() => setDialog(undefined)} />
+      ) : null}
+      {sharedBotId && workspace.bots.find((bot) => bot.id === sharedBotId) ? (
+        <ExportEmployeeDialog
+          employee={workspace.bots.find((bot) => bot.id === sharedBotId)!}
+          onClose={() => setSharedBotId(undefined)}
+          onDownloaded={(fileName) => {
+            setSharedBotId(undefined);
+            showNotice(`已下载 Bot 模板：${fileName}`);
+          }}
+        />
       ) : null}
       {employeeExportOpen && employeeProfile ? (
         <ExportEmployeeDialog

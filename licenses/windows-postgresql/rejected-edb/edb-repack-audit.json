@@ -1,0 +1,879 @@
+{
+  "schemaVersion": 1,
+  "status": "rejected-for-public-redistribution-unresolved-corresponding-source",
+  "npm": {
+    "name": "@embedded-postgres/windows-x64",
+    "version": "17.10.0-beta.17",
+    "gitCommit": "c23ad8a026c711c8666c3c2596d0fde643cf378a",
+    "url": "https://registry.npmjs.org/@embedded-postgres/windows-x64/-/windows-x64-17.10.0-beta.17.tgz"
+  },
+  "originalArchive": {
+    "url": "https://get.enterprisedb.com/postgresql/postgresql-17.10-1-windows-x64-binaries.zip",
+    "sha256": "f9aafca58e7026a1ef2caeee711acf761671e57904d430adc85f468374f5a821",
+    "size": 333925750
+  },
+  "comparison": "Every npm PE binary matches the indicated original archive member byte for byte. PE version metadata is evidence about version labels, not corresponding-source attestation.",
+  "binaries": [
+    {
+      "path": "bin/icudt67.dll",
+      "sha256": "5ff9c8026344e886f280ddfa235a1e16e1bcd396e90f9ed600b6f71d9d881ae8",
+      "size": 28399104,
+      "peVersion": "67.1.0.0",
+      "originalArchivePath": "pgsql/bin/icudt67.dll"
+    },
+    {
+      "path": "bin/icuin67.dll",
+      "sha256": "23d5914acf071f566df19aaf404373e5c73c9910c370e728976f6202c04cf6c3",
+      "size": 2674176,
+      "peVersion": "67.1.0.0",
+      "originalArchivePath": "pgsql/bin/icuin67.dll"
+    },
+    {
+      "path": "bin/icuio67.dll",
+      "sha256": "1ca5221753f930de19041d546ce0f24102455621c71033d4d5cb8151762c9694",
+      "size": 61440,
+      "peVersion": "67.1.0.0",
+      "originalArchivePath": "pgsql/bin/icuio67.dll"
+    },
+    {
+      "path": "bin/icutu67.dll",
+      "sha256": "371c4784b5510b8e80a6b5896567b17bc70e231ea47ee8f614a7ebd3d510960f",
+      "size": 220672,
+      "peVersion": null,
+      "originalArchivePath": "pgsql/bin/icutu67.dll"
+    },
+    {
+      "path": "bin/icuuc67.dll",
+      "sha256": "2fb4007a1f1089a0807cc1abde5443f5c3b0865ecfd80344b6ad165f1fe53ade",
+      "size": 1906688,
+      "peVersion": "67.1.0.0",
+      "originalArchivePath": "pgsql/bin/icuuc67.dll"
+    },
+    {
+      "path": "bin/initdb.exe",
+      "sha256": "f775e03d6dc6c67f115d7e688c6933573fff7ac7285f6b1f5809354223cfb9e1",
+      "size": 244736,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/bin/initdb.exe"
+    },
+    {
+      "path": "bin/libcrypto-3-x64.dll",
+      "sha256": "94dbbfb2f37794670c09072e578d363f2a2913b53ff777c4b48ef7afcbdaada7",
+      "size": 4702208,
+      "peVersion": "3.0.20.0",
+      "originalArchivePath": "pgsql/bin/libcrypto-3-x64.dll"
+    },
+    {
+      "path": "bin/libcurl.dll",
+      "sha256": "5a94033492cceb948e6d45b963adda653436abcea939a6c08c7103b5e88d768f",
+      "size": 712704,
+      "peVersion": "8.20.0.0",
+      "originalArchivePath": "pgsql/bin/libcurl.dll"
+    },
+    {
+      "path": "bin/libecpg.dll",
+      "sha256": "e98311255cb1d69574cbc7b858fe40c8fc7994ff7d13ead7b580cfadf4fa43c0",
+      "size": 102400,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/bin/libecpg.dll"
+    },
+    {
+      "path": "bin/libecpg_compat.dll",
+      "sha256": "73b53290171342a78043b5ccfd3e76145f9259162af7ccc7cd635c55ce103b24",
+      "size": 25088,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/bin/libecpg_compat.dll"
+    },
+    {
+      "path": "bin/libiconv-2.dll",
+      "sha256": "3ee9786ab3eb8dfd791bdbd17c7e791dbe025734befcded0ee4170e1089f79df",
+      "size": 1850401,
+      "peVersion": "1.15.0.0",
+      "originalArchivePath": "pgsql/bin/libiconv-2.dll"
+    },
+    {
+      "path": "bin/libintl-9.dll",
+      "sha256": "1125ac8dc0c4f5c3ed4712e0d8ad29474099fcb55bb0e563a352ce9d03ef1d78",
+      "size": 475769,
+      "peVersion": "0.19.8.0",
+      "originalArchivePath": "pgsql/bin/libintl-9.dll"
+    },
+    {
+      "path": "bin/liblz4.dll",
+      "sha256": "096af775241b3bd4b1c3d79c83b103bb8f02da54ec4cd76c5d49eef61a68ad01",
+      "size": 128000,
+      "peVersion": "1.10.0.0",
+      "originalArchivePath": "pgsql/bin/liblz4.dll"
+    },
+    {
+      "path": "bin/libpgtypes.dll",
+      "sha256": "5c24e975bd498b841c2ae388fcee99b98aad44481479207c2b133311e77e19c1",
+      "size": 84992,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/bin/libpgtypes.dll"
+    },
+    {
+      "path": "bin/libpq.dll",
+      "sha256": "8392f592a232f944c21496827c8df5ef418903ec3426639ea75e4d5363e72adc",
+      "size": 351232,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/bin/libpq.dll"
+    },
+    {
+      "path": "bin/libssl-3-x64.dll",
+      "sha256": "98d4d505fe2fb4c4cf9e370cfa35078bc7aa964136ef908b71d783536e48f1dd",
+      "size": 779776,
+      "peVersion": "3.0.20.0",
+      "originalArchivePath": "pgsql/bin/libssl-3-x64.dll"
+    },
+    {
+      "path": "bin/libwinpthread-1.dll",
+      "sha256": "ffe2d56375bb4e8bdee9037df6befc5016ddd8871d0d85027314dd5792f8fdc9",
+      "size": 52736,
+      "peVersion": "1.0.0.0",
+      "originalArchivePath": "pgsql/bin/libwinpthread-1.dll"
+    },
+    {
+      "path": "bin/libxml2.dll",
+      "sha256": "fa13b5d8bdc8254a6a7f0bc9b26331fa6badf096334bb912e7dc6928206a74a0",
+      "size": 1230848,
+      "peVersion": "2.15.3.0",
+      "originalArchivePath": "pgsql/bin/libxml2.dll"
+    },
+    {
+      "path": "bin/libxslt.dll",
+      "sha256": "8226fad0fc6e9b79b14203d4f5263ddec5764c0108aa7c17622dd77f311669a6",
+      "size": 414208,
+      "peVersion": null,
+      "originalArchivePath": "pgsql/bin/libxslt.dll"
+    },
+    {
+      "path": "bin/libzstd.dll",
+      "sha256": "287e7e474961e8886a3d961e2c07da647a7ac8d60d97023545f3a3ecf604daba",
+      "size": 727040,
+      "peVersion": "1.5.7.0",
+      "originalArchivePath": "pgsql/bin/libzstd.dll"
+    },
+    {
+      "path": "bin/pg_ctl.exe",
+      "sha256": "9e1c3375f47116eef8d04c1f67cc79f03c7c3cca99172511c4464cb9c6b8116f",
+      "size": 132096,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/bin/pg_ctl.exe"
+    },
+    {
+      "path": "bin/postgres.exe",
+      "sha256": "db14ddb0efc10b72b57dc29dbce5a719e2755dcd0ae54297d0ea4bbfc75f79a0",
+      "size": 9918464,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/bin/postgres.exe"
+    },
+    {
+      "path": "bin/testplug.dll",
+      "sha256": "d1b10395868a004f6ae4700159ba89992a65147efaca63218cd5fb084b32303a",
+      "size": 10752,
+      "peVersion": null,
+      "originalArchivePath": "pgsql/bin/testplug.dll"
+    },
+    {
+      "path": "bin/wxbase3210u_net_vc_x64_custom.dll",
+      "sha256": "f1ed058404a8edb1c85e675d3853567a5b7041b3f9539b10219885985aa425a2",
+      "size": 257536,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxbase3210u_net_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/wxbase3210u_vc_x64_custom.dll",
+      "sha256": "3cd9ff8e59c84fa71c897d3ece15e9022f23cec023da0817fd94f53b9d025572",
+      "size": 2985984,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxbase3210u_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/wxbase3210u_xml_vc_x64_custom.dll",
+      "sha256": "6d5f9866dce099e4dc7f3bbdb4c82ca42c60d019bd3e394dacf8e01ab796e7b9",
+      "size": 193024,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxbase3210u_xml_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/wxmsw3210u_adv_vc_x64_custom.dll",
+      "sha256": "afcf40828b1431728e67df1bf6b27039d827b55b1074c4ff7eb3e40b703c630d",
+      "size": 11264,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxmsw3210u_adv_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/wxmsw3210u_aui_vc_x64_custom.dll",
+      "sha256": "a0ab2e570c3cf653568ea9a6f1f80957da46c5a93a191cdcfb5af637f6f39ddf",
+      "size": 594944,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxmsw3210u_aui_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/wxmsw3210u_core_vc_x64_custom.dll",
+      "sha256": "f9a0e80ba4e4d0b42b6ed4119275203be00898050fb0f62791a04b852b61f809",
+      "size": 8351232,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxmsw3210u_core_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/wxmsw3210u_html_vc_x64_custom.dll",
+      "sha256": "79a190ae358911dbfdba750cbcaa83a629be02a31cfb973d34300a5ce0408f02",
+      "size": 709120,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxmsw3210u_html_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/wxmsw3210u_xrc_vc_x64_custom.dll",
+      "sha256": "f9352c12adcaac6485a810a42bf662a6911e05ba097198b0cc07b14a87b1d483",
+      "size": 886784,
+      "peVersion": "3.2.10.0",
+      "originalArchivePath": "pgsql/bin/wxmsw3210u_xrc_vc_x64_custom.dll"
+    },
+    {
+      "path": "bin/zlib1.dll",
+      "sha256": "890afa7a17fb66308e0026631070409138b157ef2773c0a41d22a76943f7aedf",
+      "size": 91648,
+      "peVersion": "1.3.2.0",
+      "originalArchivePath": "pgsql/bin/zlib1.dll"
+    },
+    {
+      "path": "lib/_int.dll",
+      "sha256": "fc87fa6c5ce4d394e17dbc2b46a7b9c2af0b5553afaa4cca446867ab70eb544e",
+      "size": 55808,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/_int.dll"
+    },
+    {
+      "path": "lib/amcheck.dll",
+      "sha256": "8bef41abb321e7fc69c67829cc32f95101739911a44993c127be5e749a00dd13",
+      "size": 67584,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/amcheck.dll"
+    },
+    {
+      "path": "lib/auth_delay.dll",
+      "sha256": "618bc8a75507c1ede25f9878534cac9e1c98c2607a6a672e97e616ee337ca10c",
+      "size": 14336,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/auth_delay.dll"
+    },
+    {
+      "path": "lib/auto_explain.dll",
+      "sha256": "6ea27b19704d641de08492ad608e3b44201fb6dcf1de56b05baf58ce38fb2ca4",
+      "size": 20992,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/auto_explain.dll"
+    },
+    {
+      "path": "lib/autoinc.dll",
+      "sha256": "a47a2d5667ad43fe3c8fbd51977b3755a449fab5e8b15dc70681711a6f3e49ae",
+      "size": 16384,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/autoinc.dll"
+    },
+    {
+      "path": "lib/basebackup_to_shell.dll",
+      "sha256": "aacc9cc399568ab1390bc305ffd95cbc65b9bee0ced20a8e0911e4a20c09aa57",
+      "size": 18944,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/basebackup_to_shell.dll"
+    },
+    {
+      "path": "lib/basic_archive.dll",
+      "sha256": "e10b9b8e038a35313e31862389ff66acef50abc09de40a5cfbd3a42bfda61d8e",
+      "size": 19456,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/basic_archive.dll"
+    },
+    {
+      "path": "lib/bloom.dll",
+      "sha256": "e90d71f74ddd8249e7b217e5d841d8a3c8b94098f87abbc60f596c0227777340",
+      "size": 31232,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/bloom.dll"
+    },
+    {
+      "path": "lib/bool_plperl.dll",
+      "sha256": "8b2da1eb66d3897573afdc0e3709e7650452c6c2112d6e5df791478cbc5c3afa",
+      "size": 15872,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/bool_plperl.dll"
+    },
+    {
+      "path": "lib/btree_gin.dll",
+      "sha256": "475f6d781c06e92a3ac62f22c4014ae3012a16dd1c66d3643abb5d11ba84d9a8",
+      "size": 29184,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/btree_gin.dll"
+    },
+    {
+      "path": "lib/btree_gist.dll",
+      "sha256": "4bff44ef90129ee22690094d8c0fb062fe3550ed520643f85924fd262c2ef810",
+      "size": 75776,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/btree_gist.dll"
+    },
+    {
+      "path": "lib/citext.dll",
+      "sha256": "b2b261b7e868e8b92d340f138c90737ad15edf0f58b0bb602d04f1e11098cf98",
+      "size": 19968,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/citext.dll"
+    },
+    {
+      "path": "lib/cube.dll",
+      "sha256": "24ee6098df9ae67c03bec625b5f814b407e9fb28dd858b1423ce22dce1a55ed7",
+      "size": 57344,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/cube.dll"
+    },
+    {
+      "path": "lib/cyrillic_and_mic.dll",
+      "sha256": "a8c75af5f2118ed3736d22ac13fd9801e81feab5d6c08d3370121c464817368e",
+      "size": 20480,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/cyrillic_and_mic.dll"
+    },
+    {
+      "path": "lib/dblink.dll",
+      "sha256": "10eeeaaeca9c8864a524160573e678852a6ead6193e1fcfef5197dd578472f5c",
+      "size": 51712,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/dblink.dll"
+    },
+    {
+      "path": "lib/dict_int.dll",
+      "sha256": "e3f751ba314024b0938ac373f8e38ca1c59e5e0ad2f41561efc45fe0bf67cb9a",
+      "size": 15360,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/dict_int.dll"
+    },
+    {
+      "path": "lib/dict_snowball.dll",
+      "sha256": "57a5d3fad8be4ff376e7fa0c67954676862422a07c9f772b67804bd899daf318",
+      "size": 648704,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/dict_snowball.dll"
+    },
+    {
+      "path": "lib/dict_xsyn.dll",
+      "sha256": "8e1f2a068120202232abd4f2b7eb51fe2434416acf9f6feba8262f75c09ad7b1",
+      "size": 17920,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/dict_xsyn.dll"
+    },
+    {
+      "path": "lib/earthdistance.dll",
+      "sha256": "10d7525044ae2039aeb3bd399bf308baa0bf4329c4556ea97cff4713aa292287",
+      "size": 14848,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/earthdistance.dll"
+    },
+    {
+      "path": "lib/euc2004_sjis2004.dll",
+      "sha256": "99aa716b390ca850de6c0d8f90018323c037db614759befafcd74a3b2ddc7844",
+      "size": 16896,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/euc2004_sjis2004.dll"
+    },
+    {
+      "path": "lib/euc_cn_and_mic.dll",
+      "sha256": "ea879ec3b7bd793e7bcf528e5a54d810e6a5c93f75148278a8280ee99bbe5eef",
+      "size": 15872,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/euc_cn_and_mic.dll"
+    },
+    {
+      "path": "lib/euc_jp_and_sjis.dll",
+      "sha256": "d72a23e9dc40b57deed0a1c679dea9fc7a8ff186f811190782de0a2225c63c90",
+      "size": 23040,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/euc_jp_and_sjis.dll"
+    },
+    {
+      "path": "lib/euc_kr_and_mic.dll",
+      "sha256": "947bd34d8d98ebfacb706c2a16d4a7c73430af7c44bb8b286173f488586954a4",
+      "size": 15872,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/euc_kr_and_mic.dll"
+    },
+    {
+      "path": "lib/euc_tw_and_big5.dll",
+      "sha256": "27dd17012a26f4bc6a6d1259addc0074011181582294632d7215423eec98ab3b",
+      "size": 22528,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/euc_tw_and_big5.dll"
+    },
+    {
+      "path": "lib/file_fdw.dll",
+      "sha256": "e64cfe4a27d888b11d44f725d93249b0acfc9c86a9cda1d84cdfe4bdf18317c6",
+      "size": 26112,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/file_fdw.dll"
+    },
+    {
+      "path": "lib/fuzzystrmatch.dll",
+      "sha256": "6929e0b30d0891bbb78b9ccc87b960930609b0a2c4a4a1c90ba591a65517c6ac",
+      "size": 56832,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/fuzzystrmatch.dll"
+    },
+    {
+      "path": "lib/hstore.dll",
+      "sha256": "4eece2d5c646b4ad53ee44d99cdf385e305db0406f071724345eee641d167680",
+      "size": 66560,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/hstore.dll"
+    },
+    {
+      "path": "lib/hstore_plperl.dll",
+      "sha256": "0ab9ae1d5f114fb57e48771c3c7aef0186e18a7864f6075505d9a6462ae68f85",
+      "size": 20480,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/hstore_plperl.dll"
+    },
+    {
+      "path": "lib/hstore_plpython3.dll",
+      "sha256": "432c7bf6796466025fed341b24e90a419f9d72f1c1b5c3b248a263f2c43a7c70",
+      "size": 18432,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/hstore_plpython3.dll"
+    },
+    {
+      "path": "lib/insert_username.dll",
+      "sha256": "1d646aba56078dc0f7d27fecc3efe81648f13d9d802aa03af9b023b3d5bc7696",
+      "size": 15360,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/insert_username.dll"
+    },
+    {
+      "path": "lib/isn.dll",
+      "sha256": "018c6e83189f064b41dc68cee2457b71df8498cc7523bcdce53aec5718f74056",
+      "size": 70144,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/isn.dll"
+    },
+    {
+      "path": "lib/jsonb_plperl.dll",
+      "sha256": "c6d6035ae51e6fdbc0d3f355e8bdf62a61789eb039219b82c5c94b104d5ab813",
+      "size": 24064,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/jsonb_plperl.dll"
+    },
+    {
+      "path": "lib/jsonb_plpython3.dll",
+      "sha256": "81a3ebd2d13cca5e9b0aeee5fd4473debdb2eb632ca590a664f63f4d467d1a04",
+      "size": 22016,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/jsonb_plpython3.dll"
+    },
+    {
+      "path": "lib/latin2_and_win1250.dll",
+      "sha256": "e771f3120aac9b27815821d0543b7e7a34b38b06c2278aeee9f1db0aaf40b32f",
+      "size": 16384,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/latin2_and_win1250.dll"
+    },
+    {
+      "path": "lib/latin_and_mic.dll",
+      "sha256": "92b16e8c97b5301500756be144e4268fb060e3cd1988c4a3058f681e9002b322",
+      "size": 15872,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/latin_and_mic.dll"
+    },
+    {
+      "path": "lib/libpqwalreceiver.dll",
+      "sha256": "3206fb6ae2e0a2f650f7c34eb7d82a41fd6cd29466781ff764fbd1eb376b95a4",
+      "size": 30208,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/libpqwalreceiver.dll"
+    },
+    {
+      "path": "lib/lo.dll",
+      "sha256": "238eabec16bf1099b837e3bddd4122ae5df7a808be92208d38c43d2486cfd686",
+      "size": 15360,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/lo.dll"
+    },
+    {
+      "path": "lib/ltree.dll",
+      "sha256": "bcdb044c00cf2412b34406ac54ef1aa52ecebd1b46eaf5b6fcfef6d2b598d529",
+      "size": 70144,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/ltree.dll"
+    },
+    {
+      "path": "lib/ltree_plpython3.dll",
+      "sha256": "8913675c68e6e2090bd040bd65be3a34cce074e1d261067d254fab3fa36ec5fa",
+      "size": 15360,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/ltree_plpython3.dll"
+    },
+    {
+      "path": "lib/moddatetime.dll",
+      "sha256": "f248476b8c450d94ff862f386c2e291cf28f8f433b6aa5698910d650b753204b",
+      "size": 16384,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/moddatetime.dll"
+    },
+    {
+      "path": "lib/pageinspect.dll",
+      "sha256": "650ea4fc46ddab19ae3bc6f176899732d86c75a2a4ef47bb6fd3469333040b66",
+      "size": 57344,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pageinspect.dll"
+    },
+    {
+      "path": "lib/passwordcheck.dll",
+      "sha256": "25bb29d571a5af4d50d8c46f500e8b0d8a8095d0e61bef2bb450dae953b258fa",
+      "size": 15360,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/passwordcheck.dll"
+    },
+    {
+      "path": "lib/pg_buffercache.dll",
+      "sha256": "beec8e27b99a1d9c1948a12803f4353ff29cb8a52dd8b865bbf49f19f49e930b",
+      "size": 20480,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_buffercache.dll"
+    },
+    {
+      "path": "lib/pg_freespacemap.dll",
+      "sha256": "c102e1ac614e2ac5a861ff0aa0197d232ae07dfd9e5dc3045231151e1ca13714",
+      "size": 14848,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_freespacemap.dll"
+    },
+    {
+      "path": "lib/pg_prewarm.dll",
+      "sha256": "f4b080bdd3a6b1b0a58ce43cddc33dfa0c267151f589462f4662caa4102f9cc6",
+      "size": 31744,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_prewarm.dll"
+    },
+    {
+      "path": "lib/pg_stat_statements.dll",
+      "sha256": "606e30ecfd54c1dd9206ceef6859c563b7ddc4c2a127d6ab3fb6f2759dba7514",
+      "size": 43008,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_stat_statements.dll"
+    },
+    {
+      "path": "lib/pg_surgery.dll",
+      "sha256": "15aacfb258a5a27df68519823299e29ac42f6c4b29c6d8e20cbab706921a8ee4",
+      "size": 20992,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_surgery.dll"
+    },
+    {
+      "path": "lib/pg_trgm.dll",
+      "sha256": "8e7b23497053613173dcd9886eadf371b20a1fbd1cafd558c7056a95700451b6",
+      "size": 56832,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_trgm.dll"
+    },
+    {
+      "path": "lib/pg_visibility.dll",
+      "sha256": "ec323709ecf5dda568d6000ad94a31b8d3f03a1f128bdcdc33e5a2505737469e",
+      "size": 26112,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_visibility.dll"
+    },
+    {
+      "path": "lib/pg_walinspect.dll",
+      "sha256": "cb8250bae3916a924c0de11824f92ef6015393edab44926ba6394c8d3626e509",
+      "size": 26112,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pg_walinspect.dll"
+    },
+    {
+      "path": "lib/pgcrypto.dll",
+      "sha256": "8e6894bef489bb1aa89c63bc6a89df99a23578d5bd761d2cab14dc53e23e80e3",
+      "size": 195072,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pgcrypto.dll"
+    },
+    {
+      "path": "lib/pgevent.dll",
+      "sha256": "1c7ee0a05d5cd144ce24f2c8fbda05c92318e9623fe02d5de837608b6ba6c819",
+      "size": 40960,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pgevent.dll"
+    },
+    {
+      "path": "lib/pgoutput.dll",
+      "sha256": "ed6dbe396649519254ea9cb6bd2d3c351eb265d297f7622a926ae39e812fddfb",
+      "size": 33792,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pgoutput.dll"
+    },
+    {
+      "path": "lib/pgrowlocks.dll",
+      "sha256": "499354e804ddf0cc0714f7102494cba69c0c716fa333a021d74fba578f1adccf",
+      "size": 18944,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pgrowlocks.dll"
+    },
+    {
+      "path": "lib/pgstattuple.dll",
+      "sha256": "fdfc4d3bf6f5f0680d16eb058731f334285a63f76e086238c9c5ea98661702e9",
+      "size": 34816,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pgstattuple.dll"
+    },
+    {
+      "path": "lib/pgxml.dll",
+      "sha256": "28229604baa271bb7340677b7734aebc014b9eaa34b99aa681dc2ffcbf6a755a",
+      "size": 29184,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pgxml.dll"
+    },
+    {
+      "path": "lib/plperl.dll",
+      "sha256": "0d5d2efd4bead69a1dcdac0a9943dbd6689eae02890e241919f36a057307e34c",
+      "size": 94208,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/plperl.dll"
+    },
+    {
+      "path": "lib/plpgsql.dll",
+      "sha256": "c8a958b3aea5a9c31d27ebdbc4e917daf439a3cccd4a483d3e8f50f177b582a5",
+      "size": 195072,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/plpgsql.dll"
+    },
+    {
+      "path": "lib/plpython3.dll",
+      "sha256": "78d0085d6560ff2a82a8594e831e41d7d2b7a7f518bb72d9076f7f35c5eb0135",
+      "size": 119296,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/plpython3.dll"
+    },
+    {
+      "path": "lib/pltcl.dll",
+      "sha256": "69ffdcb8e9f3a1b775b41f8b40f52d79b1d8269a0ab4ae568e2c3c8270c28c89",
+      "size": 60416,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/pltcl.dll"
+    },
+    {
+      "path": "lib/plugin_debugger.dll",
+      "sha256": "1461ae586d86fe4430e4b16c7c60eaffd92ba9c5e498d7ebb64297cc7b951e96",
+      "size": 61440,
+      "peVersion": null,
+      "originalArchivePath": "pgsql/lib/plugin_debugger.dll"
+    },
+    {
+      "path": "lib/postgres_fdw.dll",
+      "sha256": "8d38dfe45be30aa22c96dc4acdfebd1ef1fa3bb8f5cf94c46a3b381deb2d587a",
+      "size": 135680,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/postgres_fdw.dll"
+    },
+    {
+      "path": "lib/refint.dll",
+      "sha256": "48104476aeb693f4dafc9821c1ef7a84ba9b0919960a121a428968700904b84b",
+      "size": 23552,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/refint.dll"
+    },
+    {
+      "path": "lib/seg.dll",
+      "sha256": "871771ff543d20731a84de1d9b5e5932ced227486645250177a9ffa65bb551c6",
+      "size": 35840,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/seg.dll"
+    },
+    {
+      "path": "lib/sslinfo.dll",
+      "sha256": "0650fbb5fa7a77a069f85a8fc166beaafe5de7c50e1c42d8995b0459973e5088",
+      "size": 21504,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/sslinfo.dll"
+    },
+    {
+      "path": "lib/system_stats.dll",
+      "sha256": "430efc51404687cc35eea13c7e5490807f3fdffcd7f0ac6df9b3a79b2c9d1f0a",
+      "size": 38912,
+      "peVersion": null,
+      "originalArchivePath": "pgsql/lib/system_stats.dll"
+    },
+    {
+      "path": "lib/tablefunc.dll",
+      "sha256": "c0fd272581d784f0cd0bcca6a26849d2a6f5e477cdce3caef685e8692ada213c",
+      "size": 30720,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/tablefunc.dll"
+    },
+    {
+      "path": "lib/tcn.dll",
+      "sha256": "39689e5cb5646481f242aa39fe46eb47af7cc646400a48291940122c12a0fca4",
+      "size": 16896,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/tcn.dll"
+    },
+    {
+      "path": "lib/test_decoding.dll",
+      "sha256": "f185a069138881b4c2432208ed0258443d8efa53cbcc2f1cb61a9ee600bc443b",
+      "size": 25088,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/test_decoding.dll"
+    },
+    {
+      "path": "lib/tsm_system_rows.dll",
+      "sha256": "5418a9f4fff79037b51d2190d3510392dc9be4b543b3de602a8cd817d566c7c9",
+      "size": 17920,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/tsm_system_rows.dll"
+    },
+    {
+      "path": "lib/tsm_system_time.dll",
+      "sha256": "dbde3348f172757f2002a51743f7d1c0dbf6f92ed6f3d9f0b51d89ac5104f17b",
+      "size": 17920,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/tsm_system_time.dll"
+    },
+    {
+      "path": "lib/unaccent.dll",
+      "sha256": "b6efe5c218ec4b5c3a19e7caeb613d3552c5aca95ac7d7aec391d61d6bb61f5f",
+      "size": 20480,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/unaccent.dll"
+    },
+    {
+      "path": "lib/utf8_and_big5.dll",
+      "sha256": "de2758366aa40472c3ed6b50d2897fa59de005457c2dbcddd549530c2b86a79b",
+      "size": 129024,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_big5.dll"
+    },
+    {
+      "path": "lib/utf8_and_cyrillic.dll",
+      "sha256": "1d8d0bdd5dd4f61f0eea749f6ba584ab4ad937dfd2c7c712a4c9fa0c949519fd",
+      "size": 20480,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_cyrillic.dll"
+    },
+    {
+      "path": "lib/utf8_and_euc2004.dll",
+      "sha256": "3d66ed450beeee3994071f99ba970f91941e86e59e3999816b18430ff61f0167",
+      "size": 219136,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_euc2004.dll"
+    },
+    {
+      "path": "lib/utf8_and_euc_cn.dll",
+      "sha256": "7e9a6f242e64b9145d8010fc292aa50f16aae4b155ed9ca28b5977a73296785d",
+      "size": 89600,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_euc_cn.dll"
+    },
+    {
+      "path": "lib/utf8_and_euc_jp.dll",
+      "sha256": "c727f0d3512c832ca9821b5b307df21d05f8d5a68889dc74c1bf4e8bcede04fd",
+      "size": 165376,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_euc_jp.dll"
+    },
+    {
+      "path": "lib/utf8_and_euc_kr.dll",
+      "sha256": "5fbf012116c1e3d61e1f5e84f7c45d6ac4c322b14dd05d791e0a2ae0e536c7af",
+      "size": 117248,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_euc_kr.dll"
+    },
+    {
+      "path": "lib/utf8_and_euc_tw.dll",
+      "sha256": "ba4e6c2abd56940056dccd27cfc3920dc3d81633f8c7387fe2fb875b885587fb",
+      "size": 214016,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_euc_tw.dll"
+    },
+    {
+      "path": "lib/utf8_and_gb18030.dll",
+      "sha256": "b9c1a6a8c5aed6593e8ff1c0a64458adc93c7f5ab5efef2ce5144dce73c8697c",
+      "size": 275456,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_gb18030.dll"
+    },
+    {
+      "path": "lib/utf8_and_gbk.dll",
+      "sha256": "7b6152755cb0a5114df42c8e028bfe4193bb936bf17cb3c46749cb69a6986a14",
+      "size": 160768,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_gbk.dll"
+    },
+    {
+      "path": "lib/utf8_and_iso8859.dll",
+      "sha256": "ff2605b601e9b20c8c542928deafdc0af166c5fcccaeb331a59786869a731541",
+      "size": 36864,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_iso8859.dll"
+    },
+    {
+      "path": "lib/utf8_and_iso8859_1.dll",
+      "sha256": "5cfd6ede24c820bc0aef1e70127353ac4afeb26d35444d5feccc209b798cc324",
+      "size": 15360,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_iso8859_1.dll"
+    },
+    {
+      "path": "lib/utf8_and_johab.dll",
+      "sha256": "27e26f6e47ebdf3cfe3c08993918dd8df2a255b936dc70be5eed311a84784255",
+      "size": 176128,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_johab.dll"
+    },
+    {
+      "path": "lib/utf8_and_sjis.dll",
+      "sha256": "5b9615f37840df42201b9e504f79c7d28baa404ed141b32cc5cdf8e6b9df5c01",
+      "size": 95744,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_sjis.dll"
+    },
+    {
+      "path": "lib/utf8_and_sjis2004.dll",
+      "sha256": "ae505ad6e50de7aaed1dd6eafa2fcc776c3cf3ea1f84987288b7d378bc299e45",
+      "size": 140800,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_sjis2004.dll"
+    },
+    {
+      "path": "lib/utf8_and_uhc.dll",
+      "sha256": "2dea54b9d83920164189cecb4ae93d111274e7a93f7fe845078702ecffcb9f35",
+      "size": 181760,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_uhc.dll"
+    },
+    {
+      "path": "lib/utf8_and_win.dll",
+      "sha256": "19c06cd294820eac73927560d7cbcf70d025ef47da83bb930582dd8726c91c3b",
+      "size": 39936,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/utf8_and_win.dll"
+    },
+    {
+      "path": "lib/uuid-ossp.dll",
+      "sha256": "13a7cbee011a30f85d9a9158e51bf7d3bdb87526471e3095829f3d6f776cd3cf",
+      "size": 49664,
+      "peVersion": "17.0.10.0",
+      "originalArchivePath": "pgsql/lib/uuid-ossp.dll"
+    }
+  ],
+  "notices": [
+    {
+      "path": "StackBuilder_3rd_party_licenses.txt",
+      "sha256": "28ec399a3617d7f831c1ce67efe7209c0c988b04f45cea939edccea0aff4ae8e"
+    },
+    {
+      "path": "commandlinetools_3rd_party_licenses.txt",
+      "sha256": "72aee4dccdecefede32f1268e1ba638a7424a30f8e6de1b10bc22ba27426f177"
+    },
+    {
+      "path": "server_license.txt",
+      "sha256": "39294f3f5b41533b307e118ee37c356f32cbc7746fc97e8b91f1b49a9068a24e"
+    }
+  ]
+}
