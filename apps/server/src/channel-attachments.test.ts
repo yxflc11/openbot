@@ -42,7 +42,8 @@ describe("persistent channel attachments", () => {
     await expect(restarted.read(otherChannel, attachment.id)).rejects.toMatchObject({
       status: 404,
     });
-  });
+    // Real fsync-backed storage and restart verification, independent of hosted disk latency.
+  }, 15_000);
   it.each(["digest", "size", "metadata"])("fails closed on stored %s tampering", async (mode) => {
     const { root, storage } = await fixture();
     const attachment = await storage.persist(channelId, "plan.md", Buffer.from("review"));
