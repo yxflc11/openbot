@@ -15,7 +15,7 @@
 
 **当前源码候选版本为 Desktop `0.1.0-alpha.6`。** 频道协作、丰富附件、MCP 扩展接口和双语官网均已实现，但本候选版**尚未发布**：最终源码推送、Windows 原生 CI 结果和官网公开部署仍需完成。[逐功能交付清单](docs/RELEASE_COMPLETION.zh-CN.md)列出实现、证据和这三个发布关口。开发安装包未签名，没有自动更新通道，也不宣称任意桌面控制已获认证。
 
-本次官网部署目标：[English](https://yxflc11.github.io/openbot/) · [简体中文](https://yxflc11.github.io/openbot/zh-cn/)。这些是待部署地址，不代表本候选版已上线。现在可先阅读[源码文档索引](docs/README.zh-CN.md)。当前候选版维护英文与中文文档，日文和葡萄牙文 README 仍对应较早快照。
+本次官网部署目标：[English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/)。这些是待部署地址，不代表本候选版已上线。现在可先阅读[源码文档索引](docs/README.zh-CN.md)。当前候选版维护英文与中文文档，日文和葡萄牙文 README 仍对应较早快照。
 
 ## 可以做什么
 
@@ -85,7 +85,7 @@ Desktop / Web -> Server -> 原生 Agent 与受限 MCP 连接
 
 Server 是唯一权限中心。模型、附件、网页、技能、插件和 Worker 都是不可信输入，工具能力不等于授权。远程部署使用可信 HTTPS、严格 Origin 与安全 Cookie，数据库和电脑后端保持私有。参见[安全政策](SECURITY.md)与[威胁模型](docs/SECURITY.md)。
 
-从[贡献指南](CONTRIBUTING.zh-CN.md)、[仓库地图](docs/REPOSITORY_MAP.zh-CN.md)、[当前架构](docs/ARCHITECTURE.zh-CN.md)、[工程审查](docs/REPOSITORY_AUDIT.zh-CN.md)和[开源复用规则](docs/OPEN_SOURCE_REUSE.zh-CN.md)开始。插件作者可直接实现标准 MCP Streamable HTTP，不需要专属 OpenBot SDK，见[插件作者契约](docs/PLUGINS.zh-CN.md)及 `apps/site/src/content/docs` 中的官网扩展指南。
+从[贡献指南](CONTRIBUTING.zh-CN.md)、[仓库地图](docs/REPOSITORY_MAP.zh-CN.md)、[当前架构](docs/ARCHITECTURE.zh-CN.md)、[工程审查](docs/REPOSITORY_AUDIT.zh-CN.md)和[开源复用规则](docs/OPEN_SOURCE_REUSE.zh-CN.md)开始。插件作者可直接实现标准 MCP Streamable HTTP，不需要专属 OpenBot SDK，见[插件作者契约](docs/PLUGINS.zh-CN.md)及 [openbot-website](https://github.com/yxflc11/openbot-website) `src/content/docs` 中的官网扩展指南。
 
 员工演化和学习方向明确借鉴 [Hermes Agent 的学习图](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py)，OpenBot 不宣称原创该概念。办公室可视化仍是延期的可选插件。
 

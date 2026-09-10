@@ -19,7 +19,7 @@
 | Provider | `providers/*`、`packages/provider-sdk`、conformance runner | 对维护中的上游做薄适配；通过具体能力的符合性检查 |
 | 安全/策略 | `packages/policy`、`docs/SECURITY.md`、Server auth/approval | 默认拒绝、权限上限、显式审计；策略/鉴权负测与安全配置检查 |
 | 打包/CI | `scripts`、Desktop scripts、`.github/workflows`、`deploy` | 可复现版本、目标平台构建与生命周期；release checks 和原生 smoke |
-| 官网/手册 | `apps/site`、`docs`、根 README | 链接当前正式文档，区分实现/验证/计划；站点构建、docs check 和浏览器验收 |
+| 官网/手册 | [openbot-website](https://github.com/yxflc11/openbot-website)、`docs`、根 README | 链接当前正式文档，区分实现/验证/计划；站点构建、docs check 和浏览器验收 |
 
 ## 修改流程
 

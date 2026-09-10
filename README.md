@@ -15,7 +15,7 @@ Create colleagues with their own identity, role, reviewed memory and skills. Ass
 
 **Current source candidate: Desktop `0.1.0-alpha.6`.** Channel collaboration, richer files, the MCP extension interface and the bilingual website are implemented. This candidate is **not yet published**: the final source push, native Windows CI result and public website deployment still require completion. See the [feature-by-feature delivery record](docs/RELEASE_COMPLETION.md) for implemented behavior, evidence and the three release gates. Development installers are unsigned; no automatic update channel or arbitrary desktop-control certification is claimed.
 
-Planned website deployment targets: [English](https://yxflc11.github.io/openbot/) · [简体中文](https://yxflc11.github.io/openbot/zh-cn/). These links are the targets for this deployment, not a claim that the current candidate is already live. Read the [source documentation index](docs/README.md) now. English and Chinese are the maintained current-candidate documentation; the Japanese and Portuguese READMEs describe an earlier snapshot.
+Planned website deployment targets: [English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/). These links are the targets for this deployment, not a claim that the current candidate is already live. Read the [source documentation index](docs/README.md) now. English and Chinese are the maintained current-candidate documentation; the Japanese and Portuguese READMEs describe an earlier snapshot.
 
 ## What you can do
 
@@ -85,7 +85,7 @@ Desktop / Web -> Server -> native Agent and scoped MCP connections
 
 Server is the sole authority. Models, files, webpages, skills, plugins and workers are untrusted. Tool capabilities do not confer permission. Remote deployments use trusted HTTPS, restricted allowed origins and secure cookies; database and computer backends remain private. Read [Security](SECURITY.md) and the [threat model](docs/SECURITY.md).
 
-Start with [Contributing](CONTRIBUTING.md), the [repository map](docs/REPOSITORY_MAP.md), [current architecture](docs/ARCHITECTURE.md), [engineering audit](docs/REPOSITORY_AUDIT.md) and [open-source reuse policy](docs/OPEN_SOURCE_REUSE.md). Plugin authors can implement a standard MCP Streamable HTTP endpoint; no OpenBot-specific SDK is required. See [plugin author contract](docs/PLUGINS.md) and the website's source extension guides in `apps/site/src/content/docs`.
+Start with [Contributing](CONTRIBUTING.md), the [repository map](docs/REPOSITORY_MAP.md), [current architecture](docs/ARCHITECTURE.md), [engineering audit](docs/REPOSITORY_AUDIT.md) and [open-source reuse policy](docs/OPEN_SOURCE_REUSE.md). Plugin authors can implement a standard MCP Streamable HTTP endpoint; no OpenBot-specific SDK is required. See [plugin author contract](docs/PLUGINS.md) and the website's source extension guides in [openbot-website](https://github.com/yxflc11/openbot-website) `src/content/docs`.
 
 Employee evolution and learning are explicitly inspired by [Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py). OpenBot does not claim to have invented that concept. The office visualization is optional and deferred.
 

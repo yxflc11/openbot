@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-先阅读[逐项功能与交付记录](RELEASE_COMPLETION.zh-CN.md)和[桌面安装](DESKTOP_INSTALLATION.zh-CN.md)。官网手册源文件维护在 `apps/site/src/content/docs`。
+先阅读[逐项功能与交付记录](RELEASE_COMPLETION.zh-CN.md)和[桌面安装](DESKTOP_INSTALLATION.zh-CN.md)。官网手册源文件维护在 [openbot-website](https://github.com/yxflc11/openbot-website) `src/content/docs`。
 
 | 目的 | 权威文档 |
 | --- | --- |

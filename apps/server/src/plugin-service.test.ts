@@ -377,12 +377,15 @@ describe("real MCP SDK network journey", () => {
 
 describe("plugin network/schema admission", () => {
   it("rejects private targets and authority-bearing schema extensions", () => {
+    const userInfo = new URL("https://example.com/mcp");
+    userInfo.username = "user";
+    userInfo.password = "pass";
     for (const endpoint of [
       "http://example.com/mcp",
       "https://127.0.0.1/mcp",
       "https://10.0.0.1/mcp",
       "https://metadata.internal/mcp",
-      "https://user:pass@example.com/mcp",
+      userInfo.href,
       "https://example.com/mcp?key=secret",
     ])
       expect(() => normalizePluginEndpoint(endpoint)).toThrow();

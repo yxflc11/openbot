@@ -11,7 +11,7 @@
 | 平台 | Release 中的文件 | 安装方法 | 实际组合能力 |
 | --- | --- | --- | --- |
 | macOS Apple Silicon | `openbot-desktop-<version>-darwin-arm64.dmg` | 打开磁盘映像，将 OpenBot 拖入 Applications | 客户端、内置 Server/PostgreSQL、可选随包 Worker companion |
-| Windows x64 | `openbot-desktop-<version>-win32-x64.exe` | 打开安装器，安装到当前用户并创建开始菜单入口 | 连接已有 Server 的客户端 |
+| Windows x64 | `openbot-desktop-<version>-win32-x64.exe` | 打开安装器，安装到当前用户并创建开始菜单入口 | 内置本地 Server/PostgreSQL，或连接已有 Server |
 | Linux x64 | `openbot-desktop-<version>-linux-x64.deb` | 使用发行版的软件包管理器安装 | 连接已有 Server 的客户端 |
 | Linux x64 便携版 | `openbot-desktop-<version>-linux-x64.AppImage` | 添加可执行权限后运行；仍需系统 AppImage 依赖 | 连接已有 Server 的客户端 |
 
@@ -50,18 +50,16 @@ PowerShell 脚本打开当前用户安装器并等待结果。如果系统执行
 
 ## 第一次实际使用
 
-1. macOS 选择“作为服务电脑”初始化本地服务，或连接已有 Server。Windows/Linux 使用连接流程。
+1. macOS 或 Windows x64 选择“作为服务电脑”初始化本地服务，或连接已有 Server。Linux 使用连接流程。
 2. 以 Owner 登录，在“Owner → 设置 → 模型服务”配置 Server 唯一默认提供方、模型与密钥，
    准备好后明确启用原生 Agent。
 3. 使用 OpenBot 文字右侧的 **+** 创建 Bot 或频道。点击 Bot 单独对话，或在频道中 **@** 它，
    然后提交 `none` 配置任务。模型元数据检查不能证明推理可用；第一次真实任务成功
    才是实际模型验收。
-4. 退出后重新打开 Desktop，确认工作区与模型摘要仍存在。退出 Desktop 会停止 macOS 本地服务；
+4. 退出后重新打开 Desktop，确认工作区与模型摘要仍存在。退出 Desktop 会停止 macOS/Windows 本地服务；
    无人值守定时任务需要持续运行的 Server。
 
-alpha.3 界面增加全窗口竖向设置与插件、Bot 单独对话、有界文本附件和已审核技能使用请求。
-分享功能预览近期消息，由用户明确复制到剪贴板，不发布托管链接；准确限制见引导说明。
-Windows/Linux 保持远程客户端用途，本次修订的原生安装/运行验证需查看对应平台证据。
+alpha.6 候选版增加受限频道协作、更丰富附件、经审核 MCP 资料与应用、语音草稿和恢复启动。分享导出可复用 Bot 档案/已验证技能并下载成果，不发布私人记忆或聊天记录。Windows 本地服务证据见 [Windows 桌面版](WINDOWS_DESKTOP.zh-CN.md)。本次仅计划发布 Windows 安装包，保留已有其他平台发行物。
 
 完整能力边界见 [Desktop 引导](DESKTOP_ONBOARDING.zh-CN.md)、[原生 Agent](NATIVE_AGENT.zh-CN.md)
 和 [Server 容器](SERVER_CONTAINER.zh-CN.md)。

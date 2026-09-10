@@ -26,6 +26,13 @@ function fixture(index = 0) {
       file: "apps/server/src/native-web-tools.test.ts",
       line: 99,
     },
+    {
+      url: "https://example.com/mcp",
+      password: "pass",
+      commit: "cb057607a100ccc10dd4cec6eece6c9cfc4a5158",
+      file: "apps/server/src/plugin-service.test.ts",
+      line: 385,
+    },
   ];
   const definition = definitions[index];
   const url = new URL(definition.url);
@@ -45,12 +52,12 @@ function fixture(index = 0) {
   };
 }
 
-test("accepts clean scans and only the three exact reviewed historical fixtures", () => {
+test("accepts clean scans and only the four exact reviewed historical fixtures", () => {
   assert.deepEqual(checkCredentialFindings("", 0), { reviewedFixtures: 0 });
-  const findings = [0, 1, 2].map((index) => JSON.stringify(fixture(index)));
+  const findings = [0, 1, 2, 3].map((index) => JSON.stringify(fixture(index)));
   for (const finding of findings)
     assert.deepEqual(checkCredentialFindings(finding, 183), { reviewedFixtures: 1 });
-  assert.deepEqual(checkCredentialFindings(findings.join("\n"), 183), { reviewedFixtures: 3 });
+  assert.deepEqual(checkCredentialFindings(findings.join("\n"), 183), { reviewedFixtures: 4 });
 });
 
 test("does not exempt another value, detector, verified result, or source location", () => {
@@ -83,7 +90,7 @@ test("does not exempt another value, detector, verified result, or source locati
       value.SourceMetadata.Data.Git.line += 1;
     },
   ];
-  for (const index of [0, 1, 2])
+  for (const index of [0, 1, 2, 3])
     for (const mutate of mutations) {
       const value = fixture(index);
       mutate(value);

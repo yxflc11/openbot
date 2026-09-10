@@ -10,8 +10,7 @@
       "!**/coverage",
       "!**/node_modules",
       "!package-lock.json",
-      "!apps/web/dist-demo",
-      "!apps/site/.astro"
+      "!apps/web/dist-demo"
     ]
   },
   "formatter": {

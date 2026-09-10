@@ -1,1 +1,5 @@
 deploy/node/systemd/*.service text eol=lf
+
+# Binary fixtures and verbatim upstream notices preserve exact reviewed bytes.
+*.pdf binary
+licenses/** -whitespace

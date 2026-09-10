@@ -189,12 +189,13 @@ export async function parseInWorker(
           modules: {
             office: import.meta.resolve("officeparser"),
             pdf: import.meta.resolve("pdfjs-dist/legacy/build/pdf.mjs"),
+            // PDF.js requires a trailing forward slash even for Node filesystem paths.
             fonts: fileURLToPath(
               new URL(
                 "../../standard_fonts/",
                 import.meta.resolve("pdfjs-dist/legacy/build/pdf.mjs"),
               ),
-            ),
+            ).replaceAll("\\", "/"),
             tesseract: import.meta.resolve("tesseract.js"),
           },
         },

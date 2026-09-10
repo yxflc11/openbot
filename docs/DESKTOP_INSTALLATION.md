@@ -12,7 +12,7 @@ and expire after 14 days. Do not infer release availability from the source vers
 | Platform | File in the release | Installation | Available composition |
 | --- | --- | --- | --- |
 | macOS Apple Silicon | `openbot-desktop-<version>-darwin-arm64.dmg` | Open the disk image and drag OpenBot to Applications | Client, bundled local Server/PostgreSQL, optional bundled Worker companion |
-| Windows x64 | `openbot-desktop-<version>-win32-x64.exe` | Open the installer; it installs for the current user and adds Start menu access | Client connected to an existing Server |
+| Windows x64 | `openbot-desktop-<version>-win32-x64.exe` | Open the installer; it installs for the current user and adds Start menu access | Client with bundled local Server/PostgreSQL, or connection to an existing Server |
 | Linux x64 | `openbot-desktop-<version>-linux-x64.deb` | Install using the distribution package manager | Client connected to an existing Server |
 | Linux x64 portable | `openbot-desktop-<version>-linux-x64.AppImage` | Make executable and run; system AppImage dependencies still apply | Client connected to an existing Server |
 
@@ -59,21 +59,17 @@ part of this procedure.
 
 ## First useful session
 
-1. On macOS choose **Service computer** to initialize local services, or connect to an existing
-   Server. Windows and Linux use the existing-Server path.
+1. On macOS or Windows x64 choose **Service computer** to initialize local services, or connect to an existing
+   Server. Linux uses the existing-Server path.
 2. Sign in as Owner. In **Owner → Settings → Model services**, configure the Server's single
    default provider, model and key; explicitly opt into the native Agent when ready.
 3. Use the **+** beside the OpenBot wordmark to create a Bot or channel. Click a Bot for a direct
    conversation, or address it with **@** in a channel, then submit a `none`-profile task. A provider metadata check does not
    prove inference: the first completed real task is the live model acceptance step.
-4. Quit and reopen Desktop. Verify the workspace and model summary remain available. Local macOS
+4. Quit and reopen Desktop. Verify the workspace and model summary remain available. Local macOS/Windows
    services stop when Desktop quits; unattended schedules require a continuously running Server.
 
-The alpha.3 interface adds full-window vertical Settings and Plugins, direct Bot conversations,
-bounded text attachments and verified-skill requests. Share previews recent messages for explicit
-clipboard copying; it does not publish a hosted link. See onboarding for the exact limits.
-Windows/Linux keep remote-client operation; native installation/runtime validation for this
-revision must be checked in its recorded platform evidence.
+The alpha.6 candidate adds bounded channel collaboration, richer files, reviewed MCP content/apps, voice drafts and retained startup. Sharing exports reusable Bot profiles/verified skills and downloads deliverables; it does not publish private memory or transcripts. Windows local-runtime evidence is recorded in [Windows Desktop](WINDOWS_DESKTOP.md). Only Windows installers are planned for this release; existing platform distributions are retained.
 
 See [Desktop onboarding](DESKTOP_ONBOARDING.md), [native Agent](NATIVE_AGENT.md) and
 [Server container](SERVER_CONTAINER.md) for the exact supported boundaries.

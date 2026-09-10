@@ -19,7 +19,7 @@ Read [architecture](ARCHITECTURE.md) for current authority boundaries and [CONTR
 | Providers | `providers/*`, `packages/provider-sdk`, `packages/provider-conformance-runner` | Maintained upstream adapter with executable capability and conformance evidence | Provider tests and applicable conformance suite |
 | Security/policy | `packages/policy`, `docs/SECURITY.md`, Server auth/approval modules | Default denial, bounded authority and explicit audit | Policy/negative auth tests and `npm run security:config-check` |
 | Packaging/CI | `scripts`, Desktop `scripts`, `.github/workflows`, `deploy` | Reproducible build/install with pinned artifacts; no machine-private assumptions | `npm run release:check`, platform CI and native smoke |
-| Website/manual | `apps/site`, `docs`, root READMEs | Link to canonical current docs; distinguish implemented, tested and planned | Site build, `npm run docs:check`, real browser check |
+| Website/manual | [openbot-website](https://github.com/yxflc11/openbot-website), `docs`, root READMEs | Link to canonical current docs; distinguish implemented, tested and planned | Site build, `npm run docs:check`, real browser check |
 
 ## Change flow
 

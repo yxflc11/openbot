@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md)
 
-Start with the [feature and delivery record](RELEASE_COMPLETION.md) and [Desktop installation](DESKTOP_INSTALLATION.md). The website manuals are maintained under `apps/site/src/content/docs`.
+Start with the [feature and delivery record](RELEASE_COMPLETION.md) and [Desktop installation](DESKTOP_INSTALLATION.md). The website manuals are maintained under [openbot-website](https://github.com/yxflc11/openbot-website) `src/content/docs`.
 
 | Need | Canonical document |
 | --- | --- |

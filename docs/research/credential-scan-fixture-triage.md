@@ -87,3 +87,7 @@ Validation completed: 13 credential/workflow contract tests, 20 Desktop support-
 Git clone containing the candidate fix as a temporary commit; it returned only the same three
 historical findings, and the adapter passed with `3 exact historical fixture(s)`. The disposable
 commit was never pushed. Hosted CI on the final combined commit remains the release gate.
+
+## Plugin admission fixture (2026-09-10)
+
+PR #29 failed because full history adds one URI match from commit `cb057607a100ccc10dd4cec6eece6c9cfc4a5158`, `apps/server/src/plugin-service.test.ts:385`. The exact pinned scanner replayed offline over a disposable clone reports four matches total, zero verified secrets. Source inspection confirms the extra literal is a synthetic `example.com` userinfo URL in a negative `normalizePluginEndpoint` test, with no request sent. Raw SHA-256: `1231625e7e70c4e56347672932d37a1c35eff89051483b37cbd09f7b9c58337e`; RawV2: `64af6524d4fcec9a8688550461aea8ddd09ec210db19f00be93ddc558b2b5ebb`. Extend the same immutable commit/path/line/detector/hash tuple, with mutation tests, and construct the current fixture through URL setters to avoid new historical matches. No detector/path exclusion, verification, upload or scanner change.

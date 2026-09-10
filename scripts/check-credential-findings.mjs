@@ -5,6 +5,13 @@ import { pathToFileURL } from "node:url";
 const MAX_BYTES = 16 * 1024 * 1024;
 const REVIEWED_FIXTURES = Object.freeze([
   {
+    commit: "cb057607a100ccc10dd4cec6eece6c9cfc4a5158",
+    file: "apps/server/src/plugin-service.test.ts",
+    line: 385,
+    raw: "1231625e7e70c4e56347672932d37a1c35eff89051483b37cbd09f7b9c58337e",
+    rawV2: "64af6524d4fcec9a8688550461aea8ddd09ec210db19f00be93ddc558b2b5ebb",
+  },
+  {
     commit: "9cc73c9e78451e572f57d142d6b9caf62ccb78e2",
     file: "apps/server/src/model-web-tools.test.ts",
     line: 188,
