@@ -2,6 +2,7 @@ import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Run } from "@openbot/domain";
+import type { WindowsSecretAcl } from "@openbot/windows-secret-acl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startExamplePlugin } from "./plugin-example.js";
 import { createPluginRoutes } from "./plugin-routes.js";
@@ -35,10 +36,19 @@ afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
 
+/** Lifecycle suites skip real PowerShell ACL; native coverage lives in *-windows-acl*.test.ts. */
+const noopWindowsAcl: WindowsSecretAcl = {
+  protectDirectory: async () => {},
+  verifyDirectory: async () => {},
+  protectAndVerifyFile: async () => {},
+  verifyFile: async () => {},
+};
+
 async function fixture(approvalTimeoutMs = 60_000) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "openbot-plugin-test-")));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const store = new FilePluginStore(join(directory, "private", "plugins.json"), {
+    windowsAcl: noopWindowsAcl,
     windowsTrustRoot: directory,
   });
   const call = vi.fn(async (_name: string, args: Record<string, unknown>) => ({
@@ -113,8 +123,12 @@ describe(
         "test-plugin-bearer",
       );
       expect(
-        (await new FilePluginStore(store.path, { windowsTrustRoot: directory }).read()).plugins[0]
-          ?.token,
+        (
+          await new FilePluginStore(store.path, {
+            windowsAcl: noopWindowsAcl,
+            windowsTrustRoot: directory,
+          }).read()
+        ).plugins[0]?.token,
       ).toBe("test-plugin-bearer");
       await expect(
         service.call(run, callInput(plugin), AbortSignal.timeout(1000)),
@@ -320,6 +334,7 @@ describe("real MCP SDK network journey", () => {
     cleanup.push(() => demo.close());
     const service = new PluginService({
       store: new FilePluginStore(join(directory, "private", "plugins.json"), {
+        windowsAcl: noopWindowsAcl,
         windowsTrustRoot: directory,
       }),
       localEndpoints: [demo.endpoint],

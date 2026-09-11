@@ -2,6 +2,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Run } from "@openbot/domain";
+import type { WindowsSecretAcl } from "@openbot/windows-secret-acl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { startExamplePlugin } from "./plugin-example.js";
 import { PluginService } from "./plugin-service.js";
@@ -14,6 +15,14 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const clean of cleanups.splice(0).reverse()) await clean();
 });
+/** Lifecycle suites skip real PowerShell ACL; native coverage lives in *-windows-acl*.test.ts. */
+const noopWindowsAcl: WindowsSecretAcl = {
+  protectDirectory: async () => {},
+  verifyDirectory: async () => {},
+  protectAndVerifyFile: async () => {},
+  verifyFile: async () => {},
+};
+
 async function fixture(owner = false) {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-plugin-content-")));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
@@ -42,7 +51,10 @@ async function fixture(owner = false) {
   };
   const scope = vi.fn(async () => {});
   const service = new PluginService({
-    store: new FilePluginStore(join(dir, "private", "plugins.json"), { windowsTrustRoot: dir }),
+    store: new FilePluginStore(join(dir, "private", "plugins.json"), {
+      windowsAcl: noopWindowsAcl,
+      windowsTrustRoot: dir,
+    }),
     assertScope: scope,
     ...(owner ? { assertOwnerContentScope: scope } : {}),
     botExists: async (id) => id === run.botId,
@@ -241,7 +253,10 @@ describe(
       const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-plugin-real-content-")));
       cleanups.push(() => rm(dir, { recursive: true, force: true }));
       const service = new PluginService({
-        store: new FilePluginStore(join(dir, "private", "plugins.json"), { windowsTrustRoot: dir }),
+        store: new FilePluginStore(join(dir, "private", "plugins.json"), {
+          windowsAcl: noopWindowsAcl,
+          windowsTrustRoot: dir,
+        }),
         assertScope: async () => {},
         botExists: async () => true,
         localEndpoints: [demo.endpoint],
