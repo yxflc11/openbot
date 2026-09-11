@@ -122,3 +122,5 @@ then reuses the already reviewed Swift Worker Host as one independently signed n
 Desktop requests a short-lived token only in its authenticated main process, passes it through one
 bounded private stdin request, and projects actual native registration state without exposing the
 token, a process bridge, or a persisted success flag to the renderer.
+
+The [Server Windows secret ACL](server-windows-secret-acl.md) note extracts the Node Owner+SYSTEM helper into `@openbot/windows-secret-acl` for model-settings and plugin-store (DEV-005 / N2).

@@ -68,3 +68,7 @@
 - Existing operator-owned credential directories are verified only (no automatic ACL rewrite).
 - `allowMissingLeaf` permits multiple missing trailing segments for first-install nested paths;
   tests bound reparse walks with a realpath-normalized trust root and use `mklink /J` for junctions.
+
+## Follow-on (DEV-005 / N2)
+
+ACL/path-boundary helpers were extracted to `@openbot/windows-secret-acl` for Server model-settings and plugin-store reuse; see [server-windows-secret-acl.md](server-windows-secret-acl.md).
