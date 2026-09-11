@@ -1,6 +1,17 @@
-import { chmod, link, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ensureProtectedSecretDirectory } from "@openbot/windows-secret-acl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bootstrapModelSettings } from "./model-settings-bootstrap.js";
 
@@ -11,9 +22,11 @@ afterEach(async () => {
   );
 });
 async function fixture() {
-  const directory = await mkdtemp(join(tmpdir(), "openbot-model-bootstrap-"));
-  directories.push(directory);
-  return { directory, location: { OPENBOT_MODEL_DIRECTORY: directory } };
+  // Dedicated leaf is not pre-created so Windows create+protect can run; temp parents stay untouched.
+  const root = await mkdtemp(join(tmpdir(), "openbot-model-bootstrap-"));
+  directories.push(root);
+  const directory = join(root, "model");
+  return { directory, root, location: { OPENBOT_MODEL_DIRECTORY: directory } };
 }
 const fetcher = vi.fn(async () => Response.json({ id: "test-model" }));
 
@@ -63,6 +76,7 @@ describe("Server-owned model configuration bootstrap", () => {
 
   it("does not replace a missing key beside retained ciphertext", async () => {
     const { directory, location } = await fixture();
+    await ensureProtectedSecretDirectory(directory);
     await writeFile(join(directory, "settings.json"), "retained-private-ciphertext", {
       mode: 0o600,
     });
@@ -77,6 +91,7 @@ describe("Server-owned model configuration bootstrap", () => {
     "fails closed on malformed key material (%#)",
     async (key) => {
       const { directory, location } = await fixture();
+      await ensureProtectedSecretDirectory(directory);
       await writeFile(join(directory, "encryption.key"), key, { mode: 0o600 });
       await expect(bootstrapModelSettings(location)).rejects.toThrow(
         "Model storage is unavailable",
@@ -97,6 +112,7 @@ describe("Server-owned model configuration bootstrap", () => {
     "rejects exposed directories, exposed keys, symlinks and hard links",
     async () => {
       const { directory, location } = await fixture();
+      await mkdir(directory, { recursive: true, mode: 0o700 });
       await chmod(directory, 0o755);
       await expect(bootstrapModelSettings(location)).rejects.toThrow(
         "Model storage is unavailable",

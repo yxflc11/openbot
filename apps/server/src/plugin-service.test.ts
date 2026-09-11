@@ -38,7 +38,7 @@ afterEach(async () => {
 async function fixture(approvalTimeoutMs = 60_000) {
   const directory = await mkdtemp(join(tmpdir(), "openbot-plugin-test-"));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const store = new FilePluginStore(join(directory, "plugins.json"));
+  const store = new FilePluginStore(join(directory, "private", "plugins.json"));
   const call = vi.fn(async (_name: string, args: Record<string, unknown>) => ({
     content: [{ type: "text", text: args.text }],
   }));
@@ -104,7 +104,7 @@ describe("Server-owned MCP plugin lifecycle", () => {
     expect(plugin.grants).toEqual([]);
     expect(await service.catalog(run)).toEqual({ tools: [], truncated: false });
     expect(JSON.stringify(await service.snapshot())).not.toContain("test-plugin-bearer");
-    expect(await readFile(join(directory, "plugins.json"), "utf8")).not.toContain(
+    expect(await readFile(join(directory, "private", "plugins.json"), "utf8")).not.toContain(
       "test-plugin-bearer",
     );
     expect((await new FilePluginStore(store.path).read()).plugins[0]?.token).toBe(
@@ -312,7 +312,7 @@ describe("real MCP SDK network journey", () => {
     const demo = await startExamplePlugin(0);
     cleanup.push(() => demo.close());
     const service = new PluginService({
-      store: new FilePluginStore(join(directory, "plugins.json")),
+      store: new FilePluginStore(join(directory, "private", "plugins.json")),
       localEndpoints: [demo.endpoint],
       assertScope: async () => {},
       botExists: async () => true,

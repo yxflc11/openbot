@@ -1,8 +1,14 @@
-import { modelProviderIds, modelProviderPreset, modelProviderBaseUrl } from "@openbot/domain";
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import { dirname } from "node:path";
+import { modelProviderBaseUrl, modelProviderIds, modelProviderPreset } from "@openbot/domain";
+import {
+  ensureProtectedSecretDirectory,
+  protectSecretFile,
+  verifySecretFileAccess,
+  type WindowsSecretAcl,
+} from "@openbot/windows-secret-acl";
 import writeFileAtomic from "write-file-atomic";
 import { z } from "zod";
 
@@ -117,13 +123,24 @@ export class ModelSettingsService {
     return current?.agentEnabled && current.agentEnabledAt ? current : undefined;
   }
   readonly #key: Buffer;
+  readonly #platform: NodeJS.Platform;
+  readonly #windowsAcl: WindowsSecretAcl | undefined;
+  readonly #windowsTrustRoot: string | undefined;
   constructor(
     readonly path: string,
     key: string,
     readonly fetcher: typeof fetch = fetch,
+    options: {
+      platform?: NodeJS.Platform;
+      windowsAcl?: WindowsSecretAcl;
+      windowsTrustRoot?: string;
+    } = {},
   ) {
     if (!/^[a-f0-9]{64}$/u.test(key)) throw new Error("Model encryption key must be 32 bytes.");
     this.#key = Buffer.from(key, "hex");
+    this.#platform = options.platform ?? process.platform;
+    this.#windowsAcl = options.windowsAcl;
+    this.#windowsTrustRoot = options.windowsTrustRoot;
   }
   async summary(): Promise<ModelSettingsSummary> {
     const current = await this.#read();
@@ -167,11 +184,20 @@ export class ModelSettingsService {
         ciphertext: ciphertext.toString("base64"),
       });
       try {
-        await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+        await ensureProtectedSecretDirectory(dirname(this.path), {
+          platform: this.#platform,
+          ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+          ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+        });
         await writeFileAtomic(this.path, envelope, { mode: 0o600 });
+        await protectSecretFile(this.path, {
+          platform: this.#platform,
+          ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        });
         for (const listener of this.#listeners) listener();
         return await this.summary();
-      } catch {
+      } catch (error) {
+        if (error instanceof ModelSettingsError) throw error;
         throw new ModelSettingsError("storage_unavailable");
       }
     } finally {
@@ -185,12 +211,17 @@ export class ModelSettingsService {
         !stat.isFile() ||
         stat.isSymbolicLink() ||
         stat.size > 8192 ||
-        (process.platform !== "win32" && (stat.mode & 0o077) !== 0)
+        (this.#platform !== "win32" && (stat.mode & 0o077) !== 0)
       )
         throw new Error("Unsafe model file.");
+      await verifySecretFileAccess(this.path, {
+        platform: this.#platform,
+        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+      });
       const handle = await open(
         this.path,
-        constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NOFOLLOW),
+        constants.O_RDONLY | (this.#platform === "win32" ? 0 : constants.O_NOFOLLOW),
       );
       let text: string;
       try {
@@ -199,7 +230,7 @@ export class ModelSettingsService {
           opened.ino !== stat.ino ||
           opened.dev !== stat.dev ||
           opened.size > 8192 ||
-          (process.platform !== "win32" && (opened.mode & 0o077) !== 0)
+          (this.#platform !== "win32" && (opened.mode & 0o077) !== 0)
         )
           throw new Error("Model file changed.");
         const buffer = Buffer.alloc(8193);
@@ -289,7 +320,11 @@ export class ModelSettingsService {
     const preset = modelProviderPreset(input.provider);
     if (!preset.discovery) return;
     if (input.provider !== "openai" && input.provider !== "anthropic") {
-      const models = await this.discover({ provider: input.provider, baseUrl: input.baseUrl, apiKey: input.apiKey });
+      const models = await this.discover({
+        provider: input.provider,
+        baseUrl: input.baseUrl,
+        apiKey: input.apiKey,
+      });
       if (!models.includes(input.model)) throw new ModelSettingsError("model_unavailable");
       return;
     }

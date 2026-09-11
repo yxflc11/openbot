@@ -1,7 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import {
+  ensureProtectedSecretDirectory,
+  protectSecretFile,
+  verifySecretFileAccess,
+} from "@openbot/windows-secret-acl";
 import { ModelSettingsService } from "./model-settings.js";
 
 export interface ModelSettingsLocation {
@@ -36,7 +41,7 @@ export async function bootstrapModelSettings(
   const settingsPath = join(root, "settings.json");
   const keyPath = join(root, "encryption.key");
   try {
-    await mkdir(root, { recursive: true, mode: 0o700 });
+    await ensureProtectedSecretDirectory(root);
     const rootStat = await lstat(root);
     if (!rootStat.isDirectory() || !isPrivate(rootStat, 0o077))
       throw new Error("Invalid directory.");
@@ -59,6 +64,7 @@ export async function bootstrapModelSettings(
         } finally {
           await handle.close();
         }
+        await protectSecretFile(keyPath);
       } catch (createError) {
         // Another startup may have created the key. Read and validate that exact file below.
         if (
@@ -77,6 +83,7 @@ export async function bootstrapModelSettings(
     ) {
       throw new Error("Invalid model encryption key file.");
     }
+    await verifySecretFileAccess(keyPath);
     const handle = await open(keyPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     let key: string;
     try {

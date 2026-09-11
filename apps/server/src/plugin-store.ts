@@ -1,6 +1,12 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { lstat, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import {
+  ensureProtectedSecretDirectory,
+  protectSecretFile,
+  verifySecretFileAccess,
+  type WindowsSecretAcl,
+} from "@openbot/windows-secret-acl";
 import writeFileAtomic from "write-file-atomic";
 import { z } from "zod";
 import {
@@ -84,7 +90,21 @@ const stateSchema = z
 export class FilePluginStore {
   #tail: Promise<unknown> = Promise.resolve();
   #key: Buffer | undefined;
-  constructor(readonly path: string) {}
+  readonly #platform: NodeJS.Platform;
+  readonly #windowsAcl: WindowsSecretAcl | undefined;
+  readonly #windowsTrustRoot: string | undefined;
+  constructor(
+    readonly path: string,
+    options: {
+      platform?: NodeJS.Platform;
+      windowsAcl?: WindowsSecretAcl;
+      windowsTrustRoot?: string;
+    } = {},
+  ) {
+    this.#platform = options.platform ?? process.platform;
+    this.#windowsAcl = options.windowsAcl;
+    this.#windowsTrustRoot = options.windowsTrustRoot;
+  }
 
   async read(): Promise<PluginState> {
     return this.serial(async () => structuredClone(await this.#load()));
@@ -102,6 +122,11 @@ export class FilePluginStore {
         cipher.update(boundedJson(checked, 2 * 1024 * 1024)),
         cipher.final(),
       ]);
+      await ensureProtectedSecretDirectory(dirname(this.path), {
+        platform: this.#platform,
+        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+      });
       await writeFileAtomic(
         this.path,
         JSON.stringify({
@@ -112,6 +137,10 @@ export class FilePluginStore {
         }),
         { mode: 0o600 },
       );
+      await protectSecretFile(this.path, {
+        platform: this.#platform,
+        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+      });
       return result;
     });
   }
@@ -122,9 +151,20 @@ export class FilePluginStore {
   }
   async #encryptionKey(): Promise<Buffer> {
     if (this.#key) return this.#key;
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+    const keyPath = `${this.path}.key`;
+    await ensureProtectedSecretDirectory(dirname(this.path), {
+      platform: this.#platform,
+      ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+      ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+    });
     try {
-      const value = await readFile(`${this.path}.key`);
+      await this.#assertSafeSecretFile(keyPath);
+      await verifySecretFileAccess(keyPath, {
+        platform: this.#platform,
+        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+      });
+      const value = await readFile(keyPath);
       if (value.byteLength !== 32) throw new Error("Invalid plugin encryption key.");
       this.#key = value;
     } catch (error) {
@@ -136,15 +176,35 @@ export class FilePluginStore {
         if ((missing as NodeJS.ErrnoException).code !== "ENOENT") throw missing;
       }
       const value = randomBytes(32);
-      await writeFile(`${this.path}.key`, value, { flag: "wx", mode: 0o600 });
+      await writeFile(keyPath, value, { flag: "wx", mode: 0o600 });
+      await protectSecretFile(keyPath, {
+        platform: this.#platform,
+        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+      });
       this.#key = value;
     }
     return this.#key;
   }
+
+  async #assertSafeSecretFile(path: string): Promise<void> {
+    const entry = await lstat(path);
+    if (!entry.isFile() || entry.isSymbolicLink()) {
+      throw new Error("Plugin secret path must be a regular file.");
+    }
+    if (this.#platform !== "win32" && (entry.mode & 0o077) !== 0) {
+      throw new Error("Plugin secret file must not be accessible by group or other users.");
+    }
+  }
   async #load(): Promise<PluginState> {
     try {
+      await this.#assertSafeSecretFile(this.path);
       if ((await stat(this.path)).size > 3 * 1024 * 1024)
         throw new Error("Plugin store too large.");
+      await verifySecretFileAccess(this.path, {
+        platform: this.#platform,
+        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+      });
       const envelope = z
         .object({
           version: z.literal(1),

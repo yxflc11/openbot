@@ -1,6 +1,7 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { WindowsSecretAcl } from "@openbot/windows-secret-acl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ModelSettingsService, modelSettingsInputSchema } from "./model-settings.js";
 
@@ -11,14 +12,26 @@ afterEach(async () => {
   );
 });
 async function fixture(
-  fetcher: typeof fetch = vi.fn(async () => Response.json({ id: "test-model" })),
+  fetcher: typeof fetch | undefined = undefined,
+  options: {
+    platform?: NodeJS.Platform;
+    windowsAcl?: WindowsSecretAcl;
+  } = {},
 ) {
-  const dir = await mkdtemp(join(tmpdir(), "openbot-model-test-"));
+  const resolvedFetcher = fetcher ?? vi.fn(async () => Response.json({ id: "test-model" }));
+  // Nested dedicated leaf so Windows create+protect applies; never weaken checks for temp parents.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-model-test-")));
   directories.push(dir);
+  const path = join(dir, "private", "model.json");
   return {
-    path: join(dir, "model.json"),
-    service: new ModelSettingsService(join(dir, "model.json"), "a".repeat(64), fetcher),
-    fetcher,
+    dir,
+    path,
+    service: new ModelSettingsService(path, "a".repeat(64), resolvedFetcher, {
+      ...(options.platform === undefined ? {} : { platform: options.platform }),
+      ...(options.windowsAcl === undefined ? {} : { windowsAcl: options.windowsAcl }),
+      windowsTrustRoot: dir,
+    }),
+    fetcher: resolvedFetcher,
   };
 }
 const input = {
@@ -268,5 +281,54 @@ describe("Owner model settings", () => {
     await vi.waitFor(() => expect(finish).toBeDefined());
     finish?.(Response.json({ id: "test-model" }));
     await first;
+  });
+
+  it("on win32 protects new directories and verifies before retained reads", async () => {
+    const calls: string[] = [];
+    const windowsAcl: WindowsSecretAcl = {
+      async protectDirectory(_path, created) {
+        calls.push(`dir:${created ? "new" : "existing"}`);
+      },
+      async verifyDirectory() {
+        calls.push("dir-verify");
+      },
+      async protectAndVerifyFile() {
+        calls.push("file-protect");
+      },
+      async verifyFile() {
+        calls.push("file-verify");
+      },
+    };
+    const { service } = await fixture(undefined, { platform: "win32", windowsAcl });
+    const saved = await service.save(input);
+    expect(calls).toEqual(["dir:new", "file-protect", "dir-verify", "file-verify"]);
+    calls.length = 0;
+    expect(await service.summary()).toEqual(saved);
+    expect(calls).toEqual(["dir-verify", "file-verify"]);
+    calls.length = 0;
+    await service.save({ ...input, revision: saved.revision });
+    // save re-reads for conflict checks before rewriting the dedicated directory.
+    expect(calls).toContain("dir-verify");
+    expect(calls).toContain("dir:existing");
+    expect(calls).toContain("file-protect");
+  });
+
+  it("on win32 refuses load when the ACL helper reports an unsafe file", async () => {
+    const { dir, path } = await fixture();
+    await mkdir(join(dir, "private"), { mode: 0o700 });
+    await writeFile(path, '{"version":1,"nonce":"x","tag":"y","ciphertext":"z"}', { mode: 0o600 });
+    const service = new ModelSettingsService(path, "a".repeat(64), fetch, {
+      platform: "win32",
+      windowsTrustRoot: dir,
+      windowsAcl: {
+        protectDirectory: async () => {},
+        verifyDirectory: async () => {},
+        protectAndVerifyFile: async () => {},
+        verifyFile: async () => {
+          throw new Error("Windows secret file ACL verification failed during reading.");
+        },
+      },
+    });
+    await expect(service.summary()).rejects.toMatchObject({ code: "storage_unavailable" });
   });
 });

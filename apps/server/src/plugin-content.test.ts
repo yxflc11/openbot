@@ -42,7 +42,7 @@ async function fixture(owner = false) {
   };
   const scope = vi.fn(async () => {});
   const service = new PluginService({
-    store: new FilePluginStore(join(dir, "plugins.json")),
+    store: new FilePluginStore(join(dir, "private", "plugins.json")),
     assertScope: scope,
     ...(owner ? { assertOwnerContentScope: scope } : {}),
     botExists: async (id) => id === run.botId,
@@ -238,7 +238,7 @@ describe("MCP content authority and updates", () => {
     const dir = await mkdtemp(join(tmpdir(), "openbot-plugin-real-content-"));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
     const service = new PluginService({
-      store: new FilePluginStore(join(dir, "plugins.json")),
+      store: new FilePluginStore(join(dir, "private", "plugins.json")),
       assertScope: async () => {},
       botExists: async () => true,
       localEndpoints: [demo.endpoint],
