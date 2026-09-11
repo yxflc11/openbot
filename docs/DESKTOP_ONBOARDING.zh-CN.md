@@ -220,3 +220,10 @@ Desktop 会恢复本机会话。密码始终留在主进程，不显示或传给
 更新后的应用首次读取旧配置的加密密钥时，macOS 可能要求输入登录钥匙串密码。这是系统授权，
 与 OpenBot 的 Owner 登录不同。本地开发构建没有稳定的 Developer ID 签名，因此重新构建后可能
 再次提示。原钥匙串项目会保留，以便继续读取已有加密数据。
+
+### 高级搜索账号配置
+
+Desktop 启动器可显式提供 `OPENBOT_DESKTOP_TAVILY_API_KEY`，为内置 Server 选择可选的
+Tavily 搜索账号；其他项目或 Shell 中通用的 `TAVILY_API_KEY` 不会被自动使用。
+Desktop 不会自动读取仓库 `.env`。此配置不改变已保存的模型连接，也不改变支持的 Kimi
+内置搜索。独立部署的 Server 仍使用自己的 `TAVILY_API_KEY` 配置。
