@@ -68,16 +68,21 @@ describe("RunInspector production collaboration wiring", () => {
     );
     try {
       expect(childRuns).toHaveLength(1);
+      expect(child.id).toBe("child");
       expect(view.container.textContent).toContain("研究员");
       expect(view.container.textContent).toContain("Research");
-      await interact(() => {
-        const button = [...view.container.querySelectorAll("button")].find(
-          (node) => node.textContent?.includes("执行中") || node.textContent?.includes("运行"),
-        );
-        button?.click();
-      });
-      // Either status label click path or at least collaboration is visible.
       expect(view.container.textContent).toContain("分工");
+      const roles = view.container.querySelector('[aria-label="分工"]');
+      expect(roles).not.toBeNull();
+      const statusButton = [...roles!.querySelectorAll("button")].find(
+        (node) => node.textContent?.includes("执行中") || node.textContent?.includes("运行"),
+      );
+      expect(statusButton).toBeTruthy();
+      await interact(() => {
+        statusButton!.click();
+      });
+      expect(inspect).toHaveBeenCalledWith(child.id);
+      expect(inspect).toHaveBeenCalledWith("child");
     } finally {
       await view.unmount();
     }

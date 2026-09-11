@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Bot, Channel, WorkspaceSnapshot } from "@openbot/domain";
+import type { Bot, Channel, Run, WorkspaceSnapshot } from "@openbot/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import * as api from "./api";
@@ -261,6 +261,82 @@ describe("Desktop workspace navigation continuity", () => {
       await interact(() => buttonByLabel(rendered.container, "后退").click());
       await settleEffects();
       expect(composer(rendered.container).value).toBe("保留这个草稿");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+
+  it("wires AuthenticatedWorkspace RunInspector with childRuns botsById and onInspectRun", async () => {
+    const chief: Bot = {
+      id: "chief",
+      name: "总管",
+      role: "Coordinate",
+      status: "running",
+      computerProfile: "none",
+      createdAt: "2026-09-11T00:00:00Z",
+    };
+    const researcher: Bot = {
+      id: "researcher",
+      name: "研究员",
+      role: "Research",
+      status: "running",
+      computerProfile: "none",
+      createdAt: "2026-09-11T00:00:00Z",
+    };
+    const parent: Run = {
+      id: "parent",
+      channelId: channelA.id,
+      botId: chief.id,
+      instruction: "Prepare a report",
+      title: "Prepare a report",
+      executionProfile: "none",
+      status: "running",
+      createdAt: "2026-09-11T00:00:00Z",
+      updatedAt: "2026-09-11T00:00:00Z",
+    };
+    const child: Run = {
+      ...parent,
+      id: "child",
+      botId: researcher.id,
+      parentRunId: parent.id,
+      rootRunId: parent.id,
+      delegatedByBotId: chief.id,
+      title: "Check sources",
+    };
+    snapshot = {
+      ...snapshot,
+      bots: [chief, researcher],
+      channels: [{ ...channelA, botIds: [chief.id, researcher.id] }, channelB],
+      runs: [parent, child],
+      counts: { channels: 2, bots: 2, connectedNodes: 0, activeRuns: 2 },
+    };
+    vi.mocked(api.listRuns).mockResolvedValue([parent, child]);
+
+    const rendered = await renderComponent(<App />);
+    try {
+      await settleEffects();
+      await interact(() => buttonByLabel(rendered.container, "查看任务：Prepare a report").click());
+      await settleEffects();
+
+      const inspector = rendered.container.querySelector(".run-inspector");
+      expect(inspector).not.toBeNull();
+      expect(inspector?.textContent).toContain("分工");
+      expect(inspector?.textContent).toContain("研究员");
+      expect(inspector?.textContent).toContain("Research");
+      expect(inspector?.querySelector("#run-title")?.textContent).toBe("Prepare a report");
+
+      const roles = inspector!.querySelector('[aria-label="分工"]');
+      expect(roles).not.toBeNull();
+      const childStatus = [...roles!.querySelectorAll("button")].find((node) =>
+        node.textContent?.includes("执行中"),
+      );
+      expect(childStatus).toBeTruthy();
+      await interact(() => childStatus!.click());
+      await settleEffects();
+
+      expect(rendered.container.querySelector(".run-inspector #run-title")?.textContent).toBe(
+        "Check sources",
+      );
     } finally {
       await rendered.unmount();
     }

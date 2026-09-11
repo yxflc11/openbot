@@ -15,7 +15,8 @@
 - Search date: 2026-09-11
 - GitHub / upstream UI references (presentation only, not copied):
   - [Grok Bot chat & collaboration docs](https://docs.x.ai/grok-bot/chat-and-collaboration) —
-    identity and status as observable product language
+    identity and status as observable product language.
+    Verified live 2026-09-11 (page title: Message and collaborate / Work with Grok Bot).
   - OpenBot existing `RunInspector`, `RunCollaboration`, `CHANNEL_EXPERIENCE`,
     `docs/research/channel-bot-collaboration.md`, `docs/research/async-collaboration.md`
 - Standards: none required (no new network protocol)
@@ -25,7 +26,7 @@
 | Candidate | Exact release or commit | License | Fit | Decision |
 | --- | --- | --- | --- | --- |
 | Compose local panel from existing domain types | OpenBot `@openbot/domain` Run/RunProgress/RunFrame @ `729c16431057` | MIT | Already on the wire; no lockfile change | **Select** |
-| Third-party task/kanban UI kit | various | mixed | Would add deps / package-lock (banned) | Reject |
+| Generic kanban / task-board npm UI kits | none selected — any new UI kit would require a package-lock change (banned for this slice) | n/a | Extra dependency surface for presentation already covered by domain types | Reject |
 | Invent synthetic progress / stock screenshots | n/a | n/a | Violates honesty DoD | Reject |
 
 ## Reuse decision
@@ -44,10 +45,12 @@
 ## Verification plan
 
 - Unit/component tests for panel empty preview, waiting_approval, collaboration roles, artifacts
+- App wiring test: `AuthenticatedWorkspace` → `RunInspector` must pass `childRuns` / `botsById` /
+  `onInspectRun` (DEV-004-fix)
 - `npm run test -w @openbot/web` covering new + RunCollaboration tests
 - Docs: CHANNEL_EXPERIENCE EN/ZH note on honest empty computer preview
 
 ## Unresolved questions
 
-- Wiring richer progress into ChannelWorkspace message rows needs a later contract (App/ChannelWorkspace
-  are out of scope for this slice).
+- `App.tsx` `RunInspector` call site is in scope for DEV-004-fix (wiring + tests).
+- ChannelWorkspace message-row progress presentation remains a later contract.
