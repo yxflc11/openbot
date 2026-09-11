@@ -379,6 +379,7 @@ function ImportBoundary({ label, value }: { label: string; value: string }) {
 
 function issueLabel(issue: EmployeeImportIssue): string {
   const labels: Record<EmployeeImportIssue["code"], string> = {
+    "invalid-skill-content": "技能正文、摘要或分发许可不符合要求",
     "checksum-mismatch": "校验和不匹配",
     "capability-set-mismatch": "能力声明与技能不一致",
     "duplicate-skill": "技能标识重复",

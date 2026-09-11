@@ -1,3 +1,4 @@
+import { skillContentProblem } from "./employee-package-content.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   approvals as approvalsTable,
@@ -470,6 +471,10 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
     input: ActivateEmployeeImportCommand,
   ): Promise<EmployeeImportActivationResult> {
     const payload = input.document.payload;
+    for (const skill of payload.skills) {
+      const problem = skillContentProblem(skill);
+      if (problem) throw new StoreValidationError(problem);
+    }
     const employeeName = input.employeeName ?? payload.employee.name;
     const requestFingerprint = employeeImportRequestFingerprint(input, employeeName);
 
@@ -546,6 +551,8 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
               source: "imported",
               requiredCapabilities: portableSkill.requiredCapabilities,
               metadata: { format: "agentskills.io" },
+              skillMarkdown: portableSkill.content?.markdown ?? null,
+              contentSha256: portableSkill.content?.sha256 ?? null,
               createdAt: now,
               updatedAt: now,
             })
@@ -569,6 +576,8 @@ export class PostgresControlPlaneStore implements ControlPlaneStore {
             throw new StoreConflictError("The skill definition changed during Employee import.");
           }
           if (
+            resolvedSkill.skillMarkdown !== (portableSkill.content?.markdown ?? null) ||
+            resolvedSkill.contentSha256 !== (portableSkill.content?.sha256 ?? null) ||
             resolvedSkill.name !== portableSkill.name ||
             resolvedSkill.description !== portableSkill.description ||
             !sameStringSet(

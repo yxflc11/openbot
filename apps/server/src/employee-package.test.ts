@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign as signBytes } from "node:crypto";
+import { createHash, generateKeyPairSync, sign as signBytes } from "node:crypto";
 import type { EmployeeProfile } from "@openbot/domain";
 import { dsse } from "@sigstore/core";
 import { employeeTemplateDssePayloadType, employeeTemplatePackageSchema } from "@openbot/protocol";
@@ -614,3 +614,117 @@ function createProfile(): EmployeeProfile {
     },
   };
 }
+
+describe("portable v2 instruction content", () => {
+  it("exports multiple substantial skills and rejects content beyond the signed transport budget", () => {
+    const profile = withInstructions();
+    const base = profile.skills[0];
+    if (!base) throw new Error("Missing skill fixture.");
+    profile.skills = Array.from({ length: 110 }, (_, index) => {
+      const slug = `summarize-${index}`;
+      const markdown = `---\nname: ${slug}\ndescription: Summarize supplied notes.\nlicense: MIT\n---\n${"Summarize the supplied notes. ".repeat(360)}\n`;
+      return {
+        ...base,
+        id: `skill-${index}`,
+        slug,
+        skillMarkdown: markdown,
+        contentSha256: createHash("sha256").update(markdown).digest("hex"),
+      };
+    });
+    const oversized = buildEmployeeTemplate(profile, { includeSkillContent: true });
+    expect(oversized.preview.blocked).toBe(true);
+    expect(oversized.preview.findings).toContainEqual(
+      expect.objectContaining({ code: "package-too-large" }),
+    );
+    profile.skills = profile.skills.slice(0, 6);
+    const exported = buildEmployeeTemplate(profile, { includeSkillContent: true });
+    expect(Buffer.byteLength(serializeEmployeeTemplate(exported.document))).toBeGreaterThan(
+      64 * 1024,
+    );
+    expect(exported.preview.blocked).toBe(false);
+    const keys = generateKeyPairSync("ed25519");
+    const envelope = signEmployeeTemplateEnvelope(exported.document, {
+      keyid: "fixture",
+      privateKey: keys.privateKey,
+    });
+    expect(Buffer.byteLength(JSON.stringify(envelope))).toBeLessThan(2 * 1024 * 1024);
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [{ keyid: "fixture", publicKey: keys.publicKey }])
+        .status,
+    ).toBe("verified");
+  });
+  function withInstructions(license = "MIT") {
+    const profile = createProfile();
+    profile.configuration.executionProfile = "none";
+    const markdown = `---\nname: summarize\ndescription: Summarize supplied notes.\nlicense: ${license}\nmetadata:\n  author: OpenBot test fixture\n---\nReturn three concise bullets based only on the supplied notes.\n`;
+    profile.skills = [
+      {
+        ...profile.skills[0]!,
+        slug: "summarize",
+        name: "Summarize",
+        description: "Summarize supplied notes.",
+        requiredCapabilities: [],
+        dependencyIds: [],
+        skillMarkdown: markdown,
+        contentSha256: createHash("sha256").update(markdown).digest("hex"),
+        modelUseEnabled: true,
+      },
+    ];
+    return profile;
+  }
+  it("keeps v1 metadata compatibility and includes exact reviewed instructions only by selection", () => {
+    const profile = withInstructions();
+    expect(buildEmployeeTemplate(profile).document.payload.skills[0]?.content).toBeUndefined();
+    const exported = buildEmployeeTemplate(profile, { includeSkillContent: true });
+    expect(exported.preview.blocked).toBe(false);
+    expect(exported.document.payload.format).toBe("openbot.employee/v2");
+    expect(exported.preview.skills[0]?.content?.markdown).toBe(profile.skills[0]?.skillMarkdown);
+    expect(inspectEmployeeTemplate(exported.document, []).quarantine).toMatchObject({
+      canActivate: true,
+      createsNewIdentity: true,
+      importedSkillState: "disabled-pending-review",
+      hostAuthority: "none",
+    });
+  });
+  it("blocks changed content even after an attacker recalculates the package checksum", () => {
+    const exported = buildEmployeeTemplate(withInstructions(), { includeSkillContent: true });
+    exported.document.payload.skills[0]!.content!.markdown += "Changed instructions.";
+    exported.document.integrity.digest = employeeTemplatePayloadChecksum(exported.document.payload);
+    expect(inspectEmployeeTemplate(exported.document, []).issues).toContainEqual(
+      expect.objectContaining({ code: "invalid-skill-content" }),
+    );
+  });
+  it("blocks unreviewed content and unsupported distribution licenses", () => {
+    const profile = withInstructions("Proprietary");
+    expect(buildEmployeeTemplate(profile, { includeSkillContent: true }).preview.blocked).toBe(
+      true,
+    );
+    profile.skills[0]!.modelUseEnabled = false;
+    expect(buildEmployeeTemplate(profile, { includeSkillContent: true }).preview.blocked).toBe(
+      true,
+    );
+  });
+  it("binds v2 instruction packages to their v2 DSSE media type", () => {
+    const exported = buildEmployeeTemplate(withInstructions(), { includeSkillContent: true });
+    const keys = generateKeyPairSync("ed25519");
+    const envelope = signEmployeeTemplateEnvelope(exported.document, {
+      keyid: "fixture",
+      privateKey: keys.privateKey,
+    });
+    expect(envelope.payloadType).toBe("application/vnd.openbot.employee.v2+json");
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [{ keyid: "fixture", publicKey: keys.publicKey }])
+        .status,
+    ).toBe("verified");
+    const bytes = Buffer.from(envelope.payload, "base64");
+    envelope.payloadType = employeeTemplateDssePayloadType;
+    envelope.signatures[0]!.sig = signBytes(
+      null,
+      dsse.preAuthEncoding(envelope.payloadType, bytes),
+      keys.privateKey,
+    ).toString("base64");
+    expect(
+      verifyEmployeeTemplateEnvelope(envelope, [{ keyid: "fixture", publicKey: keys.publicKey }]),
+    ).toMatchObject({ status: "rejected", code: "unsupported-payload-type" });
+  });
+});

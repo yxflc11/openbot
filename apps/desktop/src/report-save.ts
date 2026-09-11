@@ -12,6 +12,7 @@ export type EmployeeTemplateSaveInput = Readonly<{
   packageId: string;
   generatedAt: string;
   downloadReviewToken: string;
+  includeSkillContent?: boolean;
 }>;
 export type EmployeeTemplateSaveResult = ReportSaveResult | Readonly<{ status: "changed" }>;
 
@@ -162,6 +163,7 @@ export class DesktopReportSaver {
       if (employee) {
         url.searchParams.set("packageId", employee.packageId);
         url.searchParams.set("generatedAt", employee.generatedAt);
+        if (employee.includeSkillContent) url.searchParams.set("includeSkillContent", "true");
       }
       const response = await this.options.fetch(url.href, {
         method: "GET",
@@ -290,9 +292,12 @@ export function isEmployeeTemplateSaveInput(value: unknown): value is EmployeeTe
   const keys = Object.keys(input);
   const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu;
   return (
-    keys.length === 4 &&
+    (keys.length === 4 || keys.length === 5) &&
+    (input.includeSkillContent === undefined || typeof input.includeSkillContent === "boolean") &&
     keys.every((key) =>
-      ["botId", "packageId", "generatedAt", "downloadReviewToken"].includes(key),
+      ["botId", "packageId", "generatedAt", "downloadReviewToken", "includeSkillContent"].includes(
+        key,
+      ),
     ) &&
     typeof input.botId === "string" &&
     uuid.test(input.botId) &&

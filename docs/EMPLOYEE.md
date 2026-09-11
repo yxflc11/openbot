@@ -135,6 +135,25 @@ portable. Machine-local paths remain valid in local-only memories. Models and Wo
 call the Owner lifecycle. Native tasks may propose reviewed lessons and retrieve only explicitly model-enabled memory; autonomous active-memory writes remain disabled, and
 `openbot.employee/v1` still exports zero memories.
 
+### Portable instruction content (v2)
+
+The sharing dialog includes reviewed single-file `SKILL.md` instructions by default; uncheck the
+content option for metadata-only sharing. API clients retain v1 by default and opt into v2 with
+`includeSkillContent=true` on both preview and download. The reviewed download token binds this
+selection to the exact file. The portable document is limited to 1 MiB before signing to fit the
+DSSE and 2 MiB import limits; each instruction remains subject to the existing 12 KiB parser limit.
+
+Included content preserves its original normalized text, notices, license and SHA-256 digest.
+Supported license identifiers are MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0,
+CC-BY-4.0 and CC-BY-SA-4.0. Authors remain responsible for permission and required notices.
+Unknown/missing licenses, unreviewed or changed content, and scripts/assets/dependency bundles
+block content export. No referenced file is silently fetched. Metadata-only skills are explicitly
+identified and do not become runnable through import.
+
+Import checks the content again, refuses a conflicting local slug/version, creates a new identity,
+and keeps skills as disabled candidates. The recipient reviews the exact content digest before
+it appears in the native Agent skill catalog. Memory, credentials and host grants never transfer.
+
 ## Copy, export, and transfer
 
 OpenBot supports three different operations. They must not share one ambiguous “clone” button.
@@ -257,8 +276,7 @@ supports encrypted Ed25519 private-key storage, explicit public-key trust, rotat
 signed DSSE export, verified quarantine preview, and reviewed activation. It does not provide global
 publisher identity, automatic revocation distribution, native keyring/KMS custody, registry
 installation, selective-memory cloning, or ownership transfer. See the
-[signing runbook](EMPLOYEE_SIGNING.md). The skill learning/verification workflow currently covers
-metadata review only. Autonomous skill proposals, executable Agent Skills archives, full-diff
+[signing runbook](EMPLOYEE_SIGNING.md). Skill review supports graph metadata and exact-digest review of single-file instruction content. Autonomous skill proposals, executable Agent Skills archives, full-diff
 review, semantic/full-text retrieval and retention, autonomous active-memory writes, selective cloning, and
 authenticated ownership transfer are not implemented yet. Their data and authority boundaries are defined here
 so contributors can add them without coupling employee knowledge to Worker Host access.

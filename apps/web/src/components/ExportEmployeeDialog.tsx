@@ -15,6 +15,7 @@ export function ExportEmployeeDialog({
   onClose(): void;
   onDownloaded(fileName: string): void;
 }) {
+  const [includeSkillContent, setIncludeSkillContent] = useState(true);
   const [preview, setPreview] = useState<EmployeeExportPreview>();
   const [error, setError] = useState<string>();
   const [downloading, setDownloading] = useState(false);
@@ -23,14 +24,17 @@ export function ExportEmployeeDialog({
   useEffect(() => {
     const controller = new AbortController();
     setError(undefined);
-    void getEmployeeExportPreview(employee.id, controller.signal)
-      .then(setPreview)
+    setPreview(undefined);
+    void getEmployeeExportPreview(employee.id, controller.signal, includeSkillContent)
+      .then((next) => {
+        if (!controller.signal.aborted) setPreview(next);
+      })
       .catch((cause: ApiError | DOMException) => {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
         setError(cause.message ?? "无法生成导出预览。");
       });
     return () => controller.abort();
-  }, [employee.id]);
+  }, [employee.id, includeSkillContent]);
 
   async function download() {
     if (preview === undefined || preview.blocked) return;
@@ -44,14 +48,18 @@ export function ExportEmployeeDialog({
       if (apiError.status === 412) {
         setPreview(undefined);
         try {
-          const refreshed = await getEmployeeExportPreview(employee.id);
+          const refreshed = await getEmployeeExportPreview(
+            employee.id,
+            undefined,
+            includeSkillContent,
+          );
           setPreview(refreshed);
           setError("员工内容在审核后发生变化，预览已刷新。请重新检查后再下载。");
         } catch (refreshCause) {
           setError((refreshCause as ApiError).message ?? "无法刷新员工导出预览。");
         }
       } else {
-        setError(apiError.message ?? "下载员工模板失败。");
+        setError(apiError.message ?? "下载 Bot 失败。");
       }
     } finally {
       setDownloading(false);
@@ -67,8 +75,8 @@ export function ExportEmployeeDialog({
       >
         <header className="dialog-header">
           <div>
-            <h2 id="export-title">导出员工模板</h2>
-            <p>先确认会带走什么，也确认绝不会带走什么。</p>
+            <h2 id="export-title">分享 Bot</h2>
+            <p>分享角色、外观和经过审核的技能，让对方创建自己的 Bot。</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭" onClick={closeDialog}>
             <CloseIcon />
@@ -83,6 +91,18 @@ export function ExportEmployeeDialog({
           </div>
         </section>
 
+        <label className="export-content-choice">
+          <input
+            type="checkbox"
+            checked={includeSkillContent}
+            disabled={downloading}
+            onChange={(event) => {
+              setPreview(undefined);
+              setIncludeSkillContent(event.target.checked);
+            }}
+          />
+          包含已审核的 SKILL.md 正文（需允许分发的许可；导入后重新审核）
+        </label>
         {preview === undefined && error === undefined ? (
           <section className="export-preview-loading" aria-live="polite">
             <span className="loading-mark">O</span>
@@ -112,7 +132,7 @@ export function ExportEmployeeDialog({
             disabled={preview === undefined || preview.blocked || downloading}
             onClick={() => void download()}
           >
-            {downloading ? "下载中…" : preview?.blocked ? "导出已阻止" : "下载模板"}
+            {downloading ? "下载中…" : preview?.blocked ? "导出已阻止" : "下载 Bot"}
           </button>
         </footer>
       </dialog>
@@ -124,7 +144,7 @@ export function ExportPreviewDetails({ preview }: { preview: EmployeeExportPrevi
   return (
     <div className="export-preview-body">
       <section className={`export-safety-summary ${preview.blocked ? "blocked" : "safe"}`}>
-        <strong>{preview.blocked ? "发现需要处理的敏感内容" : "默认脱敏检查已通过"}</strong>
+        <strong>{preview.blocked ? "分享内容需要处理" : "分享内容检查已通过"}</strong>
         <span>
           {preview.blocked
             ? "OpenBot 已阻止下载，请先修正下列字段。"

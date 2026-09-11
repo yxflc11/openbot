@@ -122,7 +122,7 @@ export interface EmployeeSkill {
   evidence: EmployeeEvidenceReference[];
   acquiredAt: string;
   updatedAt: string;
-  /** Immutable reviewed instruction file; portable packages still exclude this content. */
+  /** Immutable reviewed instruction file; portable v2 packages include it only after explicit selection. */
   skillMarkdown?: string | undefined;
   contentSha256?: string | undefined;
   modelUseEnabled?: boolean | undefined;
@@ -305,7 +305,9 @@ export type EmployeeExportFindingCode =
   | "credential-like-content"
   | "private-key-content"
   | "local-path-content"
-  | "excluded-skill-dependency";
+  | "excluded-skill-dependency"
+  | "invalid-skill-content"
+  | "package-too-large";
 
 /** A blocking finding discovered before portable employee data leaves the Server. */
 export interface EmployeeExportFinding {
@@ -325,7 +327,7 @@ export type PortableEmployeeProfileSummary = Pick<Bot, "name" | "role" | "appear
   description?: string;
 };
 
-/** Metadata-only skill selected for a portable template; it contains no executable bundle. */
+/** Untrusted portable skill, optionally containing one bounded instruction file. */
 export interface PortableEmployeeSkillSummary {
   slug: string;
   name: string;
@@ -334,11 +336,12 @@ export interface PortableEmployeeSkillSummary {
   version: string;
   requiredCapabilities: string[];
   dependencySlugs: string[];
+  content?: { markdown: string; sha256: string; license: string };
 }
 
 /** Owner-facing summary of exactly what a default employee template will contain. */
 export interface EmployeeExportPreview {
-  format: "openbot.employee/v1";
+  format: "openbot.employee/v1" | "openbot.employee/v2";
   kind: "template";
   /** Fresh package identity that must be returned when downloading this reviewed instance. */
   packageId: string;
@@ -370,7 +373,8 @@ export type EmployeeImportIssueCode =
   | "missing-skill-dependency"
   | "sensitive-content"
   | "missing-capability"
-  | "no-compatible-host";
+  | "no-compatible-host"
+  | "invalid-skill-content";
 
 export interface EmployeeImportIssue {
   code: EmployeeImportIssueCode;
@@ -380,7 +384,7 @@ export interface EmployeeImportIssue {
 
 /** A read-only, quarantined projection. Activation is a separate Owner-reviewed command. */
 export interface EmployeeImportPreview {
-  format: "openbot.employee/v1";
+  format: "openbot.employee/v1" | "openbot.employee/v2";
   packageId: string;
   generatedAt: string;
   employee: PortableEmployeeProfileSummary;

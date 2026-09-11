@@ -58,6 +58,15 @@ export function PortableSkillList({
             <small>{stateLabel}</small>
           </div>
           <p>{skill.description}</p>
+          {skill.content ? (
+            <details>
+              <summary>查看技能正文 · {skill.content.license}</summary>
+              <pre>{skill.content.markdown}</pre>
+              <small>SHA-256: {skill.content.sha256}</small>
+            </details>
+          ) : (
+            <p>仅包含技能描述，未携带指令正文；不能据此恢复执行能力。</p>
+          )}
           <dl>
             <div>
               <dt>请求能力</dt>
