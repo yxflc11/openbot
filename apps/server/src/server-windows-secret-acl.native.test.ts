@@ -149,7 +149,7 @@ describe.skipIf(process.platform !== "win32")("Server Windows secret ACL (native
   );
 
   it(
-    "plugin store/key: ACL-only file DACL change after read fails the next read",
+    "plugin store file: ACL-only DACL change after read fails the next read",
     async () => {
       const root = await realpathTempRoot("openbot-server-plugin-acl-");
       const path = join(root, "private", "plugins.json");
@@ -171,6 +171,39 @@ describe.skipIf(process.platform !== "win32")("Server Windows secret ACL (native
       expect((await store.read()).plugins).toHaveLength(1);
       await broadenAcl(path, "file");
       await expect(store.read()).rejects.toMatchObject({ code: "unavailable" });
+    },
+    NATIVE_TIMEOUT_MS,
+  );
+
+  it(
+    "plugin .key: ACL-only DACL change after persist fails first read on a new store",
+    async () => {
+      const root = await realpathTempRoot("openbot-server-plugin-key-acl-");
+      const path = join(root, "private", "plugins.json");
+      const keyPath = `${path}.key`;
+      const first = new FilePluginStore(path, { windowsTrustRoot: root });
+      await first.transaction((state) => {
+        state.plugins.push({
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "fixture",
+          endpoint: "https://127.0.0.1:9",
+          digest: "a".repeat(64),
+          revision: "22222222-2222-4222-8222-222222222222",
+          enabled: true,
+          createdAt: "2026-09-11T00:00:00.000Z",
+          tools: [],
+          grants: [],
+          token: "plugin-token-secret-value",
+        });
+      });
+      expect((await first.read()).plugins).toHaveLength(1);
+      const keyBytes = await readFile(keyPath);
+      expect(keyBytes.byteLength).toBe(32);
+      // Only the encryption key file DACL changes — store file ACL stays Owner+SYSTEM.
+      await broadenAcl(keyPath, "file");
+      const restarted = new FilePluginStore(path, { windowsTrustRoot: root });
+      await expect(restarted.read()).rejects.toMatchObject({ code: "unavailable" });
+      expect(Buffer.compare(await readFile(keyPath), keyBytes)).toBe(0);
     },
     NATIVE_TIMEOUT_MS,
   );
