@@ -34,8 +34,8 @@ async function realpathTempRoot(prefix: string): Promise<string> {
 /**
  * Broaden a secret path DACL for native negative tests.
  * Matches production spawn hygiene: inbox powershell.exe, shell:false, stdin closed, 15s cap.
- * Uses fixed .NET FileSecurity/DirectorySecurity + GetAccessControl/SetAccessControl — not
- * Get-Acl/Set-Acl cmdlets (Microsoft.PowerShell.Security module auto-load can hang under CI).
+ * Uses fixed .NET FileInfo/DirectoryInfo constructors + GetAccessControl/SetAccessControl — same
+ * as production scripts; avoids Get-Item/Get-Acl/Set-Acl module auto-load under CI.
  */
 async function broadenAcl(targetPath: string, kind: "file" | "directory"): Promise<void> {
   const broaden =
@@ -43,7 +43,7 @@ async function broadenAcl(targetPath: string, kind: "file" | "directory"): Promi
       ? `
 $ErrorActionPreference = 'Stop'
 $path = $env:OPENBOT_TEST_PATH
-$item = Get-Item -LiteralPath $path
+$item = [IO.FileInfo]::new($path)
 $acl = $item.GetAccessControl()
 $acl.SetAccessRuleProtection($true, $false)
 foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
@@ -56,7 +56,7 @@ $item.SetAccessControl($acl)
       : `
 $ErrorActionPreference = 'Stop'
 $path = $env:OPENBOT_TEST_PATH
-$item = Get-Item -LiteralPath $path
+$item = [IO.DirectoryInfo]::new($path)
 $acl = $item.GetAccessControl()
 $acl.SetAccessRuleProtection($true, $false)
 foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
