@@ -51,6 +51,7 @@ const child = spawn(executable, [entryPoint], {
     LC_ALL: "C.UTF-8",
     OPENBOT_LOG_LEVEL: "error",
     OPENBOT_NODE_CREDENTIAL: credential,
+    OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
     OPENBOT_NODE_CREDENTIAL_STORE: "file",
     OPENBOT_NODE_ID: nodeId,
     OPENBOT_NODE_MAX_CONCURRENT_RUNS: "1",

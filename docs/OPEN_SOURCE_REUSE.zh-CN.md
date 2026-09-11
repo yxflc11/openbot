@@ -250,3 +250,5 @@ Windows 数据库启动复用 PostgreSQL REL_17_11 的 `pg_ctl` 受限令牌机�
 
 Desktop 搜索账号选择复用 Electron 44.2.0 的显式子进程环境映射，没有新增依赖或复制上游代码：
 [研究](research/desktop-explicit-search-key.zh-CN.md)。
+
+- Node 环境凭证显式启用复用 Zod 4.5.4 跨字段校验及现有凭据存储，不新增依赖或复制源码。[研究记录](research/node-environment-credential-opt-in.zh-CN.md)。

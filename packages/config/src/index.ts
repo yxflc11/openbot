@@ -186,6 +186,7 @@ export const nodeEnvSchema = z
     OPENBOT_NODE_SERVER_URL: nodeServerUrlSchema.default("ws://localhost:3001/ws/nodes"),
     OPENBOT_NODE_ENROLLMENT_TOKEN: nodeEnrollmentTokenSchema.optional(),
     OPENBOT_NODE_CREDENTIAL: nodeCredentialSchema.optional(),
+    OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: booleanSchema,
     OPENBOT_NODE_CREDENTIAL_STORE: z.enum(["file", "secret-service", "macos-host"]).default("file"),
     OPENBOT_NODE_CREDENTIAL_PATH: z.string().trim().min(1).optional(),
     OPENBOT_NODE_SERVICE_CONTROL: z.enum(["stdio-v2", "stdio-v3"]).optional(),
@@ -231,6 +232,17 @@ export const nodeEnvSchema = z
         message: "Browser input origins require a configured computer.",
         path: ["OPENBOT_DOCKER_INPUT_ORIGINS"],
       });
+    if (
+      value.OPENBOT_NODE_CREDENTIAL !== undefined &&
+      (!value.OPENBOT_NODE_ALLOW_ENV_CREDENTIAL || value.OPENBOT_NODE_CREDENTIAL_STORE !== "file")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Environment credentials require OPENBOT_NODE_ALLOW_ENV_CREDENTIAL=true and the file profile. Prefer enrollment with the configured credential store.",
+        path: ["OPENBOT_NODE_CREDENTIAL"],
+      });
+    }
     if (
       value.OPENBOT_NODE_CREDENTIAL_STORE === "secret-service" &&
       value.OPENBOT_NODE_CREDENTIAL_PATH !== undefined

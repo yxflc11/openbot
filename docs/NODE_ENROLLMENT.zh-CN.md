@@ -39,8 +39,13 @@ OpenBot 还会拒绝符号链接、非普通文件、过大文件、格式错误
 Owner 弹窗只列出安全的有效/已吊销身份元数据，不返回凭证摘要；在线状态与实时 Node 连接投影合并。
 配对令牌只保留在当前打开的弹窗中，关闭后不能再次读取。
 
-无状态环境可以直接用 `OPENBOT_NODE_CREDENTIAL` 注入已登记凭证。它是密钥注入接口，不能提交到
-Git，也不能放入员工包。`OPENBOT_NODE_CREDENTIAL_PATH` 可以把文件放到运维方控制的 secret volume。
+默认拒绝 `OPENBOT_NODE_CREDENTIAL`。优先使用一次性登记和配置的凭据存储；已有身份恢复不需要新增选项。
+仅运维方管理的临时进程可在 `file` 配置下设置 `OPENBOT_NODE_ALLOW_ENV_CREDENTIAL=true`，明确启用注入。
+启动会提示正在使用环境凭证，但不记录凭证值。Secret Service 和 macOS Host 即使设置该选项也不能被绕过。
+凭证不得提交到 Git 或员工包；也可用 `OPENBOT_NODE_CREDENTIAL_PATH` 指向运维方控制的 secret volume。
+
+原环境注入部署可移除旧凭证变量并登记一次，或恢复已有的存储身份；确实需要继续临时注入时，在启动配置中
+明确启用上述选项。此项改变默认配置策略，不实现 PoP，也不消除已启用 bearer 凭证的可复制性。
 
 ## Linux 服务配置（实验性）
 

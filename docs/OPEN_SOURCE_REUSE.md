@@ -305,3 +305,5 @@ Windows database startup reuses PostgreSQL REL_17_11 `pg_ctl` restricted-token l
 
 Desktop search-account selection reuses Electron 44.2.0's explicit child environment map, without
 new dependencies or copied source: [review](research/desktop-explicit-search-key.md).
+
+- Node environment credential opt-in reuses Zod 4.5.4 cross-field validation and the existing store adapters; no new dependency or copied source. [Research](research/node-environment-credential-opt-in.md).
