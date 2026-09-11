@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -26,6 +26,84 @@ import {
 
 const temporaryDirectories: string[] = [];
 const executeFile = promisify(execFile);
+/** Per-spawn PowerShell deadline, matching production `executeFile` in `@openbot/windows-secret-acl`. */
+const POWERSHELL_SPAWN_TIMEOUT_MS = 15_000;
+/**
+ * Bounded native-test harness deadline for the two Node Windows ACL negatives only.
+ * Worst case ≤7 PowerShell spawns × 15s production cap = 105s, plus 15s runner margin → 120s.
+ * See docs/research/windows-native-acl-test-budget.md (Node follow-up).
+ */
+const NATIVE_TIMEOUT_MS = 120_000;
+
+/**
+ * Broaden a credential path DACL for native negative tests.
+ * Matches production/Server spawn hygiene: inbox powershell.exe, shell:false, stdin closed, 15s cap.
+ * Uses fixed .NET FileInfo/DirectoryInfo constructors + GetAccessControl/SetAccessControl — same
+ * as production scripts; avoids cmdlet-based ACL/item helpers that auto-load modules under CI.
+ */
+async function broadenAcl(targetPath: string, kind: "file" | "directory"): Promise<void> {
+  const broaden =
+    kind === "file"
+      ? `
+$ErrorActionPreference = 'Stop'
+$path = $env:OPENBOT_TEST_PATH
+$item = [IO.FileInfo]::new($path)
+$acl = $item.GetAccessControl()
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+  [void]$acl.RemoveAccessRule($rule)
+}
+$everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'FullControl', 'None', 'None', 'Allow'))
+$item.SetAccessControl($acl)
+`
+      : `
+$ErrorActionPreference = 'Stop'
+$path = $env:OPENBOT_TEST_PATH
+$item = [IO.DirectoryInfo]::new($path)
+$acl = $item.GetAccessControl()
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+  [void]$acl.RemoveAccessRule($rule)
+}
+$everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
+$item.SetAccessControl($acl)
+`;
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+  if (!systemRoot) throw new Error("Windows SystemRoot is required for broadenAcl.");
+  const powershell = win32.join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const operation = executeFile(
+    powershell,
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(broaden, "utf16le").toString("base64"),
+    ],
+    {
+      env: {
+        SystemRoot: systemRoot,
+        WINDIR: systemRoot,
+        OPENBOT_TEST_PATH: targetPath,
+      },
+      windowsHide: true,
+      shell: false,
+      timeout: POWERSHELL_SPAWN_TIMEOUT_MS,
+      maxBuffer: 4096,
+    },
+  );
+  // Same as production runWindowsSecretAclScript: close stdin so PowerShell does not wait on pipe EOF.
+  operation.child.stdin?.end();
+  await operation;
+}
 
 /** realpath-normalized temp root so reparse walks do not see unrelated system symlinks. */
 async function realpathTempRoot(): Promise<string> {
@@ -157,36 +235,14 @@ describe("file Node credential store", () => {
       await store.save(identity);
       expect(await store.load(identity.nodeId)).toEqual(identity);
 
-      const { execFile } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const execute = promisify(execFile);
-      const broaden = `
-$ErrorActionPreference = 'Stop'
-$path = $env:OPENBOT_TEST_PATH
-$acl = Get-Acl -LiteralPath $path
-$acl.SetAccessRuleProtection($true, $false)
-foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
-$everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
-$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'FullControl', 'Allow'))
-Set-Acl -LiteralPath $path -AclObject $acl
-`;
-      await execute(
-        "powershell.exe",
-        [
-          "-NoLogo",
-          "-NoProfile",
-          "-NonInteractive",
-          "-EncodedCommand",
-          Buffer.from(broaden, "utf16le").toString("base64"),
-        ],
-        { env: { ...process.env, OPENBOT_TEST_PATH: path }, windowsHide: true },
-      );
+      // Content unchanged — only broaden the credential file DACL.
+      await broadenAcl(path, "file");
 
       const rejection = expect(store.load(identity.nodeId)).rejects;
       await rejection.toThrow("ACL verification failed");
       await rejection.not.toThrow(identity.credential);
     },
-    60_000,
+    NATIVE_TIMEOUT_MS,
   );
 
   it("refuses directories, oversized content, and malformed packages", async () => {
@@ -273,34 +329,14 @@ Set-Acl -LiteralPath $path -AclObject $acl
       await store.save(identity);
       expect(await store.load(identity.nodeId)).toEqual(identity);
 
-      const parent = join(root, "private");
-      const broaden = `
-$ErrorActionPreference = 'Stop'
-$path = $env:OPENBOT_TEST_PATH
-$acl = Get-Acl -LiteralPath $path
-$acl.SetAccessRuleProtection($true, $false)
-foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
-$everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
-$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
-Set-Acl -LiteralPath $path -AclObject $acl
-`;
-      await executeFile(
-        "powershell.exe",
-        [
-          "-NoLogo",
-          "-NoProfile",
-          "-NonInteractive",
-          "-EncodedCommand",
-          Buffer.from(broaden, "utf16le").toString("base64"),
-        ],
-        { env: { ...process.env, OPENBOT_TEST_PATH: parent }, windowsHide: true },
-      );
+      // Content unchanged — only broaden the parent directory DACL.
+      await broadenAcl(join(root, "private"), "directory");
 
       const rejection = expect(store.load(identity.nodeId)).rejects;
       await rejection.toThrow("directory ACL verification failed");
       await rejection.not.toThrow(identity.credential);
     },
-    60_000,
+    NATIVE_TIMEOUT_MS,
   );
 
   it("on win32 verifies existing directories without rewriting ACLs via the helper contract", async () => {

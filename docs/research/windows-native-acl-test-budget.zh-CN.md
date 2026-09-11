@@ -109,3 +109,34 @@
   保持 **15s** spawn 上限；并把 `broadenAcl` 改为固定 inbox .NET
   `GetAccessControl`/`SetAccessControl` + `FileSystemAccessRule`（与生产 ACL 脚本同族），
   不再用 `Get-Acl`/`Set-Acl`。真实负向断言不变。**不再**盲目加大夹具 deadline。
+
+## 后续（2026-09-11）：Node 凭据存储原生套件（main `71b3d3b`）
+
+- 失败 CI：main tip `71b3d3b194165ca8510e72d05984b966d4a06b9f`，
+  [run 34608257071](https://github.com/yxflc11/openbot/actions/runs/34608257071)。
+  `credential-store.test.ts:149`「natively enforces Owner+SYSTEM ACLs for Windows credential files」
+  耗时 **60020ms**，超过 **60000ms** 夹具。同文件「parent directory ACL is broadened」以
+  **27136ms** 通过。同次作业中 Server 原生 ACL 套件已绿（#39/#37 的 broadenAcl 卫生修复之后）。
+- 根因同类：Node 原生否定仍用裸 `powershell.exe` + `Get-Acl`/`Set-Acl`，经 `promisify(execFile)`，
+  未 `stdin.end()`、未 `shell: false`、未套生产 **15s** `execFile` 上限——与上文 Server
+  follow-up 已修的挂起同类。
+- 调用次数（`cacheVerifiedState` 默认关闭；每条 Node 原生否定 = save + 正向 load + broaden + 失败 load）：
+
+  | 步骤 | PowerShell 次数 |
+  | --- | ---: |
+  | `save()` → `protectDirectory(created=true)` | 1 |
+  | `save()` → `protectAndVerifyFile` | 1 |
+  | 正向 `load()` → `verifyDirectory` + `verifyFile` | 2 |
+  | 测试 `broadenAcl` | 1 |
+  | 失败 `load()` → `verifyDirectory` + `verifyFile`（可能提前失败） | ≤2 |
+  | **最坏** | **≤7** |
+
+  生产预算：7 × 15s = **105s**。父目录否定在托管环境已观察到 **27136ms**。
+- 选定修复（仅测试、仅 Node 凭据路径）：
+  1. 镜像 Server/生产 `broadenAcl` 启动卫生——inbox powershell、`shell: false`、关闭 stdin、
+     **15s** 上限、固定 `[IO.FileInfo]`/`[IO.DirectoryInfo]` + `GetAccessControl`/`SetAccessControl`
+     （不用 `Get-Acl`/`Get-Item`/`Set-Acl`）。
+  2. **仅**把这两条原生 Vitest 截止时间提到 **7 × 15_000 + 15_000 余量 = 120_000ms**。
+  3. 保留真实 ACL 正/负断言；生产 `timeout: 15_000` 不变；ACL 指纹缓存保持关闭。
+- 不在范围：PR #41 / linux-install-identity、H2、桌面附件、提高生产 broaden 超时、重开 ACL
+  指纹缓存、删除否定断言、flaky/sleep 标记。

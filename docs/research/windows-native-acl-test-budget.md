@@ -128,3 +128,43 @@ spawn is ~3–6s, not the 15s production cap.
   inbox .NET `GetAccessControl`/`SetAccessControl` + `FileSystemAccessRule` (same family as
   production ACL scripts), not `Get-Acl`/`Set-Acl`. Real negative assertions unchanged. Do **not**
   raise the harness deadline again.
+
+## Follow-up (2026-09-11): Node credential-store native suite (main `71b3d3b`)
+
+- CI (failure): main tip `71b3d3b194165ca8510e72d05984b966d4a06b9f`,
+  [run 34608257071](https://github.com/yxflc11/openbot/actions/runs/34608257071) /
+  [Portable (Windows x64) job](https://github.com/yxflc11/openbot/actions/runs/34608257071/job/103291957599)
+  (see failed log for `apps/node`).
+  `credential-store.test.ts:149` "natively enforces Owner+SYSTEM ACLs for Windows credential files"
+  reported **60020ms** against the **60000ms** harness (`Error: Test timed out in 60000ms`).
+  Sibling "natively refuses load when the parent directory ACL is broadened" passed at **27136ms**.
+  Server native ACL suite in the same job was already green (post-#39/#37 broadenAcl hygiene).
+- Root cause class: Node native negatives still used bare `powershell.exe` + `Get-Acl`/`Set-Acl`
+  via `promisify(execFile)` without `stdin.end()`, without `shell: false`, and without the
+  production **15s** `execFile` cap — the same hang class fixed for Server in
+  [windows-native-acl-test-budget.md](windows-native-acl-test-budget.md) follow-up above
+  (`72990ed` / `cf6db68` into #37).
+- Call-count math (`cacheVerifiedState` default OFF) for each Node native negative
+  (save + positive load + broaden + failed load):
+
+  | Step | PowerShell spawns |
+  | --- | ---: |
+  | `save()` → `protectDirectory(created=true)` | 1 |
+  | `save()` → `protectAndVerifyFile` | 1 |
+  | positive `load()` → `verifyDirectory` + `verifyFile` | 2 |
+  | test `broadenAcl` | 1 |
+  | failed `load()` → `verifyDirectory` + `verifyFile` (may fail early) | ≤2 |
+  | **Worst** | **≤7** |
+
+  Production budget: 7 × 15s = **105s**. Observed parent-directory negative already **27136ms**
+  under hosted load when broaden completed.
+- Selected fix (test-only, Node credential-store path only):
+  1. Mirror Server/production `broadenAcl` spawn hygiene — inbox `SystemRoot\...\powershell.exe`,
+     `shell: false`, `operation.child.stdin?.end()`, **15s** spawn cap, fixed
+     `[IO.FileInfo]`/`[IO.DirectoryInfo]` + `GetAccessControl`/`SetAccessControl` (no
+     `Get-Acl`/`Get-Item`/`Set-Acl`).
+  2. Raise **only** the two native Vitest deadlines to **7 × 15_000 + 15_000 margin = 120_000ms**.
+  3. Keep real ACL positive/negative assertions; keep production `timeout: 15_000`; keep ACL
+     fingerprint cache off (`cacheVerifiedState` default `false`).
+- Out of scope: PR #41 / linux-install-identity, H2, desktop attachment, production broaden timeout,
+  re-enabling ACL fingerprint cache, deleting negative asserts, flaky/sleep marks.
