@@ -136,12 +136,15 @@
 - 每次认证 WebSocket 由 Server 生成不可预测的 256-bit connectionId，写入签名与租约行；
   重连换新 ID，消费按真实连接核对，不能信任客户端自报。断线吊销未消费租约。
 - Node 每次消费生成独立 consumeRequestId UUID；请求和响应同时绑定请求、lease、run、node、
-  provider、connection、fingerprintVersion、targetFingerprint，响应另带 Server exp/consumedAt。
+  provider、connection、fingerprintVersion、targetFingerprint，响应另带 Server exp/consumedAt（数据库转移时捕获的整数 epoch 毫秒）。
   只在原 socket 回应，禁止广播、缓存复用成功结果。Node 只保留一个等待者，成功后原子移除并
   本地标记已用；提交前再核对连接、取消和本地到期。
 - 拒绝无等待者、重复、错绑定、旧连接、单调时钟等待达到 5 秒或本地 now>=exp 的响应。
   两端 JWT 时间宽限为零；与认证 Server 时间相差超过 5 秒时停用提交直到恢复时钟健康。
-  5 秒是拒绝阈值，不延长授权；可信时钟是运行前提，不能防住已完全失陷的 Node。
+  5 秒是拒绝阈值，不延长授权。调用前独立要求
+  `consumedAt + 从发送请求起的单调时钟毫秒数 < exp * 1000`，保守包含双向网络延迟；
+  不可收到回执后才开始计时，consumedAt 必须在令牌有效期内。该约束限制开始提交的权限，
+  不承诺外部动作在 exp 前完成。可信时钟是运行前提，不能防住已完全失陷的 Node。
 - 数据库最多成功消费一次，不保证跨崩溃恰好执行一次。丢回执、消费后未执行或执行中崩溃，
   都不能自动重试；需要新的经审阅批准。
 

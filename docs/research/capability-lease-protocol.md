@@ -494,7 +494,8 @@ row still cannot be consumed from a new connection.
 The Node creates one fresh `consumeRequestId` UUID per attempt and permits one pending waiter for
 that lease. Request and result bind `consumeRequestId`, `leaseId`, `runId`, `nodeId`, `providerId`,
 `connectionId`, `fingerprintVersion` and `targetFingerprint`; the result also carries `exp` and
-`consumedAt` from the Server. Server derives identity from the authenticated connection, compares
+`consumedAt` (integer epoch milliseconds captured at the database transition) from the Server.
+Server derives identity from the authenticated connection, compares
 every binding with the signed token and row, and replies on that same socket only. No broadcast,
 cache or replay of a successful result may authorize another attempt.
 
@@ -503,8 +504,12 @@ spent. It rejects unsolicited/duplicate results, changed bindings, closed/replac
 monotonic request time >=5 seconds, and `now >= exp` on its local wall clock. Use zero JWT clock
 tolerance at both verifiers. A clock difference exceeding 5 seconds from authenticated Server
 timestamps disables commits until clock health is restored; this is a rejection threshold, never
-extra authorization time. Recheck connection, local expiry and cancellation immediately before
-invoking the Provider. Trusted clock health is an operational precondition, not protection against
+extra authorization time. Independently of wall-clock skew, require
+`consumedAt + elapsedMonotonicMillisecondsSinceRequestSend < exp * 1000` immediately before
+invocation. Using the full request elapsed time conservatively includes both network legs; do not
+start this timer when the reply arrives. Reject a consumedAt outside the token lifetime. Recheck
+connection, these expiry bounds and cancellation immediately before invoking the Provider. This
+limits permission to start a commit; it does not promise that an external effect finishes before exp. Trusted clock health is an operational precondition, not protection against
 a compromised Node. Delayed responses must not be queued for execution after reconnect/restart.
 
 The database consume transition remains at most once. A lost response or crash between consume and
