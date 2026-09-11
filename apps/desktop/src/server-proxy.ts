@@ -2,12 +2,17 @@ import type { DesktopConnectionState, DesktopServerFetcher } from "./connection-
 import { DESKTOP_SCHEME } from "./local-content.js";
 
 export const MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES = 3 * 1024 * 1024;
+/** Mirrors Server `MAX_TASK_ATTACHMENT_BYTES` in `apps/server/src/channel-attachments.ts`. */
+export const MAXIMUM_DESKTOP_ATTACHMENT_PROXY_REQUEST_BYTES = 20 * 1024 * 1024;
 export const MAXIMUM_DESKTOP_PROXY_URL_BYTES = 8 * 1024;
 export const DESKTOP_PROXY_REQUEST_TIMEOUT_MS = 30_000;
 
 const allowedMethods = new Set(["DELETE", "GET", "PATCH", "POST"]);
-const mutationMethods = new Set(["DELETE", "PATCH", "POST"]);
+const mutationMethods = new Set(["DELETE", "PATCH", "POST", "PUT"]);
 const forwardedRequestHeaders = new Set(["accept", "content-type", "if-match", "last-event-id"]);
+const attachmentUploadRequestHeaders = new Set([...forwardedRequestHeaders, "x-openbot-filename"]);
+/** Exact POST /api/v1/channels/:channelId/attachments; nested id/cleanup/process stay default. */
+const desktopAttachmentUploadPath = /^\/api\/v1\/channels\/[^/]+\/attachments$/u;
 const exposedResponseHeaders = new Set([
   "cache-control",
   "content-disposition",
@@ -71,18 +76,30 @@ export async function proxyDesktopServerRequest(
   }
 
   const method = request.method.toUpperCase();
-  if (!allowedMethods.has(method)) {
+  // PUT is currently part of the reaction contract only; other mutation routes stay closed.
+  const routeMethods = /^\/api\/v1\/channels\/[^/]+\/messages\/[^/]+\/reactions$/u.test(
+    requestUrl.pathname,
+  )
+    ? new Set([...allowedMethods, "PUT"])
+    : allowedMethods;
+  if (!routeMethods.has(method)) {
     return jsonError(405, "Desktop Server request method is not allowed.", {
-      Allow: [...allowedMethods].sort().join(", "),
+      Allow: [...routeMethods].sort().join(", "),
     });
   }
   if (forbiddenCredentialHeaders.some((header) => request.headers.has(header))) {
     return jsonError(400, "Desktop renderer credentials are not accepted.");
   }
 
+  const attachmentUpload = isDesktopAttachmentUpload(method, requestUrl.pathname);
   let body: Uint8Array | undefined;
   try {
-    body = await readBoundedRequestBody(request, MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES);
+    body = await readBoundedRequestBody(
+      request,
+      attachmentUpload
+        ? MAXIMUM_DESKTOP_ATTACHMENT_PROXY_REQUEST_BYTES
+        : MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES,
+    );
   } catch {
     return jsonError(413, "Desktop Server request is too large.");
   }
@@ -91,7 +108,10 @@ export async function proxyDesktopServerRequest(
   target.pathname = requestUrl.pathname;
   target.search = requestUrl.search;
   const headers = new Headers();
-  for (const name of forwardedRequestHeaders) {
+  const allowedRequestHeaders = attachmentUpload
+    ? attachmentUploadRequestHeaders
+    : forwardedRequestHeaders;
+  for (const name of allowedRequestHeaders) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
@@ -153,6 +173,10 @@ export function parseDesktopApiRequestUrl(input: string): URL | undefined {
     return undefined;
   }
   return url;
+}
+
+function isDesktopAttachmentUpload(method: string, pathname: string): boolean {
+  return method === "POST" && desktopAttachmentUploadPath.test(pathname);
 }
 
 async function readBoundedRequestBody(

@@ -10,6 +10,7 @@ import { runStatusLabel } from "../run-state";
 import { EmployeeEvolutionArchive } from "./EmployeeEvolutionArchive";
 import { EmployeeSkillReview } from "./EmployeeSkillReview";
 import { KnowledgeReviewPanel } from "./KnowledgeReviewPanel";
+import { runStatusSummary } from "./NativeRunControls";
 import { OpenBotMark } from "./OpenBotMark";
 import { RobotAvatar } from "./RobotAvatar";
 
@@ -880,7 +881,7 @@ function RunTable({ runs }: { runs: EmployeeProfile["records"]["runs"] }) {
                 </span>
               </td>
               <td>
-                <small>{run.resultSummary ?? run.errorMessage ?? "—"}</small>
+                <small>{runStatusSummary(run) ?? "—"}</small>
               </td>
             </tr>
           ))}

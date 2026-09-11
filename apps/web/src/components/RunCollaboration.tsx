@@ -1,5 +1,6 @@
 import type { Bot, Message, Run } from "@openbot/domain";
 import { runStatusLabel } from "../run-state";
+import { runStatusSummary } from "./NativeRunControls";
 import { RobotAvatar } from "./RobotAvatar";
 import "./RunCollaboration.css";
 
@@ -140,12 +141,7 @@ export function RunCollaboration({
                 : run.status === "completed"
                   ? "已完成"
                   : runStatusLabel(run.status);
-          const detail =
-            run.status === "completed"
-              ? (run.resultSummary ?? run.title)
-              : run.status === "failed"
-                ? (run.errorMessage ?? run.title)
-                : run.title;
+          const detail = runStatusSummary(run) ?? run.title;
           return (
             <li key={run.id}>
               <button

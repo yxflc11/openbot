@@ -1,7 +1,7 @@
 import type { Artifact, Bot, Run, RunFrame, RunProgress } from "@openbot/domain";
 import { runStatusLabel } from "../run-state";
 import { ArtifactCard } from "./ArtifactCard";
-import { nativeRunFailure } from "./NativeRunControls";
+import { runStatusSummary } from "./NativeRunControls";
 import { RobotAvatar } from "./RobotAvatar";
 import type { CollaborationRun } from "./RunCollaboration";
 import "./RunProgressPanel.css";
@@ -22,16 +22,7 @@ export function latestProgressMessage(
   run: Run,
   progress: readonly RunProgress[],
 ): string | undefined {
-  if (run.status === "cancelled") return "Owner 已停止此任务。";
-  if (run.status === "waiting_approval") return "敏感动作正在等待你的批准。";
-  if (run.status === "failed") return nativeRunFailure(run);
-  if (run.status === "blocked") return "任务遇到阻塞，需要人工处理。";
-  if (run.status === "completed") return run.resultSummary ?? "任务已结束。";
-  // Active runs may still show the latest Server progress message.
-  if (run.status === "running" || run.status === "assigned" || run.status === "queued") {
-    return progress.at(-1)?.message;
-  }
-  return progress.at(-1)?.message;
+  return runStatusSummary(run, progress.at(-1)?.message);
 }
 
 export function currentStepLabel(run: Run, progress: readonly RunProgress[]): string {

@@ -108,6 +108,88 @@ docker run --rm --entrypoint node "$image" --input-type=commonjs --eval '
   }
 '
 
+# Nested Server workspace production closure + advisory export filename coverage.
+# Resolves modules the same way apps/server/dist/*.js does (walks apps/server/node_modules
+# before the root), and imports the exact module that failed dual-arch CI with
+# ERR_MODULE_NOT_FOUND for filename-reserved-regex.
+docker run --rm --entrypoint node "$image" --input-type=module --eval '
+  import { createRequire } from "node:module";
+  import { existsSync } from "node:fs";
+
+  const requireFromServerDist = createRequire(
+    new URL("./apps/server/dist/employee-package.js", import.meta.url),
+  );
+  for (const name of ["filename-reserved-regex", "hono", "zod", "@openbot/protocol"]) {
+    requireFromServerDist.resolve(name);
+  }
+  for (const name of ["@types/filename-reserved-regex", "tsx", "vitest", "typescript"]) {
+    try {
+      requireFromServerDist.resolve(name);
+      throw new Error(`Development or unrelated module is present in Server closure: ${name}`);
+    } catch (error) {
+      if (error.code !== "MODULE_NOT_FOUND") throw error;
+    }
+  }
+
+  const { buildEmployeeTemplate } = await import("./apps/server/dist/employee-package.js");
+  const timestamp = "2026-09-11T00:00:00.000Z";
+  const result = buildEmployeeTemplate(
+    {
+      employee: {
+        id: "container-smoke-employee",
+        name: "CON",
+        role: "Container smoke",
+        status: "idle",
+        computerProfile: "docker-linux",
+        appearance: {
+          head: "round",
+          body: "classic",
+          mobility: "feet",
+          accessory: "none",
+          accent: "green",
+        },
+        createdAt: timestamp,
+      },
+      details: {
+        description: "Native container export filename coverage.",
+        revision: 1,
+        updatedAt: timestamp,
+      },
+      evolution: [],
+      skills: [],
+      memories: [],
+      memoryEvents: [],
+      records: { runs: [], approvals: [], artifacts: [], decisions: [] },
+      statistics: {
+        totalRuns: 0,
+        completedRuns: 0,
+        failedRuns: 0,
+        verifiedSkills: 0,
+      },
+      configuration: {
+        executionProfile: "none",
+        portabilityFormat: "openbot.employee/v1",
+      },
+    },
+    {
+      generatedAt: timestamp,
+      packageId: "00000000-0000-4000-8000-000000000043",
+    },
+  );
+  if (result.preview.fileName !== "con-employee.openbot-employee.json") {
+    throw new Error(`Unexpected advisory export filename: ${result.preview.fileName}`);
+  }
+  // Nested path may be empty when everything hoists, but when the lock nests a
+  // Server production package it must be present in the image (not only at root).
+  if (
+    existsSync("apps/server/node_modules/filename-reserved-regex/package.json") === false &&
+    existsSync("node_modules/filename-reserved-regex/package.json") === false
+  ) {
+    throw new Error("filename-reserved-regex missing from both nested and root production closures");
+  }
+'
+
+
 expected_migration_count="$(docker run --rm --entrypoint node "$image" --input-type=module --eval '
   import { readFile } from "node:fs/promises";
   const journal = JSON.parse(await readFile("packages/db/migrations/meta/_journal.json", "utf8"));

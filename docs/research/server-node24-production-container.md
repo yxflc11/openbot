@@ -1,7 +1,7 @@
 # Research: Node 24 production Server container
 
-- Status: Implemented; native Linux amd64 and arm64 hosted verification passed
-- Date: 2026-09-05
+- Status: Baseline implemented and verified on native Linux amd64 and arm64; nested dependency packaging and Node-major policy updates await integrated native CI
+- Date: 2026-09-05; policy re-review note 2026-09-11
 - Owner: @yxflc11
 - Related issue: 8-hour Server deployment milestone
 - Acceptance journey: Build the same reviewed Server image for native Linux amd64 and arm64,
@@ -55,6 +55,13 @@
   Server's 10-second HTTP drain still leaves bounded time to close the dispatcher and database.
   The same contract supplies `read_only` and a private UID/GID-owned `tmpfs`; Compose applies these
   already-smoke-tested restrictions while leaving only the object-store volume writable.
+- Policy re-review date: 2026-09-11. Official Dependabot options reference for
+  `package-ecosystem: docker`, `open-pull-requests-limit`, and `ignore` /
+  `update-types: version-update:semver-major` (version updates; security updates remain separate).
+  Node.js Release schedule lists **24.x Active LTS (Krypton)** and **26.x Current** with Active LTS
+  start planned 2026-10-28—so as of this note Node 26 is not yet LTS. Corepack distribution removal
+  for Node 25+ is recorded in the Node.js TSC vote and distribution docs (`nodejs/TSC` PR 1697;
+  `nodejs/node` distribution history / Corepack API notes).
 
 ## Candidate comparison
 
@@ -79,11 +86,38 @@
   as root. No test currently proves the production dependency closure, migration presence,
   writable object storage, container health, native architecture, or clean Docker stop. Compose
   also requires the removed `OPENBOT_NODE_TOKEN` Server variable.
-- Upgrade, replacement, or exit plan: A future Node 24 patch or Node 26 LTS migration must review a
-  new upstream commit and multi-platform digest, rerun both native architecture jobs and lifecycle
-  smoke, and update this record and the reuse ledger. The separately attested Worker Host remains
-  on Node `22.22.2` until its own release migration regenerates hashes, SBOM, attestations, packages,
-  and rollback evidence.
+- Upgrade, replacement, or exit plan: Keep the production Server image on Node **24 Active LTS**
+  (`24.20.0-bookworm-slim` pin) until a deliberate, reviewed migration. Dependabot is configured to
+  **ignore automatic Docker `node` SemVer-major version updates** while still allowing patch/minor
+  image updates (see `.github/dependabot.yml` and the official Dependabot `ignore` /
+  `update-types: version-update:semver-major` option). A future Node 24 patch may refresh the
+  upstream docker-node commit and multi-platform digest after the usual dual-arch verification.
+  A Node **26+** major must **not** land via an unreviewed Dependabot bump (including the open
+  Dependabot PR that proposed `26.x`); supersede that path with this policy rather than merging a
+  Current/non-LTS major. The separately attested Worker Host remains on Node `22.22.2` until its
+  own release migration regenerates hashes, SBOM, attestations, packages, and rollback evidence.
+
+### Re-review triggers (Node 26+ / next LTS)
+
+Re-open this research and update the reuse ledger **before** changing the Dockerfile `FROM` major
+when **all** of the following are true, or when an Owner explicitly schedules a major migration:
+
+1. **Node 26 (or the next even line) has entered Active LTS** on the official
+   [Node.js release schedule](https://github.com/nodejs/Release#release-schedule). Until then,
+   Node 26 remains Current and is **not** an OpenBot production baseline. Do not force Node 26
+   while Node 24 is Active LTS.
+2. **Package-manager / Corepack prep is explicit.** Node.js TSC decided to stop distributing
+   Corepack on Node **25+** release lines (24.x keeps experimental Corepack). Any migration past
+   Node 24 must document how the Server image obtains `npm`/`pnpm`/`yarn` (bundled npm only,
+   `npm install -g corepack`, or another reviewed install path) so production installs do not
+   assume a Corepack binary that is no longer in the Node distribution.
+3. **Dual-arch health + migration tests pass on the candidate image.** Native Linux amd64 and
+   arm64 hosted jobs must rebuild the candidate Bookworm-slim (or successor Tier-1) digest,
+   start against PostgreSQL 17, observe migration-backed `/health` only after migrations complete,
+   restart, verify object-store writes, and require zero-exit `SIGTERM`—the same evidence bar as
+   the Node 24 baseline. Alpine/musl remains rejected while below Tier 1/2.
+4. Research record, `docs/OPEN_SOURCE_REUSE.md` (+ zh), Dockerfile pin/digest, and static container
+   validator fixtures are updated in the same change set.
 - Failure behavior when the upstream is missing, incompatible, or compromised: Digest or static
   contract drift fails the local check. Either native image build, dependency inventory, migration,
   health, write, restart, or `SIGTERM` failure blocks the PR and any support claim; there is no
@@ -131,6 +165,45 @@
   remaining roadmap gates are recorded in [DEV-002](../reviews/DEV-002.md), with a matching
   [Chinese record](../reviews/DEV-002.zh-CN.md). This records hosted test evidence, not a release.
 
+
+## Nested Server workspace production dependency packaging (2026-09-11)
+
+- Status: Gap observed in hosted dual-arch CI; packaging contract corrected on Draft PR #43
+- Trigger: After Dependabot-compatible `filename-reserved-regex` **4.0.1** landed on
+  `grok/deps-patch-hono-biome-types-filename`, native Server container jobs failed:
+  - amd64 job [`103302795495`](https://github.com/yxflc11/openbot/actions/runs/34611481967/job/103302795495)
+  - arm64 job [`103302795510`](https://github.com/yxflc11/openbot/actions/runs/34611481967/job/103302795510)
+  - Error: `ERR_MODULE_NOT_FOUND: Cannot find package 'filename-reserved-regex' imported from
+    /workspace/apps/server/dist/employee-package.js`
+- Root cause (packaging contract, not a one-package hoist accident):
+  - npm workspaces may place a Server **production** dependency under
+    `apps/server/node_modules/` when another workspace already nests a different major
+    (here: Desktop nests `filename-reserved-regex@3` via Electron tooling; Server pins `4.0.1`).
+  - The production-dependencies stage correctly ran `npm ci --omit=dev`, which installed the
+    nested Server production package.
+  - The runtime stage only `COPY`ed root `/workspace/node_modules`, so Node's resolver walking
+    from `apps/server/dist/*.js` could not find the nested package.
+  - Rearranging the lockfile so this one package happens to hoist would not close the general
+    workspace nesting contract and would regress whenever another workspace reintroduces a
+    conflicting major.
+- Chosen fix:
+  1. After `npm ci --omit=dev`, `mkdir -p apps/server/node_modules` so Docker `COPY` always has a
+     source even when every Server production dependency is hoisted.
+  2. Runtime `COPY`s `/workspace/apps/server/node_modules` from the production-dependencies stage
+     alongside root `node_modules`, preserving the real omit-dev production closure and excluding
+     Server `devDependencies` (including `@types/filename-reserved-regex`).
+  3. Native smoke now resolves modules via `createRequire` anchored at
+     `apps/server/dist/employee-package.js`, dynamically imports that module, and calls
+     `buildEmployeeTemplate` with Windows reserved stem `CON` expecting
+     `con-employee.openbot-employee.json` — coverage that fails closed if the nested production
+     package is missing from the image.
+- What was rejected: lockfile-only hoist of `filename-reserved-regex` without copying nested
+  Server production `node_modules`; copying the full build-stage `node_modules` (would retain
+  toolchain / devDependencies); bundling the Server into a single file before this packaging
+  contract is proven.
+- Verification plan addition: `scripts/check-server-container.mjs` requires the nested `COPY` /
+  `mkdir` fragments and the export-filename smoke markers; fixture tests reject their omission.
+
 ## Unresolved questions
 
 - The existing PostgreSQL `17.11-bookworm` service tag is version-specific but not digest pinned.
@@ -150,3 +223,7 @@
   A later configuration slice should separate the raw database secret from a validated encoded
   connection value (or deliberately constrain the accepted alphabet) without placing credentials
   on command lines or in image layers.
+- Dependabot Docker major ignores apply to **version updates**. Security-driven majors may still
+  surface outside the ignore path; treat any such PR as requiring the re-review triggers above,
+  not as an automatic pin change. Keep Node `24.20.0` until a reviewed patch/LTS migration updates
+  this record.
