@@ -57,4 +57,4 @@ Desktop 打包 React 客户端，通过受限类型化 Electron 桥接访问原�
 
 `npm run check` 运行文档/策略、迁移、lint、严格类型、测试和构建。专用 PostgreSQL CI 步骤使用独立临时数据库验证事务。模拟模型、真实数据库、实际渲染和平台执行是不同层次的证据。
 
-从[仓库地图](REPOSITORY_MAP.zh-CN.md)和[贡献指南](../CONTRIBUTING.zh-CN.md)开始；[仓库审查](REPOSITORY_AUDIT.zh-CN.md)记录仍需改善的可维护性问题，不把未来重构写成已经完成。
+从[仓库地图](REPOSITORY_MAP.zh-CN.md)和[贡献指南](../CONTRIBUTING.zh-CN.md)开始。

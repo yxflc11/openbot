@@ -69,4 +69,4 @@ Local Server packaging, data permissions and lifecycle are platform-specific. Th
 
 `npm run check` runs repository policy/documentation checks, migration checks, lint, strict type checking, tests and builds. Dedicated PostgreSQL CI steps run transaction suites against separate disposable databases. Model/transport mocks, real database tests, rendered client acceptance and real-platform execution provide different evidence and must not be conflated.
 
-Start from the [repository map](REPOSITORY_MAP.md) and [contributor guide](../CONTRIBUTING.md). The [audit](REPOSITORY_AUDIT.md) tracks remaining maintainability issues without presenting planned refactors as completed work.
+Start from the [repository map](REPOSITORY_MAP.md) and [contributor guide](../CONTRIBUTING.md).

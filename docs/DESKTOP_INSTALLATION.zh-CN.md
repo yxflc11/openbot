@@ -2,11 +2,7 @@
 
 [English](DESKTOP_INSTALLATION.md) · [简体中文](DESKTOP_INSTALLATION.zh-CN.md)
 
-安装流水线为下列目标生成带版本的 Desktop 安装包。发布是单独步骤：请到
-[Desktop Releases](https://github.com/yxflc11/openbot/releases) 确认已经公开的 `desktop-v...`
-版本及其附件。旧的 `v0.1.0-alpha.1` 仅含源码，没有 Desktop 安装包。正式公开前，可下载
-[成功 CI 运行](https://github.com/yxflc11/openbot/actions/workflows/ci.yml) 中的安装器产物；
-需要登录 GitHub，保留 14 天。源码版本号并不表示该版本已可公开下载。
+**当前预览版：[Desktop 0.1.0-alpha.6](https://github.com/yxflc11/openbot/releases/tag/desktop-v0.1.0-alpha.6)**，提供 macOS Apple Silicon DMG 与 Windows x64 EXE，随附合并清单和 SHA256SUMS。两者来自同一已通过完整 CI 的源码提交。下表也列出流水线支持的 Linux 构建目标；alpha.6 未发布 Linux 安装器。
 
 | 平台 | Release 中的文件 | 安装方法 | 实际组合能力 |
 | --- | --- | --- | --- |
@@ -25,20 +21,20 @@
 校验值证明文件与该 Release 一致，不能替代发布者签名。可按环境要求先阅读脚本。两份脚本只访问
 固定 OpenBot GitHub 仓库，保留操作系统信任检查，不会启用模型推理或登记 Worker。
 
-macOS arm64 或 Linux x64（示例版本必须已发布）：
+macOS arm64（Linux 请改用包含 AppImage 的已发布版本）：
 
 ```bash
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.sh \
   -o /tmp/openbot-install-desktop.sh
-bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.3
+bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.6
 ```
 
 macOS 安装到 `~/Applications/OpenBot.app`，拒绝覆盖已有应用；需要升级时使用 DMG 审查操作。
 Linux 安装到 `~/.local/opt/openbot/<version>/openbot.AppImage`，保留已有版本。完成后可删除
 下载的脚本。这两条路径不请求 root 权限，也不启动 Server/Worker 服务。
 
-Windows x64，确认发行页已提供对应 alpha.6 EXE 和校验值后，在 PowerShell 中执行：
+Windows x64，在 PowerShell 中执行：
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.ps1 -OutFile "$env:TEMP\openbot-install-desktop.ps1"
@@ -59,7 +55,7 @@ PowerShell 脚本打开当前用户安装器并等待结果。如果系统执行
 4. 退出后重新打开 Desktop，确认工作区与模型摘要仍存在。退出 Desktop 会停止 macOS/Windows 本地服务；
    无人值守定时任务需要持续运行的 Server。
 
-alpha.6 候选版增加受限频道协作、更丰富附件、经审核 MCP 资料与应用、语音草稿和恢复启动。分享导出可复用 Bot 档案/已验证技能并下载成果，不发布私人记忆或聊天记录。Windows 本地服务证据见 [Windows 桌面版](WINDOWS_DESKTOP.zh-CN.md)。本次仅计划发布 Windows 安装包，保留已有其他平台发行物。
+alpha.6 候选版增加受限频道协作、更丰富附件、经审核 MCP 资料与应用、语音草稿和恢复启动。分享导出可复用 Bot 档案/已验证技能并下载成果，不发布私人记忆或聊天记录。Windows 本地服务证据见 [Windows 桌面版](WINDOWS_DESKTOP.zh-CN.md)。alpha.6 同时提供 Windows x64 和 macOS arm64；macOS 随包 PostgreSQL 为 17.10，Windows 为 17.11。
 
 完整能力边界见 [Desktop 引导](DESKTOP_ONBOARDING.zh-CN.md)、[原生 Agent](NATIVE_AGENT.zh-CN.md)
 和 [Server 容器](SERVER_CONTAINER.zh-CN.md)。
