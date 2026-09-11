@@ -34,8 +34,9 @@ export async function importLinuxReleaseArchive(options) {
   // Overlayfs (and other coarse-timestamp filesystems) may leave mtime/ctime unchanged after a
   // same-size in-place overwrite, so metadata identity is not enough. Pre-digest the reviewed
   // path with the bounded O_NOFOLLOW|O_NONBLOCK regular-file hasher (not createReadStream and
-  // not the injectable openFile) before import; the import-path digest must match for
-  // attestation / source trustworthiness.
+  // not the injectable openFile) before import; the import-path digest must match. Equality
+  // proves only that two reads observed the same bytes — source authenticity still requires
+  // later attestation.
   const sourceDigest = await sha256BoundedRegularFile(
     sourcePath,
     LINUX_ARCHIVE_IMPORT_BOUNDS,

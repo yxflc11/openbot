@@ -116,10 +116,11 @@ export async function sha256File(filePath) {
  * 1) Pre-digest — hash the reviewed source through this opener
  *    (`O_RDONLY | O_NOFOLLOW | O_NONBLOCK`) before the injectable `openFile` hook
  *    runs, so a symlink/FIFO/growing replacement cannot hang or unbounded-read the
- *    process. The digest binds later attestation / source trustworthiness.
+ *    process.
  * 2) Import-path digest — hash the exclusive private import the same way and
  *    require equality. Same-size in-place mutation is detected by digest mismatch
- *    without relying on mtime/ctime.
+ *    without relying on mtime/ctime. Equality only proves both reads observed the
+ *    same bytes; source authenticity still requires later attestation.
  *
  * Rejects non-regular files, out-of-bound sizes, and reads that deliver more bytes
  * than the fstat-declared size or the configured maximum.

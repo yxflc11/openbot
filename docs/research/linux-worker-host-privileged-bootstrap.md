@@ -161,12 +161,14 @@
 - Overlayfs `/tmp` on the Builder box (Linux 6.12.94+, Node 22.22.2) reused the same directory
   `st_ino` after `rmdir`+`mkdir` and often kept `ctimeMs` identical, so `dev`/`ino`/`mode`/`ctimeMs`
   could not detect a replaced lock. The lease now also writes a 32-byte `O_EXCL|O_NOFOLLOW` token
-  inside the lock directory and refuses to `rmdir` unless that process-private token still matches.
-  Same-size in-place source overwrites can freeze overlayfs mtime/ctime; import now hashes the
-  reviewed path before the injectable opener and compares that digest to the imported copy. See
-  `docs/research/linux-install-fs-identity.md`.
+  inside the lock directory, opens it with `O_NOFOLLOW|O_NONBLOCK` for assert/cleanup, and refuses
+  to `rmdir` unless that process-private token still matches; unproven cleanup retains the lock
+  directory. Same-size in-place source overwrites can freeze overlayfs mtime/ctime; import now
+  hashes the reviewed path before the injectable opener and compares that digest to the imported
+  copy (byte equality only — authenticity still needs later attestation). Premised on a root-owned
+  non-writable parent of the install state root; residual same-UID/privileged TOCTOU after the last
+  check is not claimed eliminated. See `docs/research/linux-install-fs-identity.md`.
 - These are temporary-filesystem concurrency, byte-import, layout-policy/provisioning, and injected-
-
   composition/command tests. Trusted bootstrap distribution, process-kill recovery, and native
   command/privileged-directory/systemd execution remain pending. The privileged wrapper has not been
   run successfully as root.

@@ -133,7 +133,10 @@ async function releaseLinuxInstallLease(lease) {
 async function assertLeaseToken(record) {
   let handle;
   try {
-    handle = await open(record.tokenPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(
+      record.tokenPath,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
     const metadata = await handle.stat();
     if (!isPrivateTokenFile(metadata)) {
       throw new Error("Linux install lease was removed or replaced.");
@@ -182,21 +185,29 @@ async function writeExclusiveToken(tokenPath, token) {
 
 /**
  * Failure cleanup may only remove artifacts proven to belong to this acquire attempt.
- * When `ownedToken` is missing (create never succeeded) or the path no longer matches
- * that token under O_NOFOLLOW, leave artifacts in place and report — never blind-unlink.
+ * When `ownedToken` is missing (create never succeeded), ownership cannot be proven — refuse
+ * cleanup and retain the lock directory (including an empty replacement). When a token exists
+ * but the path no longer matches under O_NOFOLLOW|O_NONBLOCK, leave artifacts in place and
+ * report — never blind-unlink. A same-UID/privileged adversary TOCTOU between the last proven
+ * check and unlink/rmdir is not fully eliminated; the install state root's parent is assumed
+ * root-owned and non-writable by group/other so unprivileged rename/replace of the root is out
+ * of scope.
  */
 export async function discardIncompleteLock(lockPath, tokenPath, ownedToken) {
-  if (ownedToken !== undefined) {
-    if (!Buffer.isBuffer(ownedToken) || ownedToken.length !== TOKEN_BYTES) {
-      throw new Error("Linux install lease cleanup token is malformed.");
-    }
-    try {
-      await unlinkProvenToken(tokenPath, ownedToken);
-    } catch {
-      throw new Error(
-        "Linux install lease acquire failed; owned token cleanup is unsafe and was refused.",
-      );
-    }
+  if (ownedToken === undefined) {
+    throw new Error(
+      "Linux install lease acquire failed; lock cleanup is unproven and was refused.",
+    );
+  }
+  if (!Buffer.isBuffer(ownedToken) || ownedToken.length !== TOKEN_BYTES) {
+    throw new Error("Linux install lease cleanup token is malformed.");
+  }
+  try {
+    await unlinkProvenToken(tokenPath, ownedToken);
+  } catch {
+    throw new Error(
+      "Linux install lease acquire failed; owned token cleanup is unsafe and was refused.",
+    );
   }
   try {
     await rmdir(lockPath);
@@ -211,7 +222,10 @@ export async function discardIncompleteLock(lockPath, tokenPath, ownedToken) {
 async function unlinkProvenToken(tokenPath, ownedToken) {
   let handle;
   try {
-    handle = await open(tokenPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(
+      tokenPath,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
     const metadata = await handle.stat();
     if (!isPrivateTokenFile(metadata)) {
       throw new Error("Linux install lease token is not a private regular file.");

@@ -69,7 +69,7 @@ timestamp quantum as create; the full file failed on the first combined run).
 | Overlayfs `xino=on` | Linux overlayfs documentation, kernel 6.12 line | GPL-2.0 kernel | Kernel-maintained | Would improve inode uniqueness for this Builder mount, but the installer cannot require a host mount option and ext4 can still reuse a freed inode | Reject as a production dependency |
 | `proper-lockfile` / `fs-ext` flock | Already reviewed `4.1.2` / `2.1.1` | MIT | See privileged-bootstrap record | Still rejected: age-based takeover and a native addon do not close this identity gap | Keep rejected |
 | Process-private `O_EXCL` token file inside the `mkdir` lock | Node.js `v22.22.2` `crypto.randomBytes`, `open(O_CREAT\|O_EXCL\|O_NOFOLLOW)`, POSIX exclusive create | Node.js license; POSIX | Pinned runtime | Empty `rmdir`+`mkdir` cannot reproduce a 32-byte secret stored only in the in-process `WeakMap`. `O_NOFOLLOW` refuses a replaced symlink. Release unlinks the token then `rmdir`s only after the token matches | Select for lock identity |
-| Bounded regular-file SHA-256 before the injectable opener | `sha256BoundedRegularFile` in `scripts/node-linux-release.mjs`; `O_RDONLY\|O_NOFOLLOW\|O_NONBLOCK`, fstat regular-file + size bounds, cumulative byte limit; Node `crypto.createHash` | Node.js license | Import pre-digest + import-path digest binding | Detects same-size in-place mutation without mtime/ctime. Refuses symlink/FIFO/oversize/growing reads; does not use unbounded `createReadStream`. Two-pass contract binds attestation / source trustworthiness | Select for import TOCTOU |
+| Bounded regular-file SHA-256 before the injectable opener | `sha256BoundedRegularFile` in `scripts/node-linux-release.mjs`; `O_RDONLY\|O_NOFOLLOW\|O_NONBLOCK`, fstat regular-file + size bounds, cumulative byte limit; Node `crypto.createHash` | Node.js license | Import pre-digest + import-path digest binding | Detects same-size in-place mutation without mtime/ctime. Refuses symlink/FIFO/oversize/growing reads; does not use unbounded `createReadStream`. Two-pass equality only proves both reads observed the same bytes; source authenticity still requires later attestation | Select for import mutation detection |
 
 ## Reuse decision
 
@@ -78,10 +78,17 @@ timestamp quantum as create; the full file failed on the first combined run).
   `crypto.randomBytes` / `timingSafeEqual` / `createHash("sha256")`.
 - Why this is the first viable option: the lock is already an atomic `mkdir`. Adding one exclusive
   private token file inside it does not add a dependency or automatic stale takeover. Failure
-  cleanup unlinks that token only after an `O_NOFOLLOW` open and `timingSafeEqual` prove this
-  attempt still owns it; otherwise artifacts stay and the error is reported. Source-byte digest
+  cleanup unlinks that token only after an `O_NOFOLLOW|O_NONBLOCK` open and `timingSafeEqual`
+  prove this attempt still owns it; when ownership cannot be proven (including `ownedToken`
+  missing), artifacts stay and the error is reported — never blind-`rmdir`. Source-byte digest
   already exists for the imported copy; the bounded pre-digest before `openFile` closes the
-  metadata-only hole without sleeping, unbounded reads, or dropping the negative tests.
+  metadata-only hole without sleeping, unbounded reads, or dropping the negative tests. The
+  digest equality proves only that two reads observed the same bytes; authenticity still depends
+  on later attestation.
+- Premise: the install state root sits under a root-owned parent directory that is non-writable
+  by group/other, so an unprivileged adversary cannot rename/replace that root. Same-UID or
+  privileged adversaries are still in scope for residual TOCTOU between the last proven check and
+  `unlink`/`rmdir`; these checks do **not** claim complete elimination of that race.
 - Exact OpenBot-specific gap: treat overlayfs inode reuse and frozen timestamps as a production
   identity failure, not a flaky test. Keep `dev`/`ino`/`mode`/`ctimeMs` as extra defense, but do
   not trust them alone.
@@ -89,8 +96,9 @@ timestamp quantum as create; the full file failed on the first combined run).
   adapter may replace the token/digest checks after its own native review. Do not revert to
   timestamp-only identity.
 - Failure behavior when the upstream is missing, incompatible, or compromised: a missing or
-  mismatched token fails closed and does not `rmdir` the replacement lock. A source digest
-  mismatch deletes the exclusive import and does not return a path.
+  mismatched token fails closed and does not `rmdir` the replacement lock. Unproven cleanup
+  (`ownedToken` undefined, including an empty replacement lock directory) retains the directory.
+  A source digest mismatch deletes the exclusive import and does not return a path.
 
 ## Source incorporation
 
@@ -106,15 +114,18 @@ timestamp quantum as create; the full file failed on the first combined run).
   reject and leave the replacement directory; import symlink/undersized/changed-source tests must
   reject without retaining bytes. Repeat the two formerly failing tests on overlayfs `/tmp`.
 - Negative and fail-closed tests: same-length token rewrite and token symlink must refuse release
-  without removing the replacement; `discardIncompleteLock` must retain foreign tokens; bounded
-  pre-digest must reject symlink, FIFO, and oversize/growing sources. Do not delete the
+  without removing the replacement; `discardIncompleteLock` must retain foreign tokens and refuse
+  unproven cleanup of an empty replacement lock directory; a FIFO-replaced token must
+  bounded-exit via a child subprocess (open uses `O_NONBLOCK`) rather than hang the runner;
+  bounded pre-digest must reject symlink, FIFO, and oversize/growing sources. Do not delete the
   replacement-lock or changed-source assertions; do not add `sleep` or mark the tests flaky.
 - Platforms and devices: overlayfs `/tmp` on this Builder box. Native ext4/xfs hosts still benefit
   because inode reuse after `rmdir`+`mkdir` is also possible there.
 - User-visible documentation and translations: not user-visible; installer support claims are
   unchanged.
-- Support level that the evidence permits: rootless temporary-filesystem identity only. Not a
-  privileged native-host installer claim.
+- Support level that the evidence permits: rootless temporary-filesystem identity only under the
+  root-owned non-writable parent premise. Not a privileged native-host installer claim, and not a
+  claim that same-UID/privileged TOCTOU after the last check is eliminated.
 
 ## Unresolved questions
 
