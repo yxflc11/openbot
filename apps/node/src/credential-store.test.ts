@@ -1,6 +1,18 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   assertWindowsCredentialPathBoundary,
@@ -13,6 +25,14 @@ import {
 } from "./credential-store.js";
 
 const temporaryDirectories: string[] = [];
+const executeFile = promisify(execFile);
+
+/** realpath-normalized temp root so reparse walks do not see unrelated system symlinks. */
+async function realpathTempRoot(): Promise<string> {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "openbot-node-identity-")));
+  temporaryDirectories.push(directory);
+  return directory;
+}
 const identity = {
   format: "openbot.node-identity/v1" as const,
   nodeId: "linux-node",
@@ -68,13 +88,15 @@ describe("file Node credential store", () => {
   });
 
   it("on win32 protects and verifies Owner+SYSTEM ACLs through the injected helper", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
-    temporaryDirectories.push(directory);
+    const directory = await realpathTempRoot();
     const path = join(directory, "private", "identity.json");
     const calls: string[] = [];
     const windowsAcl: WindowsCredentialAcl = {
       async protectDirectory(target, created) {
         calls.push(`dir:${created ? "new" : "existing"}:${target.endsWith("private")}`);
+      },
+      async verifyDirectory(target) {
+        calls.push(`dir-verify:${target.endsWith("private")}`);
       },
       async protectAndVerifyFile(target) {
         calls.push(`file-protect:${target.endsWith("identity.json")}`);
@@ -83,13 +105,18 @@ describe("file Node credential store", () => {
         calls.push(`file-verify:${target.endsWith("identity.json")}`);
       },
     };
-    const store = new FileNodeCredentialStore(path, { platform: "win32", windowsAcl });
+    const store = new FileNodeCredentialStore(path, {
+      platform: "win32",
+      windowsAcl,
+      windowsTrustRoot: directory,
+    });
 
     await store.save(identity);
     expect(await store.load(identity.nodeId)).toEqual(identity);
     expect(calls[0]).toMatch(/^dir:new:true$/);
     expect(calls[1]).toBe("file-protect:true");
-    expect(calls[2]).toBe("file-verify:true");
+    expect(calls[2]).toBe("dir-verify:true");
+    expect(calls[3]).toBe("file-verify:true");
 
     calls.length = 0;
     await store.save(identity);
@@ -98,14 +125,15 @@ describe("file Node credential store", () => {
   });
 
   it("on win32 refuses load when the ACL helper reports an unsafe file", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
-    temporaryDirectories.push(directory);
+    const directory = await realpathTempRoot();
     const path = join(directory, "identity.json");
     await writeFile(path, `${JSON.stringify(identity)}\n`, { mode: 0o600 });
     const store = new FileNodeCredentialStore(path, {
       platform: "win32",
+      windowsTrustRoot: directory,
       windowsAcl: {
         protectDirectory: async () => {},
+        verifyDirectory: async () => {},
         protectAndVerifyFile: async () => {},
         verifyFile: async () => {
           throw new Error("Windows credential file ACL verification failed during reading.");
@@ -183,50 +211,113 @@ Set-Acl -LiteralPath $path -AclObject $acl
     await expect(store.load(identity.nodeId)).rejects.toThrow("invalid");
   });
 
-  it("rejects credential paths whose ancestor is a reparse/symlink point", async () => {
-    const root = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
-    temporaryDirectories.push(root);
-    const realDirectory = join(root, "real");
-    const linkDirectory = join(root, "link");
-    await mkdir(realDirectory);
-    try {
+  it.skipIf(process.platform === "win32")(
+    "rejects a symlink ancestor within a realpath trust root",
+    async () => {
+      const root = await realpathTempRoot();
+      const realDirectory = join(root, "real");
+      const linkDirectory = join(root, "link");
+      await mkdir(realDirectory);
       await symlink(realDirectory, linkDirectory);
-    } catch {
-      // Windows hosts without symlink privilege skip this boundary unit check.
-      return;
-    }
-    const path = join(linkDirectory, "identity.json");
-    await writeFile(join(realDirectory, "identity.json"), `${JSON.stringify(identity)}\n`, {
-      mode: 0o600,
-    });
+      const path = join(linkDirectory, "identity.json");
+      await writeFile(join(realDirectory, "identity.json"), `${JSON.stringify(identity)}\n`, {
+        mode: 0o600,
+      });
 
-    await expect(assertWindowsCredentialPathBoundary(path)).rejects.toThrow("reparse points");
+      await expect(assertWindowsCredentialPathBoundary(path, { trustRoot: root })).rejects.toThrow(
+        "reparse points",
+      );
+    },
+  );
 
-    if (process.platform === "win32") {
+  it.skipIf(process.platform !== "win32")(
+    "rejects a parent directory junction created with mklink /J",
+    async () => {
+      const root = await realpathTempRoot();
+      const realDirectory = join(root, "real");
+      const linkDirectory = join(root, "link");
+      await mkdir(realDirectory);
+      await writeFile(join(realDirectory, "identity.json"), `${JSON.stringify(identity)}\n`, {
+        mode: 0o600,
+      });
+      await executeFile("cmd.exe", ["/c", "mklink", "/J", linkDirectory, realDirectory], {
+        windowsHide: true,
+      });
+
+      const path = join(linkDirectory, "identity.json");
+      await expect(assertWindowsCredentialPathBoundary(path, { trustRoot: root })).rejects.toThrow(
+        "reparse points",
+      );
+
       const store = new FileNodeCredentialStore(path, {
         platform: "win32",
+        windowsTrustRoot: root,
         windowsAcl: {
           protectDirectory: async () => {},
+          verifyDirectory: async () => {},
           protectAndVerifyFile: async () => {},
           verifyFile: async () => {},
         },
       });
       await expect(store.load(identity.nodeId)).rejects.toThrow("reparse points");
-    }
-  });
+    },
+    30_000,
+  );
+
+  it.skipIf(process.platform !== "win32")(
+    "natively refuses load when the parent directory ACL is broadened",
+    async () => {
+      const root = await realpathTempRoot();
+      const path = join(root, "private", "identity.json");
+      const store = new FileNodeCredentialStore(path);
+      await store.save(identity);
+      expect(await store.load(identity.nodeId)).toEqual(identity);
+
+      const parent = join(root, "private");
+      const broaden = `
+$ErrorActionPreference = 'Stop'
+$path = $env:OPENBOT_TEST_PATH
+$acl = Get-Acl -LiteralPath $path
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+$everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
+Set-Acl -LiteralPath $path -AclObject $acl
+`;
+      await executeFile(
+        "powershell.exe",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-EncodedCommand",
+          Buffer.from(broaden, "utf16le").toString("base64"),
+        ],
+        { env: { ...process.env, OPENBOT_TEST_PATH: parent }, windowsHide: true },
+      );
+
+      const rejection = expect(store.load(identity.nodeId)).rejects;
+      await rejection.toThrow("directory ACL verification failed");
+      await rejection.not.toThrow(identity.credential);
+    },
+    60_000,
+  );
 
   it("on win32 verifies existing directories without rewriting ACLs via the helper contract", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
-    temporaryDirectories.push(directory);
+    const directory = await realpathTempRoot();
     const privateDirectory = join(directory, "private");
     await mkdir(privateDirectory, { mode: 0o700 });
     const path = join(privateDirectory, "identity.json");
     const calls: string[] = [];
     const store = new FileNodeCredentialStore(path, {
       platform: "win32",
+      windowsTrustRoot: directory,
       windowsAcl: {
         async protectDirectory(_target, created) {
           calls.push(`dir:${created ? "new" : "existing"}`);
+        },
+        async verifyDirectory() {
+          calls.push("dir-verify");
         },
         async protectAndVerifyFile() {
           calls.push("file-protect");
@@ -239,6 +330,40 @@ Set-Acl -LiteralPath $path -AclObject $acl
 
     await store.save(identity);
     expect(calls).toEqual(["dir:existing", "file-protect"]);
+  });
+
+  it("on win32 refuses load when the parent directory ACL helper reports unsafe Write/DeleteChild rights", async () => {
+    const directory = await realpathTempRoot();
+    const path = join(directory, "private", "identity.json");
+    await mkdir(join(directory, "private"), { mode: 0o700 });
+    await writeFile(path, `${JSON.stringify(identity)}\n`, { mode: 0o600 });
+    const store = new FileNodeCredentialStore(path, {
+      platform: "win32",
+      windowsTrustRoot: directory,
+      windowsAcl: {
+        protectDirectory: async () => {},
+        verifyDirectory: async () => {
+          throw new Error("Windows credential directory ACL verification failed during reading.");
+        },
+        protectAndVerifyFile: async () => {},
+        verifyFile: async () => {},
+      },
+    });
+
+    const rejection = expect(store.load(identity.nodeId)).rejects;
+    await rejection.toThrow("directory ACL verification failed during reading");
+    await rejection.not.toThrow(identity.credential);
+  });
+
+  it("allowMissingLeaf accepts first-install multi-level missing segments under a trust root", async () => {
+    const root = await realpathTempRoot();
+    const nested = join(root, "a", "b", "c");
+    await expect(
+      assertWindowsCredentialPathBoundary(nested, { allowMissingLeaf: true, trustRoot: root }),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertWindowsCredentialPathBoundary(nested, { trustRoot: root }),
+    ).rejects.toThrow();
   });
 });
 

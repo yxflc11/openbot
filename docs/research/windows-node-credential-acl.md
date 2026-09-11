@@ -62,5 +62,9 @@
 - Whether Administrators should be explicitly denied vs simply absent from Allow set (current
   choice: only Owner+SYSTEM Allow ACEs; no explicit Deny entries).
 - Ancestor reparse/junction refusal reduces writable-parent substitution risk; it does **not** claim
-  all Windows path-attack classes are closed.
+  all Windows path-attack classes are closed. Load also verify-only checks the immediate parent
+  directory DACL (Owner+SYSTEM) so unexpected Write/DeleteChild Allow ACEs fail closed — separate
+  from junction detection.
 - Existing operator-owned credential directories are verified only (no automatic ACL rewrite).
+- `allowMissingLeaf` permits multiple missing trailing segments for first-install nested paths;
+  tests bound reparse walks with a realpath-normalized trust root and use `mklink /J` for junctions.

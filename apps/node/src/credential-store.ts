@@ -1,6 +1,6 @@
 import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { lstat, mkdir, open } from "node:fs/promises";
+import { lstat, mkdir, open, realpath } from "node:fs/promises";
 import { dirname, join, resolve, win32 } from "node:path";
 import { promisify } from "node:util";
 import type { NodeEnv } from "@openbot/config";
@@ -42,17 +42,21 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
   readonly #path: string;
   readonly #platform: NodeJS.Platform;
   readonly #windowsAcl: WindowsCredentialAcl;
+  readonly #windowsTrustRoot: string | undefined;
 
   constructor(
     path: string,
     options: {
       platform?: NodeJS.Platform;
       windowsAcl?: WindowsCredentialAcl;
+      /** realpath-normalized root that bounds reparse walks (required for POSIX-hosted win32 tests). */
+      windowsTrustRoot?: string;
     } = {},
   ) {
     this.#path = resolve(path);
     this.#platform = options.platform ?? process.platform;
     this.#windowsAcl = options.windowsAcl ?? createDefaultWindowsCredentialAcl();
+    this.#windowsTrustRoot = options.windowsTrustRoot;
   }
 
   async load(nodeId: string): Promise<NodeEnrollmentResult | undefined> {
@@ -67,11 +71,13 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
     }
 
     if (this.#platform === "win32") {
-      // Ancestor reparse checks are Windows-path semantics; skip on simulated win32 hosts
-      // (macOS/Linux tmp trees often include benign system symlinks such as /var).
-      if (process.platform === "win32") {
-        await assertWindowsCredentialPathBoundary(this.#path);
-      }
+      // Reparse/junction boundary is separate from parent-directory ACL checks.
+      await assertWindowsCredentialPathBoundary(this.#path, {
+        ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+      });
+      // Refuse load when the immediate parent is writable by unexpected principals
+      // (WriteData/DeleteChild substitution) — verify-only, never rewrite on load.
+      await this.#windowsAcl.verifyDirectory(dirname(this.#path));
       await this.#windowsAcl.verifyFile(this.#path);
     }
 
@@ -106,8 +112,11 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
       createdDirectory = true;
     }
 
-    if (this.#platform === "win32" && process.platform === "win32") {
-      await assertWindowsCredentialPathBoundary(directory, { allowMissingLeaf: true });
+    if (this.#platform === "win32") {
+      await assertWindowsCredentialPathBoundary(directory, {
+        allowMissingLeaf: true,
+        ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
+      });
     }
     await mkdir(directory, { recursive: true, mode: 0o700 });
     if (this.#platform === "win32") {
@@ -125,6 +134,8 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
 /** Windows ACL operations for the file-backed Node credential adapter. */
 export interface WindowsCredentialAcl {
   protectDirectory(path: string, created: boolean): Promise<void>;
+  /** Verify-only parent/dedicated directory DACL (Owner+SYSTEM). Never rewrites. */
+  verifyDirectory(path: string): Promise<void>;
   protectAndVerifyFile(path: string): Promise<void>;
   verifyFile(path: string): Promise<void>;
 }
@@ -209,12 +220,17 @@ export function createDefaultWindowsCredentialAcl(): WindowsCredentialAcl {
         path,
         forceProtect: created,
       }),
+    verifyDirectory: (path) =>
+      runWindowsCredentialAclScript({
+        kind: "directory",
+        path,
+        forceProtect: false,
+      }),
     protectAndVerifyFile: async (path) => {
       await assertWindowsCredentialPathBoundary(path);
       await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: true });
     },
     verifyFile: async (path) => {
-      // Path boundary is enforced by FileNodeCredentialStore.load on real win32 before verify.
       await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: false });
     },
   };
@@ -277,14 +293,28 @@ async function runWindowsCredentialAclScript(input: {
 /**
  * Reject credential paths whose leaf or ancestors are Windows reparse points (symlinks/junctions).
  * This reduces parent-path substitution risk; it does not claim all path-attack classes are closed.
+ * Parent-directory Write/DeleteChild ACL checks are handled separately via verifyDirectory.
+ *
+ * Walks the logical path with lstat (so junctions/symlinks are visible). Optional `trustRoot` is
+ * realpath-normalized; the walk stops when `realpath(current)` matches that root so macOS `/var`
+ * system symlinks above a realpath'd fixture are out of scope.
+ *
+ * `allowMissingLeaf: true` permits any number of missing trailing segments (first-install nested
+ * mkdir), then continues reparse checks on existing ancestors.
  */
 export async function assertWindowsCredentialPathBoundary(
   targetPath: string,
-  options: { allowMissingLeaf?: boolean } = {},
+  options: { allowMissingLeaf?: boolean; trustRoot?: string } = {},
 ): Promise<void> {
-  let current = resolve(targetPath);
-  const root = win32.parse(current).root.toLowerCase();
-  let isLeaf = true;
+  const resolved = resolve(targetPath);
+  const stopAt =
+    options.trustRoot !== undefined
+      ? (await realpath(options.trustRoot)).toLowerCase()
+      : process.platform === "win32"
+        ? win32.parse(resolved).root.toLowerCase()
+        : undefined;
+
+  let current = resolved;
   for (;;) {
     try {
       const entry = await lstat(current);
@@ -292,17 +322,31 @@ export async function assertWindowsCredentialPathBoundary(
         throw new Error("Node credential path must not use reparse points.");
       }
     } catch (error) {
-      if (isLeaf && options.allowMissingLeaf === true && isMissingFile(error)) {
-        // Continue walking parents that do exist.
+      if (options.allowMissingLeaf === true && isMissingFile(error)) {
+        // First-install may create nested directories; missing trailing segments are OK.
       } else {
         throw error;
       }
     }
-    if (current.toLowerCase() === root) break;
+
+    if (await pathMatchesTrustStop(current, stopAt)) break;
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;
-    isLeaf = false;
+  }
+}
+
+async function pathMatchesTrustStop(current: string, stopAt: string | undefined): Promise<boolean> {
+  if (stopAt === undefined) {
+    // POSIX without an explicit trust root: stop after checking the leaf only when the path
+    // exists; callers that need ancestor coverage must pass trustRoot (tests use realpath'd roots).
+    return true;
+  }
+  if (current.toLowerCase() === stopAt) return true;
+  try {
+    return (await realpath(current)).toLowerCase() === stopAt;
+  } catch {
+    return false;
   }
 }
 
