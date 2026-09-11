@@ -30,3 +30,6 @@ apps/desktop/native-runtime/
 
 # Isolated product demonstration build.
 apps/web/dist-demo/
+
+# Vitest 5 default artifact root (blob/json/junit/attachments)
+.vitest/
