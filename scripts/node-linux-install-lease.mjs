@@ -1,7 +1,11 @@
-import { lstat, mkdir, rmdir } from "node:fs/promises";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
 const leaseRecords = new WeakMap();
+const TOKEN_BYTES = 32;
+const TOKEN_NAME = "lease.token";
 
 /**
  * Holds the installer lock across archive import, verification, extraction, and activation. The
@@ -38,7 +42,9 @@ export async function assertLinuxInstallLease(lease, stateRootInput) {
   const stateRoot = assertAbsoluteStateRoot(stateRootInput);
   const record = isRecord(lease) ? leaseRecords.get(lease) : undefined;
   if (record === undefined || !record.active || record.stateRoot !== stateRoot) {
-    throw new Error("Linux install lease is missing, released, forged, or belongs to another root.");
+    throw new Error(
+      "Linux install lease is missing, released, forged, or belongs to another root.",
+    );
   }
   let rootMetadata;
   let lockMetadata;
@@ -58,6 +64,9 @@ export async function assertLinuxInstallLease(lease, stateRootInput) {
   ) {
     throw new Error("Linux install lease was removed or replaced.");
   }
+  // Overlayfs and other filesystems may reuse st_ino after rmdir+mkdir and report the same
+  // ctimeMs; a process-private token is the replacement detector that those fields cannot be.
+  await assertLeaseToken(record);
 }
 
 async function acquireLinuxInstallLease(stateRoot) {
@@ -66,6 +75,7 @@ async function acquireLinuxInstallLease(stateRoot) {
     throw new Error("Linux install lease state root must be a private real directory.");
   }
   const lockPath = path.join(stateRoot, "transaction.lock");
+  const tokenPath = path.join(lockPath, TOKEN_NAME);
   try {
     await mkdir(lockPath, { mode: 0o700 });
   } catch (error) {
@@ -75,6 +85,8 @@ async function acquireLinuxInstallLease(stateRoot) {
     throw error;
   }
   try {
+    const token = randomBytes(TOKEN_BYTES);
+    await writeExclusiveToken(tokenPath, token);
     const [stateAfterLock, lockMetadata] = await Promise.all([lstat(stateRoot), lstat(lockPath)]);
     if (!isPrivateDirectory(stateAfterLock) || !isPrivateDirectory(lockMetadata)) {
       throw new Error("Linux install lease lock is not a private real directory.");
@@ -86,10 +98,12 @@ async function acquireLinuxInstallLease(stateRoot) {
       lockPath,
       stateIdentity: identityOf(stateAfterLock, false),
       stateRoot,
+      token,
+      tokenPath,
     });
     return lease;
   } catch (error) {
-    await rmdir(lockPath);
+    await discardIncompleteLock(lockPath, tokenPath);
     throw error;
   }
 }
@@ -100,8 +114,72 @@ async function releaseLinuxInstallLease(lease) {
     throw new Error("Linux install lease cannot be released twice.");
   }
   await assertLinuxInstallLease(lease, record.stateRoot);
+  try {
+    await unlink(record.tokenPath);
+  } catch {
+    throw new Error("Linux install lease was removed or replaced.");
+  }
   await rmdir(record.lockPath);
   record.active = false;
+}
+
+async function assertLeaseToken(record) {
+  let handle;
+  try {
+    handle = await open(record.tokenPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const metadata = await handle.stat();
+    if (!isPrivateTokenFile(metadata)) {
+      throw new Error("Linux install lease was removed or replaced.");
+    }
+    const actual = Buffer.alloc(TOKEN_BYTES);
+    const { bytesRead } = await handle.read(actual, 0, TOKEN_BYTES, 0);
+    if (bytesRead !== TOKEN_BYTES || !timingSafeEqual(actual, record.token)) {
+      throw new Error("Linux install lease was removed or replaced.");
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "Linux install lease was removed or replaced."
+    ) {
+      throw error;
+    }
+    throw new Error("Linux install lease was removed or replaced.");
+  } finally {
+    if (handle !== undefined) {
+      try {
+        await handle.close();
+      } catch {
+        // The lease assertion owns the failure; a later release still fails closed.
+      }
+    }
+  }
+}
+
+async function writeExclusiveToken(tokenPath, token) {
+  const handle = await open(
+    tokenPath,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    0o600,
+  );
+  try {
+    await handle.write(token, 0, TOKEN_BYTES, 0);
+    await handle.sync();
+    const metadata = await handle.stat();
+    if (!isPrivateTokenFile(metadata)) {
+      throw new Error("Linux install lease token is not a private regular file.");
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function discardIncompleteLock(lockPath, tokenPath) {
+  try {
+    await unlink(tokenPath);
+  } catch {
+    // The token may not have been created before the acquire failure.
+  }
+  await rmdir(lockPath);
 }
 
 function assertAbsoluteStateRoot(value) {
@@ -112,10 +190,16 @@ function assertAbsoluteStateRoot(value) {
 }
 
 function isPrivateDirectory(metadata) {
+  return metadata.isDirectory() && !metadata.isSymbolicLink() && (metadata.mode & 0o777) === 0o700;
+}
+
+function isPrivateTokenFile(metadata) {
   return (
-    metadata.isDirectory() &&
+    metadata.isFile() &&
     !metadata.isSymbolicLink() &&
-    (metadata.mode & 0o777) === 0o700
+    metadata.nlink === 1 &&
+    (metadata.mode & 0o777) === 0o600 &&
+    metadata.size === TOKEN_BYTES
   );
 }
 

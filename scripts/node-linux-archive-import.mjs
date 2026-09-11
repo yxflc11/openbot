@@ -28,6 +28,10 @@ export async function importLinuxReleaseArchive(options) {
   if (!isReviewedSource(before)) {
     throw new Error("Linux archive import source is not a reviewed-size regular file.");
   }
+  // Overlayfs (and other coarse-timestamp filesystems) may leave mtime/ctime unchanged after a
+  // same-size in-place overwrite, so metadata identity is not enough. Hash the reviewed path
+  // through Node's real opener before the injectable openFile hook can mutate the source.
+  const sourceDigest = await sha256File(sourcePath);
 
   let sourceHandle;
   let destinationHandle;
@@ -73,6 +77,9 @@ export async function importLinuxReleaseArchive(options) {
     await destinationHandle.close();
     destinationHandle = undefined;
     const archiveSha256 = await sha256File(archivePath);
+    if (archiveSha256 !== sourceDigest) {
+      throw new Error("Linux archive import source changed while it was opened.");
+    }
     const finalMetadata = await lstat(archivePath);
     if (!sameImportedFile(importedMetadata, finalMetadata)) {
       throw new Error("Linux imported archive changed during final verification.");
@@ -101,7 +108,10 @@ export async function removeImportedLinuxReleaseArchive(options) {
   const stateRoot = assertAbsolutePath(options.stateRoot, "state root");
   const archivePath = assertAbsolutePath(options.archivePath, "imported archive");
   const importsRoot = path.join(stateRoot, "imports");
-  if (path.dirname(archivePath) !== importsRoot || !importedNamePattern.test(path.basename(archivePath))) {
+  if (
+    path.dirname(archivePath) !== importsRoot ||
+    !importedNamePattern.test(path.basename(archivePath))
+  ) {
     throw new Error("Linux archive cleanup path is outside the private import root.");
   }
   if (!/^[0-9a-f]{64}$/u.test(options.archiveSha256 ?? "")) {
