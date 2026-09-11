@@ -1,5 +1,16 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, mkdtemp, open, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  readdir,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +20,9 @@ import {
   removeImportedLinuxReleaseArchive,
 } from "./node-linux-archive-import.mjs";
 import { withLinuxInstallLease } from "./node-linux-install-lease.mjs";
+import { sha256BoundedRegularFile } from "./node-linux-release.mjs";
+
+const execFileAsync = promisify(execFile);
 
 const importIds = [
   "00000000-0000-4000-8000-000000000001",
@@ -143,6 +157,82 @@ test("cleanup preserves imported bytes when the expected digest is wrong", async
     );
     assert.equal((await lstat(imported.archivePath)).isFile(), true);
   });
+});
+
+
+test("pre-digest rejects symlink, FIFO, and oversize or growing sources", async () => {
+  const fixture = await createFixture();
+  const tinyBounds = Object.freeze({ maximumBytes: 64, minimumBytes: 8 });
+
+  const regular = path.join(fixture.root, "regular.bin");
+  await writeFile(regular, Buffer.alloc(16, 5), { mode: 0o600 });
+  assert.match(await sha256BoundedRegularFile(regular, tinyBounds), /^[0-9a-f]{64}$/u);
+
+  const linkPath = path.join(fixture.root, "link.bin");
+  await symlink(regular, linkPath);
+  await assert.rejects(
+    sha256BoundedRegularFile(linkPath, tinyBounds),
+    /ELOOP|regular file|not a regular file/i,
+  );
+
+  const fifoPath = path.join(fixture.root, "fifo.bin");
+  await execFileAsync("mkfifo", ["-m", "0600", fifoPath]);
+  await assert.rejects(
+    sha256BoundedRegularFile(fifoPath, tinyBounds),
+    /regular file|not a regular file/i,
+  );
+
+  const oversize = path.join(fixture.root, "oversize.bin");
+  await writeFile(oversize, Buffer.alloc(tinyBounds.maximumBytes + 1, 9), { mode: 0o600 });
+  await assert.rejects(
+    sha256BoundedRegularFile(oversize, tinyBounds),
+    /outside the reviewed bound/,
+  );
+
+  // File grows past the configured maximum before digest — rejected by size bounds.
+  const grownPastMax = path.join(fixture.root, "grown-past-max.bin");
+  await writeFile(grownPastMax, Buffer.alloc(tinyBounds.maximumBytes, 3), { mode: 0o600 });
+  const pastMaxWriter = await open(grownPastMax, "a");
+  await pastMaxWriter.write(Buffer.alloc(1, 4));
+  await pastMaxWriter.close();
+  await assert.rejects(
+    sha256BoundedRegularFile(grownPastMax, tinyBounds),
+    /outside the reviewed bound/,
+  );
+
+  // Same-size declared file that gains bytes while the bounded reader is active.
+  const growBounds = Object.freeze({
+    maximumBytes: 2 * 1024 * 1024,
+    minimumBytes: 1,
+  });
+  const growing = path.join(fixture.root, "growing.bin");
+  const growHandle = await open(growing, "wx", 0o600);
+  await growHandle.truncate(growBounds.maximumBytes);
+  await growHandle.write(Buffer.alloc(4096, 3), 0, 4096, 0);
+  await growHandle.close();
+  let stopGrowing = false;
+  const grower = (async () => {
+    const writer = await open(growing, "a");
+    try {
+      while (!stopGrowing) {
+        await writer.write(Buffer.alloc(256 * 1024, 4));
+      }
+    } finally {
+      await writer.close();
+    }
+  })();
+  try {
+    await assert.rejects(
+      (async () => {
+        await Promise.resolve();
+        return sha256BoundedRegularFile(growing, growBounds);
+      })(),
+      /grew beyond|exceeded its declared size|outside the reviewed bound/,
+    );
+  } finally {
+    stopGrowing = true;
+    await grower;
+  }
 });
 
 async function createFixture() {

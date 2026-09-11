@@ -1,7 +1,10 @@
 import { lstat, open, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { assertLinuxInstallLease } from "./node-linux-install-lease.mjs";
-import { LINUX_RELEASE_ARCHIVE_BOUNDS, sha256File } from "./node-linux-release.mjs";
+import {
+  LINUX_RELEASE_ARCHIVE_BOUNDS,
+  sha256BoundedRegularFile,
+} from "./node-linux-release.mjs";
 
 export const LINUX_ARCHIVE_IMPORT_BOUNDS = LINUX_RELEASE_ARCHIVE_BOUNDS;
 
@@ -29,9 +32,14 @@ export async function importLinuxReleaseArchive(options) {
     throw new Error("Linux archive import source is not a reviewed-size regular file.");
   }
   // Overlayfs (and other coarse-timestamp filesystems) may leave mtime/ctime unchanged after a
-  // same-size in-place overwrite, so metadata identity is not enough. Hash the reviewed path
-  // through Node's real opener before the injectable openFile hook can mutate the source.
-  const sourceDigest = await sha256File(sourcePath);
+  // same-size in-place overwrite, so metadata identity is not enough. Pre-digest the reviewed
+  // path with the bounded O_NOFOLLOW|O_NONBLOCK regular-file hasher (not createReadStream and
+  // not the injectable openFile) before import; the import-path digest must match for
+  // attestation / source trustworthiness.
+  const sourceDigest = await sha256BoundedRegularFile(
+    sourcePath,
+    LINUX_ARCHIVE_IMPORT_BOUNDS,
+  );
 
   let sourceHandle;
   let destinationHandle;
@@ -76,7 +84,10 @@ export async function importLinuxReleaseArchive(options) {
 
     await destinationHandle.close();
     destinationHandle = undefined;
-    const archiveSha256 = await sha256File(archivePath);
+    const archiveSha256 = await sha256BoundedRegularFile(
+      archivePath,
+      LINUX_ARCHIVE_IMPORT_BOUNDS,
+    );
     if (archiveSha256 !== sourceDigest) {
       throw new Error("Linux archive import source changed while it was opened.");
     }
@@ -124,7 +135,10 @@ export async function removeImportedLinuxReleaseArchive(options) {
   if (!isPrivateImportedFile(metadata)) {
     throw new Error("Linux archive cleanup target is not a private single-link regular file.");
   }
-  if ((await sha256File(archivePath)) !== options.archiveSha256) {
+  if (
+    (await sha256BoundedRegularFile(archivePath, LINUX_ARCHIVE_IMPORT_BOUNDS)) !==
+    options.archiveSha256
+  ) {
     throw new Error("Linux archive cleanup digest does not match the imported bytes.");
   }
   const afterDigest = await lstat(archivePath);

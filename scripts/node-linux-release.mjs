@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { constants, createReadStream } from "node:fs";
 import {
   chmod,
   copyFile,
   lstat,
   mkdir,
+  open,
   readdir,
   readFile,
   stat,
@@ -106,6 +107,82 @@ export async function sha256File(filePath) {
   const digest = createHash("sha256");
   for await (const chunk of createReadStream(filePath)) digest.update(chunk);
   return digest.digest("hex");
+}
+
+/**
+ * Fixed-bound regular-file SHA-256 for untrusted installer paths.
+ *
+ * Two-pass read contract (Linux archive import):
+ * 1) Pre-digest — hash the reviewed source through this opener
+ *    (`O_RDONLY | O_NOFOLLOW | O_NONBLOCK`) before the injectable `openFile` hook
+ *    runs, so a symlink/FIFO/growing replacement cannot hang or unbounded-read the
+ *    process. The digest binds later attestation / source trustworthiness.
+ * 2) Import-path digest — hash the exclusive private import the same way and
+ *    require equality. Same-size in-place mutation is detected by digest mismatch
+ *    without relying on mtime/ctime.
+ *
+ * Rejects non-regular files, out-of-bound sizes, and reads that deliver more bytes
+ * than the fstat-declared size or the configured maximum.
+ */
+export async function sha256BoundedRegularFile(
+  filePath,
+  bounds = LINUX_RELEASE_ARCHIVE_BOUNDS,
+) {
+  if (
+    !isRecord(bounds) ||
+    !Number.isSafeInteger(bounds.minimumBytes) ||
+    !Number.isSafeInteger(bounds.maximumBytes) ||
+    bounds.minimumBytes < 0 ||
+    bounds.maximumBytes < bounds.minimumBytes
+  ) {
+    throw new Error("Linux bounded file digest bounds are malformed.");
+  }
+  const handle = await open(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  );
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      throw new Error("Linux bounded file digest source is not a regular file.");
+    }
+    if (
+      metadata.size < bounds.minimumBytes ||
+      metadata.size > bounds.maximumBytes
+    ) {
+      throw new Error("Linux bounded file digest source size is outside the reviewed bound.");
+    }
+    const expectedSize = metadata.size;
+    const digest = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(Math.min(1024 * 1024, Math.max(expectedSize, 1)));
+    let total = 0;
+    while (total < expectedSize) {
+      const toRead = Math.min(buffer.length, expectedSize - total);
+      const { bytesRead } = await handle.read(buffer, 0, toRead, null);
+      if (bytesRead === 0) {
+        throw new Error("Linux bounded file digest source shrank while it was read.");
+      }
+      total += bytesRead;
+      if (total > expectedSize || total > bounds.maximumBytes) {
+        throw new Error("Linux bounded file digest exceeded its declared size bound.");
+      }
+      digest.update(buffer.subarray(0, bytesRead));
+    }
+    const afterRead = await handle.stat();
+    if (afterRead.size > expectedSize || afterRead.size > bounds.maximumBytes) {
+      throw new Error("Linux bounded file digest source grew beyond its declared size.");
+    }
+    const { bytesRead: extraBytes } = await handle.read(buffer, 0, 1, null);
+    if (extraBytes !== 0) {
+      throw new Error("Linux bounded file digest source grew beyond its declared size.");
+    }
+    if (total !== expectedSize) {
+      throw new Error("Linux bounded file digest source size mismatched the declared size.");
+    }
+    return digest.digest("hex");
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function verifyNodeRuntimeArchive(filePath, architecture) {
