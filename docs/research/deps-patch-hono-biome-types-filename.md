@@ -51,7 +51,7 @@
   - Hono `4.13.7` / `eebdf7be39abf0a872671835ccce0c4f03ea497a`
   - `@biomejs/biome` `2.5.12`
   - `@types/react-dom` `19.2.7`
-  - `filename-reserved-regex` `4.0.1` / `d267eb977513e8137062ecca53a15fd78d5b6c92` (plus existing `@types/filename-reserved-regex` `3.0.0`)
+  - `filename-reserved-regex` `4.0.1` / `d267eb977513e8137062ecca53a15fd78d5b6c92` (plus existing `@types/filename-reserved-regex` `3.0.0`; see types re-verify below)
 - Why this is the first viable option: each change is a Dependabot semver-patch (or types patch) on
   already-reviewed packages. No API migration is required. Vitest 5 is a separate major.
 - Exact OpenBot-specific gap: update exact `package.json` pins + lockfile, refresh EN/ZH reuse
@@ -76,7 +76,8 @@
 
 - Automated tests: `npm run check` on the consolidation branch (docs, research gate skip outside
   `pull_request`, lint/format via Biome 2.5.12, typecheck with `@types/react-dom` 19.2.7, Server
-  tests covering Hono routes and export filenames).
+  tests covering Hono routes and export filenames, Server container contract covering nested
+  production `apps/server/node_modules` + advisory export filename smoke).
 - Negative and fail-closed tests: existing Employee export reserved-name cases; existing Server
   security-header / SSE / auth route coverage.
 - Platforms and devices: Linux CI check job; no new platform claim.
@@ -84,6 +85,18 @@
   change.
 - Support level that the evidence permits: Declared dependency pins with Integrated automated check;
   not a new Certified platform claim.
+
+## Types re-verify (`filename-reserved-regex` 4.0.1)
+
+- Re-checked the published npm tarball for **4.0.1** (not carried forward from 4.0.0 by habit):
+  - `package.json` still declares `"exports": { "types": "./index.d.ts", "default": "./index.js" }`.
+  - `"files": ["index.js"]` still omits `index.d.ts`; `npm pack` contents are only
+    `index.js`, `license`, `package.json`, `readme.md`.
+  - Therefore DefinitelyTyped `@types/filename-reserved-regex` **3.0.0** remains required as a
+    Server **devDependency** for strict TypeScript; it must not ship in the production image.
+- Container packaging follow-up: 4.0.1 nests under `apps/server/node_modules` in the lockfile
+  (Desktop nests v3). Runtime packaging now copies that nested omit-dev closure; see
+  [server-node24-production-container.md](server-node24-production-container.md).
 
 ## Unresolved questions
 

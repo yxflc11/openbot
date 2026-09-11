@@ -88,6 +88,13 @@
 - Status: Accepted patch bump on the same decision.
 - Bump: `filename-reserved-regex` **4.0.0 → 4.0.1** (`d267eb9`; fix commit `7555d54` — Windows
   reserved name matching). `@types/filename-reserved-regex` **3.0.0** unchanged.
+- Types re-verify for **4.0.1** (not mechanical carry-forward from 4.0.0): published tarball still
+  declares `exports.types → ./index.d.ts` while `"files": ["index.js"]` omits that declaration
+  file (`npm pack` has no `index.d.ts`). Keep DefinitelyTyped **3.0.0** as a Server
+  **devDependency**; do not treat 4.0.1 as shipping its own types.
+- Packaging: 4.0.1 nests under `apps/server/node_modules` in the workspace lock (Desktop nests v3).
+  Server image runtime must copy that nested omit-dev closure; see
+  [server-node24-production-container.md](server-node24-production-container.md).
 - Rationale: parent upgrade plan already required rechecking the device-name set on dependency
   upgrades. Evidence and consolidating PR research:
   [deps-patch-hono-biome-types-filename.md](deps-patch-hono-biome-types-filename.md).

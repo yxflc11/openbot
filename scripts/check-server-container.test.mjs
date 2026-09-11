@@ -93,6 +93,55 @@ test("rejects a root or development-bearing runtime stage", () => {
   );
 });
 
+test("rejects omitting the nested Server production node_modules closure", () => {
+  assert.throws(
+    () =>
+      validateServerContainer({
+        ...valid,
+        dockerfile: dockerfile.replace(
+          "COPY --from=production-dependencies --chown=node:node /workspace/apps/server/node_modules ./apps/server/node_modules\n",
+          "",
+        ),
+      }),
+    /missing required fragment/,
+  );
+  assert.throws(
+    () =>
+      validateServerContainer({
+        ...valid,
+        dockerfile: dockerfile.replace("mkdir -p apps/server/node_modules", "true"),
+      }),
+    /missing required fragment/,
+  );
+});
+
+test("rejects smoke that skips nested production or export filename coverage", () => {
+  assert.throws(
+    () =>
+      validateServerContainer({
+        ...valid,
+        smoke: smoke.replace("con-employee.openbot-employee.json", "missing-export-filename.json"),
+      }),
+    /missing required fragment/,
+  );
+  assert.throws(
+    () =>
+      validateServerContainer({
+        ...valid,
+        smoke: smoke.replaceAll("filename-reserved-regex", "nested-prod-module"),
+      }),
+    /missing required fragment/,
+  );
+  assert.throws(
+    () =>
+      validateServerContainer({
+        ...valid,
+        smoke: smoke.replaceAll("buildEmployeeTemplate", "buildTemplateOmitted"),
+      }),
+    /missing required fragment/,
+  );
+});
+
 test("rejects missing runtime migrations or workspace output", () => {
   assert.throws(
     () =>

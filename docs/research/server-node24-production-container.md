@@ -1,6 +1,6 @@
 # Research: Node 24 production Server container
 
-- Status: Implemented; native Linux amd64 and arm64 hosted verification passed
+- Status: Implemented; native Linux amd64 and arm64 hosted verification passed; nested Server production node_modules packaging gap closed 2026-09-11
 - Date: 2026-09-05
 - Owner: @yxflc11
 - Related issue: 8-hour Server deployment milestone
@@ -130,6 +130,45 @@
 - `npm run check` passed locally on the same source. The independent review findings and the
   remaining roadmap gates are recorded in [DEV-002](../reviews/DEV-002.md), with a matching
   [Chinese record](../reviews/DEV-002.zh-CN.md). This records hosted test evidence, not a release.
+
+
+## Nested Server workspace production dependency packaging (2026-09-11)
+
+- Status: Gap observed in hosted dual-arch CI; packaging contract corrected on Draft PR #43
+- Trigger: After Dependabot-compatible `filename-reserved-regex` **4.0.1** landed on
+  `grok/deps-patch-hono-biome-types-filename`, native Server container jobs failed:
+  - amd64 job [`103302795495`](https://github.com/yxflc11/openbot/actions/runs/34611481967/job/103302795495)
+  - arm64 job [`103302795510`](https://github.com/yxflc11/openbot/actions/runs/34611481967/job/103302795510)
+  - Error: `ERR_MODULE_NOT_FOUND: Cannot find package 'filename-reserved-regex' imported from
+    /workspace/apps/server/dist/employee-package.js`
+- Root cause (packaging contract, not a one-package hoist accident):
+  - npm workspaces may place a Server **production** dependency under
+    `apps/server/node_modules/` when another workspace already nests a different major
+    (here: Desktop nests `filename-reserved-regex@3` via Electron tooling; Server pins `4.0.1`).
+  - The production-dependencies stage correctly ran `npm ci --omit=dev`, which installed the
+    nested Server production package.
+  - The runtime stage only `COPY`ed root `/workspace/node_modules`, so Node's resolver walking
+    from `apps/server/dist/*.js` could not find the nested package.
+  - Rearranging the lockfile so this one package happens to hoist would not close the general
+    workspace nesting contract and would regress whenever another workspace reintroduces a
+    conflicting major.
+- Chosen fix:
+  1. After `npm ci --omit=dev`, `mkdir -p apps/server/node_modules` so Docker `COPY` always has a
+     source even when every Server production dependency is hoisted.
+  2. Runtime `COPY`s `/workspace/apps/server/node_modules` from the production-dependencies stage
+     alongside root `node_modules`, preserving the real omit-dev production closure and excluding
+     Server `devDependencies` (including `@types/filename-reserved-regex`).
+  3. Native smoke now resolves modules via `createRequire` anchored at
+     `apps/server/dist/employee-package.js`, dynamically imports that module, and calls
+     `buildEmployeeTemplate` with Windows reserved stem `CON` expecting
+     `con-employee.openbot-employee.json` — coverage that fails closed if the nested production
+     package is missing from the image.
+- What was rejected: lockfile-only hoist of `filename-reserved-regex` without copying nested
+  Server production `node_modules`; copying the full build-stage `node_modules` (would retain
+  toolchain / devDependencies); bundling the Server into a single file before this packaging
+  contract is proven.
+- Verification plan addition: `scripts/check-server-container.mjs` requires the nested `COPY` /
+  `mkdir` fragments and the export-filename smoke markers; fixture tests reject their omission.
 
 ## Unresolved questions
 
