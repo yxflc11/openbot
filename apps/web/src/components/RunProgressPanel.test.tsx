@@ -56,7 +56,7 @@ describe("RunProgressPanel", () => {
     try {
       expect(view.container.querySelector("img")).toBeNull();
       expect(view.container.textContent).toContain("暂无执行画面");
-      expect(view.container.textContent).toContain("不会使用占位图");
+      expect(view.container.textContent).not.toContain("不会使用占位图");
       expect(view.container.textContent).toContain("Coordinate");
       expect(view.container.textContent).toContain("Drafting outline");
     } finally {
@@ -123,6 +123,80 @@ describe("RunProgressPanel", () => {
       expect(view.container.textContent).toContain("Research");
       await interact(() => view.container.querySelector<HTMLButtonElement>("button")?.click());
       expect(inspect).toHaveBeenCalledWith("child");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("maps native failure codes instead of raw errorMessage", async () => {
+    const failed = {
+      ...run,
+      status: "failed" as const,
+      errorCode: "model_credentials",
+      errorMessage: "upstream rejected credential blob",
+    };
+    const view = await renderComponent(
+      <RunProgressPanel
+        artifacts={[]}
+        bot={bot}
+        liveFrame={undefined}
+        progress={[]}
+        run={failed}
+      />,
+    );
+    try {
+      expect(view.container.textContent).toContain("模型密钥被拒绝");
+      expect(view.container.textContent).not.toContain("upstream rejected credential blob");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("prefers blocked status over a stale progress stage", async () => {
+    const blocked = { ...run, status: "blocked" as const };
+    const stale: RunProgress[] = [
+      {
+        id: "p-old",
+        runId: run.id,
+        channelId: "channel",
+        stage: "planning",
+        message: "Still drafting",
+        createdAt: "2026-09-11T00:00:30Z",
+      },
+    ];
+    const view = await renderComponent(
+      <RunProgressPanel
+        artifacts={[]}
+        bot={bot}
+        liveFrame={undefined}
+        progress={stale}
+        run={blocked}
+      />,
+    );
+    try {
+      const step = view.container.querySelector('[aria-label="当前步骤"]')?.textContent ?? "";
+      expect(step).toContain("阻塞");
+      expect(step).not.toContain("模型步骤");
+      expect(view.container.textContent).toContain("需要人工处理");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("says a completed run without summary has ended", async () => {
+    const completed = { ...run, status: "completed" as const, resultSummary: undefined };
+    const view = await renderComponent(
+      <RunProgressPanel
+        artifacts={[]}
+        bot={bot}
+        liveFrame={undefined}
+        progress={[]}
+        run={completed}
+      />,
+    );
+    try {
+      expect(view.container.textContent).toContain("任务已结束");
+      expect(view.container.textContent).not.toContain("等待 Server 报告下一步");
     } finally {
       await view.unmount();
     }

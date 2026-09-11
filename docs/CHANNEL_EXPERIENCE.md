@@ -43,4 +43,4 @@ The previous [core upgrade](CORE_UPGRADE.md) documents Bot delegation, persisten
 
 ## Run progress and computer preview
 
-The run progress panel in task details shows only Server-owned Run, progress, and collaboration records. Computer preview renders only when a real execution frame exists; otherwise it shows an explicit empty state — never a placeholder screenshot or invented progress.
+The run progress panel in task details shows only Server-owned Run, progress, and collaboration records. Computer preview renders only when a real execution frame exists; otherwise it shows a short empty state.

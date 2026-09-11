@@ -1,6 +1,7 @@
 import type { Artifact, Bot, Run, RunFrame, RunProgress } from "@openbot/domain";
 import { runStatusLabel } from "../run-state";
 import { ArtifactCard } from "./ArtifactCard";
+import { nativeRunFailure } from "./NativeRunControls";
 import { RobotAvatar } from "./RobotAvatar";
 import type { CollaborationRun } from "./RunCollaboration";
 import "./RunProgressPanel.css";
@@ -23,21 +24,32 @@ export function latestProgressMessage(
 ): string | undefined {
   if (run.status === "cancelled") return "Owner 已停止此任务。";
   if (run.status === "waiting_approval") return "敏感动作正在等待你的批准。";
-  if (run.status === "failed") return run.errorMessage;
-  if (run.status === "completed") return run.resultSummary;
-  const latest = progress.at(-1);
-  if (latest?.message) return latest.message;
-  return undefined;
+  if (run.status === "failed") return nativeRunFailure(run);
+  if (run.status === "blocked") return "任务遇到阻塞，需要人工处理。";
+  if (run.status === "completed") return run.resultSummary ?? "任务已结束。";
+  // Active runs may still show the latest Server progress message.
+  if (run.status === "running" || run.status === "assigned" || run.status === "queued") {
+    return progress.at(-1)?.message;
+  }
+  return progress.at(-1)?.message;
 }
 
-function currentStepLabel(run: Run, progress: readonly RunProgress[], terminal: boolean): string {
+export function currentStepLabel(run: Run, progress: readonly RunProgress[]): string {
+  // Live run status outranks stale progress stages (especially blocked / approval).
   if (run.status === "waiting_approval") return "等待审批";
-  if (terminal) return runStatusLabel(run.status);
+  if (run.status === "blocked") return runStatusLabel(run.status);
+  if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") {
+    return runStatusLabel(run.status);
+  }
   const latest = progress.at(-1);
   return latest ? stageLabel(latest.stage) : runStatusLabel(run.status);
 }
 
-/** Computer preview +分工/步骤/审批/终态/成果 — data must be real Server projections only. */
+export function currentStatusDetail(run: Run, progress: readonly RunProgress[]): string {
+  return latestProgressMessage(run, progress) ?? "等待 Server 报告下一步。";
+}
+
+/** Real Server projections only: computer preview, roles, step, approval, terminal, artifacts. */
 export function RunProgressPanel({
   artifacts,
   bot,
@@ -60,6 +72,7 @@ export function RunProgressPanel({
   const terminal =
     run.status === "completed" || run.status === "failed" || run.status === "cancelled";
   const currentMessage = latestProgressMessage(run, progress);
+  const statusDetail = currentStatusDetail(run, progress);
 
   return (
     <div className="run-progress-panel">
@@ -72,9 +85,7 @@ export function RunProgressPanel({
               alt={`${run.title} 的执行画面`}
             />
           ) : (
-            <p className="run-progress-panel__empty-preview">
-              暂无执行画面。只有节点回传真实截图时才会显示预览，不会使用占位图。
-            </p>
+            <p className="run-progress-panel__empty-preview">暂无执行画面</p>
           )}
         </div>
         {liveFrame ? (
@@ -121,7 +132,7 @@ export function RunProgressPanel({
 
       <section aria-label="当前步骤">
         <h3>当前步骤</h3>
-        <p>{currentStepLabel(run, progress, terminal)}</p>
+        <p>{currentStepLabel(run, progress)}</p>
         {currentMessage ? <p>{currentMessage}</p> : null}
       </section>
 
@@ -142,7 +153,7 @@ export function RunProgressPanel({
               <strong>{runStatusLabel(run.status)}</strong>
               <time dateTime={run.updatedAt}>{formatTime(run.updatedAt)}</time>
             </header>
-            <p>{currentMessage ?? "等待 Server 报告下一步。"}</p>
+            <p>{statusDetail}</p>
           </li>
         </ol>
       </section>
