@@ -34,7 +34,7 @@
     "html-to-text": "10.0.1",
     "ipaddr.js": "2.5.0",
     "officeparser": "7.8.0",
-    "pdfjs-dist": "6.2.108",
+    "pdfjs-dist": "6.3.289",
     "tesseract.js": "7.0.0",
     "write-file-atomic": "8.0.0",
     "ws": "8.21.3",
