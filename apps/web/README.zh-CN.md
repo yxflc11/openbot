@@ -8,4 +8,4 @@ React 客户端同时用于 Web 和 Electron Desktop。`App.tsx` 协调导航及
 
 启动文档要求的 Server 后，从根目录运行 `npm run dev:web`。组件/状态测试使用 `npm run test --workspace @openbot/web`；依赖顺序的类型检查使用根 `npm run typecheck`。界面修改还需宽窄窗口的真实渲染操作，JSDOM 不能证明像素布局、Electron 焦点或原生媒体权限。
 
-复用组件样式和现有变量，不在 `main.tsx` 继续叠加另一代全局覆盖；遗留样式整理见[仓库审查](../../docs/REPOSITORY_AUDIT.zh-CN.md)。渲染器只调用已声明的 Desktop 桥接，原生授权与生命周期属于 `apps/desktop`；插件网页遵守现有沙箱和 host 协议。
+复用组件样式和现有变量，不在 `main.tsx` 继续叠加另一代全局覆盖。渲染器只调用已声明的 Desktop 桥接，原生授权与生命周期属于 `apps/desktop`；插件网页遵守现有沙箱和 host 协议。

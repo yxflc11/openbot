@@ -1,94 +1,92 @@
-<p align="center">
-  <img src="docs/design/openbot-readme-banner.png" alt="OpenBot" width="100%">
-</p>
-
 # OpenBot
 
-**A self-hosted workspace where named Bots work together in channels.**
+### Your Bots. One working team.
 
-[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [Português (Brasil)](README.pt-BR.md)
+A self-hosted workspace for Bots that remember their roles, work together in channels, and deliver files you can use.
+
+[Website](https://yxflc11.github.io/openbot-website/) · [Try the demo](https://yxflc11.github.io/openbot-website/demo/index.html) · [Manual](https://yxflc11.github.io/openbot-website/manual/installation/) · [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
+[![MIT](https://img.shields.io/badge/license-MIT-222222.svg)](LICENSE)
 
-Create colleagues with their own identity, role, reviewed memory and skills. Assign work in a channel, let one Bot ask another for help, follow their replies and download the result. Desktop and Web share the actual React workspace; the OpenBot Server owns identity, permissions, routing, approvals and audit.
+[![OpenBot channel workspace with sample data](docs/design/openbot-channel-demo.png)](https://yxflc11.github.io/openbot-website/demo/index.html)
 
-**Current source version: Desktop `0.1.0-alpha.6`.** Channel collaboration, richer files, the MCP extension interface and the bilingual website are implemented. Check [Desktop releases](https://github.com/yxflc11/openbot/releases) for published installers; source commits and installer publication are separate. See the [feature-by-feature delivery record](docs/RELEASE_COMPLETION.md) for implemented behavior and validation boundaries. Development installers are unsigned; no automatic update channel or arbitrary desktop-control certification is claimed.
+*The real channel components, shown with sample data. The interactive demo does not connect to a model.*
 
-Website: [English](https://yxflc11.github.io/openbot-website/) · [简体中文](https://yxflc11.github.io/openbot-website/zh-cn/). The website is deployed independently from the product installer. Read the [source documentation index](docs/README.md) now. English and Chinese are the maintained current-candidate documentation; the Japanese and Portuguese READMEs describe an earlier snapshot.
+## Download
+
+**Desktop 0.1.0-alpha.6**
+
+| Platform | Installer | Workspace |
+| --- | --- | --- |
+| macOS · Apple Silicon | [Download DMG](https://github.com/yxflc11/openbot/releases/download/desktop-v0.1.0-alpha.6/openbot-desktop-0.1.0-alpha.6-darwin-arm64.dmg) | Built-in Server and PostgreSQL, or connect to your Server |
+| Windows · x64 | [Download EXE](https://github.com/yxflc11/openbot/releases/download/desktop-v0.1.0-alpha.6/openbot-desktop-0.1.0-alpha.6-win32-x64.exe) | Built-in Server and PostgreSQL, or connect to your Server |
+
+Preview installers are unsigned; macOS is not notarized. See [release notes and checksums](https://github.com/yxflc11/openbot/releases/tag/desktop-v0.1.0-alpha.6) and the [installation guide](docs/DESKTOP_INSTALLATION.md) for system trust prompts, upgrades and other platform builds.
+
+## Start working
+
+1. Install OpenBot and create a local workspace, or connect to an existing Server.
+2. In **Settings → Model service**, choose a provider, save your key and model, and enable the Agent. Model access is supplied by your own provider account.
+3. Create Bots with distinct roles and add them to a channel. Assign a task, attach source material, and let them ask colleagues for help.
+4. Follow replies, add instructions as work runs, and download the finished files.
+
+Saved settings, encrypted credentials and workspace data are reused when you reopen the app. Local services run while Desktop is open; unattended automations need a continuously running Server.
 
 ## What you can do
 
-| Part | Current behavior |
-| --- | --- |
-| Channels and direct conversations | Select one or several Bots, quote replies, retain drafts and reading position, inspect task history and manage group membership. |
-| Bot collaboration | Start bounded child tasks under each recipient's own identity, continue independent work and gather colleague results before delivery. Six concurrent root tasks; two delegation levels and four descendants per tree. |
-| Task controls | Real provider text drafts, task details, stop/resubmit and up to eight explicit additional instructions per native task at model-step boundaries. MiniMax uses the guarded final-response path. |
-| Message actions | Emoji, reply and overflow controls beside the bubble on hover/focus; copy and task details live in the menu. Reactions currently belong to the single workspace Owner. |
-| Files and voice | Add originals, extract Office/PDF text, recognize image text locally, explicitly transcribe selected media, record/preview voice, download originals/results and manage the attachment recycle bin. |
-| Bot profiles | Edit role/biography; inspect evidence and evolution; create/edit/delete typed memory; explicitly choose model-visible memory; review proposed lessons and skill versions. |
-| Skills | Import a single `SKILL.md`, review the complete version and allow its bounded use with existing tools. This does not execute arbitrary scripts or grant permissions. |
-| Share a Bot | Preview and download its portable profile and verified skill metadata. Imports create a new identity and require review. Memory, conversations, credentials, live grants and skill instruction files are excluded. |
-| Plugins | Connect standard MCP tools, text resources, Owner-selected prompts and isolated Apps. Review declarations and updates, grant access per Bot and approve configured external writes. |
-| Automations | Create fixed-interval tasks, pause/resume/delete, inspect the last outcome and skip overlapping runs. The Server must remain running. |
-| Settings | Eleven model-provider presets, retained encrypted credentials, explicit Agent enablement and workspace appearance/navigation/send preferences. |
-| Website | Product pages, searchable English/Chinese manuals, extension protocol/contribution guides and an isolated interactive demo made from the real channel components. Deployed from the separate openbot-website repository. |
+- **Build a team.** Give each Bot an identity, role and appearance. Review its memories, lessons and skill versions.
+- **Work in channels.** Talk directly or bring several Bots together. Bots delegate under their own identities and gather results before delivery. Reply, react, manage members and inspect task progress.
+- **Bring your material.** Attach documents, spreadsheets, PDFs, images or media. Extract text, use local OCR, record voice drafts and explicitly request supported transcription.
+- **Keep the results.** Download original files and generated reports. Share a reusable Bot profile without exporting private chats, memory, credentials or permissions.
+- **Connect more tools.** Review MCP tools, resources, prompts and isolated interactive Apps; grant access to the Bots that need them.
+- **Set recurring work.** Schedule fixed-interval tasks, pause or resume them, and review the last outcome.
 
-These are bounded features, not a claim of unlimited agents, unrestricted computer input, multi-human collaboration, complete MCP support, automatic crash replay or pixel-identical reproduction of every Grok state. The [delivery record](docs/RELEASE_COMPLETION.md) explains each boundary and links its implementation.
+OpenBot currently serves one workspace Owner. Delegation is bounded, and computer control requires a separately enrolled Worker and compatible Provider. Read the [manual](https://yxflc11.github.io/openbot-website/manual/channels/) for workflows and limits.
 
-## Windows candidate and existing platforms
+## Run from source
 
-New native platform work in this milestone targets **Windows x64**. The alpha.6 source adds a per-user NSIS installer, bundled local Server/PostgreSQL, DPAPI bootstrap storage, private data ACLs, graceful stop and retained-data restart. [Hosted Windows validation](https://github.com/yxflc11/openbot/actions/runs/34497646235) passed the installed runtime, encrypted credentials, database migrations, retained restart and installer lifecycle. This does not certify interactive hardware or code signing. Installation does not enroll a Worker or grant computer-control authority. See [Windows Desktop](docs/WINDOWS_DESKTOP.md).
-
-Existing macOS arm64 local services/companion and Linux remote-client code are retained; this milestone does not add new macOS/Linux adaptation or broaden their conformance claims. Worker Hosts and computer Providers remain separate components with their own enrollment and evidence.
-
-Use [Desktop installation](docs/DESKTOP_INSTALLATION.md) for exact filenames and upgrade instructions. Obtain artifacts only from a successful run for the desired commit in [GitHub Actions](https://github.com/yxflc11/openbot/actions/workflows/ci.yml), or from a [Desktop Release](https://github.com/yxflc11/openbot/releases) that actually contains the matching installer and `SHA256SUMS`. A build script or source tag does not mean an installer has been published.
-
-## Build and run
-
-Use the CI baseline **Node.js 22.22.2 and npm 10.9.9**, or a Node version satisfying [package.json](package.json). Install from the lockfile:
+Use **Node.js 22.22.2**, **npm 10.9.9** and Docker for the local PostgreSQL service.
 
 ```sh
 git clone https://github.com/yxflc11/openbot.git
 cd openbot
 npm ci
-npm run check
-npm run package --workspace @openbot/desktop
-```
-
-Build Desktop on its target OS; output is in `apps/desktop/out/`. Windows native preparation needs the validated PostgreSQL source-build bundle described in [Windows Desktop](docs/WINDOWS_DESKTOP.md). The hosted workflow assembles and checks it. Configuration and data are not replaced by rebuilding the application.
-
-To run Server, PostgreSQL and Web separately:
-
-```sh
 cp .env.example .env
-# Set OPENBOT_OWNER_PASSWORD to a random password of at least 15 characters.
+# Set OPENBOT_OWNER_PASSWORD in .env to a random password of at least 15 characters.
 npm run db:up
 npm run dev:server
-# In another terminal:
+# In a second terminal:
 npm run dev:web
 ```
 
-Open <http://localhost:5173>, configure a supported model and explicitly enable the native Agent, then create a `none`-profile Bot and a channel. Native model work does not need a Worker. Computer-backed work requires a separately enrolled Worker and executable Provider; see [Node enrollment](docs/NODE_ENROLLMENT.md) and [Provider conformance](docs/PROVIDER_CONFORMANCE.md). Container deployment is documented in [Server container](docs/SERVER_CONTAINER.md).
+Open [localhost:5173](http://localhost:5173). Configure your model in Settings, then create your first Bot. For a hosted Server, follow [container deployment](docs/SERVER_CONTAINER.md); for native Desktop builds, follow [Desktop installation](docs/DESKTOP_INSTALLATION.md#build-and-prepare-a-release).
 
-The website is maintained and built in [openbot-website](https://github.com/yxflc11/openbot-website); follow its README for installation, demo preparation and `npm run build`. The demo uses sample data, blocks external API requests and never connects to a model or real workspace.
+Before submitting a change, run `npm run check` from the repository root.
 
-## Architecture and contribution
+## Architecture
 
-```text
-Desktop / Web -> Server -> native Agent and scoped MCP connections
-                   |
-                   +-> enrolled Worker -> executable Provider
-                   |
-                   +-> PostgreSQL, object storage and audit
-```
+Desktop and Web share a React interface. The Server owns Bot identities, routing, permissions, approvals and audit. It runs model tasks and scoped MCP connections, stores workspace data in PostgreSQL and object storage, and dispatches computer-backed work to enrolled Workers.
 
-Server is the sole authority. Models, files, webpages, skills, plugins and workers are untrusted. Tool capabilities do not confer permission. Remote deployments use trusted HTTPS, restricted allowed origins and secure cookies; database and computer backends remain private. Read [Security](SECURITY.md) and the [threat model](docs/SECURITY.md).
+| Location | Responsibility |
+| --- | --- |
+| [apps/web](apps/web) | Shared workspace UI |
+| [apps/desktop](apps/desktop) | Electron shell, local services and packaging |
+| [apps/server](apps/server) | API, model execution, collaboration and authorization |
+| [apps/node](apps/node) · [Worker Hosts](docs/NODE_ENROLLMENT.md) | Enrolled execution and native lifecycle |
+| [packages](packages) · [providers](providers) | Shared contracts and execution adapters |
+| [openbot-website](https://github.com/yxflc11/openbot-website) | Independent website, manuals and demo |
 
-Start with [Contributing](CONTRIBUTING.md), the [repository map](docs/REPOSITORY_MAP.md), [current architecture](docs/ARCHITECTURE.md), [engineering audit](docs/REPOSITORY_AUDIT.md) and [open-source reuse policy](docs/OPEN_SOURCE_REUSE.md). Plugin authors can implement a standard MCP Streamable HTTP endpoint; no OpenBot-specific SDK is required. See [plugin author contract](docs/PLUGINS.md) and the website's source extension guides in [openbot-website](https://github.com/yxflc11/openbot-website) `src/content/docs`.
+See the [repository map](docs/REPOSITORY_MAP.md), [architecture](docs/ARCHITECTURE.md) and [security model](docs/SECURITY.md) for ownership and integration boundaries.
 
-Employee evolution and learning are explicitly inspired by [Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py). OpenBot does not claim to have invented that concept. The office visualization is optional and deferred.
+## Extend and contribute
 
-## License and naming
+**Plugins:** implement a standard MCP Streamable HTTP endpoint for tools, resources, prompts or Apps. Follow the [plugin contract](docs/PLUGINS.md), start from an [example](apps/server/src/plugin-example.ts), and submit your extension for review. No OpenBot-specific SDK is required; installation and per-Bot permission are separate steps.
 
-[MIT License](LICENSE). Required upstream notices are preserved in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). `OpenBot` is a working name also used by other projects; a distinct stable-release name remains a project decision. This project is not affiliated with xAI, Tencent, CopilotKit, OpenClaw or other referenced projects.
+**Core:** read [Contributing](CONTRIBUTING.md), [open-source reuse](docs/OPEN_SOURCE_REUSE.md) and the [documentation index](docs/README.md). Use [Issues](https://github.com/yxflc11/openbot/issues) for bugs and proposals, and [pull requests](https://github.com/yxflc11/openbot/pulls) for changes. Report vulnerabilities through [Security](SECURITY.md).
+
+## License and acknowledgments
+
+[MIT](LICENSE). Upstream attribution is maintained in [Third-party notices](THIRD_PARTY_NOTICES.md). Bot evolution and learning are inspired by [Hermes Agent's learning graph](https://github.com/NousResearch/hermes-agent/blob/63279301bcbdc185c1b07b98a9312eb0c862f26d/agent/learning_graph.py).
+
+OpenBot is a working project name shared with other projects. This project is independent of xAI, Tencent, CopilotKit and OpenClaw. [Japanese](README.ja.md) and [Portuguese](README.pt-BR.md) translations currently describe an earlier release.
