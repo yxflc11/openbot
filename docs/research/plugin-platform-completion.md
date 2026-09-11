@@ -60,3 +60,38 @@ The existing attachment marker is an OpenBot transport convention, not MCP conte
 ### Approval timeout classification
 
 Hosted Linux CI exposed a clock-domain bug: the approval timeout signal could fire before the separately calculated wall-clock `expiresAt` appeared expired, turning a known approval expiry into generic plugin unavailability. The Node `AbortSignal.timeout`/`AbortSignal.any` API provides the actual originating signal state (https://nodejs.org/api/globals.html#static-method-abortsignaltimeoutdelay). Keep that signal and classify its abort directly, with parent cancellation taking precedence. Preserve the wall-clock expiry for approval admission. A regression freezes `Date.now` while the real timeout runs, verifying expiry without external dispatch. No deadline is increased and no automatic retry is added.
+
+## Standalone author starter and update comparison (2026-09-11)
+
+Reviewed the existing MCP SDK 1.30.0 source/tests, the local example and the public 2025-11-25 transport plus Apps overview again. GitHub query `modelcontextprotocol/typescript-sdk 1.30.0 StreamableHTTPServerTransport` surfaced issue 2730 (notification acknowledgement with `Connection: close`); the starter retains the tested SDK transport and does not add that header. No v2 SDK migration is required for the current protocol scope.
+
+Reuse the existing example as the single source, copying its two bounded source files and license into an exclusively created standalone directory with pinned SDK/Zod/tsx dependencies. Creation never installs dependencies, starts a listener or modifies the OpenBot runtime. Verify from a fresh directory after an independent dependency installation. Keep `tools`, `resources`, `prompts` and App-view limits explicit. Add a presentation-only comparison of old/new named declarations before update and status-specific connection errors. No upstream source copied and no dependency added to the core.
+
+## Production CSP repair (2026-09-11)
+
+Real built-Web verification found that the data-URL proxy inherits the host's restrictive CSP,
+so its inline bridge script cannot initialize. The earlier synthetic development check did not
+exercise that production policy. Rechecked the pinned ext-apps 1.7.5 source above, its
+[double-frame specification](https://github.com/modelcontextprotocol/ext-apps/blob/92f46a574568a3ddac7600343b7d3c4c4ed7b588/specification/2026-01-26/apps.mdx),
+[W3C CSP3 2026-08-13 inheritance](https://www.w3.org/TR/2026/WD-CSP3-20260813/#security-inherit-csp),
+and the [HTML sandbox rules](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#attr-iframe-sandbox).
+Reuse Vite 8.2.2's existing asset emission and development middleware APIs to serve the fixed proxy
+as a separate document. Both frames use `allow-scripts` without `allow-same-origin`, giving them
+opaque origins; plugin HTML remains exclusively in the inner frame. Only this trusted proxy
+permits inline scripts. The host keeps `script-src 'self'`; the view retains no network, forms,
+popups, devices, top navigation or host authority. No dependency or upstream source is added.
+Validate against the production build with a real installed MCP example and reject hostile view
+attempts; a string-only unit test is insufficient evidence of browser CSP behavior.
+
+Production browser result: using a real Server/Postgres workspace and the independently scaffolded
+MCP example, the built Web host completed AppBridge initialization, counted a click, and read the
+authorized notebook resource. A temporary hostile view probe could not read the top document or
+cookies and its direct fetch was blocked. Revoking content permissions removed the open view;
+a subsequent changed tool declaration appeared in update review and applying it disabled the
+plugin and cleared grants. These are browser observations, not native Desktop or Windows proofs.
+
+The follow-up native regression uses the existing Electron 44.2.0 binary with a disposable hidden
+file renderer and the actual built proxy/CSP. macOS passed: the proxy initialized, host/proxy DOM
+and cookie access were denied, and a real listening loopback probe received zero requests.
+`apps/desktop/scripts/check-plugin-sandbox.mjs` now runs in native macOS/Windows CI after build.
+It is a renderer boundary check, not an installed-app/keychain or signed-distribution claim.

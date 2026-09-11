@@ -267,11 +267,30 @@ describe("native reviewed Employee template saving", () => {
       { ...input, path: "/tmp/package.json" },
       { ...input, botId: "../other" },
       { ...input, packageId: "bad" },
+      { ...input, includeSkillContent: "true" },
       { ...input, generatedAt: "2026-02-31T00:00:00.000Z" },
       { ...input, downloadReviewToken: `"${input.downloadReviewToken}"` },
     ])
       expect(await f.saver.saveEmployeeTemplate(value)).toEqual({ status: "unavailable" });
     expect(f.fetcher).not.toHaveBeenCalled();
+  });
+  it("binds instruction selection into the reviewed native download request", async () => {
+    const f = await fixture();
+    const path = join(f.directory, "bot-v2.json");
+    f.choosePath.mockResolvedValue(path);
+    f.fetcher.mockImplementation(async (url) =>
+      url.endsWith("/auth/session")
+        ? Response.json({ authenticated: true })
+        : new Response(body, { headers }),
+    );
+    expect(await f.saver.saveEmployeeTemplate({ ...input, includeSkillContent: true })).toEqual({
+      status: "saved",
+    });
+    expect(await readFile(path, "utf8")).toBe(body);
+    const requested = f.fetcher.mock.calls[0]?.[0];
+    if (!requested) throw new Error("Missing native download request.");
+    expect(new URL(requested).searchParams.get("includeSkillContent")).toBe("true");
+    expect(f.fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({ "If-Match": headers.etag });
   });
   it.each(["mime", "etag", "hash", "oversize", "filename", "redirect", "changed", "json"])(
     "rejects invalid Employee export responses before a dialog: %s",

@@ -4632,6 +4632,41 @@ select:focus-visible {
   padding: 0;
   list-style: none;
 }
+.export-content-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 20px 26px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.export-content-choice input {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+.portable-skill-list details {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.portable-skill-list summary {
+  cursor: pointer;
+}
+.portable-skill-list pre {
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f5f6f8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.portable-skill-list details small {
+  display: block;
+  overflow-wrap: anywhere;
+}
 .portable-skill-list li,
 .import-host-list li {
   display: grid;

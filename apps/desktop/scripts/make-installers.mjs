@@ -1,3 +1,4 @@
+import { macosSigningOptions, verifyNotarizedDesktop } from "./macos-signing.mjs";
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access, appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -29,6 +30,7 @@ const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const manifest = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
 const version = validateInstallerVersion(manifest.version);
 const { platform, arch } = process;
+const signing = macosSigningOptions(process.env, platform);
 const target = installerTarget(platform, arch);
 const bundle = join(appRoot, "out", `OpenBot-${platform}-${arch}`);
 const outputDirectory = join(appRoot, "out", "installers", `${platform}-${arch}`);
@@ -51,6 +53,7 @@ async function verifyFuses(target = binary) {
   }
 }
 await verifyFuses();
+if (signing) await verifyNotarizedDesktop(join(bundle, "OpenBot.app"));
 process.env.CSC_IDENTITY_AUTO_DISCOVERY = "false";
 await build({
   projectDir: appRoot,
@@ -78,7 +81,7 @@ if (platform === "darwin") {
     mounted = true;
     const application = join(mount, "OpenBot.app");
     const resources = join(application, "Contents", "Resources");
-    await access(join(application, "Contents", "MacOS", "openbot"), constants.X_OK);
+    await access(join(application, "Contents", "MacOS", "OpenBot"), constants.X_OK);
     await access(join(resources, "native-runtime", "postgres", "bin", "postgres"), constants.X_OK);
     await access(join(resources, "LICENSE"));
     await access(join(resources, "LICENSES.chromium.html"));
@@ -86,6 +89,7 @@ if (platform === "darwin") {
       throw new Error("The DMG does not contain the verified application at its installable root.");
     }
     await verifyFuses(application);
+    if (signing) await verifyNotarizedDesktop(application);
   } finally {
     // Do not recursively remove a still-mounted image if detaching fails.
     if (mounted) await run("/usr/bin/hdiutil", ["detach", mount, "-quiet"], { timeout: 30_000 });
@@ -107,7 +111,7 @@ await writeFile(
       platform,
       arch,
       sourceCommit,
-      signing: "unsigned-development",
+      signing: signing ? "developer-id-notarized" : "unsigned-development",
       files,
     },
     null,
@@ -125,4 +129,4 @@ if (process.env.GITHUB_ENV) {
     `OPENBOT_INSTALLER_DIRECTORY=${outputDirectory}\nOPENBOT_INSTALLER_ARTIFACT=openbot-installers-${platform}-${arch}-${sourceCommit}\n`,
   );
 }
-console.info(`Created unsigned Desktop ${version} installers in ${outputDirectory}`);
+console.info(`Created verified Desktop ${version} installers in ${outputDirectory}`);

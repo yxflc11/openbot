@@ -11,11 +11,15 @@ on:
         description: Desktop version in that commit, for example 0.1.0-alpha.2
         required: true
         type: string
-      windows_only:
-        description: Prepare only the verified Windows x64 installer
-        required: false
-        default: false
-        type: boolean
+      targets:
+        description: Exact installer platforms to verify and include
+        required: true
+        default: darwin-arm64,win32-x64
+        type: choice
+        options:
+          - darwin-arm64,win32-x64
+          - win32-x64
+          - darwin-arm64,win32-x64,linux-x64
 
 permissions:
   contents: read
@@ -38,7 +42,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       RELEASE_RUN_ID: ${{ inputs.run_id }}
       RELEASE_VERSION: ${{ inputs.version }}
-      RELEASE_WINDOWS_ONLY: ${{ inputs.windows_only }}
+      RELEASE_TARGETS: ${{ inputs.targets }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,16 +66,16 @@ jobs:
       - name: Retrieve and verify the selected native installer set
         shell: bash
         run: |
-          scope=()
-          pattern="openbot-installers-*-$RELEASE_SOURCE_COMMIT"
-          if [[ "$RELEASE_WINDOWS_ONLY" == true ]]; then
-            scope+=(--windows-only)
-            name="openbot-installers-win32-x64-$RELEASE_SOURCE_COMMIT"
+          node --input-type=module -e '
+            import { desktopReleaseTargets } from "./scripts/prepare-desktop-release.mjs";
+            desktopReleaseTargets(process.env.RELEASE_TARGETS.split(","));
+          '
+          IFS=',' read -r -a targets <<< "$RELEASE_TARGETS"
+          for target in "${targets[@]}"; do
+            name="openbot-installers-$target-$RELEASE_SOURCE_COMMIT"
             gh run download "$RELEASE_RUN_ID" --name "$name" --dir "$RUNNER_TEMP/downloads/$name"
-          else
-            gh run download "$RELEASE_RUN_ID" --pattern "$pattern" --dir "$RUNNER_TEMP/downloads"
-          fi
-          node scripts/prepare-desktop-release.mjs "$RUNNER_TEMP/downloads" "$RUNNER_TEMP/release" "$RUNNER_TEMP/source-run.json" "$RELEASE_VERSION" "$GH_REPO" "${scope[@]}"
+          done
+          node scripts/prepare-desktop-release.mjs "$RUNNER_TEMP/downloads" "$RUNNER_TEMP/release" "$RUNNER_TEMP/source-run.json" "$RELEASE_VERSION" "$GH_REPO" "--targets=$RELEASE_TARGETS"
       - name: Create a reviewable draft prerelease without replacing existing assets
         shell: bash
         run: |
@@ -80,9 +84,12 @@ jobs:
             echo '::error::This Desktop release already exists; refusing to replace it.'
             exit 1
           fi
-          if [[ "$RELEASE_WINDOWS_ONLY" == true ]]; then
+          if [[ "$RELEASE_TARGETS" == win32-x64 ]]; then
             platforms='Windows x64 only. This release contains no macOS or Linux installer.'
             install='Windows: open the EXE for a per-user installation.'
+          elif [[ "$RELEASE_TARGETS" == darwin-arm64,win32-x64 ]]; then
+            platforms='macOS arm64 and Windows x64 installers, both with the local Server. This release contains no Linux installer.'
+            install='macOS: open the DMG and drag OpenBot into Applications. Windows: open the EXE for a per-user installation.'
           else
             platforms='macOS arm64, Windows x64 and Linux x64 installers. macOS and Windows include the local Server; Linux connects to a separately deployed Server.'
             install='macOS: open the DMG and drag OpenBot into Applications. Windows: open the EXE for a per-user installation. Linux: install the DEB or run the AppImage.'

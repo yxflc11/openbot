@@ -6,6 +6,17 @@ OpenBot connects Bots to external tools through MCP. Plugins can query services,
 or perform approved operations in their own backends. MCP also supplies resources, reusable prompts and isolated HTML views; SKILL.md supplies instructions. Installing a plugin registers a Server connection, without downloading code into
 Desktop or launching a subprocess.
 
+## Create an independent plugin
+
+From the OpenBot checkout, run `npm run plugin:create -- ../my-openbot-plugin` with a new directory.
+The generator copies the tested MCP example and its MIT license, writes pinned dependencies and
+an independent README, and refuses to overwrite an existing directory. In the new project run
+`npm install`, retain its lockfile, then `npm start`. No OpenBot workspace imports are required.
+Configure the exact local endpoint on the Server as described below; install, grant and enable it
+through the plugin manager. The sample includes tools, resources, a prompt and an isolated App.
+Plugin updates show added, removed and changed declarations before review; applying an update
+still disables the plugin and clears grants. The example's notes are temporary process memory.
+
 ## Owner workflow
 
 1. Open the plugin manager, enter a name, MCP endpoint and optional dedicated bearer token.

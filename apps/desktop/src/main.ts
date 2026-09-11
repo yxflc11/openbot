@@ -440,15 +440,15 @@ async function startDesktop(): Promise<void> {
     runtimeRoot: nativeRuntimeRoot,
     dataRoot: join(app.getPath("userData"), "openbot", "local-server"),
     platform: process.platform,
-    encrypt: (value) => {
-      if (!safeStorage.isEncryptionAvailable())
+    encrypt: async (value) => {
+      if (!(await safeStorage.isAsyncEncryptionAvailable()))
         throw new Error("Operating-system secret storage is unavailable.");
-      return safeStorage.encryptString(value).toString("base64");
+      return (await safeStorage.encryptStringAsync(value)).toString("base64");
     },
-    decrypt: (value) => {
-      if (!safeStorage.isEncryptionAvailable())
+    decrypt: async (value) => {
+      if (!(await safeStorage.isAsyncEncryptionAvailable()))
         throw new Error("Operating-system secret storage is unavailable.");
-      return safeStorage.decryptString(Buffer.from(value, "base64"));
+      return (await safeStorage.decryptStringAsync(Buffer.from(value, "base64"))).result;
     },
     launchServer: async (env) => {
       const child = utilityProcess.fork(join(nativeRuntimeRoot, "apps/server/dist/index.js"), [], {

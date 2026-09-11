@@ -29,4 +29,56 @@ describe("plugin view containment", () => {
     expect(proxy).not.toContain("allow-top-navigation");
     expect(proxy).not.toContain("allow-popups");
   });
+
+  it("only loads host-supplied HTML once and rejects forged or oversized view messages", () => {
+    const forwarded: unknown[] = [];
+    const attributes: Record<string, string> = {};
+    const host = { postMessage: (message: unknown) => forwarded.push(message) };
+    const view = {
+      contentWindow: {},
+      setAttribute: (key: string, value: string) => {
+        attributes[key] = value;
+      },
+      srcdoc: "",
+      title: "",
+    };
+    let listener: (event: { source: unknown; data: unknown }) => void = () => {};
+    let appended = 0;
+    const script = pluginProxyDocument().match(/<script>([\s\S]*)<\/script>/u)?.[1];
+    if (!script) throw new Error("Missing trusted proxy script");
+    new Script(script).runInNewContext({
+      window: {
+        parent: host,
+        addEventListener: (_name: string, callback: typeof listener) => {
+          listener = callback;
+        },
+      },
+      document: { createElement: () => view, body: { append: () => appended++ } },
+      setInterval: () => 1,
+      setTimeout: () => 2,
+      clearInterval: () => {},
+    });
+    const resource = {
+      jsonrpc: "2.0",
+      method: "ui/notifications/sandbox-resource-ready",
+      params: { html: "<h1>Untrusted view</h1>" },
+    };
+    listener({ source: {}, data: resource });
+    expect(appended).toBe(0);
+    listener({ source: host, data: resource });
+    listener({ source: host, data: resource });
+    expect(appended).toBe(1);
+    expect(attributes.sandbox).toBe("allow-scripts");
+    expect(view.srcdoc).toContain(PLUGIN_VIEW_CSP);
+    const initialize = { jsonrpc: "2.0", id: 1, method: "ui/initialize", params: {} };
+    listener({ source: {}, data: initialize });
+    listener({ source: view.contentWindow, data: resource });
+    listener({
+      source: view.contentWindow,
+      data: { ...initialize, params: { text: "x".repeat(16385) } },
+    });
+    expect(forwarded).toEqual([]);
+    listener({ source: view.contentWindow, data: initialize });
+    expect(forwarded).toEqual([initialize]);
+  });
 });

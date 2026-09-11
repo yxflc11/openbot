@@ -40,16 +40,27 @@ async function runSmoke() {
     );
   };
   diagnostics.subscribe(reportDiagnostic);
+  assert.equal(
+    await safeStorage.isAsyncEncryptionAvailable(),
+    true,
+    "Async DPAPI must be available",
+  );
+  const legacyCiphertext = safeStorage.encryptString("openbot-legacy-storage-fixture");
+  assert.equal(
+    (await safeStorage.decryptStringAsync(legacyCiphertext)).result,
+    "openbot-legacy-storage-fixture",
+    "The async startup path must read credentials saved by the previous synchronous version",
+  );
   const controller = new NativeServerController({
     runtimeRoot,
     dataRoot: clusterRoot,
     platform: process.platform,
-    encrypt(value) {
-      assert.equal(safeStorage.isEncryptionAvailable(), true, "DPAPI must be available");
-      return safeStorage.encryptString(value).toString("base64");
+    async encrypt(value) {
+      assert.equal(await safeStorage.isAsyncEncryptionAvailable(), true, "DPAPI must be available");
+      return (await safeStorage.encryptStringAsync(value)).toString("base64");
     },
-    decrypt(value) {
-      return safeStorage.decryptString(Buffer.from(value, "base64"));
+    async decrypt(value) {
+      return (await safeStorage.decryptStringAsync(Buffer.from(value, "base64"))).result;
     },
     async launchServer(env) {
       databaseUrl = env.OPENBOT_DATABASE_URL;

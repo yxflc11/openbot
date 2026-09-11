@@ -93,7 +93,7 @@ export function PluginAppFrame({
         ref={frame}
         title={title}
         src={source}
-        sandbox="allow-scripts allow-same-origin"
+        sandbox="allow-scripts"
         referrerPolicy="no-referrer"
         allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-write 'none'"
       />

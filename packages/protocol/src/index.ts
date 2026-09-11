@@ -805,6 +805,17 @@ export const employeeTemplateSkillSchema = z
     description: z.string().trim().min(1).max(1024),
     version: z.string().trim().min(1).max(64),
     requiredCapabilities: z.array(z.string().trim().min(1).max(160)).max(64),
+    content: z
+      .object({
+        markdown: z
+          .string()
+          .min(1)
+          .max(12 * 1024),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+        license: z.string().min(1).max(500),
+      })
+      .strict()
+      .optional(),
     dependencySlugs: z.array(z.string().trim().min(1).max(160)).max(64),
   })
   .strict();
@@ -822,7 +833,7 @@ export const employeeTemplateSignatureSchema = z.discriminatedUnion("status", [
 
 export const employeeTemplatePayloadSchema = z
   .object({
-    format: z.literal("openbot.employee/v1"),
+    format: z.enum(["openbot.employee/v1", "openbot.employee/v2"]),
     kind: z.literal("template"),
     packageId: z.string().uuid(),
     generatedAt: z.string().datetime(),
@@ -851,7 +862,12 @@ export const employeeTemplatePayloadSchema = z
       .strict(),
     signature: employeeTemplateSignatureSchema,
   })
-  .strict();
+  .strict()
+  .refine(
+    (payload) =>
+      payload.format !== "openbot.employee/v1" || payload.skills.every((skill) => !skill.content),
+    { message: "Instruction content requires openbot.employee/v2." },
+  );
 
 export type EmployeeTemplatePayload = z.infer<typeof employeeTemplatePayloadSchema>;
 
@@ -919,6 +935,9 @@ export const dsseEnvelopeSchema = z
   .passthrough();
 
 export type DsseEnvelope = z.infer<typeof dsseEnvelopeSchema>;
+
+export const employeeTemplateV2DssePayloadType =
+  "application/vnd.openbot.employee.v2+json" as const;
 
 export const employeeTemplateDssePayloadType = "application/vnd.openbot.employee.v1+json" as const;
 

@@ -862,10 +862,10 @@ export function createApp(dependencies: AppDependencies) {
 
   app.get("/api/v1/bots/:botId/export/preview", async (context) => {
     const profile = await dependencies.store.getEmployeeProfile(context.req.param("botId"));
-    const prepared = prepareEmployeeTemplateExport(
-      profile,
-      employeeTemplateExportOptions(dependencies.employeePublisher),
-    );
+    const prepared = prepareEmployeeTemplateExport(profile, {
+      ...employeeTemplateExportOptions(dependencies.employeePublisher),
+      includeSkillContent: employeeExportContentSelection(context.req.raw),
+    });
     return context.json({ preview: prepared.preview });
   });
 
@@ -876,6 +876,7 @@ export function createApp(dependencies: AppDependencies) {
       ...employeeTemplateExportOptions(dependencies.employeePublisher),
       generatedAt: reviewedInstance.generatedAt,
       packageId: reviewedInstance.packageId,
+      includeSkillContent: employeeExportContentSelection(context.req.raw),
     });
     if (employeeTemplate.preview.blocked) {
       throw new StoreValidationError(
@@ -1178,6 +1179,16 @@ class EmployeeExportReviewRequiredError extends Error {}
 const maximumApiRequestBytes = 64 * 1024;
 const maximumNodeIdentityRequestBytes = 8 * 1024;
 
+function employeeExportContentSelection(request: Request): boolean {
+  const values = new URL(request.url).searchParams.getAll("includeSkillContent");
+  if (!values.length) return false;
+  if (values.length !== 1 || values[0] !== "true")
+    throw new RequestValidationError("Invalid skill content selection.", {
+      includeSkillContent: ["Use exactly one true value or omit the parameter."],
+    });
+  return true;
+}
+
 function parseEmployeeExportDownloadRequest(request: Request): {
   packageId: string;
   generatedAt: string;
@@ -1199,7 +1210,7 @@ function parseEmployeeExportDownloadRequest(request: Request): {
   }
 
   const unsupportedParameters = Array.from(parameters.keys()).filter(
-    (name) => name !== "packageId" && name !== "generatedAt",
+    (name) => name !== "packageId" && name !== "generatedAt" && name !== "includeSkillContent",
   );
   if (unsupportedParameters.length > 0) {
     throw new RequestValidationError("The reviewed Employee export instance is invalid.", {

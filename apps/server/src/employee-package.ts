@@ -21,16 +21,19 @@ import { windowsReservedNameRegex } from "filename-reserved-regex";
 import {
   dsseEnvelopeSchema,
   employeeTemplateDssePayloadType,
+  employeeTemplateV2DssePayloadType,
   employeeTemplatePackageSchema,
   employeeTemplatePayloadSchema,
   type DsseEnvelope,
   type EmployeeTemplatePackage,
   type EmployeeTemplatePayload,
 } from "@openbot/protocol";
+import { portableSkillContent, skillContentProblem } from "./employee-package-content.js";
 import { requirementsForExecutionProfile } from "./execution-routing.js";
 import { scanSensitiveText } from "./sensitive-content.js";
 
 interface EmployeeTemplateBuildOptions {
+  includeSkillContent?: boolean;
   generatedAt?: string;
   packageId?: string;
   publisherKeyId?: string;
@@ -97,8 +100,9 @@ export function buildEmployeeTemplate(
     new Set(exportedSkills.flatMap((skill) => skill.requiredCapabilities)),
   ).sort();
 
+  const contentFindings: EmployeeExportFinding[] = [];
   const payload = employeeTemplatePayloadSchema.parse({
-    format: "openbot.employee/v1",
+    format: options.includeSkillContent ? "openbot.employee/v2" : "openbot.employee/v1",
     kind: "template",
     packageId: options.packageId ?? randomUUID(),
     generatedAt: options.generatedAt ?? new Date().toISOString(),
@@ -112,6 +116,9 @@ export function buildEmployeeTemplate(
       recommendedExecutionProfile: profile.configuration.executionProfile,
     },
     skills: exportedSkills.map((skill) => ({
+      ...(options.includeSkillContent
+        ? { content: portableSkillContent(skill, contentFindings) }
+        : {}),
       slug: skill.slug,
       name: skill.name,
       description: skill.description,
@@ -136,6 +143,7 @@ export function buildEmployeeTemplate(
 
   const checksum = employeeTemplatePayloadChecksum(payload);
   const findings = [
+    ...contentFindings,
     ...exportDependencyClosureFindings(exportedSkills, exportedSkillSlugs),
     ...scanPortableFields(payload),
   ];
@@ -153,6 +161,15 @@ export function buildEmployeeTemplate(
       digest: checksum,
     },
   };
+  // Reserve space for the publisher identity and base64 DSSE envelope (1.5M characters).
+  // The actual import routes allow 2 MiB, independently of the general 64 KiB API limit.
+  if (Buffer.byteLength(serializeEmployeeTemplate(document)) > 1024 * 1024)
+    findings.push({
+      code: "package-too-large",
+      location: "skills",
+      message:
+        "The selected Bot exceeds the 1 MiB portable content limit. Reduce included instructions or share metadata only.",
+    });
 
   return {
     document,
@@ -211,12 +228,16 @@ export function buildEmployeeTemplate(
 export function prepareEmployeeTemplateExport(
   profile: EmployeeProfile,
   options: {
+    includeSkillContent?: boolean;
     generatedAt?: string;
     packageId?: string;
     publisher?: EmployeeTemplateExportPublisher;
   } = {},
 ): PreparedEmployeeTemplateExport {
   const built = buildEmployeeTemplate(profile, {
+    ...(options.includeSkillContent === undefined
+      ? {}
+      : { includeSkillContent: options.includeSkillContent }),
     ...(options.generatedAt === undefined ? {} : { generatedAt: options.generatedAt }),
     ...(options.packageId === undefined ? {} : { packageId: options.packageId }),
     ...(options.publisher === undefined ? {} : { publisherKeyId: options.publisher.keyId }),
@@ -317,7 +338,11 @@ export function signEmployeeTemplateEnvelope(
     },
   });
   const payloadBytes = Buffer.from(serializeEmployeeTemplate(signedDocument), "utf8");
-  const pae = dsse.preAuthEncoding(employeeTemplateDssePayloadType, payloadBytes);
+  const payloadType =
+    signedPayload.format === "openbot.employee/v2"
+      ? employeeTemplateV2DssePayloadType
+      : employeeTemplateDssePayloadType;
+  const pae = dsse.preAuthEncoding(payloadType, payloadBytes);
   const signature = signBytes(null, pae, privateKey);
   if (signedPayload.signature.status !== "dsse") {
     throw new Error("Employee package signature metadata did not normalize to DSSE.");
@@ -325,7 +350,7 @@ export function signEmployeeTemplateEnvelope(
 
   return dsseEnvelopeSchema.parse({
     payload: payloadBytes.toString("base64"),
-    payloadType: employeeTemplateDssePayloadType,
+    payloadType,
     signatures: [{ keyid: signedPayload.signature.keyid, sig: signature.toString("base64") }],
   });
 }
@@ -397,7 +422,11 @@ export function verifyEmployeeTemplateEnvelope(
       message: "No signature was produced by a configured trusted public key.",
     };
   }
-  if (parsedEnvelope.data.payloadType !== employeeTemplateDssePayloadType) {
+  if (
+    ![employeeTemplateDssePayloadType, employeeTemplateV2DssePayloadType].includes(
+      parsedEnvelope.data.payloadType as typeof employeeTemplateDssePayloadType,
+    )
+  ) {
     return {
       status: "rejected",
       code: "unsupported-payload-type",
@@ -423,6 +452,16 @@ export function verifyEmployeeTemplateEnvelope(
       message: "The verified payload is not a supported OpenBot employee package.",
     };
   }
+  const expectedType =
+    parsedDocument.data.payload.format === "openbot.employee/v2"
+      ? employeeTemplateV2DssePayloadType
+      : employeeTemplateDssePayloadType;
+  if (parsedEnvelope.data.payloadType !== expectedType)
+    return {
+      status: "rejected",
+      code: "unsupported-payload-type",
+      message: "Package version does not match the signed payload type.",
+    };
   if (!verifyEmployeeTemplateChecksum(parsedDocument.data)) {
     return {
       status: "rejected",
@@ -469,6 +508,15 @@ export function inspectEmployeeTemplate(
     throw new TypeError("Unsigned Employee packages cannot have a trusted publisher key.");
   }
   const issues: EmployeeImportIssue[] = [];
+  for (const skill of payload.skills) {
+    const problem = skillContentProblem(skill);
+    if (problem)
+      issues.push({
+        code: "invalid-skill-content",
+        message: problem,
+        locations: [`skills.${skill.slug}.content`],
+      });
+  }
   const skillSlugs = payload.skills.map((skill) => skill.slug);
   const uniqueSkillSlugs = new Set(skillSlugs);
   const duplicateSkillSlugs = Array.from(
@@ -646,6 +694,9 @@ function scanPortableFields(payload: EmployeeTemplatePayload): EmployeeExportFin
       ? []
       : [{ location: "employee.description", value: payload.employee.description }]),
     ...payload.skills.flatMap((skill, index) => [
+      ...(skill.content
+        ? [{ location: `skills[${index}].content.markdown`, value: skill.content.markdown }]
+        : []),
       { location: `skills[${index}].slug`, value: skill.slug },
       { location: `skills[${index}].name`, value: skill.name },
       { location: `skills[${index}].description`, value: skill.description },
@@ -745,6 +796,7 @@ function portableSkillSummary(skill: EmployeeTemplatePayload["skills"][number]) 
     version: skill.version,
     requiredCapabilities: skill.requiredCapabilities,
     dependencySlugs: skill.dependencySlugs,
+    ...(skill.content ? { content: skill.content } : {}),
   };
 }
 

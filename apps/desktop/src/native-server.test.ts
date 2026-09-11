@@ -146,3 +146,36 @@ it.skipIf(process.platform === "win32")(
     expect(opts.launchServer).not.toHaveBeenCalled();
   },
 );
+
+it.skipIf(process.platform === "win32")(
+  "keeps the controller responsive while credentials are locked and preserves ciphertext on denial",
+  async () => {
+    const opts = await options();
+    await fakeResources(opts);
+    await mkdir(join(opts.dataRoot, "postgres"), { recursive: true, mode: 0o700 });
+    await writeFile(join(opts.dataRoot, "postgres", "PG_VERSION"), "17");
+    const ciphertext = JSON.stringify("a".repeat(64));
+    await writeFile(join(opts.dataRoot, "bootstrap.json"), ciphertext, { mode: 0o600 });
+    let reject!: (error: Error) => void;
+    opts.decrypt = vi.fn(
+      () =>
+        new Promise<string>((_, fail) => {
+          reject = fail;
+        }),
+    );
+    const service = new NativeServerController(opts);
+    const pending = service.start();
+    await vi.waitFor(() => expect(opts.decrypt).toHaveBeenCalledOnce());
+    expect(service.getState()).toEqual({
+      status: "installing",
+      mode: "resume",
+      step: "credentials",
+    });
+    expect(service.start()).toBe(pending);
+    expect(opts.launchServer).not.toHaveBeenCalled();
+    reject(new Error("OS access denied"));
+    expect(await pending).toEqual({ status: "failed", code: "credential_unavailable" });
+    expect(await readFile(join(opts.dataRoot, "bootstrap.json"), "utf8")).toBe(ciphertext);
+    expect(opts.encrypt).not.toHaveBeenCalled();
+  },
+);

@@ -149,7 +149,8 @@ export function VoiceRecorder({
     try {
       validateComposerAttachmentBatch(current.getAttachments(), [recording.file]);
       const file = await uploadComposerAttachment(current.channelId, recording.file, abort.signal);
-      if (!live.current || latest.current.channelId !== current.channelId) return;
+      if (!live.current || abort.signal.aborted || latest.current.channelId !== current.channelId)
+        return;
       validateComposerAttachmentBatch(current.getAttachments(), [recording.file]);
       current.onChange([...current.getAttachments(), file]);
       discard();
@@ -213,9 +214,25 @@ export function VoiceRecorder({
                 >
                   {state === "uploading" ? "正在添加…" : "添加到草稿"}
                 </button>
-                <button type="button" disabled={state === "uploading"} onClick={discard}>
-                  丢弃
-                </button>
+                {state === "uploading" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      controller.current?.abort();
+                      controller.current = undefined;
+                      setState("review");
+                      setError(
+                        "已取消添加，录音仍保留在本地供试听或重试。服务器已收到的原件可在附件管理中查看。",
+                      );
+                    }}
+                  >
+                    取消添加
+                  </button>
+                ) : (
+                  <button type="button" onClick={discard}>
+                    丢弃
+                  </button>
+                )}
               </div>
             </>
           )}

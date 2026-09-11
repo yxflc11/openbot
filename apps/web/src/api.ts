@@ -297,9 +297,10 @@ export async function updateEmployeeSkillState(
 export async function getEmployeeExportPreview(
   botId: string,
   signal?: AbortSignal,
+  includeSkillContent = false,
 ): Promise<EmployeeExportPreview> {
   const result = await request<{ preview: EmployeeExportPreview }>(
-    `/api/v1/bots/${botId}/export/preview`,
+    `/api/v1/bots/${botId}/export/preview${includeSkillContent ? "?includeSkillContent=true" : ""}`,
     signal ? { signal } : undefined,
   );
   return result.preview;
@@ -316,6 +317,7 @@ export async function downloadEmployeeTemplate(
       packageId: preview.packageId,
       generatedAt: preview.generatedAt,
       downloadReviewToken: preview.downloadReviewToken,
+      ...(preview.format === "openbot.employee/v2" ? { includeSkillContent: true } : {}),
     });
     if (result?.status === "saved" || result?.status === "cancelled") return result.status;
     if (result?.status === "changed")
@@ -333,6 +335,7 @@ export async function downloadEmployeeTemplate(
     packageId: preview.packageId,
     generatedAt: preview.generatedAt,
   });
+  if (preview.format === "openbot.employee/v2") parameters.set("includeSkillContent", "true");
   const url = `/api/v1/bots/${encodeURIComponent(botId)}/export?${parameters.toString()}`;
   const response = await fetch(url, {
     credentials: "include",

@@ -105,7 +105,8 @@ export async function verifyInstallerManifest(directory, expected = {}) {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   if (
     manifest.format !== DESKTOP_INSTALLER_FORMAT ||
-    manifest.signing !== "unsigned-development" ||
+    !["unsigned-development", "developer-id-notarized"].includes(manifest.signing) ||
+    (manifest.signing === "developer-id-notarized" && manifest.platform !== "darwin") ||
     (manifest.sourceCommit !== null && !/^[a-f0-9]{40}$/u.test(manifest.sourceCommit)) ||
     !Array.isArray(manifest.files)
   )
