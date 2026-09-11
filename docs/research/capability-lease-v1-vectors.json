@@ -1,0 +1,227 @@
+{
+  "profile": "openbot-action-jcs-v1",
+  "status": "Proposed contract vectors; no runtime validator claim",
+  "prefixUtf8Hex": "6f70656e626f743a616374696f6e2d66696e6765727072696e743a76310a",
+  "positive": [
+    {
+      "name": "key-order",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": {
+          "b": 2,
+          "a": 1
+        },
+        "providerId": "docker",
+        "target": "https://example.com/",
+        "version": "openbot-action-jcs-v1"
+      },
+      "canonical": "{\"action\":\"browser.click\",\"beforeState\":{\"a\":1,\"b\":2},\"providerId\":\"docker\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "preimageUtf8Hex": "6f70656e626f743a616374696f6e2d66696e6765727072696e743a76310a7b22616374696f6e223a2262726f777365722e636c69636b222c226265666f72655374617465223a7b2261223a312c2262223a327d2c2270726f76696465724964223a22646f636b6572222c22746172676574223a2268747470733a2f2f6578616d706c652e636f6d2f222c2276657273696f6e223a226f70656e626f742d616374696f6e2d6a63732d7631227d",
+      "fingerprint": "d09248350478f6b682a32b47990d3336132818545761348a35375c73ca05ec88"
+    },
+    {
+      "name": "same-data-reordered",
+      "envelope": {
+        "version": "openbot-action-jcs-v1",
+        "target": "https://example.com/",
+        "providerId": "docker",
+        "beforeState": {
+          "a": 1,
+          "b": 2
+        },
+        "action": "browser.click"
+      },
+      "canonical": "{\"action\":\"browser.click\",\"beforeState\":{\"a\":1,\"b\":2},\"providerId\":\"docker\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "preimageUtf8Hex": "6f70656e626f743a616374696f6e2d66696e6765727072696e743a76310a7b22616374696f6e223a2262726f777365722e636c69636b222c226265666f72655374617465223a7b2261223a312c2262223a327d2c2270726f76696465724964223a22646f636b6572222c22746172676574223a2268747470733a2f2f6578616d706c652e636f6d2f222c2276657273696f6e223a226f70656e626f742d616374696f6e2d6a63732d7631227d",
+      "fingerprint": "d09248350478f6b682a32b47990d3336132818545761348a35375c73ca05ec88"
+    },
+    {
+      "name": "null-state",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": null,
+        "providerId": "docker",
+        "target": "https://example.com/",
+        "version": "openbot-action-jcs-v1"
+      },
+      "canonical": "{\"action\":\"browser.click\",\"beforeState\":null,\"providerId\":\"docker\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "preimageUtf8Hex": "6f70656e626f743a616374696f6e2d66696e6765727072696e743a76310a7b22616374696f6e223a2262726f777365722e636c69636b222c226265666f72655374617465223a6e756c6c2c2270726f76696465724964223a22646f636b6572222c22746172676574223a2268747470733a2f2f6578616d706c652e636f6d2f222c2276657273696f6e223a226f70656e626f742d616374696f6e2d6a63732d7631227d",
+      "fingerprint": "25a39047ad7aa84b85a1668422a82f5cfcad30d3b3dd23213306ad238243adc0"
+    },
+    {
+      "name": "unicode-and-zero",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": {
+          "label": "测试😀",
+          "zero": 0,
+          "values": [
+            true,
+            null,
+            1.5
+          ]
+        },
+        "providerId": "docker",
+        "target": "https://example.com/",
+        "version": "openbot-action-jcs-v1"
+      },
+      "canonical": "{\"action\":\"browser.click\",\"beforeState\":{\"label\":\"测试😀\",\"values\":[true,null,1.5],\"zero\":0},\"providerId\":\"docker\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "preimageUtf8Hex": "6f70656e626f743a616374696f6e2d66696e6765727072696e743a76310a7b22616374696f6e223a2262726f777365722e636c69636b222c226265666f72655374617465223a7b226c6162656c223a22e6b58be8af95f09f9880222c2276616c756573223a5b747275652c6e756c6c2c312e355d2c227a65726f223a307d2c2270726f76696465724964223a22646f636b6572222c22746172676574223a2268747470733a2f2f6578616d706c652e636f6d2f222c2276657273696f6e223a226f70656e626f742d616374696f6e2d6a63732d7631227d",
+      "fingerprint": "8bed488bad0dc7f50c9aa0b4e5a709bd476e032ee295ab8c53d66b0d3cca4c85"
+    },
+    {
+      "name": "changed-target",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": {
+          "b": 2,
+          "a": 1
+        },
+        "providerId": "docker",
+        "target": "https://example.com/changed",
+        "version": "openbot-action-jcs-v1"
+      },
+      "canonical": "{\"action\":\"browser.click\",\"beforeState\":{\"a\":1,\"b\":2},\"providerId\":\"docker\",\"target\":\"https://example.com/changed\",\"version\":\"openbot-action-jcs-v1\"}",
+      "preimageUtf8Hex": "6f70656e626f743a616374696f6e2d66696e6765727072696e743a76310a7b22616374696f6e223a2262726f777365722e636c69636b222c226265666f72655374617465223a7b2261223a312c2262223a327d2c2270726f76696465724964223a22646f636b6572222c22746172676574223a2268747470733a2f2f6578616d706c652e636f6d2f6368616e676564222c2276657273696f6e223a226f70656e626f742d616374696f6e2d6a63732d7631227d",
+      "fingerprint": "5500fd8d309e5778c44b6a2ead5849b56aded8a39b79ac517dbd5e807c943cf0"
+    },
+    {
+      "name": "changed-provider",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": {
+          "b": 2,
+          "a": 1
+        },
+        "providerId": "other",
+        "target": "https://example.com/",
+        "version": "openbot-action-jcs-v1"
+      },
+      "canonical": "{\"action\":\"browser.click\",\"beforeState\":{\"a\":1,\"b\":2},\"providerId\":\"other\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "preimageUtf8Hex": "6f70656e626f743a616374696f6e2d66696e6765727072696e743a76310a7b22616374696f6e223a2262726f777365722e636c69636b222c226265666f72655374617465223a7b2261223a312c2262223a327d2c2270726f76696465724964223a226f74686572222c22746172676574223a2268747470733a2f2f6578616d706c652e636f6d2f222c2276657273696f6e223a226f70656e626f742d616374696f6e2d6a63732d7631227d",
+      "fingerprint": "93096cd0c61d3593a8cda372ff0eae7c1b3e7054f06ff158b1c590364534ceca"
+    }
+  ],
+  "negative": [
+    {
+      "name": "duplicate-key",
+      "rawCanonicalEnvelope": "{\"action\":\"browser.click\",\"beforeState\":{\"a\":0,\"a\":1,\"b\":2},\"providerId\":\"docker\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "expected": "reject: canonical bytes differ after parse and reserialize"
+    },
+    {
+      "name": "noncanonical-whitespace",
+      "rawCanonicalEnvelope": " {\"action\":\"browser.click\",\"beforeState\":{\"a\":1,\"b\":2},\"providerId\":\"docker\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "expected": "reject: canonical bytes differ after parse and reserialize"
+    },
+    {
+      "name": "noncanonical-number",
+      "rawCanonicalEnvelope": "{\"action\":\"browser.click\",\"beforeState\":{\"a\":1.0,\"b\":2},\"providerId\":\"docker\",\"target\":\"https://example.com/\",\"version\":\"openbot-action-jcs-v1\"}",
+      "expected": "reject: canonical bytes differ after parse and reserialize"
+    },
+    {
+      "name": "unknown-version",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": {
+          "b": 2,
+          "a": 1
+        },
+        "providerId": "docker",
+        "target": "https://example.com/",
+        "version": "legacy"
+      },
+      "expected": "reject: unsupported fingerprintVersion"
+    },
+    {
+      "name": "unsafe-integer",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": {
+          "n": 9007199254740992
+        },
+        "providerId": "docker",
+        "target": "https://example.com/",
+        "version": "openbot-action-jcs-v1"
+      },
+      "expected": "reject before canonicalization: integer outside safe range"
+    },
+    {
+      "name": "lone-surrogate",
+      "envelope": {
+        "action": "browser.click",
+        "beforeState": {
+          "text": "\ud800"
+        },
+        "providerId": "docker",
+        "target": "https://example.com/",
+        "version": "openbot-action-jcs-v1"
+      },
+      "expected": "reject: invalid Unicode"
+    },
+    {
+      "name": "non-json-undefined",
+      "inputConstruction": "undefined",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-BigInt",
+      "inputConstruction": "BigInt",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-NaN",
+      "inputConstruction": "NaN",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-Infinity",
+      "inputConstruction": "Infinity",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-sparse array",
+      "inputConstruction": "sparse array",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-accessor",
+      "inputConstruction": "accessor",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-custom prototype",
+      "inputConstruction": "custom prototype",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-toJSON hook",
+      "inputConstruction": "toJSON hook",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "non-json-cycle",
+      "inputConstruction": "cycle",
+      "expected": "reject before canonicalization; do not drop or coerce"
+    },
+    {
+      "name": "depth-limit",
+      "inputConstruction": "33 nested containers including envelope root",
+      "expected": "reject: maximum 32"
+    },
+    {
+      "name": "byte-limit",
+      "inputConstruction": "65537-byte UTF-8 canonical envelope",
+      "expected": "reject: maximum 65536"
+    },
+    {
+      "name": "value-limit",
+      "inputConstruction": "4097 total JSON values including envelope root",
+      "expected": "reject: maximum 4096"
+    },
+    {
+      "name": "legacy-approval",
+      "inputConstruction": "pending approval without fingerprintVersion",
+      "expected": "reject lease issuance; retain old hash and request fresh approval"
+    }
+  ]
+}
