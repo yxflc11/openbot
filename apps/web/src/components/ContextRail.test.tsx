@@ -35,6 +35,45 @@ function run(id: string, status: Run["status"], updatedAt = "2026-09-05T01:00:00
 }
 
 describe("ContextRail", () => {
+  it("keeps durable status explanations consistent with task details", async () => {
+    const blocked = run("blocked-summary", "blocked");
+    const failed = {
+      ...run("failed-summary", "failed"),
+      executionProfile: "none" as const,
+      errorCode: "model_credentials",
+      errorMessage: "synthetic-provider-raw-error",
+    };
+    const completed = run("completed-summary", "completed");
+    const rendered = await renderComponent(
+      <ContextRail
+        selectedChannelId="channel-1"
+        realtimeState="live"
+        workspace={workspace({
+          runs: [blocked, failed, completed],
+          progress: [blocked, failed].map((task) => ({
+            id: `progress-${task.id}`,
+            runId: task.id,
+            channelId: task.channelId,
+            stage: "planning",
+            message: "stale planning message",
+            createdAt: task.createdAt,
+          })),
+        })}
+        onDecideApproval={vi.fn()}
+        onInspectRun={vi.fn()}
+      />,
+    );
+    try {
+      expect(rendered.container.textContent).toContain("任务遇到阻塞，需要人工处理。");
+      expect(rendered.container.textContent).toContain("模型密钥被拒绝");
+      expect(rendered.container.textContent).toContain("任务已结束。");
+      expect(rendered.container.textContent).not.toContain("synthetic-provider-raw-error");
+      expect(rendered.container.textContent).not.toContain("stale planning message");
+    } finally {
+      await rendered.unmount();
+    }
+  });
+
   it("distinguishes absent token usage from observed zero task records", async () => {
     const rendered = await renderComponent(
       <ContextRail

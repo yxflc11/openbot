@@ -657,7 +657,8 @@ describe("ChannelWorkspace delegated identities", () => {
       id: "failed",
       status: "failed",
       title: "Failed work",
-      errorMessage: "Tool unavailable",
+      errorCode: "model_credentials",
+      errorMessage: "synthetic-provider-raw-error",
     };
     const complete: Run = {
       ...running,
@@ -680,8 +681,9 @@ describe("ChannelWorkspace delegated identities", () => {
         "Supplementary task",
       );
       expect(rendered.container.querySelector(".channel-work-item.failed")?.textContent).toContain(
-        "Tool unavailable",
+        "模型密钥被拒绝",
       );
+      expect(rendered.container.textContent).not.toContain("synthetic-provider-raw-error");
       expect(rendered.container.querySelectorAll(".work-ellipsis")).toHaveLength(1);
       await interact(() =>
         rendered.container
