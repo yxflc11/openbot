@@ -268,3 +268,4 @@ Desktop 搜索账号选择复用 Electron 44.2.0 的显式子进程环境映射�
 | filename-reserved-regex | [`4.0.1` / `d267eb9`](https://github.com/sindresorhus/filename-reserved-regex/tree/d267eb977513e8137062ecca53a15fd78d5b6c92) | MIT | 员工导出文件名的 Windows 保留名判断 |
 
 未复制上游源码。证据见[补丁调研](research/deps-patch-hono-biome-types-filename.md)。
+| PDF/Office 解析器依赖一致性 | PDF.js 6.3.289 / `1c8020a7d4e43668ac287a3ecf9a8dbea17e4c56`；现有 officeparser 7.8.0、npm 10.9.9 | Apache-2.0；MIT；Artistic-2.0 | 同步直接依赖和全局精确 override，保留工作区解析锚点及有界 Worker。干净安装和真实 PDF/Office 测试为门禁；保留上游印度文字形提取限制。不复制源码。见[研究](research/pdfjs-6.3-lock-coherence.zh-CN.md)。 |

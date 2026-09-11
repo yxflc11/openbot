@@ -323,3 +323,4 @@ Exact-pinned patch consolidation (Dependabot #24, #25, #26, #28; Vitest 5 #27 ex
 | filename-reserved-regex | [`4.0.1` / `d267eb9`](https://github.com/sindresorhus/filename-reserved-regex/tree/d267eb977513e8137062ecca53a15fd78d5b6c92) | MIT | Windows reserved-name predicate for Employee export filenames |
 
 No upstream source copied. Evidence: [deps-patch research](research/deps-patch-hono-biome-types-filename.md).
+| PDF/Office parser dependency coherence | PDF.js 6.3.289 / `1c8020a7d4e43668ac287a3ecf9a8dbea17e4c56`; existing officeparser 7.8.0 and npm 10.9.9 | Apache-2.0; MIT; Artistic-2.0 | Synchronize the direct pin and exact global override, preserving the workspace resolution anchor and bounded Worker. Real PDF/Office tests and clean install remain gates; upstream Indic extraction limitation is documented. No copied source. See [research](research/pdfjs-6.3-lock-coherence.md). |
