@@ -164,15 +164,17 @@ Set-Acl -LiteralPath $path -AclObject $acl
   it("refuses directories, oversized content, and malformed packages", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
     temporaryDirectories.push(directory);
+
+    const asDirectory = join(directory, "not-a-file");
+    await mkdir(asDirectory);
+    await expect(new FileNodeCredentialStore(asDirectory).load(identity.nodeId)).rejects.toThrow(
+      "regular file",
+    );
+
+    // Fresh nested path so Windows creates+protects the dedicated directory (verify-only on an
+    // already-existing temp parent would fail closed by design).
     const path = join(directory, "private", "identity.json");
     const store = new FileNodeCredentialStore(path);
-
-    await mkdir(path, { recursive: true });
-    await expect(store.load(identity.nodeId)).rejects.toThrow("regular file");
-    await rm(path, { recursive: true });
-
-    // Nested dedicated dir is created+protected on Windows; then overwrite body to assert
-    // ACL/path-first, size/schema-second rejection order on a secure fixture.
     await store.save(identity);
     await writeFile(path, "x".repeat(4 * 1024 + 1), { mode: 0o600 });
     await expect(store.load(identity.nodeId)).rejects.toThrow("4 KiB limit");
