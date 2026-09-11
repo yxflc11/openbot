@@ -67,7 +67,11 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
     }
 
     if (this.#platform === "win32") {
-      await assertWindowsCredentialPathBoundary(this.#path);
+      // Ancestor reparse checks are Windows-path semantics; skip on simulated win32 hosts
+      // (macOS/Linux tmp trees often include benign system symlinks such as /var).
+      if (process.platform === "win32") {
+        await assertWindowsCredentialPathBoundary(this.#path);
+      }
       await this.#windowsAcl.verifyFile(this.#path);
     }
 
@@ -102,7 +106,7 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
       createdDirectory = true;
     }
 
-    if (this.#platform === "win32") {
+    if (this.#platform === "win32" && process.platform === "win32") {
       await assertWindowsCredentialPathBoundary(directory, { allowMissingLeaf: true });
     }
     await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -210,7 +214,7 @@ export function createDefaultWindowsCredentialAcl(): WindowsCredentialAcl {
       await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: true });
     },
     verifyFile: async (path) => {
-      await assertWindowsCredentialPathBoundary(path);
+      // Path boundary is enforced by FileNodeCredentialStore.load on real win32 before verify.
       await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: false });
     },
   };

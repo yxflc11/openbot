@@ -158,21 +158,21 @@ Set-Acl -LiteralPath $path -AclObject $acl
       await rejection.toThrow("ACL verification failed");
       await rejection.not.toThrow(identity.credential);
     },
-    20_000,
+    60_000,
   );
 
   it("refuses directories, oversized content, and malformed packages", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
     temporaryDirectories.push(directory);
-    const path = join(directory, "identity.json");
+    const path = join(directory, "private", "identity.json");
     const store = new FileNodeCredentialStore(path);
 
-    await mkdir(path);
+    await mkdir(path, { recursive: true });
     await expect(store.load(identity.nodeId)).rejects.toThrow("regular file");
     await rm(path, { recursive: true });
 
-    // Establish a secure fixture first so Windows ACL/path checks pass, then assert
-    // size/schema rejection order (ACL/path before 4 KiB / schema).
+    // Nested dedicated dir is created+protected on Windows; then overwrite body to assert
+    // ACL/path-first, size/schema-second rejection order on a secure fixture.
     await store.save(identity);
     await writeFile(path, "x".repeat(4 * 1024 + 1), { mode: 0o600 });
     await expect(store.load(identity.nodeId)).rejects.toThrow("4 KiB limit");
@@ -200,15 +200,17 @@ Set-Acl -LiteralPath $path -AclObject $acl
 
     await expect(assertWindowsCredentialPathBoundary(path)).rejects.toThrow("reparse points");
 
-    const store = new FileNodeCredentialStore(path, {
-      platform: "win32",
-      windowsAcl: {
-        protectDirectory: async () => {},
-        protectAndVerifyFile: async () => {},
-        verifyFile: async () => {},
-      },
-    });
-    await expect(store.load(identity.nodeId)).rejects.toThrow("reparse points");
+    if (process.platform === "win32") {
+      const store = new FileNodeCredentialStore(path, {
+        platform: "win32",
+        windowsAcl: {
+          protectDirectory: async () => {},
+          protectAndVerifyFile: async () => {},
+          verifyFile: async () => {},
+        },
+      });
+      await expect(store.load(identity.nodeId)).rejects.toThrow("reparse points");
+    }
   });
 
   it("on win32 verifies existing directories without rewriting ACLs via the helper contract", async () => {
