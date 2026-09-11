@@ -254,3 +254,5 @@ Desktop 搜索账号选择复用 Electron 44.2.0 的显式子进程环境映射�
 [研究](research/desktop-explicit-search-key.zh-CN.md)。
 
 - Node 环境凭证显式启用复用 Zod 4.5.4 跨字段校验及现有凭据存储，不新增依赖或复制源码。[研究记录](research/node-environment-credential-opt-in.zh-CN.md)。
+
+H2 v1 补充选定 RFC 8785 JCS 与 `canonicalize@5.0.0` / `7d97c70c79c9f52070e6c24c38a92f0dd9b32a57`（Apache-2.0，无运行时依赖），前置严格有界输入校验。已审源码与 86 项上游测试支持序列化器选型，不代表已有运行时租约。精确类型、指纹向量与连接绑定消费语义见[研究补充](research/capability-lease-protocol.zh-CN.md)。未复制源码、未安装依赖。

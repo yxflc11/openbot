@@ -129,8 +129,8 @@ Surveyed paths (read-only; no runtime change in this docs slice):
 | --- | --- |
 | Wire format | JWS Compact Serialization JWT (`header.payload.signature`, three base64url segments) |
 | Library | `jose@6.2.12` / `505a55b8f73536082367b2614cb77e927ba96ec1` |
-| Sign API | `SignJWT` + `setProtectedHeader({ alg: 'Ed25519', typ: 'JWT', kid })` |
-| Verify API | `jwtVerify` with `algorithms: ['Ed25519']`, `issuer`, `audience`, `typ: 'JWT'`, `requiredClaims` |
+| Sign API | `SignJWT` + `setProtectedHeader({ alg: 'Ed25519', typ: 'openbot-capability-lease+jwt', kid })` |
+| Verify API | `jwtVerify` with `algorithms: ['Ed25519']`, `issuer`, `audience`, `typ: 'openbot-capability-lease+jwt'`, `requiredClaims` |
 | Exact header `alg` | **`Ed25519`** (preferred fully-specified). `EdDSA` rejected unless signing API forces it — then freeze that one and document the switch in the coding ADR |
 | Key type | Server Ed25519 keypair via Node `crypto.generateKeyPairSync('ed25519')` (confirmed on Node 22) |
 | Who verifies | Node (public only) + Server (public or private path) before consume; **consume row transition is Server/DB only** |
@@ -154,7 +154,7 @@ Surveyed paths (read-only; no runtime change in this docs slice):
 
 - Serialization: JWS Compact JWT only. Reject any other JOSE shape (JSON Serialization, unsecured
   JWT, JWE) on issue and consume paths.
-- Protected header (required): `{ alg: "Ed25519", typ: "JWT", kid: "<server-key-id>" }`.
+- Protected header (required): `{ alg: "Ed25519", typ: "openbot-capability-lease+jwt", kid: "<server-key-id>" }`.
 - **Reject remote key material in headers:** ignore and **fail closed** on `jku`, `jwk`, `x5u`,
   `x5c`, or any header that would cause the verifier to fetch or trust keys from the token or a
   URL. Node and Server verifiers use **only** locally configured/pinned public keys keyed by `kid`.
@@ -181,12 +181,12 @@ Surveyed paths (read-only; no runtime change in this docs slice):
 
 | Claim / field | Required? | Notes |
 | --- | --- | --- |
-| `typ` (header) | yes | Must be `JWT` |
+| `typ` (header) | yes | Exactly `openbot-capability-lease+jwt`; raw protected-header equality |
 | `alg` (header) | yes | Must be exactly `Ed25519` |
 | `kid` (header) | yes | Must match pinned Server key id |
 | `iss` | yes | Fixed Server issuer string (config); `jwtVerify` issuer check |
 | `aud` | yes | Fixed Node/lease audience string (config); `jwtVerify` audience check |
-| `iat` / `nbf` / `exp` | yes | Server clock; short TTL (default cap **120s** interactive; never beyond approval `expiresAt`); reject `nbf` in the future beyond small skew policy if any — prefer Server time authoritative with `nbf ≤ now ≤ exp` |
+| `iat` / `nbf` / `exp` | yes | Server clock; short TTL (default cap **120s** interactive; never beyond approval `expiresAt`); strict `nbf ≤ now < exp`, zero authorization leeway; see the exact v1 time rules below |
 | `jti` | yes | Unique per lease; equals or bijectively maps to durable `leaseId` (coding slice picks one canonical id and stores it) |
 | `runId` | yes | Side-effect binding |
 | `nodeId` | yes | Side-effect binding |
@@ -196,7 +196,9 @@ Surveyed paths (read-only; no runtime change in this docs slice):
 | `target` | yes | Frozen target string (bounded length) |
 | `targetFingerprint` | yes | 64-hex sha256 binding |
 | `leaseId` | yes if distinct from `jti` | Durable row id presented on consume |
-| `tokenUse` / `leaseType` | recommended | Constant e.g. `capability_lease` to prevent cross-token confusion with other JWTs |
+| `tokenUse` | yes | Exactly `capability_lease`; reject missing or different purpose |
+| `fingerprintVersion` | yes | Exactly `openbot-action-jcs-v1`; see the v1 addendum |
+| `connectionId` | yes | Server-generated current authenticated connection binding |
 
 Custom claims are registered in protocol Zod schemas; unknown critical headers must not be honored.
 Do not put secrets, Owner session material, or Provider credentials in claims.
@@ -248,8 +250,9 @@ A lease authorizes exactly one commit of one frozen action:
     that `nodeId`+`action`. Until such a path is specified, treat omission as **forbidden**.
   - Multi-Provider Nodes: `providerId` is always required; deriving it implicitly at consume time
     is forbidden.
-- Node must recompute `sha256(action || "\\0" || target || "\\0" || JSON.stringify(beforeState))`
-  from its frozen `PreparedAction` and refuse commit on mismatch before calling consume.
+- Node must independently recompute the versioned JCS fingerprint specified in the v1 addendum
+  from its frozen `PreparedAction`. The old concatenation/`JSON.stringify` fingerprint is retained
+  only for historical approvals and cannot issue a v1 lease.
 
 ### Consume (one-time)
 
@@ -293,7 +296,7 @@ required.
 | Owner reject / approval expiry | No lease on reject/expiry path; if an approve+lease txn raced and lost, no lease; if an issued lease exists for a racing reject, revoke it under the race table |
 | Concurrent consume | Per race table; loser deny |
 | Replay of `approval.resolved` or `leaseToken` after consume | Deny |
-| Clock skew | Server time is authoritative; Nodes treat local timers as UX only |
+| Clock skew | Server/DB expiry is authoritative; Node also enforces local expiry, a monotonic response deadline and clock health per the v1 addendum; no leeway extends authority |
 
 ### Client / protocol version downgrade rejection
 
@@ -319,10 +322,10 @@ required.
 
 ### Minimal coding slice (follow-up PR; **only after design Accept**)
 
-1. Add exact dependency `jose@6.2.12` to the Server/Node packages that sign/verify; lockfile pin;
-   THIRD_PARTY_NOTICES if required.
+1. Add exact `jose@6.2.12` to signing/verifying packages and `canonicalize@5.0.0` to the shared
+   fingerprint adapter; pin the lockfile and preserve the upstream MIT/Apache-2.0 notices.
 2. DB migration for `capability_leases` + indexes on `(leaseId)`, `(status, expiresAt)`, `(runId)`,
-   unique `jti`.
+   unique `jti`; persist fingerprint version and connection binding, with explicit legacy rejection.
 3. Protocol Zod schemas for extended `approval.resolved` and `lease.consume` /
    `lease.consume_result`, including protocol version bump and lease field presence rules.
 4. Server atomic issue-on-approve (`SignJWT` Ed25519); consume handler (`jwtVerify` + conditional
@@ -395,3 +398,121 @@ required.
 - Whether a future non-side-effect lease path should exist at all; until specified, `providerId`
   omission remains forbidden.
 - Exact protocol version literal for the lease-bearing messages (coding slice).
+
+## Review addendum: exact v1 profile
+
+This section fixes the contract reviewed in PR #38; it remains Proposed and adds no runtime
+dependency or Provider authority.
+
+### Additional upstream evidence
+
+- [RFC 8725 sections 3.11–3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.11)
+  motivate a dedicated token type and mutually exclusive validation rules.
+- [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785.html) specifies JCS (an Informational RFC):
+  deterministic property ordering, ECMAScript number serialization and UTF-8 output, preserving
+  Unicode without normalization. Invalid Unicode and non-finite numbers are rejected.
+- Select released [canonicalize 5.0.0](https://github.com/erdtman/canonicalize/releases/tag/v5.0.0),
+  annotated tag `1e0ae5bda3b131033921f194b0569156e9db7b78`, commit
+  `7d97c70c79c9f52070e6c24c38a92f0dd9b32a57`, Apache-2.0, zero runtime dependencies, Node >=22.
+  Reviewed source, package exports, release notes and all eight test files on 2026-09-11; upstream
+  `npm test` passed 86 tests on local macOS Node 26.0.0. Node 22/24 execution remains a coding gate.
+  The release fixes non-JSON value serialization and uses iterative traversal. Open issues #30/#31
+  concern comparison documentation and publishing provenance; neither is a conformance fix.
+  The serializer accepts `toJSON`, drops some unsupported values, and cannot detect duplicate keys
+  already lost by a parser. It is therefore selected only behind the strict data profile below,
+  not as an input validator. No upstream source is copied; retain Apache-2.0 license and any
+  upstream NOTICE in distributions when the coding slice adds the dependency.
+- Standard JCS plus this released serializer is the first viable reuse option. OpenBot owns only
+  bounded profile validation, versioned domain separation and approval compatibility. No local
+  replacement canonicalizer is proposed.
+
+### Token purpose
+
+Protected `typ` is exactly `openbot-capability-lease+jwt`; payload `tokenUse` is required and exactly
+`capability_lease`. Both verifiers require both values, one pinned issuer, one exact string audience,
+and the existing single `Ed25519` algorithm. Reject generic `JWT`, absent purpose, audience arrays,
+unknown profile versions and alternate spellings. Check the raw protected header's exact `typ`
+after library verification; do not depend on a library's media-type normalization. Separate keys
+and validation paths remain mandatory for sessions, enrollment and Employee signatures.
+
+### Frozen action fingerprint
+
+The required `fingerprintVersion` is `openbot-action-jcs-v1`. Define:
+
+```text
+envelope = { action, beforeState, providerId, target, version: "openbot-action-jcs-v1" }
+canonical = canonicalize(envelope)
+targetFingerprint = lowercase_hex(SHA-256(UTF8("openbot:action-fingerprint:v1\n" + canonical)))
+```
+
+The prefix contains one LF byte and no BOM or trailing bytes. Server and Node independently
+construct this exact envelope from their frozen action. `runId`, `nodeId`, `approvalId` and the
+connection identity are separate mandatory signed bindings; they are not inferred from the digest.
+Do not normalize URLs, paths, case or Unicode as part of hashing. Provider-specific normalization
+must precede preparation and Owner review, and the approved form is the committed form.
+
+OpenBot profile limits, selected here rather than supplied by JCS:
+
+- Exactly the five envelope keys above. `action` and `providerId` are nonempty ASCII catalog IDs
+  matching `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`; `target` is a nonempty Unicode string, at most 2048
+  UTF-8 bytes. `beforeState` is a JSON object or null; large/binary state uses reviewed content
+  digests and bounded references, never screenshot bytes in a lease.
+- The complete canonical envelope is at most 65536 UTF-8 bytes; maximum 32 nested containers,
+  with the root counted as one, and 4096 total values including the root. A bounded raw canonical
+  input is required before parsing; reject excess nesting before allocating an unbounded tree.
+- Only null, booleans, well-formed Unicode strings, finite IEEE-754 numbers, dense arrays and plain
+  data objects with own enumerable string data properties. Reject unsafe integer numbers (encode
+  them as strings), undefined, functions, symbols, BigInt, sparse arrays, accessors, custom
+  prototypes, `toJSON` hooks and cycles before calling the serializer. Minus zero canonicalizes to
+  zero. Provider code is already untrusted; validation is not a sandbox for arbitrary JS objects.
+- The new preparation protocol transports the envelope as a canonical JSON **string**. Parse under
+  the limits, validate, reserialize and require exact UTF-8 equality with the supplied string. This
+  rejects duplicate keys, whitespace variants and alternate encodings that would be lost by ordinary
+  JSON parsing. Each peer also compares the parsed fields with its own frozen action; a canonical
+  string or Server-supplied hash alone never proves equality with the local action.
+
+Persist the version with new approvals and leases. Existing unversioned approvals retain their
+original hash for history; do not recompute or overwrite it. They cannot issue a v1 lease: prepare
+again and request a fresh Owner decision. Unknown versions fail closed, with no fallback to legacy
+`JSON.stringify` hashing. The coding slice must run the shared
+[positive/negative vectors](capability-lease-v1-vectors.json) through both implementations, including
+limits and legacy migration. The vectors define a contract, not an implemented runtime validator.
+
+### Time, connection and consume-result binding
+
+`iat`, `nbf` and `exp` are integer epoch seconds, `nbf = iat`, `iat < exp`, and
+`exp <= min(iat + 120, floor(approvalExpiresAt / 1000))`. Issuance with no positive remaining
+lifetime fails. Server issue/consume uses the database clock and strict `nbf <= now < exp` with
+zero authorization leeway; at `now == exp` deny. TTL cleanup is not the authorization gate.
+
+Each authenticated WebSocket gets a Server-generated, unpredictable 256-bit `connectionId`,
+separate from any client field. It is a required signed claim and durable lease binding, and a
+reconnect always creates a new one. Issue/consume checks the actual connection's identity as well
+as active Run/Node/Provider assignment. Disconnect revokes issued leases; a surviving database
+row still cannot be consumed from a new connection.
+
+The Node creates one fresh `consumeRequestId` UUID per attempt and permits one pending waiter for
+that lease. Request and result bind `consumeRequestId`, `leaseId`, `runId`, `nodeId`, `providerId`,
+`connectionId`, `fingerprintVersion` and `targetFingerprint`; the result also carries `exp` and
+`consumedAt` from the Server. Server derives identity from the authenticated connection, compares
+every binding with the signed token and row, and replies on that same socket only. No broadcast,
+cache or replay of a successful result may authorize another attempt.
+
+Before committing, the Node atomically removes the matching waiter and marks the lease locally
+spent. It rejects unsolicited/duplicate results, changed bindings, closed/replaced sockets, elapsed
+monotonic request time >=5 seconds, and `now >= exp` on its local wall clock. Use zero JWT clock
+tolerance at both verifiers. A clock difference exceeding 5 seconds from authenticated Server
+timestamps disables commits until clock health is restored; this is a rejection threshold, never
+extra authorization time. Recheck connection, local expiry and cancellation immediately before
+invoking the Provider. Trusted clock health is an operational precondition, not protection against
+a compromised Node. Delayed responses must not be queued for execution after reconnect/restart.
+
+The database consume transition remains at most once. A lost response or crash between consume and
+commit can leave no effect; a crash during a commit can leave an unknown effect. Neither case
+permits automatic retry or a claim of exactly-once execution. A fresh reviewed approval is required.
+
+Required new negative cases: missing/wrong purpose; wrong fingerprint version; duplicate keys;
+unsupported JS values; boundary depth/bytes/count; pending legacy approval; expiry equality;
+wrong request or connection; response after timeout/disconnect/reconnect; duplicate success;
+cancel before local commit; Server/Node clock-health failure; post-consume crash. These accompany
+the existing signature, key, Provider, race and restart matrix before any Provider gate changes.

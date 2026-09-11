@@ -309,3 +309,5 @@ Desktop search-account selection reuses Electron 44.2.0's explicit child environ
 new dependencies or copied source: [review](research/desktop-explicit-search-key.md).
 
 - Node environment credential opt-in reuses Zod 4.5.4 cross-field validation and the existing store adapters; no new dependency or copied source. [Research](research/node-environment-credential-opt-in.md).
+
+H2 v1 profile follow-up selects RFC 8785 JCS with `canonicalize@5.0.0` / `7d97c70c79c9f52070e6c24c38a92f0dd9b32a57` (Apache-2.0, zero runtime dependencies), behind strict bounded input validation. The reviewed source and 86 upstream tests support the proposed serializer choice, not runtime lease availability. Exact typing, fingerprint vectors and connection-bound consume semantics: [research addendum](research/capability-lease-protocol.md#review-addendum-exact-v1-profile). No source copied or dependency installed.

@@ -96,7 +96,8 @@ research and OPEN_SOURCE_REUSE only.
    without a durable lease, and no lease token emitted. Binding includes
    `leaseId`/`jti`/`approvalId`/`runId`/`nodeId`/`providerId` (per rules below)/`action`/`target`/
    `targetFingerprint` with short `exp` (capped, never beyond the approval expiry), plus `iss`/
-   `aud`/`iat`/`nbf` and header `kid`/`alg`/`typ`.
+   `aud`/`iat`/`nbf` and header `kid`/`alg`/`typ`. The required v1 profile below also binds purpose, fingerprint
+   version and the authenticated connection.
 2. **`providerId` fail-closed.** Required on issue and consume for every side-effecting action
    lease; missing, empty, or mismatched values fail closed (no txn commit / deny consume). Optional
    only if a future non-side-effect lease path is explicitly specified and the catalog proves a
@@ -136,6 +137,27 @@ research and OPEN_SOURCE_REUSE only.
    but never sufficient.
 10. **Minimal coding slice only after Accept.** Dependency add, migrations, protocol bump, and
     Node/Server wiring are out of scope for this docs PR.
+
+## Exact v1 profile required by this proposal
+
+The [research addendum](../research/capability-lease-protocol.md#review-addendum-exact-v1-profile)
+is normative for this Proposed design. It fixes the protected type to
+`openbot-capability-lease+jwt` and required `tokenUse` to `capability_lease`; both must match exactly.
+
+Action fingerprints use RFC 8785 JCS with proposed `canonicalize@5.0.0` /
+`7d97c70c79c9f52070e6c24c38a92f0dd9b32a57` (Apache-2.0, no runtime dependencies), a bounded strict JSON
+profile, and a versioned domain prefix. The addendum defines the precise bytes and limits;
+[shared vectors](../research/capability-lease-v1-vectors.json) cover canonical input, ordering,
+Unicode, negative input and legacy rejection. Preserve old approval hashes for history; new
+preparation and Owner review are required before an unversioned approval can obtain a v1 lease.
+No production dependency or migration is added by this design PR.
+
+Expiry is strict at both verifiers: `nbf <= now < exp`, with no authorization leeway. Server-issued
+connection identity is signed and persisted. A consume result must match the single pending
+request, lease, run, Node, Provider, connection and fingerprint on the same authenticated socket.
+Node expiry/clock-health and monotonic response deadlines reject delayed or duplicate results,
+including after reconnect. One successful database consume does not guarantee exactly-once
+execution across a crash; uncertain outcomes never trigger automatic retry.
 
 ## Consequences
 

@@ -95,3 +95,56 @@
 - consume 成功但副作用前崩溃：不复活租约，需重新审批。
 - 是否存在任何非副作用 lease 路径；在明确规范前，`providerId` 省略仍禁止。
 - lease 消息的精确 `protocolVersion` 字面量（编码切片决定）。
+
+## v1 精确契约补充
+
+本补充回应 PR #38 的设计审查，状态仍为 Proposed。没有增加运行时依赖或开启 Provider。
+英文稿的 [v1 addendum](capability-lease-protocol.md#review-addendum-exact-v1-profile) 为精确契约。
+
+- 依据 [RFC 8725 §3.11–3.12](https://www.rfc-editor.org/rfc/rfc8725.html#section-3.11)，
+  受保护头 `typ` 固定为 `openbot-capability-lease+jwt`，必填 `tokenUse` 固定为
+  `capability_lease`。两端都做精确匹配，拒绝通用 JWT、用途缺失、aud 数组和未知版本。
+  库校验后仍检查原始受保护头，不能依赖媒体类型归一化；独立密钥与固定 Ed25519 不变。
+- 依据 [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785.html) 的 JCS，选定
+  [canonicalize 5.0.0](https://github.com/erdtman/canonicalize/releases/tag/v5.0.0)，
+  注释 tag `1e0ae5bda3b131033921f194b0569156e9db7b78`，提交
+  `7d97c70c79c9f52070e6c24c38a92f0dd9b32a57`，Apache-2.0，无运行时依赖，要求 Node >=22。
+  2026-09-11 审阅源码、发布说明、导出与八个测试文件；本机 macOS Node 26.0.0 上
+  `npm test` 的 86 项测试通过。Node 22/24 仍由编码切片验证。公开问题 #30/#31 涉及文档和
+  发布 provenance。库会接受 toJSON、丢弃部分非 JSON 值，也不能恢复解析器丢失的重复键，
+  因此前置严格验证，不能把序列化器当验证器。未来安装时保留许可证及上游 NOTICE。
+- 必填 `fingerprintVersion = openbot-action-jcs-v1`。封套精确为
+  `{ action, beforeState, providerId, target, version: "openbot-action-jcs-v1" }`；对
+  `UTF8("openbot:action-fingerprint:v1\n" + canonicalize(envelope))` 做 SHA-256，输出小写
+  64 位 hex。前缀末尾为单个 LF，无 BOM；不在哈希时规范化 URL、路径、大小写或 Unicode。
+  run/node/approval/connection 为另外的签名绑定。双方从各自冻结的动作独立构造和核对。
+- OpenBot 自定义限额：封套只含上述五键；action/providerId 为 1–128 字符 ASCII catalog ID，
+  模式 `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`；target 非空、至多 2048 UTF-8 字节；beforeState
+  为对象或 null。完整规范字符串至多 65536 字节、32 层容器（根算一层）、4096 个值（含根）。
+  原始字符串解析前先限字节和深度。二进制状态使用审阅过的内容摘要和有界引用。
+- 只接受 JSON 数据值、有限数值、合法 Unicode、稠密数组和普通数据对象；拒绝不安全整数
+  （改用字符串）、undefined、函数、symbol、BigInt、稀疏数组、访问器、自定义原型、toJSON
+  和循环引用。负零规范为零。验证不是执行任意 Provider JS 对象的沙箱。
+- 新准备协议以规范 JSON **字符串**传封套；限额内解析、验证、重新序列化后，要求 UTF-8
+  字节完全一致，拒绝重复键、空白变体和非规范编码。还需与本地冻结动作逐字段核对，不能
+  只相信收到的规范字符串或 Server 摘要。
+- 新审批及租约持久化版本；旧无版本指纹保留历史，不能直接签发 v1。必须重新准备和让
+  Owner 审批，不能静默重算或退回旧 JSON.stringify 算法。两端未来共用
+  [正负向量](capability-lease-v1-vectors.json)；这只是契约数据，不冒充已实现验证器。
+- iat/nbf/exp 为整数 epoch 秒，nbf=iat，iat<exp，exp 不超过 iat+120 或审批到期秒数。
+  Server 签发和消费使用数据库时钟，严格 `nbf <= now < exp`，零授权宽限，等于 exp 即拒绝。
+- 每次认证 WebSocket 由 Server 生成不可预测的 256-bit connectionId，写入签名与租约行；
+  重连换新 ID，消费按真实连接核对，不能信任客户端自报。断线吊销未消费租约。
+- Node 每次消费生成独立 consumeRequestId UUID；请求和响应同时绑定请求、lease、run、node、
+  provider、connection、fingerprintVersion、targetFingerprint，响应另带 Server exp/consumedAt。
+  只在原 socket 回应，禁止广播、缓存复用成功结果。Node 只保留一个等待者，成功后原子移除并
+  本地标记已用；提交前再核对连接、取消和本地到期。
+- 拒绝无等待者、重复、错绑定、旧连接、单调时钟等待达到 5 秒或本地 now>=exp 的响应。
+  两端 JWT 时间宽限为零；与认证 Server 时间相差超过 5 秒时停用提交直到恢复时钟健康。
+  5 秒是拒绝阈值，不延长授权；可信时钟是运行前提，不能防住已完全失陷的 Node。
+- 数据库最多成功消费一次，不保证跨崩溃恰好执行一次。丢回执、消费后未执行或执行中崩溃，
+  都不能自动重试；需要新的经审阅批准。
+
+新增验收包括用途/版本错误、重复键、非法 JS 值、限额边界、旧审批、到期相等、错连接、
+延迟/重复成功回执、重连、提交前取消、时钟健康失败及消费后崩溃；原有算法、密钥、竞态测试
+继续保留。维护者采纳设计、编码与恶意用例全部通过之前，不宣称 H2 已修复。
