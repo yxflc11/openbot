@@ -124,4 +124,4 @@ bounded private stdin request, and projects actual native registration state wit
 token, a process bridge, or a persisted success flag to the renderer.
 
 The [Server Windows secret ACL](server-windows-secret-acl.md) note extracts the Node Owner+SYSTEM helper into `@openbot/windows-secret-acl` for model-settings and plugin-store (DEV-005 / N2).
-The [Windows native ACL test timeout budget](windows-native-acl-test-budget.md) then bounds the hosted native suite (9 PowerShell spawns × 15s + margin → 180s) without mocking ACL or changing production spawn timeouts.
+The [Windows native ACL test timeout budget](windows-native-acl-test-budget.md) then bounds the hosted native suite (Server ≤9 PowerShell spawns × 15s + margin → 180s; Node credential native negatives ≤7 × 15s + margin → 120s) and mirrors production `broadenAcl` spawn hygiene, without mocking ACL or changing production spawn timeouts.

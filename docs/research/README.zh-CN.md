@@ -97,4 +97,4 @@ process 申请短期 token，通过一条有界私有 stdin 请求传递，并�
 获得 token、进程桥或可能漂移的成功标记。
 
 [Server Windows 机密 ACL](server-windows-secret-acl.zh-CN.md) 将 Node Owner+SYSTEM 辅助逻辑抽取为 `@openbot/windows-secret-acl`，供 model-settings 与 plugin-store 复用（DEV-005 / N2）。
-[Windows 原生 ACL 测试超时预算](windows-native-acl-test-budget.zh-CN.md) 随后按调用次数为托管原生套件给出有界截止时间（9 次 PowerShell × 15s + 余量 → 180s），不 mock ACL，也不改生产 spawn 超时。
+[Windows 原生 ACL 测试超时预算](windows-native-acl-test-budget.zh-CN.md) 随后按调用次数为托管原生套件给出有界截止时间（Server ≤9 次 PowerShell × 15s + 余量 → 180s；Node 凭据原生否定 ≤7 × 15s + 余量 → 120s），并镜像生产 `broadenAcl` 启动卫生，不 mock ACL，也不改生产 spawn 超时。
