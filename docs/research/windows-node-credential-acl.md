@@ -61,3 +61,6 @@
 
 - Whether Administrators should be explicitly denied vs simply absent from Allow set (current
   choice: only Owner+SYSTEM Allow ACEs; no explicit Deny entries).
+- Ancestor reparse/junction refusal reduces writable-parent substitution risk; it does **not** claim
+  all Windows path-attack classes are closed.
+- Existing operator-owned credential directories are verified only (no automatic ACL rewrite).

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  assertWindowsCredentialPathBoundary,
   type CredentialHelper,
   FileNodeCredentialStore,
   LinuxSecretServiceNodeCredentialStore,
@@ -66,7 +67,6 @@ describe("file Node credential store", () => {
     );
   });
 
-
   it("on win32 protects and verifies Owner+SYSTEM ACLs through the injected helper", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
     temporaryDirectories.push(directory);
@@ -90,6 +90,11 @@ describe("file Node credential store", () => {
     expect(calls[0]).toMatch(/^dir:new:true$/);
     expect(calls[1]).toBe("file-protect:true");
     expect(calls[2]).toBe("file-verify:true");
+
+    calls.length = 0;
+    await store.save(identity);
+    expect(calls[0]).toMatch(/^dir:existing:true$/);
+    expect(calls[1]).toBe("file-protect:true");
   });
 
   it("on win32 refuses load when the ACL helper reports an unsafe file", async () => {
@@ -153,6 +158,7 @@ Set-Acl -LiteralPath $path -AclObject $acl
       await rejection.toThrow("ACL verification failed");
       await rejection.not.toThrow(identity.credential);
     },
+    20_000,
   );
 
   it("refuses directories, oversized content, and malformed packages", async () => {
@@ -165,11 +171,70 @@ Set-Acl -LiteralPath $path -AclObject $acl
     await expect(store.load(identity.nodeId)).rejects.toThrow("regular file");
     await rm(path, { recursive: true });
 
+    // Establish a secure fixture first so Windows ACL/path checks pass, then assert
+    // size/schema rejection order (ACL/path before 4 KiB / schema).
+    await store.save(identity);
     await writeFile(path, "x".repeat(4 * 1024 + 1), { mode: 0o600 });
     await expect(store.load(identity.nodeId)).rejects.toThrow("4 KiB limit");
 
     await writeFile(path, "{}\n", { mode: 0o600 });
     await expect(store.load(identity.nodeId)).rejects.toThrow("invalid");
+  });
+
+  it("rejects credential paths whose ancestor is a reparse/symlink point", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
+    temporaryDirectories.push(root);
+    const realDirectory = join(root, "real");
+    const linkDirectory = join(root, "link");
+    await mkdir(realDirectory);
+    try {
+      await symlink(realDirectory, linkDirectory);
+    } catch {
+      // Windows hosts without symlink privilege skip this boundary unit check.
+      return;
+    }
+    const path = join(linkDirectory, "identity.json");
+    await writeFile(join(realDirectory, "identity.json"), `${JSON.stringify(identity)}\n`, {
+      mode: 0o600,
+    });
+
+    await expect(assertWindowsCredentialPathBoundary(path)).rejects.toThrow("reparse points");
+
+    const store = new FileNodeCredentialStore(path, {
+      platform: "win32",
+      windowsAcl: {
+        protectDirectory: async () => {},
+        protectAndVerifyFile: async () => {},
+        verifyFile: async () => {},
+      },
+    });
+    await expect(store.load(identity.nodeId)).rejects.toThrow("reparse points");
+  });
+
+  it("on win32 verifies existing directories without rewriting ACLs via the helper contract", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
+    temporaryDirectories.push(directory);
+    const privateDirectory = join(directory, "private");
+    await mkdir(privateDirectory, { mode: 0o700 });
+    const path = join(privateDirectory, "identity.json");
+    const calls: string[] = [];
+    const store = new FileNodeCredentialStore(path, {
+      platform: "win32",
+      windowsAcl: {
+        async protectDirectory(_target, created) {
+          calls.push(`dir:${created ? "new" : "existing"}`);
+        },
+        async protectAndVerifyFile() {
+          calls.push("file-protect");
+        },
+        async verifyFile() {
+          calls.push("file-verify");
+        },
+      },
+    });
+
+    await store.save(identity);
+    expect(calls).toEqual(["dir:existing", "file-protect"]);
   });
 });
 

@@ -67,6 +67,7 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
     }
 
     if (this.#platform === "win32") {
+      await assertWindowsCredentialPathBoundary(this.#path);
       await this.#windowsAcl.verifyFile(this.#path);
     }
 
@@ -101,8 +102,12 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
       createdDirectory = true;
     }
 
+    if (this.#platform === "win32") {
+      await assertWindowsCredentialPathBoundary(directory, { allowMissingLeaf: true });
+    }
     await mkdir(directory, { recursive: true, mode: 0o700 });
     if (this.#platform === "win32") {
+      // Rewrite ACLs only for directories we just created — never mutate operator-shared parents.
       await this.#windowsAcl.protectDirectory(directory, createdDirectory);
     }
 
@@ -190,25 +195,30 @@ if (-not $allowed.ContainsKey($system.Value)) { throw 'Missing system access' }
 
 export function createDefaultWindowsCredentialAcl(): WindowsCredentialAcl {
   return {
+    /**
+     * Only newly created dedicated directories receive an Owner+SYSTEM DACL rewrite.
+     * Existing directories are verified only; unsafe ACLs fail closed without mutation.
+     */
     protectDirectory: (path, created) =>
       runWindowsCredentialAclScript({
         kind: "directory",
         path,
-        protect: true,
-        // Always verify; protect when the directory was just created or when saving credentials.
         forceProtect: created,
       }),
-    protectAndVerifyFile: (path) =>
-      runWindowsCredentialAclScript({ kind: "file", path, protect: true, forceProtect: true }),
-    verifyFile: (path) =>
-      runWindowsCredentialAclScript({ kind: "file", path, protect: false, forceProtect: false }),
+    protectAndVerifyFile: async (path) => {
+      await assertWindowsCredentialPathBoundary(path);
+      await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: true });
+    },
+    verifyFile: async (path) => {
+      await assertWindowsCredentialPathBoundary(path);
+      await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: false });
+    },
   };
 }
 
 async function runWindowsCredentialAclScript(input: {
   kind: "directory" | "file";
   path: string;
-  protect: boolean;
   forceProtect: boolean;
 }): Promise<void> {
   if (process.platform !== "win32") {
@@ -216,7 +226,9 @@ async function runWindowsCredentialAclScript(input: {
   }
   const environment = windowsCredentialNativeEnvironment();
   const script =
-    input.kind === "directory" ? WINDOWS_CREDENTIAL_DIRECTORY_SCRIPT : WINDOWS_CREDENTIAL_FILE_SCRIPT;
+    input.kind === "directory"
+      ? WINDOWS_CREDENTIAL_DIRECTORY_SCRIPT
+      : WINDOWS_CREDENTIAL_FILE_SCRIPT;
   const operation = executeFile(
     win32.join(
       environment.SystemRoot ?? "",
@@ -236,7 +248,8 @@ async function runWindowsCredentialAclScript(input: {
       env: {
         ...environment,
         OPENBOT_CREDENTIAL_PATH: input.path,
-        OPENBOT_CREDENTIAL_PROTECT: input.forceProtect || input.protect ? "1" : "0",
+        // forceProtect is the only rewrite switch — never rewrite existing shared directories.
+        OPENBOT_CREDENTIAL_PROTECT: input.forceProtect ? "1" : "0",
       },
       windowsHide: true,
       shell: false,
@@ -253,9 +266,39 @@ async function runWindowsCredentialAclScript(input: {
     const phase =
       [...output.matchAll(/openbot-acl:(started|identity|protecting|reading)/gu)].at(-1)?.[1] ??
       "launch";
-    throw new Error(
-      `Windows credential ${input.kind} ACL verification failed during ${phase}.`,
-    );
+    throw new Error(`Windows credential ${input.kind} ACL verification failed during ${phase}.`);
+  }
+}
+
+/**
+ * Reject credential paths whose leaf or ancestors are Windows reparse points (symlinks/junctions).
+ * This reduces parent-path substitution risk; it does not claim all path-attack classes are closed.
+ */
+export async function assertWindowsCredentialPathBoundary(
+  targetPath: string,
+  options: { allowMissingLeaf?: boolean } = {},
+): Promise<void> {
+  let current = resolve(targetPath);
+  const root = win32.parse(current).root.toLowerCase();
+  let isLeaf = true;
+  for (;;) {
+    try {
+      const entry = await lstat(current);
+      if (entry.isSymbolicLink()) {
+        throw new Error("Node credential path must not use reparse points.");
+      }
+    } catch (error) {
+      if (isLeaf && options.allowMissingLeaf === true && isMissingFile(error)) {
+        // Continue walking parents that do exist.
+      } else {
+        throw error;
+      }
+    }
+    if (current.toLowerCase() === root) break;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+    isLeaf = false;
   }
 }
 

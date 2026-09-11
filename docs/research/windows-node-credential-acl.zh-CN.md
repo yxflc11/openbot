@@ -27,3 +27,8 @@
 - 全平台：可注入 ACL helper 的单测；POSIX 旧测保持。
 - Windows runner：真实 ACL 保存/加载与过宽 ACL 拒绝。
 - 文档：NODE_ENROLLMENT 中英说明 Windows 文件存储现强制 Owner+SYSTEM DACL。
+
+## 未决问题
+
+- 祖先 reparse/junction 拒绝降低可写父路径替换风险，**不宣称**已覆盖全部路径攻击类。
+- 已有操作者目录仅校验、不自动改写 ACL。
