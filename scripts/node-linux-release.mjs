@@ -122,6 +122,10 @@ export async function sha256File(filePath) {
  *    without relying on mtime/ctime. Equality only proves both reads observed the
  *    same bytes; source authenticity still requires later attestation.
  *
+ * The import source reopen (via injectable `openFile`, defaulting to `fs.open`) must
+ * use the same fixed flags; pre-digest alone does not protect that later open from a
+ * post-digest FIFO/symlink swap.
+ *
  * Rejects non-regular files, out-of-bound sizes, and reads that deliver more bytes
  * than the fstat-declared size or the configured maximum.
  */

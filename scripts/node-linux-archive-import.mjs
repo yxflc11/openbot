@@ -1,3 +1,4 @@
+import { constants } from "node:fs";
 import { lstat, open, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { assertLinuxInstallLease } from "./node-linux-install-lease.mjs";
@@ -7,6 +8,10 @@ import {
 } from "./node-linux-release.mjs";
 
 export const LINUX_ARCHIVE_IMPORT_BOUNDS = LINUX_RELEASE_ARCHIVE_BOUNDS;
+
+/** Same fixed flags as bounded pre-digest — used for the actual import source reopen. */
+export const LINUX_ARCHIVE_IMPORT_SOURCE_OPEN_FLAGS =
+  constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 const chunkBytes = 1024 * 1024;
 const importedNamePattern = /^openbot-node-import-[0-9a-f-]{36}\.tar\.xz$/u;
@@ -36,7 +41,8 @@ export async function importLinuxReleaseArchive(options) {
   // path with the bounded O_NOFOLLOW|O_NONBLOCK regular-file hasher (not createReadStream and
   // not the injectable openFile) before import; the import-path digest must match. Equality
   // proves only that two reads observed the same bytes — source authenticity still requires
-  // later attestation.
+  // later attestation. The later source reopen must use the same fixed flags so a post-digest
+  // FIFO/symlink swap cannot hang the injectable (or default) openFile path.
   const sourceDigest = await sha256BoundedRegularFile(
     sourcePath,
     LINUX_ARCHIVE_IMPORT_BOUNDS,
@@ -46,7 +52,7 @@ export async function importLinuxReleaseArchive(options) {
   let destinationHandle;
   let destinationCreated = false;
   try {
-    sourceHandle = await openFile(sourcePath, "r");
+    sourceHandle = await openFile(sourcePath, LINUX_ARCHIVE_IMPORT_SOURCE_OPEN_FLAGS);
     const openedSource = await sourceHandle.stat();
     if (!sameSource(before, openedSource)) {
       throw new Error("Linux archive import source changed while it was opened.");
