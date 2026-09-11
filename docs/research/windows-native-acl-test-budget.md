@@ -110,3 +110,21 @@ spawn is ~3–6s, not the 15s production cap.
 
 - Whether `maxWorkers=2` on the Server Vitest Windows job should drop to 1 for this file. Not
   required once the per-test bound covers contention; left unchanged in this slice.
+
+## Follow-up (2026-09-11): `broadenAcl` spawn hang after 15s
+
+- CI after integrating the 180s harness into #37 as `de9ae38`:
+  [run 34602659437](https://github.com/yxflc11/openbot/actions/runs/34602659437) /
+  [Portable (Windows x64) job 103273480290](https://github.com/yxflc11/openbot/actions/runs/34602659437/job/103273480290).
+  All **5 ACL-only** cases failed on the test `broadenAcl` `powershell.exe` spawn after ~15s
+  (`Command failed: powershell.exe ...`). The **3 retained-read** cases (no `broadenAcl`) passed.
+  This is **not** the 180s Vitest deadline.
+- Production `runWindowsSecretAclScript` already calls `operation.child.stdin?.end()` after
+  `execFile` and uses inbox `SystemRoot\...\powershell.exe` with `shell: false`. The prior test
+  harness used `promisify(execFile)` without closing stdin and invoked bare `powershell.exe` with
+  `Get-Acl`/`Set-Acl` (Microsoft.PowerShell.Security module auto-load).
+- Selected fix (still test-only): mirror production spawn hygiene — close stdin, pin inbox
+  powershell path, `shell: false`, keep **15s** spawn cap — and rewrite `broadenAcl` to fixed
+  inbox .NET `GetAccessControl`/`SetAccessControl` + `FileSystemAccessRule` (same family as
+  production ACL scripts), not `Get-Acl`/`Set-Acl`. Real negative assertions unchanged. Do **not**
+  raise the harness deadline again.

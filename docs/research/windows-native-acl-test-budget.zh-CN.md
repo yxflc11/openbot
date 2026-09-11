@@ -92,3 +92,20 @@
 ## 未决问题
 
 - Server Vitest Windows 任务的 `maxWorkers=2` 是否应为本文件降到 1。本切片在有界 per-test 截止已覆盖争用后保持不变。
+
+## 续（2026-09-11）：`broadenAcl` 在约 15s 处失败
+
+- 将 180s 夹具合入 #37（`de9ae38`）后的 CI：
+  [run 34602659437](https://github.com/yxflc11/openbot/actions/runs/34602659437) /
+  [Portable (Windows x64) job 103273480290](https://github.com/yxflc11/openbot/actions/runs/34602659437/job/103273480290)。
+  **5 条 ACL-only** 均在测试侧 `broadenAcl` 的 `powershell.exe` 约 15s 后失败
+  （`Command failed: powershell.exe ...`）。**3 条保留读取**（不调用 `broadenAcl`）通过。
+  这不是 180s Vitest 截止时间问题。
+- 生产 `runWindowsSecretAclScript` 已在 `execFile` 后调用 `operation.child.stdin?.end()`，并使用
+  inbox `SystemRoot\...\powershell.exe` + `shell: false`。先前测试夹具用 `promisify(execFile)`
+  未关 stdin，且调用裸 `powershell.exe` 与 `Get-Acl`/`Set-Acl`（会触发
+  Microsoft.PowerShell.Security 模块自动加载）。
+- 选用修复（仍仅测试）：对齐生产启动卫生——关闭 stdin、固定 inbox powershell 路径、`shell: false`、
+  保持 **15s** spawn 上限；并把 `broadenAcl` 改为固定 inbox .NET
+  `GetAccessControl`/`SetAccessControl` + `FileSystemAccessRule`（与生产 ACL 脚本同族），
+  不再用 `Get-Acl`/`Set-Acl`。真实负向断言不变。**不再**盲目加大夹具 deadline。

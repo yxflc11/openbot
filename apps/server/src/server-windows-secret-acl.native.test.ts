@@ -1,14 +1,14 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bootstrapModelSettings } from "./model-settings-bootstrap.js";
 import { ModelSettingsService } from "./model-settings.js";
 import { FilePluginStore } from "./plugin-store.js";
 
-const execute = promisify(execFile);
+const executeFile = promisify(execFile);
 const directories: string[] = [];
 /** Per-spawn PowerShell deadline, matching production `executeFile` in `@openbot/windows-secret-acl`. */
 const POWERSHELL_SPAWN_TIMEOUT_MS = 15_000;
@@ -31,31 +31,52 @@ async function realpathTempRoot(prefix: string): Promise<string> {
   return root;
 }
 
+/**
+ * Broaden a secret path DACL for native negative tests.
+ * Matches production spawn hygiene: inbox powershell.exe, shell:false, stdin closed, 15s cap.
+ * Uses fixed .NET FileSecurity/DirectorySecurity + GetAccessControl/SetAccessControl — not
+ * Get-Acl/Set-Acl cmdlets (Microsoft.PowerShell.Security module auto-load can hang under CI).
+ */
 async function broadenAcl(targetPath: string, kind: "file" | "directory"): Promise<void> {
   const broaden =
     kind === "file"
       ? `
 $ErrorActionPreference = 'Stop'
 $path = $env:OPENBOT_TEST_PATH
-$acl = Get-Acl -LiteralPath $path
+$item = Get-Item -LiteralPath $path
+$acl = $item.GetAccessControl()
 $acl.SetAccessRuleProtection($true, $false)
-foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+  [void]$acl.RemoveAccessRule($rule)
+}
 $everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
-$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'FullControl', 'Allow'))
-Set-Acl -LiteralPath $path -AclObject $acl
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'FullControl', 'None', 'None', 'Allow'))
+$item.SetAccessControl($acl)
 `
       : `
 $ErrorActionPreference = 'Stop'
 $path = $env:OPENBOT_TEST_PATH
-$acl = Get-Acl -LiteralPath $path
+$item = Get-Item -LiteralPath $path
+$acl = $item.GetAccessControl()
 $acl.SetAccessRuleProtection($true, $false)
-foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+  [void]$acl.RemoveAccessRule($rule)
+}
 $everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
 $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'Modify', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
-Set-Acl -LiteralPath $path -AclObject $acl
+$item.SetAccessControl($acl)
 `;
-  await execute(
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+  if (!systemRoot) throw new Error("Windows SystemRoot is required for broadenAcl.");
+  const powershell = win32.join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
     "powershell.exe",
+  );
+  const operation = executeFile(
+    powershell,
     [
       "-NoLogo",
       "-NoProfile",
@@ -64,11 +85,20 @@ Set-Acl -LiteralPath $path -AclObject $acl
       Buffer.from(broaden, "utf16le").toString("base64"),
     ],
     {
-      env: { ...process.env, OPENBOT_TEST_PATH: targetPath },
+      env: {
+        SystemRoot: systemRoot,
+        WINDIR: systemRoot,
+        OPENBOT_TEST_PATH: targetPath,
+      },
       windowsHide: true,
+      shell: false,
       timeout: POWERSHELL_SPAWN_TIMEOUT_MS,
+      maxBuffer: 4096,
     },
   );
+  // Same as production runWindowsSecretAclScript: close stdin so PowerShell does not wait on pipe EOF.
+  operation.child.stdin?.end();
+  await operation;
 }
 
 const fetcher = vi.fn(async () => Response.json({ id: "test-model" }));
