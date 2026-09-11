@@ -89,3 +89,9 @@ authorized notebook resource. A temporary hostile view probe could not read the 
 cookies and its direct fetch was blocked. Revoking content permissions removed the open view;
 a subsequent changed tool declaration appeared in update review and applying it disabled the
 plugin and cleared grants. These are browser observations, not native Desktop or Windows proofs.
+
+The follow-up native regression uses the existing Electron 44.2.0 binary with a disposable hidden
+file renderer and the actual built proxy/CSP. macOS passed: the proxy initialized, host/proxy DOM
+and cookie access were denied, and a real listening loopback probe received zero requests.
+`apps/desktop/scripts/check-plugin-sandbox.mjs` now runs in native macOS/Windows CI after build.
+It is a renderer boundary check, not an installed-app/keychain or signed-distribution claim.
