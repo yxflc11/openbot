@@ -134,7 +134,7 @@ export function ShareConversationDialog({
         <p>
           {members.length === 0
             ? "请先在这个频道加入一个 Bot。"
-            : "包含角色、外观和已验证技能的说明；记忆、技能正文与电脑权限不会随模板分享。"}
+            : "包含角色、外观和已验证技能；可选择分享已审核的技能正文，记忆、密钥与电脑权限不会随包分享。"}
         </p>
       </section>
       {preview ? (

@@ -252,7 +252,7 @@ function exclusionReason(category: EmployeeExportExclusion["category"]): string 
   const reasons: Record<EmployeeExportExclusion["category"], string> = {
     identity: "来源员工 ID 与所有权不会进入模板。",
     authority: "不包含主机绑定、审批、凭证、会话或能力授权。",
-    memory: "v1 默认模板不导出任何记忆。",
+    memory: "Bot 分享包不导出任何记忆。",
     "work-history": "Run、决策、产物、审批和进化历史留在来源 Server。",
   };
   return reasons[category];

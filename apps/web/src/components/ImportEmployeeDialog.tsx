@@ -185,7 +185,7 @@ function ImportDropZone({
       <p>
         {loading
           ? `正在验证 ${fileName ?? "文件"} 的结构、签名、校验和与兼容性…`
-          : "支持不超过 2 MiB 的 openbot.employee/v1 或 DSSE JSON。未知字段会直接拒绝。"}
+          : "支持不超过 2 MiB 的 openbot.employee/v1、v2 或 DSSE JSON。未知字段会直接拒绝。"}
       </p>
       {!loading ? (
         <label className="primary-button import-file-button">
