@@ -75,3 +75,22 @@
   outline: 2px solid #496884;
   outline-offset: 3px;
 }
+
+.collaboration-role {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.collaboration-task-state[data-state="waiting_approval"] {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.collaboration-task-state[data-state="failed"] {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.collaboration-task-state[data-state="completed"] {
+  color: #047857;
+}

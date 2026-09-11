@@ -136,6 +136,7 @@ describe("structured channel collaboration", () => {
     );
     try {
       expect(view.container.textContent).toContain("邀请协作研究员");
+      expect(view.container.textContent).toContain("Research");
       expect(view.container.textContent).toContain("已完成");
       expect(view.container.querySelector(".run-collaboration button")?.getAttribute("title")).toBe(
         "Two primary sources confirmed",
