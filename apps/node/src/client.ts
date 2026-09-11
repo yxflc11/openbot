@@ -273,6 +273,18 @@ export class OpenBotNodeClient {
 
   async #prepareIdentity(signal: AbortSignal): Promise<string> {
     if (this.#env.OPENBOT_NODE_CREDENTIAL !== undefined) {
+      // Programmatic clients must obey the same identity-source boundary as the CLI schema.
+      if (
+        this.#env.OPENBOT_NODE_ALLOW_ENV_CREDENTIAL !== true ||
+        this.#env.OPENBOT_NODE_CREDENTIAL_STORE !== "file"
+      ) {
+        throw new Error("Environment Node credentials are not enabled for this profile.");
+      }
+      this.#logger.warn(
+        "node.environment_credential_enabled",
+        "Using an explicitly enabled environment credential. Prefer enrollment with a persistent credential store.",
+        { nodeId: this.#env.OPENBOT_NODE_ID, phase: "identity" },
+      );
       return this.#env.OPENBOT_NODE_CREDENTIAL;
     }
     const stored = await this.#credentialStore.load(this.#env.OPENBOT_NODE_ID);

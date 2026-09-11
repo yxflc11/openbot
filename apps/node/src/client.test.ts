@@ -9,7 +9,7 @@ import {
   type ServerMessage,
 } from "@openbot/protocol";
 import type { ComputerProvider } from "@openbot/provider-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type WebSocket, WebSocketServer } from "ws";
 import { OpenBotNodeClient, runOfferRejectionReason } from "./client.js";
 import type { NodeCredentialStore } from "./credential-store.js";
@@ -41,6 +41,34 @@ const capabilityManifest = [
 ];
 
 describe("node run offers", () => {
+  it("refuses programmatic environment overrides before touching storage or connecting", async () => {
+    const load = vi.fn();
+    const save = vi.fn();
+    const env = nodeEnvSchema.parse({ OPENBOT_NODE_ID: "guarded-node" });
+    for (const override of [
+      { OPENBOT_NODE_CREDENTIAL: nodeCredential },
+      {
+        OPENBOT_NODE_CREDENTIAL: nodeCredential,
+        OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "false" as unknown as boolean,
+      },
+      {
+        OPENBOT_NODE_CREDENTIAL: nodeCredential,
+        OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: true,
+        OPENBOT_NODE_CREDENTIAL_STORE: "secret-service" as const,
+      },
+    ]) {
+      const client = new OpenBotNodeClient(
+        { ...env, ...override },
+        [],
+        { load, save },
+        createSilentLogger(),
+      );
+      await expect(client.start()).rejects.toThrow("Node identity setup failed.");
+      await client.stop();
+    }
+    expect(load).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+  });
   it("accepts only offers covered by local capabilities and capacity", () => {
     expect(
       runOfferRejectionReason(offer, ["browser", "screenshot"], capabilityManifest, 0, 1),
@@ -113,15 +141,18 @@ describe("node run offers", () => {
         return { ok: true, summary: "Page opened and captured", artifacts: [] };
       },
     };
+    const logger = createSilentLogger();
+    const warn = vi.spyOn(logger, "warn");
     const client = new OpenBotNodeClient(
       nodeEnvSchema.parse({
         OPENBOT_NODE_ID: "test-node",
         OPENBOT_NODE_SERVER_URL: `ws://127.0.0.1:${address.port}`,
         OPENBOT_NODE_CREDENTIAL: nodeCredential,
+        OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
       }),
       [provider],
       undefined,
-      createSilentLogger(),
+      logger,
     );
 
     gateway.on("connection", (socket) => {
@@ -192,6 +223,11 @@ describe("node run offers", () => {
       await withTimeout(completion);
 
       expect(advertisedCapabilities).toEqual(["browser", "screenshot"]);
+      expect(warn).toHaveBeenCalledWith("node.environment_credential_enabled", expect.any(String), {
+        nodeId: "test-node",
+        phase: "identity",
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(nodeCredential);
       expect(advertisedManifest).toEqual(["browser.observe@1", "screen.capture@1"]);
       expect(receivedTypes).toEqual([
         "node.hello",
@@ -323,6 +359,7 @@ describe("node run offers", () => {
         OPENBOT_NODE_ID: "test-node",
         OPENBOT_NODE_SERVER_URL: `ws://127.0.0.1:${address.port}`,
         OPENBOT_NODE_CREDENTIAL: nodeCredential,
+        OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
       }),
       [provider],
       undefined,
@@ -464,6 +501,7 @@ describe("node run offers", () => {
         OPENBOT_NODE_ID: "test-node",
         OPENBOT_NODE_SERVER_URL: `ws://127.0.0.1:${address.port}`,
         OPENBOT_NODE_CREDENTIAL: nodeCredential,
+        OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
       }),
       [provider],
       undefined,

@@ -40,6 +40,7 @@ internal static class Program
     var environment = new Hashtable(StringComparer.OrdinalIgnoreCase)
     {
       ["OPENBOT_NODE_ID"] = "node-1",
+      ["OPENBOT_NODE_ALLOW_ENV_CREDENTIAL"] = "true",
       ["OPENBOT_NODE_SERVICE_CONTROL"] = "attacker-mode",
       ["OPENBOT_NODE_WORK_DIRECTORY"] = "C:\\attacker",
       ["NODE_OPTIONS"] = "--require C:\\attacker.js",
@@ -56,6 +57,7 @@ internal static class Program
         Path.GetFullPath(Path.Combine(commonApplicationData, "OpenBot", "node")),
         plan.Environment["OPENBOT_NODE_WORK_DIRECTORY"]);
     Equal("node-1", plan.Environment["OPENBOT_NODE_ID"]);
+    Equal("true", plan.Environment["OPENBOT_NODE_ALLOW_ENV_CREDENTIAL"]);
     False(plan.Environment.ContainsKey("NODE_OPTIONS"), "NODE_OPTIONS must not reach the child.");
     return Task.CompletedTask;
   }

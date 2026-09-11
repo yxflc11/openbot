@@ -38,6 +38,7 @@ describe("macOS Node service configuration", () => {
         OPENBOT_NODE_ID: validConfig.nodeId,
         OPENBOT_NODE_SERVER_URL: validConfig.serverUrl,
         OPENBOT_NODE_CREDENTIAL_STORE: "macos-host",
+        OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: false,
         OPENBOT_NODE_SERVICE_CONTROL: "stdio-v3",
         OPENBOT_NODE_MAX_CONCURRENT_RUNS: 2,
         OPENBOT_NODE_WORK_DIRECTORY: join(

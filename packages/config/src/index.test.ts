@@ -123,10 +123,29 @@ describe("server environment", () => {
 });
 
 describe("node environment", () => {
+  it("rejects inherited credentials unless the file profile explicitly opts in", () => {
+    const base = { OPENBOT_NODE_ID: "ephemeral-node", OPENBOT_NODE_CREDENTIAL: nodeCredential };
+    for (const flag of [undefined, "false", "1", "TRUE", ""]) {
+      const result = nodeEnvSchema.safeParse({ ...base, OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: flag });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.message).not.toContain(nodeCredential);
+    }
+    const explicit = { ...base, OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true" };
+    expect(nodeEnvSchema.parse(explicit).OPENBOT_NODE_CREDENTIAL).toBe(nodeCredential);
+    for (const store of ["secret-service", "macos-host"]) {
+      expect(
+        nodeEnvSchema.safeParse({ ...explicit, OPENBOT_NODE_CREDENTIAL_STORE: store }).success,
+      ).toBe(false);
+    }
+    expect(
+      nodeEnvSchema.parse({ OPENBOT_NODE_ID: "normal-node" }).OPENBOT_NODE_ALLOW_ENV_CREDENTIAL,
+    ).toBe(false);
+  });
   it("bounds the advertised concurrency", () => {
     const environment = nodeEnvSchema.parse({
       OPENBOT_NODE_ID: "linux-node",
       OPENBOT_NODE_CREDENTIAL: nodeCredential,
+      OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
       OPENBOT_NODE_MAX_CONCURRENT_RUNS: "2",
     });
     expect(environment.OPENBOT_NODE_MAX_CONCURRENT_RUNS).toBe(2);
@@ -136,6 +155,7 @@ describe("node environment", () => {
       nodeEnvSchema.safeParse({
         OPENBOT_NODE_ID: "linux-node",
         OPENBOT_NODE_CREDENTIAL: nodeCredential,
+        OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
         OPENBOT_NODE_MAX_CONCURRENT_RUNS: "17",
       }).success,
     ).toBe(false);
@@ -191,6 +211,7 @@ describe("node environment", () => {
     const base = {
       OPENBOT_NODE_ID: "linux-node",
       OPENBOT_NODE_CREDENTIAL: nodeCredential,
+      OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
     };
     expect(
       nodeEnvSchema.safeParse({
@@ -278,7 +299,11 @@ describe("macOS Node service configuration", () => {
 });
 
 describe("browser input opt-in", () => {
-  const worker = { OPENBOT_NODE_ID: "test-worker", OPENBOT_NODE_CREDENTIAL: nodeCredential };
+  const worker = {
+    OPENBOT_NODE_ID: "test-worker",
+    OPENBOT_NODE_CREDENTIAL: nodeCredential,
+    OPENBOT_NODE_ALLOW_ENV_CREDENTIAL: "true",
+  };
   const computer = {
     ...worker,
     OPENBOT_DOCKER_COMPUTER_URL: "http://127.0.0.1:4198",

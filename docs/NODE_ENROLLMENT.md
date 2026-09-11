@@ -47,10 +47,17 @@ The Owner dialog lists active and revoked identities without returning credentia
 online state is reconciled with the live Node connection projection. The pairing token is held only
 in the open dialog and cannot be retrieved after it is closed.
 
-For an ephemeral environment, `OPENBOT_NODE_CREDENTIAL` may provide the enrolled credential
-directly. Treat this as a secret-injection integration point, not a value to commit or place in an
-Employee package. `OPENBOT_NODE_CREDENTIAL_PATH` can move the file to an operator-controlled
-secret volume.
+`OPENBOT_NODE_CREDENTIAL` is rejected by default. Prefer one-time enrollment and the configured
+credential store; existing saved identities need no extra option. For an operator-managed ephemeral
+process only, set `OPENBOT_NODE_ALLOW_ENV_CREDENTIAL=true` with the `file` profile to explicitly use
+an injected credential. Startup logs a warning without the credential value. Secret Service and
+macOS Host profiles reject this override even with opt-in. Never put credentials in Git or Employee
+packages. `OPENBOT_NODE_CREDENTIAL_PATH` can instead point to an operator-controlled secret volume.
+
+Migration from environment injection: remove the old credential variable and enroll once, or use
+the existing saved identity. An environment-only deployment that intentionally retains injection
+must explicitly enable the option in its launcher. This changes the default configuration policy;
+it does not add proof of possession or prevent copying an enabled bearer credential.
 
 ## Linux service profiles (experimental)
 
