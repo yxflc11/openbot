@@ -21,7 +21,11 @@ RUN npm exec -- turbo run build --filter=@openbot/server...
 
 FROM toolchain AS production-dependencies
 COPY --from=pruner /pruned/json/ ./
-RUN npm ci --omit=dev --ignore-scripts --audit=false
+# Keep an apps/server/node_modules directory even when npm hoists every Server
+# production dependency: Docker COPY fails on a missing source, and workspace
+# installs may nest packages here when another workspace pins a different major.
+RUN npm ci --omit=dev --ignore-scripts --audit=false \
+  && mkdir -p apps/server/node_modules
 
 FROM base AS runtime
 ENV NODE_ENV=production
@@ -32,6 +36,9 @@ RUN install -d --owner=node --group=node --mode=0700 /var/lib/openbot/objects
 RUN install -d --owner=node --group=node --mode=0700 /var/lib/openbot/model
 
 COPY --from=production-dependencies --chown=node:node /workspace/node_modules ./node_modules
+# Nested Server workspace production closure (omit=dev). Root node_modules alone is
+# not enough when npm nests a Server production dependency under apps/server.
+COPY --from=production-dependencies --chown=node:node /workspace/apps/server/node_modules ./apps/server/node_modules
 COPY --from=build --chown=node:node /workspace/package.json ./package.json
 COPY --from=build --chown=node:node /workspace/apps/server/package.json ./apps/server/package.json
 COPY --from=build --chown=node:node /workspace/apps/server/dist ./apps/server/dist
