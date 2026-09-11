@@ -2,9 +2,8 @@
 
 [简体中文](DESKTOP_ONBOARDING.zh-CN.md)
 
-Desktop 0.1.0-alpha.3 shares one application across macOS, Windows and Linux. The macOS source-build preview
-offers two choices; Windows, Linux and unknown platforms offer only the existing-Server connection
-until native service setup is implemented for them:
+The macOS arm64 and Windows x64 desktop distributions include a local Server and PostgreSQL.
+Choose how this computer should connect:
 
 - **Service computer:** Desktop initializes an app-owned PostgreSQL 17 database, starts the
   bundled Server, creates its private Owner bootstrap identity, connects and opens model setup.
@@ -42,16 +41,26 @@ ID. A direct conversation needs no mention. The composer no longer has a Bot dro
 text. It grows from two to eight lines and retains the send button; Enter sends by default and
 Shift+Enter inserts a newline. Reading older messages stays in place until **Return to latest**.
 
-The composer's **+** adds removable attachment and skill chips. It accepts at most **3 UTF-8 TXT,
-MD, CSV or JSON files**, each at most **6,000 bytes**. File contents become user-provided task text;
-the full request, including text, attachment labels/content and skill requests, must fit within
-**8,000 characters**. This does not upload binary files, PDFs or screenshots. You can request at
-most **2 verified skills already assigned to the addressed Bot**. Skill selection requests their
-use and does not grant capabilities; the Server rechecks assignment and verification at execution.
+The composer's **+**, drag-and-drop and file paste add attachments. A message accepts up to
+**8 files / 20 MiB total**: text/code up to 256 KiB each, PNG/JPEG up to 5 MiB each, and
+supported PDF, Office/OpenDocument and audio/video files up to 10 MiB each. Originals are stored
+on the Server and remain downloadable. Extraction, OCR and transcription are separate actions;
+media transcription sends the selected media to the configured service after an explicit action.
+You can cancel an upload or retry only failed files while retaining successful attachments.
+Cancellation ignores a late response; an original already received by the Server may remain in
+attachment management. Recording and adding a voice draft are separate from sending a message.
+Skill chips request existing reviewed skills and never grant capabilities.
 
-**Share** first shows an explicit preview of recently loaded messages as Markdown. **Copy
-conversation** writes that preview to the clipboard, with a manual-copy fallback. This is not a
-complete-history export or hosted/public share link; no conversation is automatically published.
+**Share** provides task-output downloads and sharing the Bot itself. Bot sharing previews its
+profile and verified skills; selected reviewed single-file instructions use the v2 package.
+Private memory, history, keys and computer permissions remain on the source Server. The recipient
+creates a new Bot and reviews imported instructions before model use. See [Employee sharing](EMPLOYEE.md).
+
+After initial setup, reopening resumes the existing local service and database with a compact
+connection state instead of repeating the installation checklist. Saved credentials are reused.
+Credential access is asynchronous so system authorization does not freeze the startup window;
+an unlock failure preserves the existing encrypted identity and data. macOS can still request
+Keychain approval after an unsigned build changes; see the distribution limitations below.
 
 Each channel retains its draft text, selected Bot, quoted reply, attachment and skill chips in
 workspace-session memory.

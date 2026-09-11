@@ -240,3 +240,9 @@ alpha.5 原生参考频道改造继续复用上述已锁定依赖与标准，没
 本机启动诊断复用 Node v22.22.2 的 `diagnostics_channel`（MIT），只在受信任的 Electron 主进程中传递。默认不记录日志、不向渲染器暴露原因；仅在有订阅者时收集有大小限制的原生命令错误输出。没有复制源码，见 [Windows 验证研究](research/windows-desktop-completion.md)。
 
 Windows 数据库启动复用 PostgreSQL REL_17_11 的 `pg_ctl` 受限令牌机制及 PID 文件/状态契约。薄适配层在清理或停止前核对集群、端口、PID 与启动身份，没有自行实现令牌 API 或复制上游代码，见 [研究](research/windows-desktop-completion.md)。
+
+## 产品修复适配（2026-09-11）
+
+- Desktop 异步凭据访问和显式发行平台选择复用 Electron 44.2.0 与现有打包适配器：[研究](research/product-repair-startup.md)。
+- Bot v2 技能正文分享复用 Agent Skills 和已有摘要审核导入：[研究](research/portable-bot-skills.md)。
+- 独立插件生成器复制现有 MIT 示例并固定 MCP SDK 1.30.0：[研究](research/plugin-platform-completion.md)。

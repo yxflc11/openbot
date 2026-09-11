@@ -295,3 +295,9 @@ Native asynchronous collaboration continues AI SDK 7.0.93 / `6359fd58fe68eaade09
 Native startup diagnostics reuse Node v22.22.2 `diagnostics_channel` (MIT) inside the trusted Electron main process. No default logs or renderer exposure; native command stderr is bounded and only collected for an active subscriber. No source copied; see [Windows verification research](research/windows-desktop-completion.md).
 
 Windows database startup reuses PostgreSQL REL_17_11 `pg_ctl` restricted-token launch and its documented PID-file/status contracts. The thin adapter verifies cluster, port, PID and start identity before cleanup or stop; no token API implementation or upstream source copied. See [research](research/windows-desktop-completion.md).
+
+## Product repair adapters (2026-09-11)
+
+- Async Desktop credential access and explicit release targets reuse Electron 44.2.0 and existing packaging adapters: [research](research/product-repair-startup.md).
+- Portable Bot v2 instruction content reuses Agent Skills and the existing digest-reviewed import: [research](research/portable-bot-skills.md).
+- The independent plugin starter copies the existing MIT example and pins MCP SDK 1.30.0: [research](research/plugin-platform-completion.md).
