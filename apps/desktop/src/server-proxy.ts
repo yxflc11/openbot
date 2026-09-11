@@ -6,7 +6,7 @@ export const MAXIMUM_DESKTOP_PROXY_URL_BYTES = 8 * 1024;
 export const DESKTOP_PROXY_REQUEST_TIMEOUT_MS = 30_000;
 
 const allowedMethods = new Set(["DELETE", "GET", "PATCH", "POST"]);
-const mutationMethods = new Set(["DELETE", "PATCH", "POST"]);
+const mutationMethods = new Set(["DELETE", "PATCH", "POST", "PUT"]);
 const forwardedRequestHeaders = new Set(["accept", "content-type", "if-match", "last-event-id"]);
 const exposedResponseHeaders = new Set([
   "cache-control",
@@ -71,9 +71,15 @@ export async function proxyDesktopServerRequest(
   }
 
   const method = request.method.toUpperCase();
-  if (!allowedMethods.has(method)) {
+  // PUT is currently part of the reaction contract only; other mutation routes stay closed.
+  const routeMethods = /^\/api\/v1\/channels\/[^/]+\/messages\/[^/]+\/reactions$/u.test(
+    requestUrl.pathname,
+  )
+    ? new Set([...allowedMethods, "PUT"])
+    : allowedMethods;
+  if (!routeMethods.has(method)) {
     return jsonError(405, "Desktop Server request method is not allowed.", {
-      Allow: [...allowedMethods].sort().join(", "),
+      Allow: [...routeMethods].sort().join(", "),
     });
   }
   if (forbiddenCredentialHeaders.some((header) => request.headers.has(header))) {

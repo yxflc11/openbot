@@ -1,4 +1,4 @@
-param([string]$Version = "0.1.0-alpha.6")
+param([string]$Version = "0.1.0-alpha.7")
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.Net.Http

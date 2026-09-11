@@ -127,3 +127,18 @@ allowing `null`. It is development evidence for this Electron version, not a pla
 - The process-level journey observed the main-process mutation Origin equal to the confirmed target
   and an `HttpOnly; SameSite=Strict` session cookie on the subsequent workspace request. This is
   local development evidence, not signed distribution or general macOS support.
+
+## Native reaction PUT forwarding (2026-09-11)
+
+Actual installed-app acceptance found the existing reaction menu failed with HTTP 405 before
+reaching the Server: the Web reaction API uses PUT, while Desktop only forwarded GET/POST/PATCH/DELETE.
+Rechecked [Electron protocol.handle](https://www.electronjs.org/docs/latest/api/protocol),
+[Electron 44.2.0 release](https://releases.electronjs.org/release/v44.2.0), GitHub protocol/session
+API evidence above, and [RFC 9110 PUT](https://httpwg.org/specs/rfc9110.html#PUT). Keep the already
+reviewed Electron 44.2.0 / MIT session adapter; no dependency or upstream source changes.
+
+The first viable option is the existing bounded proxy with PUT admitted only for the current
+`/api/v1/channels/:channelId/messages/:messageId/reactions` route. Other PUT routes remain rejected.
+Treat the request as a mutation for trusted target-Origin rewriting and retain credential-header
+rejection, body bounds, no redirects, and Server authorization. Verify both active=true and false
+forwarding and route rejection; repeat the installed-app add/remove reaction journey after packaging.

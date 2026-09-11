@@ -8,6 +8,7 @@ import type {
 } from "@openbot/domain";
 import type { RealtimeConnectionState } from "../api";
 import { ArtifactDownloadLink } from "./ArtifactCard";
+import { runStatusSummary } from "./NativeRunControls";
 import "../context-rail.css";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { ApprovalCard } from "./ApprovalCard";
@@ -128,7 +129,7 @@ export function ContextRail({
                 <RunRow
                   run={run}
                   detail={
-                    latestProgress.get(run.id)?.message ??
+                    runStatusSummary(run, latestProgress.get(run.id)?.message) ??
                     `${bot?.name ?? "未知 Bot"} · ${run.executionProfile === "none" ? "正在处理" : (node?.name ?? "等待分配电脑")}`
                   }
                   onInspect={onInspectRun}
@@ -152,7 +153,7 @@ export function ContextRail({
                 <div className="usage-rail-result" key={run.id}>
                   <RunRow
                     run={run}
-                    detail={run.errorMessage ?? run.resultSummary ?? botById.get(run.botId)?.name}
+                    detail={runStatusSummary(run) ?? botById.get(run.botId)?.name}
                     onInspect={onInspectRun}
                   />
                   {artifact ? (
