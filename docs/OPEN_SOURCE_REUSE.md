@@ -305,6 +305,7 @@ Windows database startup reuses PostgreSQL REL_17_11 `pg_ctl` restricted-token l
 
 - Async Desktop credential access and explicit release targets reuse Electron 44.2.0 and existing packaging adapters: [research](research/product-repair-startup.md).
 - Portable Bot v2 instruction content reuses Agent Skills and the existing digest-reviewed import: [research](research/portable-bot-skills.md).
+- Native Bot content downloads preserve the reviewed optional boolean across the existing Electron 44.2.0 sandbox bridge: [research](research/native-bot-export-bridge.md). No new dependency or copied source; fixed IPC, digest and native-path checks remain.
 - The independent plugin starter copies the existing MIT example and pins MCP SDK 1.30.0: [research](research/plugin-platform-completion.md).
 
 Desktop search-account selection reuses Electron 44.2.0's explicit child environment map, without

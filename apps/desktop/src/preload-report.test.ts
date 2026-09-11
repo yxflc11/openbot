@@ -54,7 +54,7 @@ describe("sandboxed report save preload", () => {
   });
 });
 
-it("bounds Employee export input and forwards only the reviewed four-field identity", async () => {
+it("bounds legacy Employee export input and forwards only its reviewed identity", async () => {
   const { bridge, ipcRenderer } = preload();
   const input = {
     botId: "6d472024-ae0c-43a8-8ff7-b583c8eccb26",
@@ -81,3 +81,34 @@ it("bounds Employee export input and forwards only the reviewed four-field ident
   }
   expect(ipcRenderer.invoke).toHaveBeenCalledTimes(1);
 });
+
+it.each([true, false])(
+  "preserves reviewed skill-content selection across preload: %s",
+  async (includeSkillContent) => {
+    const { bridge, ipcRenderer } = preload();
+    const input = {
+      botId: "6d472024-ae0c-43a8-8ff7-b583c8eccb26",
+      packageId: "00000000-0000-4000-8000-000000000099",
+      generatedAt: "2026-09-04T00:00:00.000Z",
+      downloadReviewToken: "a".repeat(64),
+      includeSkillContent,
+    };
+    await bridge.saveEmployeeTemplate?.(input);
+    expect(ipcRenderer.invoke).toHaveBeenCalledExactlyOnceWith(
+      "openbot:save-employee-template",
+      input,
+    );
+    for (const invalid of [
+      { ...input, includeSkillContent: "true" },
+      { ...input, includeSkillContent: 1 },
+      { ...input, includeSkillContent: null },
+      { ...input, url: "https://evil.example" },
+      { ...input, path: "/tmp/unauthorized.json" },
+    ]) {
+      expect(await bridge.saveEmployeeTemplate?.(invalid as typeof input)).toEqual({
+        status: "unavailable",
+      });
+    }
+    expect(ipcRenderer.invoke).toHaveBeenCalledTimes(1);
+  },
+);
