@@ -1,3 +1,4 @@
+import { macosSigningOptions, verifyNotarizedDesktop } from "./macos-signing.mjs";
 import { access, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +26,11 @@ import { copyContainedResource } from "./package-resources.mjs";
 
 const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const identity = desktopPackageIdentity(process.argv.slice(2));
+const signing = macosSigningOptions(
+  process.env,
+  process.platform,
+  identity === DESKTOP_PREVIEW_IDENTITY,
+);
 const workspaceRoot = join(appRoot, "..", "..");
 const rendererEntry = join(appRoot, "dist", "renderer", "index.html");
 const nativeRuntime = ["darwin", "win32"].includes(process.platform)
@@ -79,6 +85,7 @@ if (workerCompanionSource !== undefined) {
 }
 
 const packagePaths = await packager({
+  ...(signing ?? {}),
   appBundleId: identity.appBundleId,
   extendInfo: {
     NSMicrophoneUsageDescription: "Record a voice attachment when you press the microphone button.",
@@ -118,6 +125,12 @@ const packagePaths = await packager({
           packagedDesktopMacOSWorkerCompanion(buildPath, process.platform, identity),
         );
       }
+      if (signing) {
+        await flipFuses(
+          packagedElectronTarget(buildPath, process.platform, identity),
+          createDesktopFuseConfig(process.platform, process.arch),
+        );
+      }
     },
   ],
   afterCopy: [
@@ -151,7 +164,8 @@ const target = packagedElectronTarget(packagePaths[0], process.platform, identit
 const asarPath = packagedAsarPath(packagePaths[0], process.platform, identity);
 validateDesktopAsarEntries(listPackage(asarPath, { isPack: false }));
 const expectedFuses = createDesktopFuseConfig(process.platform, process.arch);
-await flipFuses(target, expectedFuses);
+if (!signing) await flipFuses(target, expectedFuses);
+else await verifyNotarizedDesktop(join(packagePaths[0], "OpenBot.app"));
 
 await access(
   packagedDesktopResource(packagePaths[0], process.platform, DESKTOP_ICON_RESOURCE_NAME, identity),
@@ -187,7 +201,7 @@ if (workerCompanionSource !== undefined) {
 }
 
 console.log(
-  `Packaged unsigned ${identity.name} development artifact${
+  `Packaged ${signing ? "Developer ID notarized" : "unsigned development"} ${identity.name} artifact${
     workerCompanionSource === undefined ? " without" : " with"
   } the macOS Worker companion: ${packagePaths[0]}`,
 );

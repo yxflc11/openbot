@@ -19,16 +19,33 @@ export function validateDesktopReleaseRun(run, repository) {
   return run.head_sha;
 }
 
+const supportedTargets = ["darwin-arm64", "win32-x64", "linux-x64"];
+export function desktopReleaseTargets(targets, windowsOnly = false) {
+  if (typeof windowsOnly !== "boolean")
+    throw new Error("Windows-only scope must be an explicit boolean.");
+  if (targets !== undefined && windowsOnly)
+    throw new Error("Choose targets or legacy Windows-only scope, not both.");
+  const selected = targets ?? (windowsOnly ? ["win32-x64"] : supportedTargets);
+  if (
+    !Array.isArray(selected) ||
+    !selected.length ||
+    selected.length > supportedTargets.length ||
+    selected.some((target) => !supportedTargets.includes(target)) ||
+    new Set(selected).size !== selected.length
+  )
+    throw new Error("Targets must be a nonempty unique subset of reviewed Desktop platforms.");
+  return supportedTargets.filter((target) => selected.includes(target));
+}
+
 export async function prepareDesktopRelease({
   inputDirectory,
   outputDirectory,
   version,
   sourceCommit,
   windowsOnly = false,
+  targets: selectedTargets,
 }) {
-  if (typeof windowsOnly !== "boolean")
-    throw new Error("Windows-only scope must be an explicit boolean.");
-  const targets = windowsOnly ? ["win32-x64"] : ["darwin-arm64", "win32-x64", "linux-x64"];
+  const targets = desktopReleaseTargets(selectedTargets, windowsOnly);
   const children = await readdir(inputDirectory);
   const allFiles = [];
   const manifests = [];
@@ -66,11 +83,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     !runPath ||
     !version ||
     !repository ||
-    (scope !== undefined && scope !== "--windows-only") ||
+    (scope !== undefined && scope !== "--windows-only" && !scope.startsWith("--targets=")) ||
     ![7, 8].includes(process.argv.length)
   ) {
     throw new Error(
-      "Usage: prepare-desktop-release <downloads> <new-output-dir> <run-json> <version> <owner/repo> [--windows-only]",
+      "Usage: prepare-desktop-release <downloads> <new-output-dir> <run-json> <version> <owner/repo> [--windows-only | --targets=darwin-arm64,win32-x64]",
     );
   }
   const sourceCommit = validateDesktopReleaseRun(
@@ -84,6 +101,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       version,
       sourceCommit,
       windowsOnly: scope === "--windows-only",
+      ...(scope?.startsWith("--targets=") ? { targets: scope.slice(10).split(",") } : {}),
     }),
   );
 }

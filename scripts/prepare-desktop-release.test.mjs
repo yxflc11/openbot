@@ -160,3 +160,44 @@ test("CLI accepts only the explicit final Windows flag and assembles its selecte
   assert.equal(manifest.targets.length, 1);
   assert.equal(manifest.targets[0].platform, "win32");
 });
+
+test("explicit macOS and Windows set omits Linux and verifies both requested artifacts", async (t) => {
+  const options = await fixture(t);
+  await rm(join(options.inputDirectory, `openbot-installers-linux-x64-${sourceCommit}`), {
+    recursive: true,
+  });
+  const targets = ["darwin-arm64", "win32-x64"];
+  assert.equal((await prepareDesktopRelease({ ...options, targets })).assetCount, 2);
+  const manifest = JSON.parse(
+    await readFile(join(options.outputDirectory, "desktop-manifest.json"), "utf8"),
+  );
+  assert.deepEqual(
+    manifest.targets.map((entry) => `${entry.platform}-${entry.arch}`),
+    targets,
+  );
+  assert.equal(
+    (await readFile(join(options.outputDirectory, "SHA256SUMS"), "utf8")).trim().split("\n").length,
+    2,
+  );
+});
+
+test("explicit platform selection rejects empty, unknown, duplicate, mixed and partial sets", async (t) => {
+  const options = await fixture(t);
+  for (const targets of [[], ["darwin-x64"], ["win32-x64", "win32-x64"], "win32-x64"])
+    await assert.rejects(prepareDesktopRelease({ ...options, targets }), /Targets/u);
+  await assert.rejects(
+    prepareDesktopRelease({ ...options, targets: ["win32-x64"], windowsOnly: true }),
+    /not both/u,
+  );
+  const directory = join(options.inputDirectory, `openbot-installers-darwin-arm64-${sourceCommit}`);
+  await writeFile(join(directory, installerFileNames(version, "darwin", "arm64")[0]), "tampered");
+  await assert.rejects(
+    prepareDesktopRelease({ ...options, targets: ["darwin-arm64", "win32-x64"] }),
+    /checksum/u,
+  );
+  await rm(directory, { recursive: true });
+  await assert.rejects(
+    prepareDesktopRelease({ ...options, targets: ["darwin-arm64", "win32-x64"] }),
+    /Missing/u,
+  );
+});
