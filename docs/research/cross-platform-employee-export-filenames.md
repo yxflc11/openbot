@@ -82,3 +82,13 @@
 
 - A future localization review may add RFC 8187 `filename*` for a human-readable Unicode companion.
   The v1 safe ASCII filename remains the canonical fallback and Client download name.
+
+## Patch follow-up (2026-09-11)
+
+- Status: Accepted patch bump on the same decision.
+- Bump: `filename-reserved-regex` **4.0.0 → 4.0.1** (`d267eb9`; fix commit `7555d54` — Windows
+  reserved name matching). `@types/filename-reserved-regex` **3.0.0** unchanged.
+- Rationale: parent upgrade plan already required rechecking the device-name set on dependency
+  upgrades. Evidence and consolidating PR research:
+  [deps-patch-hono-biome-types-filename.md](deps-patch-hono-biome-types-filename.md).
+- Ledger: `docs/OPEN_SOURCE_REUSE.md` Findings and ZH twin now pin **4.0.1**.
