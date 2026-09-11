@@ -336,29 +336,35 @@ describe("Desktop attachment upload proxy", () => {
     expect(fetcher.mock.calls[0]?.[1]?.body).toEqual(body);
   });
 
-  it("accepts attachment bodies above 3 MiB and up to the 20 MiB Server task budget", async () => {
-    const fetcher = vi.fn(async () => new Response("{}", { status: 201 }));
-    const bytes = new Uint8Array(MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES + 1);
-    bytes[0] = 7;
-    bytes[bytes.length - 1] = 9;
-    const response = await proxyDesktopServerRequest(
-      new Request(`openbot://app${uploadPath}`, {
-        method: "POST",
-        body: bytes,
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "X-OpenBot-Filename": "large.bin",
-        },
-      }),
-      configured,
-      fetcher,
-    );
-    expect(response?.status).toBe(201);
-    const forwarded = fetcher.mock.calls[0]?.[1]?.body as Uint8Array;
-    expect(forwarded.byteLength).toBe(bytes.byteLength);
-    expect(forwarded[0]).toBe(7);
-    expect(forwarded.at(-1)).toBe(9);
-  });
+  it.each([
+    MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES + 1,
+    MAXIMUM_DESKTOP_ATTACHMENT_PROXY_REQUEST_BYTES,
+  ])(
+    "accepts attachment bodies above 3 MiB and up to the 20 MiB Server task budget (%s bytes)",
+    async (byteLength) => {
+      const fetcher = vi.fn(async () => new Response("{}", { status: 201 }));
+      const bytes = new Uint8Array(byteLength);
+      bytes[0] = 7;
+      bytes[bytes.length - 1] = 9;
+      const response = await proxyDesktopServerRequest(
+        new Request(`openbot://app${uploadPath}`, {
+          method: "POST",
+          body: bytes,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-OpenBot-Filename": "large.bin",
+          },
+        }),
+        configured,
+        fetcher,
+      );
+      expect(response?.status).toBe(201);
+      const forwarded = fetcher.mock.calls[0]?.[1]?.body as Uint8Array;
+      expect(forwarded.byteLength).toBe(bytes.byteLength);
+      expect(forwarded[0]).toBe(7);
+      expect(forwarded.at(-1)).toBe(9);
+    },
+  );
 
   it("rejects attachment bodies above 20 MiB before network access", async () => {
     const fetcher = vi.fn();
