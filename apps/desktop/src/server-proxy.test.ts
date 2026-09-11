@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DesktopEventStreamLifecycle,
+  MAXIMUM_DESKTOP_ATTACHMENT_PROXY_REQUEST_BYTES,
   MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES,
   parseDesktopApiRequestUrl,
   proxyDesktopServerRequest,
@@ -250,5 +251,177 @@ describe("single-window event-stream lifecycle", () => {
     expect(currentSignal?.aborted).toBe(false);
     lifecycle.clear();
     expect(currentSignal?.aborted).toBe(true);
+  });
+});
+
+describe("Desktop attachment upload proxy", () => {
+  const channelId = "550e8400-e29b-41d4-a716-446655440000";
+  const uploadPath = `/api/v1/channels/${channelId}/attachments`;
+  const encodedChineseName = encodeURIComponent("团队汇总.csv");
+
+  it("forwards x-openbot-filename and exact binary bodies, including empty uploads", async () => {
+    for (const bytes of [new Uint8Array(), Uint8Array.from([0, 1, 255, 9, 10])]) {
+      const fetcher = vi.fn(async () => new Response("{}", { status: 201 }));
+      const response = await proxyDesktopServerRequest(
+        new Request(`openbot://app${uploadPath}`, {
+          method: "POST",
+          body: bytes,
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "X-OpenBot-Filename": "notes.bin",
+            "X-Renderer-Secret": "drop-me",
+          },
+        }),
+        configured,
+        fetcher,
+      );
+      expect(response?.status).toBe(201);
+      expect(fetcher).toHaveBeenCalledOnce();
+      const [target, init] = fetcher.mock.calls[0] ?? [];
+      expect(target).toBe(`https://openbot.example${uploadPath}`);
+      const headers = new Headers(init?.headers);
+      expect(headers.get("x-openbot-filename")).toBe("notes.bin");
+      expect(headers.get("content-type")).toBe("application/octet-stream");
+      expect(headers.has("x-renderer-secret")).toBe(false);
+      expect(headers.get("origin")).toBe("https://openbot.example");
+      expect(init?.body).toBeInstanceOf(Uint8Array);
+      expect(init?.body).toEqual(bytes);
+    }
+  });
+
+  it("forwards the percent-encoded Chinese filename the renderer sends", async () => {
+    const fetcher = vi.fn(async () => new Response("{}", { status: 201 }));
+    const body = Uint8Array.from([0xef, 0xbb, 0xbf, 0x61]);
+    const response = await proxyDesktopServerRequest(
+      new Request(`openbot://app${uploadPath}`, {
+        method: "POST",
+        body,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-OpenBot-Filename": encodedChineseName,
+        },
+      }),
+      configured,
+      fetcher,
+    );
+    expect(response?.status).toBe(201);
+    const headers = new Headers(fetcher.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("x-openbot-filename")).toBe(encodedChineseName);
+    expect(headers.get("x-openbot-filename")).toBe("%E5%9B%A2%E9%98%9F%E6%B1%87%E6%80%BB.csv");
+    expect(fetcher.mock.calls[0]?.[1]?.body).toEqual(body);
+  });
+
+  it("accepts attachment bodies above 3 MiB and up to the 20 MiB Server task budget", async () => {
+    const fetcher = vi.fn(async () => new Response("{}", { status: 201 }));
+    const bytes = new Uint8Array(MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES + 1);
+    bytes[0] = 7;
+    bytes[bytes.length - 1] = 9;
+    const response = await proxyDesktopServerRequest(
+      new Request(`openbot://app${uploadPath}`, {
+        method: "POST",
+        body: bytes,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-OpenBot-Filename": "large.bin",
+        },
+      }),
+      configured,
+      fetcher,
+    );
+    expect(response?.status).toBe(201);
+    const forwarded = fetcher.mock.calls[0]?.[1]?.body as Uint8Array;
+    expect(forwarded.byteLength).toBe(bytes.byteLength);
+    expect(forwarded[0]).toBe(7);
+    expect(forwarded.at(-1)).toBe(9);
+  });
+
+  it("rejects attachment bodies above 20 MiB before network access", async () => {
+    const fetcher = vi.fn();
+    const response = await proxyDesktopServerRequest(
+      new Request(`openbot://app${uploadPath}`, {
+        method: "POST",
+        body: new Uint8Array(MAXIMUM_DESKTOP_ATTACHMENT_PROXY_REQUEST_BYTES + 1),
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-OpenBot-Filename": "too-large.bin",
+        },
+      }),
+      configured,
+      fetcher,
+    );
+    expect(response?.status).toBe(413);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("keeps the 3 MiB cap and omits x-openbot-filename on unrelated POSTs", async () => {
+    const channelFetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+    const channelResponse = await proxyDesktopServerRequest(
+      new Request("openbot://app/api/v1/channels", {
+        method: "POST",
+        body: JSON.stringify({ name: "ops" }),
+        headers: {
+          "Content-Type": "application/json",
+          "X-OpenBot-Filename": encodedChineseName,
+        },
+      }),
+      configured,
+      channelFetcher,
+    );
+    expect(channelResponse?.status).toBe(200);
+    const channelHeaders = new Headers(channelFetcher.mock.calls[0]?.[1]?.headers);
+    expect(channelHeaders.has("x-openbot-filename")).toBe(false);
+    expect(channelHeaders.get("content-type")).toBe("application/json");
+
+    const cleanupFetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+    await proxyDesktopServerRequest(
+      new Request(`openbot://app${uploadPath}/cleanup`, {
+        method: "POST",
+        body: JSON.stringify({ olderThanDays: 7 }),
+        headers: {
+          "Content-Type": "application/json",
+          "X-OpenBot-Filename": "ignore-me.bin",
+        },
+      }),
+      configured,
+      cleanupFetcher,
+    );
+    expect(new Headers(cleanupFetcher.mock.calls[0]?.[1]?.headers).has("x-openbot-filename")).toBe(
+      false,
+    );
+
+    const oversizedFetcher = vi.fn();
+    const oversized = await proxyDesktopServerRequest(
+      new Request("openbot://app/api/v1/automations", {
+        method: "POST",
+        body: "x".repeat(MAXIMUM_DESKTOP_PROXY_REQUEST_BYTES + 1),
+        headers: {
+          "Content-Type": "application/json",
+          "X-OpenBot-Filename": encodedChineseName,
+        },
+      }),
+      configured,
+      oversizedFetcher,
+    );
+    expect(oversized?.status).toBe(413);
+    expect(oversizedFetcher).not.toHaveBeenCalled();
+  });
+
+  it("rejects renderer Authorization on the attachment upload route before network access", async () => {
+    const fetcher = vi.fn();
+    const response = await proxyDesktopServerRequest(
+      new Request(`openbot://app${uploadPath}`, {
+        method: "POST",
+        body: Uint8Array.from([1]),
+        headers: {
+          Authorization: "Bearer renderer-credential",
+          "Content-Type": "application/octet-stream",
+          "X-OpenBot-Filename": "notes.bin",
+        },
+      }),
+      configured,
+      fetcher,
+    );
+    expect(response?.status).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
