@@ -100,3 +100,19 @@ Normalize body errors using the same fixed catalogue, preserving Server-originat
 classifying oversize as task_limit and discarding untrusted stream error text. No new dependency or
 copied source. Verify with actual ReadableStream fixtures that fail or abort after headers, and
 retain reader cancellation/release behavior.
+
+## Consistent task summaries (2026-09-11)
+
+A rendered Server-backed fixture at main `9fc1d1895add0aa3bfb57b2286459d371138f500`
+showed that task details used the existing failure catalogue while channel activity and the
+context rail preferred raw errors or stale progress. Reuse the same presentation projection
+across these entry points; status takes priority for blocked, approval and terminal runs.
+
+Rechecked [React conditional rendering](https://react.dev/learn/conditional-rendering) and
+[React releases](https://github.com/react/react/releases) against the already reviewed and
+installed React 19.2.8 (MIT; see the Desktop UI refresh ledger entry and its pinned source/tests).
+No framework behavior, dependency, runtime authority or protocol changes are needed. The first
+viable option is a thin composition of OpenBot's existing `nativeRunFailure` catalogue and Run
+status projection, not a new state machine or UI package. No upstream source copied. Regression
+checks must cover actual channel and rail components with stale progress plus a known failure
+code, and the built UI must display the same explanation as task details.

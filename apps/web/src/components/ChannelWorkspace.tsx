@@ -7,8 +7,8 @@ import type {
   ReactionEmoji,
   Run,
   RunFrame,
-  RunProgress,
   RunOutput,
+  RunProgress,
 } from "@openbot/domain";
 import {
   type FormEvent,
@@ -26,20 +26,13 @@ import {
   createMessage,
   getEmployeeProfile,
   getRunOutput,
-  listMessages,
   listChannelReactions,
-  setMessageReaction,
+  listMessages,
   listRuns,
   type RealtimeConnectionState,
+  setMessageReaction,
   subscribeToChannelEvents,
 } from "../api";
-import { mergeRunOutput } from "../run-output-state";
-import { RunSteering } from "./RunSteering";
-import { AttachmentsManagerDialog } from "./AttachmentsManager";
-import { VoiceRecorder } from "./VoiceRecorder";
-import { MessageActionBar } from "./MessageActionBar";
-import { MessageReactions } from "./MessageReactions";
-import { RichMessage } from "./RichMessage";
 import { composeTaskText } from "../composer-context";
 import { type ConversationSession, createConversationSession } from "../conversation-session";
 import { shortcutLabel } from "../desktop-shortcuts";
@@ -49,15 +42,22 @@ import {
   selectEveryone,
   selectedRecipientIds,
 } from "../recipient-utils";
+import { mergeRunOutput } from "../run-output-state";
 import { isActiveRun, runStatusLabel } from "../run-state";
 import { useWorkspacePreferences } from "../workspace-preferences";
+import { AttachmentsManagerDialog } from "./AttachmentsManager";
+import { MessageActionBar } from "./MessageActionBar";
+import { MessageReactions } from "./MessageReactions";
+import { RichMessage } from "./RichMessage";
+import { RunSteering } from "./RunSteering";
+import { VoiceRecorder } from "./VoiceRecorder";
 import "./ChannelMessagePresentation.css";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChannelMembersMenu } from "./ChannelMembersMenu";
 import { ComposerAttachmentPicker } from "./ComposerAttachmentPicker";
 import { HashIcon, PlusIcon, SendIcon, SkillIcon } from "./Icons";
 import { MessageAttachments } from "./MessageAttachments";
-import { NativeRunControls } from "./NativeRunControls";
+import { NativeRunControls, runStatusSummary } from "./NativeRunControls";
 import { OpenBotMark } from "./OpenBotMark";
 import { PluginCallApprovals } from "./PluginCallApprovals";
 import { RobotAvatar } from "./RobotAvatar";
@@ -698,7 +698,7 @@ export function ChannelWorkspace({
                       </span>
                     </button>
                     <p>
-                      {latestProgressByRun.get(run.id)?.message ?? run.errorMessage ?? run.title}
+                      {runStatusSummary(run, latestProgressByRun.get(run.id)?.message) ?? run.title}
                     </p>
                   </div>
                   {run.status === "running" ? (

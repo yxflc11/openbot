@@ -142,6 +142,31 @@ describe("Desktop Server proxy routing", () => {
     },
   );
 
+  it.each([true, false])(
+    "forwards reaction PUT active=%s with the trusted mutation origin",
+    async (active) => {
+      const payload = JSON.stringify({ emoji: "👍", active });
+      const fetcher = vi.fn(async () => Response.json({ reactions: [] }));
+      const response = await proxyDesktopServerRequest(
+        new Request("openbot://app/api/v1/channels/channel-1/messages/message-1/reactions", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: payload,
+        }),
+        configured,
+        fetcher,
+      );
+      expect(response?.status).toBe(200);
+      const [target, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+      expect(target).toBe(
+        "https://openbot.example/api/v1/channels/channel-1/messages/message-1/reactions",
+      );
+      expect(init).toMatchObject({ method: "PUT", credentials: "include", redirect: "manual" });
+      expect(new Headers(init.headers).get("origin")).toBe("https://openbot.example");
+      expect(new TextDecoder().decode(init.body as Uint8Array)).toBe(payload);
+    },
+  );
+
   it("rejects unsupported methods and oversized bodies before network access", async () => {
     const fetcher = vi.fn();
     const methodResponse = await proxyDesktopServerRequest(

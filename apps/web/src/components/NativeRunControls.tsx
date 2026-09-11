@@ -18,6 +18,16 @@ export function nativeRunFailure(run: Run): string {
   return messages[run.errorCode ?? ""] ?? run.errorMessage ?? "任务已结束。";
 }
 
+export function runStatusSummary(run: Run, progressMessage?: string): string | undefined {
+  // Durable status outranks progress emitted before approval, blocking, or completion.
+  if (run.status === "cancelled") return "Owner 已停止此任务。";
+  if (run.status === "waiting_approval") return "敏感动作正在等待你的批准。";
+  if (run.status === "failed") return nativeRunFailure(run);
+  if (run.status === "blocked") return "任务遇到阻塞，需要人工处理。";
+  if (run.status === "completed") return run.resultSummary ?? "任务已结束。";
+  return progressMessage;
+}
+
 export function NativeRunControls({
   run,
   onRun,
