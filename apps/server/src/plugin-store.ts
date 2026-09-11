@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { lstat, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
+  createWindowsSecretAcl,
   ensureProtectedSecretDirectory,
   protectSecretFile,
   verifySecretFileAccess,
@@ -91,7 +92,8 @@ export class FilePluginStore {
   #tail: Promise<unknown> = Promise.resolve();
   #key: Buffer | undefined;
   readonly #platform: NodeJS.Platform;
-  readonly #windowsAcl: WindowsSecretAcl | undefined;
+  /** Long-lived helper so Owner SID can be reused; ACL results are still re-verified each load/save. */
+  readonly #windowsAcl: WindowsSecretAcl;
   readonly #windowsTrustRoot: string | undefined;
   constructor(
     readonly path: string,
@@ -102,7 +104,7 @@ export class FilePluginStore {
     } = {},
   ) {
     this.#platform = options.platform ?? process.platform;
-    this.#windowsAcl = options.windowsAcl;
+    this.#windowsAcl = options.windowsAcl ?? createWindowsSecretAcl();
     this.#windowsTrustRoot = options.windowsTrustRoot;
   }
 
@@ -124,7 +126,7 @@ export class FilePluginStore {
       ]);
       await ensureProtectedSecretDirectory(dirname(this.path), {
         platform: this.#platform,
-        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        acl: this.#windowsAcl,
         ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
       });
       await writeFileAtomic(
@@ -139,7 +141,7 @@ export class FilePluginStore {
       );
       await protectSecretFile(this.path, {
         platform: this.#platform,
-        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        acl: this.#windowsAcl,
       });
       return result;
     });
@@ -154,14 +156,14 @@ export class FilePluginStore {
     const keyPath = `${this.path}.key`;
     await ensureProtectedSecretDirectory(dirname(this.path), {
       platform: this.#platform,
-      ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+      acl: this.#windowsAcl,
       ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
     });
     try {
       await this.#assertSafeSecretFile(keyPath);
       await verifySecretFileAccess(keyPath, {
         platform: this.#platform,
-        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        acl: this.#windowsAcl,
         ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
       });
       const value = await readFile(keyPath);
@@ -179,7 +181,7 @@ export class FilePluginStore {
       await writeFile(keyPath, value, { flag: "wx", mode: 0o600 });
       await protectSecretFile(keyPath, {
         platform: this.#platform,
-        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        acl: this.#windowsAcl,
       });
       this.#key = value;
     }
@@ -202,7 +204,7 @@ export class FilePluginStore {
         throw new Error("Plugin store too large.");
       await verifySecretFileAccess(this.path, {
         platform: this.#platform,
-        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        acl: this.#windowsAcl,
         ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
       });
       const envelope = z

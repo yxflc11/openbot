@@ -23,14 +23,18 @@ async function fixture(
   const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-model-test-")));
   directories.push(dir);
   const path = join(dir, "private", "model.json");
+  const serviceOptions = {
+    ...(options.platform === undefined ? {} : { platform: options.platform }),
+    ...(options.windowsAcl === undefined ? {} : { windowsAcl: options.windowsAcl }),
+    windowsTrustRoot: dir,
+  };
   return {
     dir,
     path,
-    service: new ModelSettingsService(path, "a".repeat(64), resolvedFetcher, {
-      ...(options.platform === undefined ? {} : { platform: options.platform }),
-      ...(options.windowsAcl === undefined ? {} : { windowsAcl: options.windowsAcl }),
-      windowsTrustRoot: dir,
-    }),
+    serviceOptions,
+    service: new ModelSettingsService(path, "a".repeat(64), resolvedFetcher, serviceOptions),
+    reopen: (fetcherOverride: typeof fetch = resolvedFetcher) =>
+      new ModelSettingsService(path, "a".repeat(64), fetcherOverride, serviceOptions),
     fetcher: resolvedFetcher,
   };
 }
@@ -41,9 +45,14 @@ const input = {
   revision: null,
 };
 describe("Owner model settings", () => {
+  if (process.platform === "win32") {
+    // Real PowerShell ACL verify/protect on every load/save needs a wider per-test budget.
+    describe.configure({ timeout: 60_000 });
+  }
+
   it("verifies K3 against Moonshot's exact model list and retains an encrypted key", async () => {
     const fetcher = vi.fn(async () => Response.json({ data: [{ id: "kimi-k3" }] }));
-    const { service, path } = await fixture(fetcher);
+    const { service, path, reopen } = await fixture(fetcher);
     const saved = await service.save({
       ...input,
       provider: "moonshot",
@@ -58,7 +67,7 @@ describe("Owner model settings", () => {
       }),
     );
     expect(await readFile(path, "utf8")).not.toContain(input.apiKey);
-    const reopened = new ModelSettingsService(path, "a".repeat(64));
+    const reopened = reopen();
     expect(await reopened.summary()).toEqual(saved);
     expect(await reopened.agentSettings()).toMatchObject({
       provider: "moonshot",
@@ -80,7 +89,7 @@ describe("Owner model settings", () => {
           : { data: { id: "fixture/model", endpoints: [{ supported_parameters: ["tools"] }] } },
       ),
     );
-    const { service, path } = await fixture(fetcher);
+    const { service, path, reopen } = await fixture(fetcher);
     const saved = await service.save({
       ...input,
       provider: "openrouter",
@@ -104,7 +113,7 @@ describe("Owner model settings", () => {
       }),
     );
     expect(await readFile(path, "utf8")).not.toContain(input.apiKey);
-    expect(await new ModelSettingsService(path, "a".repeat(64)).summary()).toEqual(saved);
+    expect(await reopen().summary()).toEqual(saved);
   });
   it("rejects management/provisioning keys before requesting model metadata", async () => {
     for (const data of [
@@ -182,11 +191,11 @@ describe("Owner model settings", () => {
   });
 
   it("requires explicit opt-in, preserves the eligibility boundary, and notifies on disable", async () => {
-    const { service, path } = await fixture();
+    const { service, path, reopen } = await fixture();
     expect(await service.agentSettings()).toBeUndefined();
     const legacy = await service.save(input);
     expect(await service.agentSettings()).toBeUndefined();
-    expect(await new ModelSettingsService(path, "a".repeat(64)).agentSettings()).toBeUndefined();
+    expect(await reopen().agentSettings()).toBeUndefined();
     const changed = vi.fn();
     const unsubscribe = service.onChange(changed);
     const enabled = await service.save({ ...input, revision: legacy.revision, agentEnabled: true });
@@ -206,7 +215,7 @@ describe("Owner model settings", () => {
     unsubscribe();
   });
   it("validates with the official provider, encrypts the key and only returns a public summary", async () => {
-    const { service, path, fetcher } = await fixture();
+    const { service, path, fetcher, reopen } = await fixture();
     const result = await service.save(input);
     expect(result).toMatchObject({ status: "configured", provider: "openai", model: "test-model" });
     expect(JSON.stringify(result)).not.toContain(input.apiKey);
@@ -218,7 +227,7 @@ describe("Owner model settings", () => {
         headers: expect.objectContaining({ Authorization: `Bearer ${input.apiKey}` }),
       }),
     );
-    expect(await new ModelSettingsService(path, "a".repeat(64)).summary()).toEqual(result);
+    expect(await reopen().summary()).toEqual(result);
     await expect(service.save(input)).rejects.toMatchObject({ code: "conflict" });
   });
   it("sends Anthropic headers only to Anthropic", async () => {

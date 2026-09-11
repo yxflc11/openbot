@@ -113,10 +113,10 @@ export type WindowsSecretAclScriptRunner = (
 
 export interface WindowsSecretAclOptions {
   /**
-   * When true (default), skip PowerShell for verify* when the path's lstat fingerprint matches a
-   * prior successful verify/protect in this process. Protect/rewrite always spawns PowerShell.
-   * Does not detect ACL-only changes that leave size/mtime/ino unchanged — callers that need
-   * every-read ACL revalidation can set this false (Node credential loads are rare either way).
+   * When true, skip PowerShell for verify* when the path's lstat fingerprint matches a prior
+   * successful verify/protect in this process. Default is false: every verify* re-checks DACLs so
+   * ACL-only grants (e.g. Everyone) are still detected. Protect/rewrite always spawns PowerShell.
+   * Owner SID caching is independent and remains enabled. Opt in only for explicit perf experiments.
    */
   cacheVerifiedState?: boolean;
   /** Injectable script runner for tests; defaults to the fixed PowerShell/.NET ACL scripts. */
@@ -128,7 +128,7 @@ interface Fingerprint {
 }
 
 export function createWindowsSecretAcl(options: WindowsSecretAclOptions = {}): WindowsSecretAcl {
-  const cacheVerifiedState = options.cacheVerifiedState !== false;
+  const cacheVerifiedState = options.cacheVerifiedState === true;
   const scriptRunner = options.scriptRunner ?? runWindowsSecretAclScript;
   const verifiedFiles = new Map<string, string>();
   const verifiedDirectories = new Map<string, string>();

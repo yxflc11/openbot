@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   symlink,
@@ -23,17 +24,30 @@ afterEach(async () => {
 });
 async function fixture() {
   // Dedicated leaf is not pre-created so Windows create+protect can run; temp parents stay untouched.
-  const root = await mkdtemp(join(tmpdir(), "openbot-model-bootstrap-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "openbot-model-bootstrap-")));
   directories.push(root);
   const directory = join(root, "model");
-  return { directory, root, location: { OPENBOT_MODEL_DIRECTORY: directory } };
+  return {
+    directory,
+    root,
+    location: { OPENBOT_MODEL_DIRECTORY: directory },
+    bootstrap: (extraFetcher: typeof fetch = fetcher) =>
+      bootstrapModelSettings(
+        { OPENBOT_MODEL_DIRECTORY: directory },
+        { fetcher: extraFetcher, windowsTrustRoot: root },
+      ),
+  };
 }
 const fetcher = vi.fn(async () => Response.json({ id: "test-model" }));
 
 describe("Server-owned model configuration bootstrap", () => {
+  if (process.platform === "win32") {
+    describe.configure({ timeout: 60_000 });
+  }
+
   it("retains one private key and decryptable opt-in configuration across restarts", async () => {
-    const { directory, location } = await fixture();
-    const service = await bootstrapModelSettings(location, fetcher);
+    const { directory, bootstrap } = await fixture();
+    const service = await bootstrap();
     expect(await service?.summary()).toEqual({ status: "unconfigured", revision: null });
     expect(await service?.agentSettings()).toBeUndefined();
     const key = await readFile(join(directory, "encryption.key"), "utf8");
@@ -45,7 +59,7 @@ describe("Server-owned model configuration bootstrap", () => {
       revision: null,
       agentEnabled: true,
     });
-    const restarted = await bootstrapModelSettings(location, fetcher);
+    const restarted = await bootstrap();
     expect(await restarted?.summary()).toEqual(saved);
     expect((await restarted?.agentSettings())?.agentEnabled).toBe(true);
     expect(await readFile(join(directory, "encryption.key"), "utf8")).toBe(key);
@@ -57,12 +71,14 @@ describe("Server-owned model configuration bootstrap", () => {
 
   it("preserves the existing explicit-key path and rejects conflicting storage modes", async () => {
     expect(await bootstrapModelSettings({})).toBeUndefined();
-    const { directory, location } = await fixture();
+    const { directory, location, root } = await fixture();
     const legacy = {
       OPENBOT_MODEL_SETTINGS_PATH: join(directory, "legacy.json"),
       OPENBOT_MODEL_ENCRYPTION_KEY: "a".repeat(64),
     };
-    expect(await (await bootstrapModelSettings(legacy))?.summary()).toEqual({
+    expect(
+      await (await bootstrapModelSettings(legacy, { windowsTrustRoot: root }))?.summary(),
+    ).toEqual({
       status: "unconfigured",
       revision: null,
     });
@@ -75,12 +91,12 @@ describe("Server-owned model configuration bootstrap", () => {
   });
 
   it("does not replace a missing key beside retained ciphertext", async () => {
-    const { directory, location } = await fixture();
-    await ensureProtectedSecretDirectory(directory);
+    const { directory, root, bootstrap } = await fixture();
+    await ensureProtectedSecretDirectory(directory, { trustRoot: root });
     await writeFile(join(directory, "settings.json"), "retained-private-ciphertext", {
       mode: 0o600,
     });
-    await expect(bootstrapModelSettings(location)).rejects.toThrow("Model storage is unavailable");
+    await expect(bootstrap()).rejects.toThrow("Model storage is unavailable");
     await expect(stat(join(directory, "encryption.key"))).rejects.toMatchObject({ code: "ENOENT" });
     expect(await readFile(join(directory, "settings.json"), "utf8")).toBe(
       "retained-private-ciphertext",
@@ -90,10 +106,10 @@ describe("Server-owned model configuration bootstrap", () => {
   it.each(["", "x".repeat(64), "a".repeat(65), "a".repeat(8192)])(
     "fails closed on malformed key material (%#)",
     async (key) => {
-      const { directory, location } = await fixture();
-      await ensureProtectedSecretDirectory(directory);
+      const { directory, root, bootstrap } = await fixture();
+      await ensureProtectedSecretDirectory(directory, { trustRoot: root });
       await writeFile(join(directory, "encryption.key"), key, { mode: 0o600 });
-      await expect(bootstrapModelSettings(location)).rejects.toThrow(
+      await expect(bootstrap()).rejects.toThrow(
         "Model storage is unavailable",
       );
       expect(await readFile(join(directory, "encryption.key"), "utf8")).toBe(key);
@@ -101,10 +117,10 @@ describe("Server-owned model configuration bootstrap", () => {
   );
 
   it("does not overwrite corrupt model settings on startup", async () => {
-    const { directory, location } = await fixture();
-    await bootstrapModelSettings(location);
+    const { directory, bootstrap } = await fixture();
+    await bootstrap();
     await writeFile(join(directory, "settings.json"), "broken-ciphertext", { mode: 0o600 });
-    await expect(bootstrapModelSettings(location)).rejects.toThrow("Model storage is unavailable");
+    await expect(bootstrap()).rejects.toThrow("Model storage is unavailable");
     expect(await readFile(join(directory, "settings.json"), "utf8")).toBe("broken-ciphertext");
   });
 

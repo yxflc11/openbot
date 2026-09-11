@@ -15,9 +15,11 @@
 
 ## PowerShell 启动成本
 
-- 仅在 load/save 路径校验；缓存进程 Owner SID；默认对 verify* 做 lstat 指纹缓存以避免每次热路径拉起 PowerShell（protect 始终执行）。
+- 仅在 load/save 路径校验；缓存进程 Owner SID；Server 服务内持有长寿命 ACL 助手实例以便复用 SID。
+- **默认关闭** verify* 的 ACL 结果指纹缓存（`cacheVerifiedState` 默认为 `false`），每次 load/save 都重新校验 DACL；仅允许显式性能实验选择开启，且不得声称 mtime 能发现仅 ACL 变更。
 - **不为临时目录夹具削弱权限检查**；测试使用嵌套专用目录 + `trustRoot`。
 
 ## 验证计划
 
-- 共享包单测；Node 凭据测试保持通过；Server 在非 Windows 上注入 mock ACL；真实 Windows 负向覆盖沿用 Node 既有 `skipIf` 模式（本 PR 不新增需 workflow 权限的 YAML）。
+- 共享包单测；Node 凭据测试保持通过；Server 在非 Windows 上注入 mock ACL。
+- 真实 Windows Server 负向/保留读测试（`skipIf(process.platform !== "win32")`）覆盖 model settings、bootstrap key、plugin store/key：首次成功读取后仅改 DACL 则下次读取必须失败；新进程实例在 ACL 正确时仍可读。本 PR 不新增 workflow YAML。

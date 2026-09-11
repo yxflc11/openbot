@@ -51,6 +51,7 @@ const EXPECTED_INTERNAL_LICENSE_WARNINGS = new Set(
     "@openbot/protocol",
     "@openbot/provider-sdk",
     "@openbot/provider-docker",
+    "@openbot/windows-secret-acl",
   ].map(
     (name) =>
       `license-webpack-plugin: could not find any license file for ${name}. Use the licenseTextOverrides option to add the license text if desired.`,

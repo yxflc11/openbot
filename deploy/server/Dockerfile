@@ -48,6 +48,8 @@ COPY --from=build --chown=node:node /workspace/packages/policy/package.json ./pa
 COPY --from=build --chown=node:node /workspace/packages/policy/dist ./packages/policy/dist
 COPY --from=build --chown=node:node /workspace/packages/protocol/package.json ./packages/protocol/package.json
 COPY --from=build --chown=node:node /workspace/packages/protocol/dist ./packages/protocol/dist
+COPY --from=build --chown=node:node /workspace/packages/windows-secret-acl/package.json ./packages/windows-secret-acl/package.json
+COPY --from=build --chown=node:node /workspace/packages/windows-secret-acl/dist ./packages/windows-secret-acl/dist
 COPY --chown=node:node deploy/server/healthcheck.mjs ./deploy/server/healthcheck.mjs
 
 USER node

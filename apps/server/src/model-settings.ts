@@ -4,6 +4,7 @@ import { lstat, open } from "node:fs/promises";
 import { dirname } from "node:path";
 import { modelProviderBaseUrl, modelProviderIds, modelProviderPreset } from "@openbot/domain";
 import {
+  createWindowsSecretAcl,
   ensureProtectedSecretDirectory,
   protectSecretFile,
   verifySecretFileAccess,
@@ -124,7 +125,8 @@ export class ModelSettingsService {
   }
   readonly #key: Buffer;
   readonly #platform: NodeJS.Platform;
-  readonly #windowsAcl: WindowsSecretAcl | undefined;
+  /** Long-lived helper so Owner SID can be reused; ACL results are still re-verified each load/save. */
+  readonly #windowsAcl: WindowsSecretAcl;
   readonly #windowsTrustRoot: string | undefined;
   constructor(
     readonly path: string,
@@ -139,7 +141,7 @@ export class ModelSettingsService {
     if (!/^[a-f0-9]{64}$/u.test(key)) throw new Error("Model encryption key must be 32 bytes.");
     this.#key = Buffer.from(key, "hex");
     this.#platform = options.platform ?? process.platform;
-    this.#windowsAcl = options.windowsAcl;
+    this.#windowsAcl = options.windowsAcl ?? createWindowsSecretAcl();
     this.#windowsTrustRoot = options.windowsTrustRoot;
   }
   async summary(): Promise<ModelSettingsSummary> {
@@ -186,13 +188,13 @@ export class ModelSettingsService {
       try {
         await ensureProtectedSecretDirectory(dirname(this.path), {
           platform: this.#platform,
-          ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+          acl: this.#windowsAcl,
           ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
         });
         await writeFileAtomic(this.path, envelope, { mode: 0o600 });
         await protectSecretFile(this.path, {
           platform: this.#platform,
-          ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+          acl: this.#windowsAcl,
         });
         for (const listener of this.#listeners) listener();
         return await this.summary();
@@ -216,7 +218,7 @@ export class ModelSettingsService {
         throw new Error("Unsafe model file.");
       await verifySecretFileAccess(this.path, {
         platform: this.#platform,
-        ...(this.#windowsAcl === undefined ? {} : { acl: this.#windowsAcl }),
+        acl: this.#windowsAcl,
         ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
       });
       const handle = await open(

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Run } from "@openbot/domain";
@@ -36,9 +36,11 @@ afterEach(async () => {
 });
 
 async function fixture(approvalTimeoutMs = 60_000) {
-  const directory = await mkdtemp(join(tmpdir(), "openbot-plugin-test-"));
+  const directory = await realpath(await mkdtemp(join(tmpdir(), "openbot-plugin-test-")));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const store = new FilePluginStore(join(directory, "private", "plugins.json"));
+  const store = new FilePluginStore(join(directory, "private", "plugins.json"), {
+    windowsTrustRoot: directory,
+  });
   const call = vi.fn(async (_name: string, args: Record<string, unknown>) => ({
     content: [{ type: "text", text: args.text }],
   }));
@@ -98,6 +100,9 @@ async function pending(service: PluginService) {
 }
 
 describe("Server-owned MCP plugin lifecycle", () => {
+  if (process.platform === "win32") {
+    describe.configure({ timeout: 60_000 });
+  }
   it("installs reviewed declarations disabled without authority and keeps credentials encrypted", async () => {
     const { service, store, plugin, directory, call } = await fixture();
     expect(plugin.enabled).toBe(false);
@@ -107,7 +112,7 @@ describe("Server-owned MCP plugin lifecycle", () => {
     expect(await readFile(join(directory, "private", "plugins.json"), "utf8")).not.toContain(
       "test-plugin-bearer",
     );
-    expect((await new FilePluginStore(store.path).read()).plugins[0]?.token).toBe(
+    expect((await new FilePluginStore(store.path, { windowsTrustRoot: directory }).read()).plugins[0]?.token).toBe(
       "test-plugin-bearer",
     );
     await expect(
@@ -307,12 +312,12 @@ describe("Server-owned MCP plugin lifecycle", () => {
 
 describe("real MCP SDK network journey", () => {
   it("discovers, grants, reads, reviews, writes once and revokes against a live local plugin", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "openbot-plugin-live-"));
+    const directory = await realpath(await mkdtemp(join(tmpdir(), "openbot-plugin-live-")));
     cleanup.push(() => rm(directory, { recursive: true, force: true }));
     const demo = await startExamplePlugin(0);
     cleanup.push(() => demo.close());
     const service = new PluginService({
-      store: new FilePluginStore(join(directory, "private", "plugins.json")),
+      store: new FilePluginStore(join(directory, "private", "plugins.json"), { windowsTrustRoot: directory }),
       localEndpoints: [demo.endpoint],
       assertScope: async () => {},
       botExists: async () => true,

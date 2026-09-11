@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Run } from "@openbot/domain";
@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const clean of cleanups.splice(0).reverse()) await clean();
 });
 async function fixture(owner = false) {
-  const dir = await mkdtemp(join(tmpdir(), "openbot-plugin-content-"));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-plugin-content-")));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   const resources = [
     { uri: "notes://current", name: "Notes", description: "Read notes", mimeType: "text/plain" },
@@ -42,7 +42,7 @@ async function fixture(owner = false) {
   };
   const scope = vi.fn(async () => {});
   const service = new PluginService({
-    store: new FilePluginStore(join(dir, "private", "plugins.json")),
+    store: new FilePluginStore(join(dir, "private", "plugins.json"), { windowsTrustRoot: dir }),
     assertScope: scope,
     ...(owner ? { assertOwnerContentScope: scope } : {}),
     botExists: async (id) => id === run.botId,
@@ -72,6 +72,9 @@ async function fixture(owner = false) {
 }
 
 describe("MCP content authority and updates", () => {
+  if (process.platform === "win32") {
+    describe.configure({ timeout: 60_000 });
+  }
   it("discovers resource-only plugins and keeps old tool-only digests stable", async () => {
     const { service, plugin } = await fixture();
     expect(plugin.tools).toEqual([]);
@@ -235,10 +238,10 @@ describe("MCP content authority and updates", () => {
   it("reads resources and prompts through a real SDK HTTP server", async () => {
     const demo = await startExamplePlugin(0);
     cleanups.push(demo.close);
-    const dir = await mkdtemp(join(tmpdir(), "openbot-plugin-real-content-"));
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-plugin-real-content-")));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
     const service = new PluginService({
-      store: new FilePluginStore(join(dir, "private", "plugins.json")),
+      store: new FilePluginStore(join(dir, "private", "plugins.json"), { windowsTrustRoot: dir }),
       assertScope: async () => {},
       botExists: async () => true,
       localEndpoints: [demo.endpoint],

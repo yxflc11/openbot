@@ -107,13 +107,12 @@ describe("createWindowsSecretAcl PowerShell cost cache", () => {
     expect(runs[1]?.forceProtect).toBe(true);
   });
 
-  it("cacheVerifiedState false re-runs verify every time", async () => {
+  it("defaults to re-running verify every time (ACL-result cache off)", async () => {
     const root = await realpathTempRoot();
     const path = join(root, "secret.json");
     await writeFile(path, "secret\n", { mode: 0o600 });
     const runs: string[] = [];
     const acl = createWindowsSecretAcl({
-      cacheVerifiedState: false,
       scriptRunner: async () => {
         runs.push("verify");
         return {};
