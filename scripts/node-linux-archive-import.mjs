@@ -1,9 +1,17 @@
+import { constants } from "node:fs";
 import { lstat, open, rm, unlink } from "node:fs/promises";
 import path from "node:path";
 import { assertLinuxInstallLease } from "./node-linux-install-lease.mjs";
-import { LINUX_RELEASE_ARCHIVE_BOUNDS, sha256File } from "./node-linux-release.mjs";
+import {
+  LINUX_RELEASE_ARCHIVE_BOUNDS,
+  sha256BoundedRegularFile,
+} from "./node-linux-release.mjs";
 
 export const LINUX_ARCHIVE_IMPORT_BOUNDS = LINUX_RELEASE_ARCHIVE_BOUNDS;
+
+/** Same fixed flags as bounded pre-digest — used for the actual import source reopen. */
+export const LINUX_ARCHIVE_IMPORT_SOURCE_OPEN_FLAGS =
+  constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 const chunkBytes = 1024 * 1024;
 const importedNamePattern = /^openbot-node-import-[0-9a-f-]{36}\.tar\.xz$/u;
@@ -28,12 +36,23 @@ export async function importLinuxReleaseArchive(options) {
   if (!isReviewedSource(before)) {
     throw new Error("Linux archive import source is not a reviewed-size regular file.");
   }
+  // Overlayfs (and other coarse-timestamp filesystems) may leave mtime/ctime unchanged after a
+  // same-size in-place overwrite, so metadata identity is not enough. Pre-digest the reviewed
+  // path with the bounded O_NOFOLLOW|O_NONBLOCK regular-file hasher (not createReadStream and
+  // not the injectable openFile) before import; the import-path digest must match. Equality
+  // proves only that two reads observed the same bytes — source authenticity still requires
+  // later attestation. The later source reopen must use the same fixed flags so a post-digest
+  // FIFO/symlink swap cannot hang the injectable (or default) openFile path.
+  const sourceDigest = await sha256BoundedRegularFile(
+    sourcePath,
+    LINUX_ARCHIVE_IMPORT_BOUNDS,
+  );
 
   let sourceHandle;
   let destinationHandle;
   let destinationCreated = false;
   try {
-    sourceHandle = await openFile(sourcePath, "r");
+    sourceHandle = await openFile(sourcePath, LINUX_ARCHIVE_IMPORT_SOURCE_OPEN_FLAGS);
     const openedSource = await sourceHandle.stat();
     if (!sameSource(before, openedSource)) {
       throw new Error("Linux archive import source changed while it was opened.");
@@ -72,7 +91,13 @@ export async function importLinuxReleaseArchive(options) {
 
     await destinationHandle.close();
     destinationHandle = undefined;
-    const archiveSha256 = await sha256File(archivePath);
+    const archiveSha256 = await sha256BoundedRegularFile(
+      archivePath,
+      LINUX_ARCHIVE_IMPORT_BOUNDS,
+    );
+    if (archiveSha256 !== sourceDigest) {
+      throw new Error("Linux archive import source changed while it was opened.");
+    }
     const finalMetadata = await lstat(archivePath);
     if (!sameImportedFile(importedMetadata, finalMetadata)) {
       throw new Error("Linux imported archive changed during final verification.");
@@ -101,7 +126,10 @@ export async function removeImportedLinuxReleaseArchive(options) {
   const stateRoot = assertAbsolutePath(options.stateRoot, "state root");
   const archivePath = assertAbsolutePath(options.archivePath, "imported archive");
   const importsRoot = path.join(stateRoot, "imports");
-  if (path.dirname(archivePath) !== importsRoot || !importedNamePattern.test(path.basename(archivePath))) {
+  if (
+    path.dirname(archivePath) !== importsRoot ||
+    !importedNamePattern.test(path.basename(archivePath))
+  ) {
     throw new Error("Linux archive cleanup path is outside the private import root.");
   }
   if (!/^[0-9a-f]{64}$/u.test(options.archiveSha256 ?? "")) {
@@ -114,7 +142,10 @@ export async function removeImportedLinuxReleaseArchive(options) {
   if (!isPrivateImportedFile(metadata)) {
     throw new Error("Linux archive cleanup target is not a private single-link regular file.");
   }
-  if ((await sha256File(archivePath)) !== options.archiveSha256) {
+  if (
+    (await sha256BoundedRegularFile(archivePath, LINUX_ARCHIVE_IMPORT_BOUNDS)) !==
+    options.archiveSha256
+  ) {
     throw new Error("Linux archive cleanup digest does not match the imported bytes.");
   }
   const afterDigest = await lstat(archivePath);
