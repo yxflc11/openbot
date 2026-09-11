@@ -25,7 +25,7 @@ Inspected setup-dotnet's pinned action.yml, package.json, README, src/setup-dotn
 
 ## Reuse decision
 
-Apply the reviewed Dependabot commits together and fix the contracts they leave stale. Update the exact Docker allowlist, real smoke expected runtime and current bilingual Server container documentation in the same change. Preserve negative tests and digest pinning. Use the package-manager version declared in the repo to regenerate npm locks after combining updates. Review dependency closure and production audit before merging.
+Apply the reviewed Dependabot commits together and fix the contracts they leave stale. Update the exact Docker allowlist, real smoke expected runtime and current bilingual Server container documentation in the same change. The first combined full check also exposed the old setup-dotnet SHA in the strict Windows workflow validator, hidden behind the earlier research failure. Update that exact pin and the negative fixture; continue rejecting moving tags and broadened SDK/cache/artifact settings. Preserve negative tests and digest pinning. Use the package-manager version declared in the repo to regenerate npm locks after combining updates. Review dependency closure and production audit before merging.
 
 The first viable options are the existing released dependencies; the only OpenBot-specific gap is keeping its dependency graph and verification contract synchronized. Revert a complete update if verification fails. No new permissions, viewer scripting, signing certificates or runtime capabilities are introduced.
 

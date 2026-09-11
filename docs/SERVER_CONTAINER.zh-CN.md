@@ -2,7 +2,7 @@
 
 [English](SERVER_CONTAINER.md) · [简体中文](SERVER_CONTAINER.zh-CN.md)
 
-从源码构建的 Server 镜像采用 Debian Bookworm slim 上的 Node.js `24.20.0` LTS，并在
+从源码构建的 Server 镜像采用 Debian Bookworm slim 上的 Node.js `24.21.0` LTS，并在
 [Dockerfile](../deploy/server/Dockerfile) 中固定经过审查的多架构 digest。构建使用 npm
 `10.9.9`，把仓库裁剪为 Server 及其六个内部运行工作区；最终镜像只复制这些工作区的编译输出、
 生产依赖、包元数据和数据库 migration。官方基础镜像随附的 npm 和许可证声明予以保留。
