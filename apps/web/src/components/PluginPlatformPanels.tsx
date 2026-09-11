@@ -100,6 +100,7 @@ export function PluginUpdatePanel({ plugin, onApplied }: { plugin: Plugin; onApp
         <div>
           <h4>{preview.changed ? "发现声明变化" : "声明与安装版本一致"}</h4>
           <p>应用后插件将停用，并清空全部 Bot 权限。请重新授权启用。</p>
+          <PluginDeclarationDiff before={plugin} after={preview.manifest} />
           <details>
             <summary>审核更新后的完整声明</summary>
             <pre>{JSON.stringify(preview.manifest, null, 2)}</pre>
@@ -359,5 +360,47 @@ export function PluginCatalogLinks() {
         插件作者手册
       </a>
     </nav>
+  );
+}
+
+export function PluginDeclarationDiff({
+  before,
+  after,
+}: {
+  before: PluginManifest;
+  after: PluginManifest;
+}) {
+  const declarations = (manifest: PluginManifest) =>
+    new Map([
+      ...manifest.tools.map((entry) => [`工具 · ${entry.name}`, JSON.stringify(entry)] as const),
+      ...(manifest.resources ?? []).map(
+        (entry) => [`资源 · ${entry.uri}`, JSON.stringify(entry)] as const,
+      ),
+      ...(manifest.prompts ?? []).map(
+        (entry) => [`提示词 · ${entry.name}`, JSON.stringify(entry)] as const,
+      ),
+    ]);
+  const previous = declarations(before);
+  const next = declarations(after);
+  const changes = [...new Set([...previous.keys(), ...next.keys()])].flatMap((name) => {
+    const status = !previous.has(name)
+      ? "新增"
+      : !next.has(name)
+        ? "移除"
+        : previous.get(name) !== next.get(name)
+          ? "修改"
+          : undefined;
+    return status ? [{ name, status }] : [];
+  });
+  return changes.length ? (
+    <ul aria-label="插件声明变化">
+      {changes.map(({ name, status }) => (
+        <li key={name}>
+          <strong>{status}</strong> · {name}
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p>工具、资源和提示词声明未变化。</p>
   );
 }

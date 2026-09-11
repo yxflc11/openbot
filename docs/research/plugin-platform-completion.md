@@ -60,3 +60,9 @@ The existing attachment marker is an OpenBot transport convention, not MCP conte
 ### Approval timeout classification
 
 Hosted Linux CI exposed a clock-domain bug: the approval timeout signal could fire before the separately calculated wall-clock `expiresAt` appeared expired, turning a known approval expiry into generic plugin unavailability. The Node `AbortSignal.timeout`/`AbortSignal.any` API provides the actual originating signal state (https://nodejs.org/api/globals.html#static-method-abortsignaltimeoutdelay). Keep that signal and classify its abort directly, with parent cancellation taking precedence. Preserve the wall-clock expiry for approval admission. A regression freezes `Date.now` while the real timeout runs, verifying expiry without external dispatch. No deadline is increased and no automatic retry is added.
+
+## Standalone author starter and update comparison (2026-09-11)
+
+Reviewed the existing MCP SDK 1.30.0 source/tests, the local example and the public 2025-11-25 transport plus Apps overview again. GitHub query `modelcontextprotocol/typescript-sdk 1.30.0 StreamableHTTPServerTransport` surfaced issue 2730 (notification acknowledgement with `Connection: close`); the starter retains the tested SDK transport and does not add that header. No v2 SDK migration is required for the current protocol scope.
+
+Reuse the existing example as the single source, copying its two bounded source files and license into an exclusively created standalone directory with pinned SDK/Zod/tsx dependencies. Creation never installs dependencies, starts a listener or modifies the OpenBot runtime. Verify from a fresh directory after an independent dependency installation. Keep `tools`, `resources`, `prompts` and App-view limits explicit. Add a presentation-only comparison of old/new named declarations before update and status-specific connection errors. No upstream source copied and no dependency added to the core.
