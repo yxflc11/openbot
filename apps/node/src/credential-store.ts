@@ -1,10 +1,13 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import { constants } from "node:fs";
 import { lstat, mkdir, open } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, win32 } from "node:path";
+import { promisify } from "node:util";
 import type { NodeEnv } from "@openbot/config";
 import { type NodeEnrollmentResult, nodeEnrollmentResultSchema } from "@openbot/protocol";
 import writeFileAtomic from "write-file-atomic";
+
+const executeFile = promisify(execFile);
 
 const maximumCredentialFileBytes = 4 * 1024;
 const secretServiceTimeoutMs = 5_000;
@@ -37,9 +40,19 @@ export type CredentialHelper = (
 /** Portable fallback store; explicit native adapters can replace it without changing enrollment. */
 export class FileNodeCredentialStore implements NodeCredentialStore {
   readonly #path: string;
+  readonly #platform: NodeJS.Platform;
+  readonly #windowsAcl: WindowsCredentialAcl;
 
-  constructor(path: string) {
+  constructor(
+    path: string,
+    options: {
+      platform?: NodeJS.Platform;
+      windowsAcl?: WindowsCredentialAcl;
+    } = {},
+  ) {
     this.#path = resolve(path);
+    this.#platform = options.platform ?? process.platform;
+    this.#windowsAcl = options.windowsAcl ?? createDefaultWindowsCredentialAcl();
   }
 
   async load(nodeId: string): Promise<NodeEnrollmentResult | undefined> {
@@ -53,14 +66,18 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
       throw error;
     }
 
+    if (this.#platform === "win32") {
+      await this.#windowsAcl.verifyFile(this.#path);
+    }
+
     const handle = await open(
       this.#path,
-      process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW,
+      this.#platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW,
     );
     try {
       const file = await handle.stat();
       if (!file.isFile()) throw new Error("Node credential path must be a regular file.");
-      if (process.platform !== "win32" && (file.mode & 0o077) !== 0) {
+      if (this.#platform !== "win32" && (file.mode & 0o077) !== 0) {
         throw new Error("Node credential file must not be accessible by group or other users.");
       }
       if (file.size > maximumCredentialFileBytes) {
@@ -75,9 +92,193 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
 
   async save(identity: NodeEnrollmentResult): Promise<void> {
     const parsed = parseIdentity(JSON.stringify(identity), identity.nodeId, "file");
-    await mkdir(dirname(this.#path), { recursive: true, mode: 0o700 });
+    const directory = dirname(this.#path);
+    let createdDirectory = false;
+    try {
+      await lstat(directory);
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+      createdDirectory = true;
+    }
+
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    if (this.#platform === "win32") {
+      await this.#windowsAcl.protectDirectory(directory, createdDirectory);
+    }
+
     await writeFileAtomic(this.#path, `${JSON.stringify(parsed)}\n`, { mode: 0o600 });
+    if (this.#platform === "win32") {
+      await this.#windowsAcl.protectAndVerifyFile(this.#path);
+    }
   }
+}
+
+/** Windows ACL operations for the file-backed Node credential adapter. */
+export interface WindowsCredentialAcl {
+  protectDirectory(path: string, created: boolean): Promise<void>;
+  protectAndVerifyFile(path: string): Promise<void>;
+  verifyFile(path: string): Promise<void>;
+}
+
+/**
+ * Values travel only through environment variables into a fixed encoded PowerShell script.
+ * Allow ACEs are limited to the current user and SYSTEM (S-1-5-18).
+ */
+export const WINDOWS_CREDENTIAL_DIRECTORY_SCRIPT = `
+[Console]::Out.WriteLine('openbot-acl:started')
+$ErrorActionPreference = 'Stop'
+$path = $env:OPENBOT_CREDENTIAL_PATH
+$item = [IO.DirectoryInfo]::new($path)
+if (!$item.Exists -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe directory' }
+[Console]::Out.WriteLine('openbot-acl:identity')
+$owner = [Security.Principal.WindowsIdentity]::GetCurrent().User
+$system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+if ($env:OPENBOT_CREDENTIAL_PROTECT -eq '1') {
+  [Console]::Out.WriteLine('openbot-acl:protecting')
+  $acl = [Security.AccessControl.DirectorySecurity]::new()
+  $acl.SetOwner($owner)
+  $acl.SetAccessRuleProtection($true, $false)
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($owner, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($system, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
+  $item.SetAccessControl($acl)
+}
+[Console]::Out.WriteLine('openbot-acl:reading')
+$acl = $item.GetAccessControl()
+if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $owner.Value) { throw 'Unexpected owner' }
+$allowed = @{}
+foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+  if ($rule.AccessControlType -ne 'Allow') { continue }
+  $sid = $rule.IdentityReference.Value
+  if ($sid -ne $owner.Value -and $sid -ne $system.Value) { throw 'Unexpected directory access' }
+  if (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -eq [Security.AccessControl.FileSystemRights]::FullControl) { $allowed[$sid] = $true }
+}
+if (-not $allowed.ContainsKey($owner.Value)) { throw 'Missing owner access' }
+if (-not $allowed.ContainsKey($system.Value)) { throw 'Missing system access' }
+`;
+
+export const WINDOWS_CREDENTIAL_FILE_SCRIPT = `
+[Console]::Out.WriteLine('openbot-acl:started')
+$ErrorActionPreference = 'Stop'
+$path = $env:OPENBOT_CREDENTIAL_PATH
+$item = [IO.FileInfo]::new($path)
+if (!$item.Exists -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe file' }
+[Console]::Out.WriteLine('openbot-acl:identity')
+$owner = [Security.Principal.WindowsIdentity]::GetCurrent().User
+$system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+if ($env:OPENBOT_CREDENTIAL_PROTECT -eq '1') {
+  [Console]::Out.WriteLine('openbot-acl:protecting')
+  $acl = [Security.AccessControl.FileSecurity]::new()
+  $acl.SetOwner($owner)
+  $acl.SetAccessRuleProtection($true, $false)
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($owner, 'FullControl', 'None', 'None', 'Allow'))
+  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($system, 'FullControl', 'None', 'None', 'Allow'))
+  $item.SetAccessControl($acl)
+}
+[Console]::Out.WriteLine('openbot-acl:reading')
+$acl = $item.GetAccessControl()
+if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $owner.Value) { throw 'Unexpected owner' }
+$allowed = @{}
+foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
+  if ($rule.AccessControlType -ne 'Allow') { continue }
+  $sid = $rule.IdentityReference.Value
+  if ($sid -ne $owner.Value -and $sid -ne $system.Value) { throw 'Unexpected file access' }
+  if (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -eq [Security.AccessControl.FileSystemRights]::FullControl) { $allowed[$sid] = $true }
+}
+if (-not $allowed.ContainsKey($owner.Value)) { throw 'Missing owner access' }
+if (-not $allowed.ContainsKey($system.Value)) { throw 'Missing system access' }
+`;
+
+export function createDefaultWindowsCredentialAcl(): WindowsCredentialAcl {
+  return {
+    protectDirectory: (path, created) =>
+      runWindowsCredentialAclScript({
+        kind: "directory",
+        path,
+        protect: true,
+        // Always verify; protect when the directory was just created or when saving credentials.
+        forceProtect: created,
+      }),
+    protectAndVerifyFile: (path) =>
+      runWindowsCredentialAclScript({ kind: "file", path, protect: true, forceProtect: true }),
+    verifyFile: (path) =>
+      runWindowsCredentialAclScript({ kind: "file", path, protect: false, forceProtect: false }),
+  };
+}
+
+async function runWindowsCredentialAclScript(input: {
+  kind: "directory" | "file";
+  path: string;
+  protect: boolean;
+  forceProtect: boolean;
+}): Promise<void> {
+  if (process.platform !== "win32") {
+    throw new Error("Windows credential ACL checks require Windows.");
+  }
+  const environment = windowsCredentialNativeEnvironment();
+  const script =
+    input.kind === "directory" ? WINDOWS_CREDENTIAL_DIRECTORY_SCRIPT : WINDOWS_CREDENTIAL_FILE_SCRIPT;
+  const operation = executeFile(
+    win32.join(
+      environment.SystemRoot ?? "",
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    ),
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-EncodedCommand",
+      Buffer.from(script, "utf16le").toString("base64"),
+    ],
+    {
+      env: {
+        ...environment,
+        OPENBOT_CREDENTIAL_PATH: input.path,
+        OPENBOT_CREDENTIAL_PROTECT: input.forceProtect || input.protect ? "1" : "0",
+      },
+      windowsHide: true,
+      shell: false,
+      timeout: 15_000,
+      maxBuffer: 4096,
+    },
+  );
+  operation.child.stdin?.end();
+  try {
+    await operation;
+  } catch (error) {
+    const output =
+      error && typeof error === "object" && "stdout" in error ? String(error.stdout) : "";
+    const phase =
+      [...output.matchAll(/openbot-acl:(started|identity|protecting|reading)/gu)].at(-1)?.[1] ??
+      "launch";
+    throw new Error(
+      `Windows credential ${input.kind} ACL verification failed during ${phase}.`,
+    );
+  }
+}
+
+export function windowsCredentialNativeEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const systemRoot = source.SystemRoot ?? source.SYSTEMROOT;
+  if (!systemRoot || !/^[A-Za-z]:\\[^\0\r\n]*$/u.test(systemRoot)) {
+    throw new Error("Windows system directory is unavailable.");
+  }
+  const environment: Record<string, string> = {
+    SystemRoot: systemRoot,
+    WINDIR: systemRoot,
+    COMSPEC: win32.join(systemRoot, "System32", "cmd.exe"),
+    PATH: win32.join(systemRoot, "System32"),
+    LANG: "C",
+    LC_ALL: "C",
+  };
+  for (const name of ["TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]) {
+    const value = source[name];
+    if (value && !/[\0\r\n]/u.test(value)) environment[name] = value;
+  }
+  return environment;
 }
 
 interface LinuxSecretServiceOptions {

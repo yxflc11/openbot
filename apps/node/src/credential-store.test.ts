@@ -8,6 +8,7 @@ import {
   LinuxSecretServiceNodeCredentialStore,
   MacOSHostNodeCredentialStore,
   runCredentialHelper,
+  type WindowsCredentialAcl,
 } from "./credential-store.js";
 
 const temporaryDirectories: string[] = [];
@@ -64,6 +65,95 @@ describe("file Node credential store", () => {
       "regular file",
     );
   });
+
+
+  it("on win32 protects and verifies Owner+SYSTEM ACLs through the injected helper", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "private", "identity.json");
+    const calls: string[] = [];
+    const windowsAcl: WindowsCredentialAcl = {
+      async protectDirectory(target, created) {
+        calls.push(`dir:${created ? "new" : "existing"}:${target.endsWith("private")}`);
+      },
+      async protectAndVerifyFile(target) {
+        calls.push(`file-protect:${target.endsWith("identity.json")}`);
+      },
+      async verifyFile(target) {
+        calls.push(`file-verify:${target.endsWith("identity.json")}`);
+      },
+    };
+    const store = new FileNodeCredentialStore(path, { platform: "win32", windowsAcl });
+
+    await store.save(identity);
+    expect(await store.load(identity.nodeId)).toEqual(identity);
+    expect(calls[0]).toMatch(/^dir:new:true$/);
+    expect(calls[1]).toBe("file-protect:true");
+    expect(calls[2]).toBe("file-verify:true");
+  });
+
+  it("on win32 refuses load when the ACL helper reports an unsafe file", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "identity.json");
+    await writeFile(path, `${JSON.stringify(identity)}\n`, { mode: 0o600 });
+    const store = new FileNodeCredentialStore(path, {
+      platform: "win32",
+      windowsAcl: {
+        protectDirectory: async () => {},
+        protectAndVerifyFile: async () => {},
+        verifyFile: async () => {
+          throw new Error("Windows credential file ACL verification failed during reading.");
+        },
+      },
+    });
+
+    const rejection = expect(store.load(identity.nodeId)).rejects;
+    await rejection.toThrow("ACL verification failed during reading");
+    await rejection.not.toThrow(identity.credential);
+  });
+
+  it.skipIf(process.platform !== "win32")(
+    "natively enforces Owner+SYSTEM ACLs for Windows credential files",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
+      temporaryDirectories.push(directory);
+      const path = join(directory, "private", "identity.json");
+      const store = new FileNodeCredentialStore(path);
+
+      await store.save(identity);
+      expect(await store.load(identity.nodeId)).toEqual(identity);
+
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execute = promisify(execFile);
+      const broaden = `
+$ErrorActionPreference = 'Stop'
+$path = $env:OPENBOT_TEST_PATH
+$acl = Get-Acl -LiteralPath $path
+$acl.SetAccessRuleProtection($true, $false)
+foreach ($rule in @($acl.Access)) { [void]$acl.RemoveAccessRule($rule) }
+$everyone = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
+$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($everyone, 'FullControl', 'Allow'))
+Set-Acl -LiteralPath $path -AclObject $acl
+`;
+      await execute(
+        "powershell.exe",
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-EncodedCommand",
+          Buffer.from(broaden, "utf16le").toString("base64"),
+        ],
+        { env: { ...process.env, OPENBOT_TEST_PATH: path }, windowsHide: true },
+      );
+
+      const rejection = expect(store.load(identity.nodeId)).rejects;
+      await rejection.toThrow("ACL verification failed");
+      await rejection.not.toThrow(identity.credential);
+    },
+  );
 
   it("refuses directories, oversized content, and malformed packages", async () => {
     const directory = await mkdtemp(join(tmpdir(), "openbot-node-identity-"));
