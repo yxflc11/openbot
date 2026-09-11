@@ -1,8 +1,8 @@
-/** The trusted proxy is an opaque-origin data URL, never plugin HTML in the host origin. */
+/** Both frames receive opaque origins through sandboxing, without allow-same-origin. */
 export const PLUGIN_VIEW_CSP =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'";
 export const PLUGIN_PROXY_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-src about:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 export function pluginProxyDocument(): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${PLUGIN_PROXY_CSP}"><style>html,body,iframe{margin:0;width:100%;height:100%;border:0;display:block}</style></head><body><script>
@@ -43,7 +43,8 @@ export function pluginProxyDocument(): string {
 }
 
 export function pluginProxyUrl(): string {
-  return `data:text/html;base64,${btoa(pluginProxyDocument())}`;
+  // A data/srcdoc proxy inherits the host CSP and cannot run its fixed bridge script.
+  return new URL(`${import.meta.env.BASE_URL}plugin-sandbox.html`, window.location.href).href;
 }
 
 export function isBoundedPluginMessage(value: unknown): boolean {
