@@ -247,3 +247,6 @@ Windows 数据库启动复用 PostgreSQL REL_17_11 的 `pg_ctl` 受限令牌机�
 - Desktop 异步凭据访问和显式发行平台选择复用 Electron 44.2.0 与现有打包适配器：[研究](research/product-repair-startup.md)。
 - Bot v2 技能正文分享复用 Agent Skills 和已有摘要审核导入：[研究](research/portable-bot-skills.md)。
 - 独立插件生成器复制现有 MIT 示例并固定 MCP SDK 1.30.0：[研究](research/plugin-platform-completion.md)。
+
+Desktop 搜索账号选择复用 Electron 44.2.0 的显式子进程环境映射，没有新增依赖或复制上游代码：
+[研究](research/desktop-explicit-search-key.zh-CN.md)。

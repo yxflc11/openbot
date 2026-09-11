@@ -260,7 +260,7 @@ export class NativeServerController {
       ...(process.env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS
         ? { OPENBOT_PLUGIN_LOCAL_ENDPOINTS: process.env.OPENBOT_PLUGIN_LOCAL_ENDPOINTS }
         : {}),
-      ...(process.env.TAVILY_API_KEY ? { TAVILY_API_KEY: process.env.TAVILY_API_KEY } : {}),
+      ...desktopSearchEnvironment(),
       OPENBOT_LOG_LEVEL: "error",
     });
     this.#ownedUrl = url;
@@ -336,6 +336,14 @@ async function exists(path: string): Promise<boolean> {
     throw error;
   }
 }
+/** A generic search key in the launching shell does not select an account for Desktop. */
+export function desktopSearchEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const key = source.OPENBOT_DESKTOP_TAVILY_API_KEY?.trim();
+  return key ? { TAVILY_API_KEY: key } : {};
+}
+
 function nativeEnvironment(): Record<string, string> {
   return process.platform === "win32"
     ? windowsNativeEnvironment()

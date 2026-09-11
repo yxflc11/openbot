@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NativeServerController, type NativeServerOptions, runBounded } from "./native-server.js";
+import {
+  desktopSearchEnvironment,
+  NativeServerController,
+  type NativeServerOptions,
+  runBounded,
+} from "./native-server.js";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -31,6 +36,21 @@ async function fakeResources(opts: NativeServerOptions) {
     await writeFile(join(opts.runtimeRoot, "postgres/bin", name), "not executable");
 }
 describe("Native Server boundary", () => {
+  it("ignores another application's generic search credential", () => {
+    expect(desktopSearchEnvironment({ TAVILY_API_KEY: "unrelated-search-fixture" })).toEqual({});
+  });
+  it("forwards only the explicitly selected Desktop search account", () => {
+    const source = {
+      TAVILY_API_KEY: "unrelated-search-fixture",
+      OPENBOT_DESKTOP_TAVILY_API_KEY: "desktop-search-fixture",
+      OPENAI_API_KEY: "unrelated-model-fixture",
+    };
+    expect(desktopSearchEnvironment(source)).toEqual({ TAVILY_API_KEY: "desktop-search-fixture" });
+    expect(source.TAVILY_API_KEY).toBe("unrelated-search-fixture");
+  });
+  it.each([undefined, "", "   "])("does not configure search for an empty Desktop key", (key) => {
+    expect(desktopSearchEnvironment({ OPENBOT_DESKTOP_TAVILY_API_KEY: key })).toEqual({});
+  });
   it("bounds native command diagnostics without changing the public failure", async () => {
     const diagnostic = vi.fn();
     const diagnostics = channel("openbot.desktop.native-startup");

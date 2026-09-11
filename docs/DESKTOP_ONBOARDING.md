@@ -284,3 +284,11 @@ macOS may ask for the login Keychain password when the updated application first
 profile's encryption key. This is a system authorization, separate from the OpenBot Owner login.
 The local development build has no stable Developer ID signature, so repeated prompts across
 rebuilds are possible. The existing Keychain entry is retained to keep encrypted data readable.
+
+### Advanced search account configuration
+
+The Desktop launcher may explicitly supply `OPENBOT_DESKTOP_TAVILY_API_KEY` to select an optional
+Tavily search account for its built-in Server. A generic `TAVILY_API_KEY` from another project or
+shell is ignored. Desktop does not read a repository `.env` automatically. This advanced setting
+does not change saved model connections or Kimi's supported built-in search. A separately deployed
+Server continues to accept its own `TAVILY_API_KEY` configuration.
