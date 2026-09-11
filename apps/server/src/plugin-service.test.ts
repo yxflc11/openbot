@@ -99,216 +99,218 @@ async function pending(service: PluginService) {
   return request;
 }
 
-describe("Server-owned MCP plugin lifecycle", () => {
-  if (process.platform === "win32") {
-    describe.configure({ timeout: 60_000 });
-  }
-  it("installs reviewed declarations disabled without authority and keeps credentials encrypted", async () => {
-    const { service, store, plugin, directory, call } = await fixture();
-    expect(plugin.enabled).toBe(false);
-    expect(plugin.grants).toEqual([]);
-    expect(await service.catalog(run)).toEqual({ tools: [], truncated: false });
-    expect(JSON.stringify(await service.snapshot())).not.toContain("test-plugin-bearer");
-    expect(await readFile(join(directory, "private", "plugins.json"), "utf8")).not.toContain(
-      "test-plugin-bearer",
-    );
-    expect((await new FilePluginStore(store.path, { windowsTrustRoot: directory }).read()).plugins[0]?.token).toBe(
-      "test-plugin-bearer",
-    );
-    await expect(
-      service.call(run, callInput(plugin), AbortSignal.timeout(1000)),
-    ).rejects.toMatchObject({ code: "forbidden" });
-    expect(call).not.toHaveBeenCalled();
-  });
+describe(
+  "Server-owned MCP plugin lifecycle",
+  process.platform === "win32" ? { timeout: 60_000 } : {},
+  () => {
+    it("installs reviewed declarations disabled without authority and keeps credentials encrypted", async () => {
+      const { service, store, plugin, directory, call } = await fixture();
+      expect(plugin.enabled).toBe(false);
+      expect(plugin.grants).toEqual([]);
+      expect(await service.catalog(run)).toEqual({ tools: [], truncated: false });
+      expect(JSON.stringify(await service.snapshot())).not.toContain("test-plugin-bearer");
+      expect(await readFile(join(directory, "private", "plugins.json"), "utf8")).not.toContain(
+        "test-plugin-bearer",
+      );
+      expect(
+        (await new FilePluginStore(store.path, { windowsTrustRoot: directory }).read()).plugins[0]
+          ?.token,
+      ).toBe("test-plugin-bearer");
+      await expect(
+        service.call(run, callInput(plugin), AbortSignal.timeout(1000)),
+      ).rejects.toMatchObject({ code: "forbidden" });
+      expect(call).not.toHaveBeenCalled();
+    });
 
-  it("requires exact review digest and a real Bot; annotations cannot authorize calls", async () => {
-    const { service, input, preview, plugin } = await fixture();
-    await expect(
-      service.install(
-        { ...input, endpoint: "https://other.example.com/mcp", reviewedDigest: preview.digest },
-        AbortSignal.timeout(1000),
-      ),
-    ).rejects.toMatchObject({ code: "conflict" });
-    await expect(
-      service.grant(plugin.id, "other", {
+    it("requires exact review digest and a real Bot; annotations cannot authorize calls", async () => {
+      const { service, input, preview, plugin } = await fixture();
+      await expect(
+        service.install(
+          { ...input, endpoint: "https://other.example.com/mcp", reviewedDigest: preview.digest },
+          AbortSignal.timeout(1000),
+        ),
+      ).rejects.toMatchObject({ code: "conflict" });
+      await expect(
+        service.grant(plugin.id, "other", {
+          revision: plugin.revision,
+          tools: [{ name: "echo", mode: "read" }],
+        }),
+      ).rejects.toMatchObject({ code: "not_found" });
+      const enabled = await service.setEnabled(plugin.id, {
         revision: plugin.revision,
-        tools: [{ name: "echo", mode: "read" }],
-      }),
-    ).rejects.toMatchObject({ code: "not_found" });
-    const enabled = await service.setEnabled(plugin.id, {
-      revision: plugin.revision,
-      enabled: true,
-    });
-    await expect(
-      service.call(run, callInput(enabled), AbortSignal.timeout(1000)),
-    ).rejects.toMatchObject({ code: "forbidden" });
-  });
-
-  it("calls only the granted Bot/tool with valid arguments and rejects changed catalogs", async () => {
-    const { service, plugin, call, connection } = await fixture();
-    const enabled = await authorize(service, plugin, "read");
-    expect((await service.catalog(run)).tools[0]).toMatchObject({
-      pluginId: plugin.id,
-      revision: enabled.revision,
-      mode: "read",
-    });
-    await expect(
-      service.call({ ...run, botId: "other" }, callInput(enabled), AbortSignal.timeout(1000)),
-    ).rejects.toMatchObject({ code: "forbidden" });
-    await expect(
-      service.call(
-        run,
-        { ...callInput(enabled), arguments: { text: 5 } },
-        AbortSignal.timeout(1000),
-      ),
-    ).rejects.toMatchObject({ code: "invalid" });
-    expect(await service.call(run, callInput(enabled), AbortSignal.timeout(2000))).toMatchObject({
-      untrusted: true,
-    });
-    expect(call).toHaveBeenCalledTimes(1);
-    const originalTool = tools[0];
-    if (!originalTool) throw new Error("Expected the fixture tool");
-    vi.mocked(connection.tools).mockResolvedValue([
-      { ...originalTool, description: "Changed tool" },
-    ]);
-    await expect(
-      service.call(run, callInput(enabled), AbortSignal.timeout(1000)),
-    ).rejects.toMatchObject({ code: "conflict" });
-    expect(call).toHaveBeenCalledTimes(1);
-  });
-
-  it("persists intent and waits for exact Owner approval before one side effect", async () => {
-    const { service, plugin, call, store } = await fixture();
-    const enabled = await authorize(service, plugin, "confirm");
-    const completion = service.call(run, callInput(enabled), AbortSignal.timeout(3000));
-    const request = await pending(service);
-    expect(request).toMatchObject({
-      runId: run.id,
-      channelId: run.channelId,
-      botId: run.botId,
-      arguments: { text: "hello" },
-    });
-    expect(call).not.toHaveBeenCalled();
-    const decisions = await Promise.allSettled([
-      service.decide(request.id, "approve"),
-      service.decide(request.id, "approve"),
-    ]);
-    expect(decisions.filter((item) => item.status === "fulfilled")).toHaveLength(1);
-    await completion;
-    expect(call).toHaveBeenCalledTimes(1);
-    await expect(service.decide(request.id, "approve")).rejects.toMatchObject({
-      code: "not_found",
-    });
-    const audit = (await store.read()).audit;
-    expect(audit.map((event) => event.phase)).toContain("dispatching");
-    expect(JSON.stringify(audit)).not.toContain("hello");
-  });
-
-  it("rejects or aborts a pending call without execution", async () => {
-    const { service, plugin, call } = await fixture();
-    const enabled = await authorize(service, plugin, "confirm");
-    const rejected = service.call(run, callInput(enabled), AbortSignal.timeout(3000));
-    const assertion = expect(rejected).rejects.toMatchObject({ code: "rejected" });
-    await service.decide((await pending(service)).id, "reject");
-    await assertion;
-    const abort = new AbortController();
-    const cancelled = service.call(run, callInput(enabled), abort.signal);
-    const cancellation = expect(cancelled).rejects.toMatchObject({ code: "unavailable" });
-    const request = await pending(service);
-    abort.abort();
-    await cancellation;
-    await expect(service.decide(request.id, "approve")).rejects.toMatchObject({
-      code: "not_found",
-    });
-    expect(call).not.toHaveBeenCalled();
-  });
-
-  it("expires pending approval and disables/revokes in-flight calls", async () => {
-    const { service, plugin, call } = await fixture(20);
-    const enabled = await authorize(service, plugin, "confirm");
-    // Expiry must follow its timeout even if the wall clock stops or moves backward.
-    const wallClock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
-    try {
+        enabled: true,
+      });
       await expect(
         service.call(run, callInput(enabled), AbortSignal.timeout(1000)),
-      ).rejects.toMatchObject({ code: "expired" });
-      expect(call).not.toHaveBeenCalled();
-    } finally {
-      wallClock.mockRestore();
-    }
-  });
-
-  it("revokes a waiting approval immediately when the plugin is disabled", async () => {
-    const { service, plugin, call } = await fixture();
-    const enabled = await authorize(service, plugin, "confirm");
-    const next = service.call(run, callInput(enabled), AbortSignal.timeout(3000));
-    const assertion = expect(next).rejects.toMatchObject({ code: "unavailable" });
-    await pending(service);
-    await service.setEnabled(plugin.id, { revision: enabled.revision, enabled: false });
-    await assertion;
-    expect(call).not.toHaveBeenCalled();
-  });
-
-  it("rejects stale concurrent updates instead of overwriting grants", async () => {
-    const { service, plugin } = await fixture();
-    const results = await Promise.allSettled([
-      service.grant(plugin.id, run.botId, {
-        revision: plugin.revision,
-        tools: [{ name: "echo", mode: "read" }],
-      }),
-      service.setEnabled(plugin.id, { revision: plugin.revision, enabled: true }),
-    ]);
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-  });
-
-  it("rechecks Run scope at Owner approval and rejects oversize results", async () => {
-    const { service, plugin, assertScope, call } = await fixture();
-    const enabled = await authorize(service, plugin, "confirm");
-    const abort = new AbortController();
-    const task = service.call(run, callInput(enabled), abort.signal);
-    const rejected = expect(task).rejects.toMatchObject({ code: "unavailable" });
-    const request = await pending(service);
-    assertScope.mockRejectedValueOnce(new Error("Run cancelled"));
-    await expect(service.decide(request.id, "approve")).rejects.toThrow();
-    expect(call).not.toHaveBeenCalled();
-    abort.abort();
-    await rejected;
-    const read = await service.grant(enabled.id, run.botId, {
-      revision: enabled.revision,
-      tools: [{ name: "echo", mode: "read" }],
+      ).rejects.toMatchObject({ code: "forbidden" });
     });
-    call.mockResolvedValueOnce({ content: [{ type: "text", text: "x".repeat(13 * 1024) }] });
-    await expect(
-      service.call(run, callInput(read), AbortSignal.timeout(1000)),
-    ).rejects.toMatchObject({ code: "invalid" });
-    expect(call).toHaveBeenCalledTimes(1);
-  });
 
-  it("keeps plugin body limits isolated from neighboring parent routes", async () => {
-    const { Hono } = await import("hono");
-    const { service } = await fixture();
-    const app = new Hono().route("/api/v1", createPluginRoutes(service));
-    app.post("/api/v1/employees/import/preview", async (context) =>
-      context.text(String((await context.req.text()).length)),
-    );
-    expect(
-      (
-        await app.request("/api/v1/employees/import/preview", {
-          method: "POST",
-          body: "x".repeat(30 * 1024),
-        })
-      ).status,
-    ).toBe(200);
-    expect(
-      (
-        await app.request("/api/v1/plugins/preview", {
-          method: "POST",
-          body: "x".repeat(30 * 1024),
-        })
-      ).status,
-    ).toBe(413);
-  });
-});
+    it("calls only the granted Bot/tool with valid arguments and rejects changed catalogs", async () => {
+      const { service, plugin, call, connection } = await fixture();
+      const enabled = await authorize(service, plugin, "read");
+      expect((await service.catalog(run)).tools[0]).toMatchObject({
+        pluginId: plugin.id,
+        revision: enabled.revision,
+        mode: "read",
+      });
+      await expect(
+        service.call({ ...run, botId: "other" }, callInput(enabled), AbortSignal.timeout(1000)),
+      ).rejects.toMatchObject({ code: "forbidden" });
+      await expect(
+        service.call(
+          run,
+          { ...callInput(enabled), arguments: { text: 5 } },
+          AbortSignal.timeout(1000),
+        ),
+      ).rejects.toMatchObject({ code: "invalid" });
+      expect(await service.call(run, callInput(enabled), AbortSignal.timeout(2000))).toMatchObject({
+        untrusted: true,
+      });
+      expect(call).toHaveBeenCalledTimes(1);
+      const originalTool = tools[0];
+      if (!originalTool) throw new Error("Expected the fixture tool");
+      vi.mocked(connection.tools).mockResolvedValue([
+        { ...originalTool, description: "Changed tool" },
+      ]);
+      await expect(
+        service.call(run, callInput(enabled), AbortSignal.timeout(1000)),
+      ).rejects.toMatchObject({ code: "conflict" });
+      expect(call).toHaveBeenCalledTimes(1);
+    });
+
+    it("persists intent and waits for exact Owner approval before one side effect", async () => {
+      const { service, plugin, call, store } = await fixture();
+      const enabled = await authorize(service, plugin, "confirm");
+      const completion = service.call(run, callInput(enabled), AbortSignal.timeout(3000));
+      const request = await pending(service);
+      expect(request).toMatchObject({
+        runId: run.id,
+        channelId: run.channelId,
+        botId: run.botId,
+        arguments: { text: "hello" },
+      });
+      expect(call).not.toHaveBeenCalled();
+      const decisions = await Promise.allSettled([
+        service.decide(request.id, "approve"),
+        service.decide(request.id, "approve"),
+      ]);
+      expect(decisions.filter((item) => item.status === "fulfilled")).toHaveLength(1);
+      await completion;
+      expect(call).toHaveBeenCalledTimes(1);
+      await expect(service.decide(request.id, "approve")).rejects.toMatchObject({
+        code: "not_found",
+      });
+      const audit = (await store.read()).audit;
+      expect(audit.map((event) => event.phase)).toContain("dispatching");
+      expect(JSON.stringify(audit)).not.toContain("hello");
+    });
+
+    it("rejects or aborts a pending call without execution", async () => {
+      const { service, plugin, call } = await fixture();
+      const enabled = await authorize(service, plugin, "confirm");
+      const rejected = service.call(run, callInput(enabled), AbortSignal.timeout(3000));
+      const assertion = expect(rejected).rejects.toMatchObject({ code: "rejected" });
+      await service.decide((await pending(service)).id, "reject");
+      await assertion;
+      const abort = new AbortController();
+      const cancelled = service.call(run, callInput(enabled), abort.signal);
+      const cancellation = expect(cancelled).rejects.toMatchObject({ code: "unavailable" });
+      const request = await pending(service);
+      abort.abort();
+      await cancellation;
+      await expect(service.decide(request.id, "approve")).rejects.toMatchObject({
+        code: "not_found",
+      });
+      expect(call).not.toHaveBeenCalled();
+    });
+
+    it("expires pending approval and disables/revokes in-flight calls", async () => {
+      const { service, plugin, call } = await fixture(20);
+      const enabled = await authorize(service, plugin, "confirm");
+      // Expiry must follow its timeout even if the wall clock stops or moves backward.
+      const wallClock = vi.spyOn(Date, "now").mockReturnValue(Date.now());
+      try {
+        await expect(
+          service.call(run, callInput(enabled), AbortSignal.timeout(1000)),
+        ).rejects.toMatchObject({ code: "expired" });
+        expect(call).not.toHaveBeenCalled();
+      } finally {
+        wallClock.mockRestore();
+      }
+    });
+
+    it("revokes a waiting approval immediately when the plugin is disabled", async () => {
+      const { service, plugin, call } = await fixture();
+      const enabled = await authorize(service, plugin, "confirm");
+      const next = service.call(run, callInput(enabled), AbortSignal.timeout(3000));
+      const assertion = expect(next).rejects.toMatchObject({ code: "unavailable" });
+      await pending(service);
+      await service.setEnabled(plugin.id, { revision: enabled.revision, enabled: false });
+      await assertion;
+      expect(call).not.toHaveBeenCalled();
+    });
+
+    it("rejects stale concurrent updates instead of overwriting grants", async () => {
+      const { service, plugin } = await fixture();
+      const results = await Promise.allSettled([
+        service.grant(plugin.id, run.botId, {
+          revision: plugin.revision,
+          tools: [{ name: "echo", mode: "read" }],
+        }),
+        service.setEnabled(plugin.id, { revision: plugin.revision, enabled: true }),
+      ]);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    });
+
+    it("rechecks Run scope at Owner approval and rejects oversize results", async () => {
+      const { service, plugin, assertScope, call } = await fixture();
+      const enabled = await authorize(service, plugin, "confirm");
+      const abort = new AbortController();
+      const task = service.call(run, callInput(enabled), abort.signal);
+      const rejected = expect(task).rejects.toMatchObject({ code: "unavailable" });
+      const request = await pending(service);
+      assertScope.mockRejectedValueOnce(new Error("Run cancelled"));
+      await expect(service.decide(request.id, "approve")).rejects.toThrow();
+      expect(call).not.toHaveBeenCalled();
+      abort.abort();
+      await rejected;
+      const read = await service.grant(enabled.id, run.botId, {
+        revision: enabled.revision,
+        tools: [{ name: "echo", mode: "read" }],
+      });
+      call.mockResolvedValueOnce({ content: [{ type: "text", text: "x".repeat(13 * 1024) }] });
+      await expect(
+        service.call(run, callInput(read), AbortSignal.timeout(1000)),
+      ).rejects.toMatchObject({ code: "invalid" });
+      expect(call).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps plugin body limits isolated from neighboring parent routes", async () => {
+      const { Hono } = await import("hono");
+      const { service } = await fixture();
+      const app = new Hono().route("/api/v1", createPluginRoutes(service));
+      app.post("/api/v1/employees/import/preview", async (context) =>
+        context.text(String((await context.req.text()).length)),
+      );
+      expect(
+        (
+          await app.request("/api/v1/employees/import/preview", {
+            method: "POST",
+            body: "x".repeat(30 * 1024),
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await app.request("/api/v1/plugins/preview", {
+            method: "POST",
+            body: "x".repeat(30 * 1024),
+          })
+        ).status,
+      ).toBe(413);
+    });
+  },
+);
 
 describe("real MCP SDK network journey", () => {
   it("discovers, grants, reads, reviews, writes once and revokes against a live local plugin", async () => {
@@ -317,7 +319,9 @@ describe("real MCP SDK network journey", () => {
     const demo = await startExamplePlugin(0);
     cleanup.push(() => demo.close());
     const service = new PluginService({
-      store: new FilePluginStore(join(directory, "private", "plugins.json"), { windowsTrustRoot: directory }),
+      store: new FilePluginStore(join(directory, "private", "plugins.json"), {
+        windowsTrustRoot: directory,
+      }),
       localEndpoints: [demo.endpoint],
       assertScope: async () => {},
       botExists: async () => true,

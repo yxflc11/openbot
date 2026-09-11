@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { modelProviderPresets } from "@openbot/domain";
@@ -33,11 +33,14 @@ describe("Desktop provider presets", () => {
     ).toThrow(/endpoint/);
   });
   it("retains the selected region and key in encrypted settings and keeps discovery read-only", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "openbot-presets-"));
+    // Nested dedicated leaf so Windows create+protect applies; never weaken checks for temp parents.
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-presets-")));
     try {
       const fetcher = vi.fn(async () => Response.json({ data: [{ id: "vendor/model@v1+fast" }] }));
-      const path = join(dir, "model.json");
-      const service = new ModelSettingsService(path, "a".repeat(64), fetcher);
+      const path = join(dir, "private", "model.json");
+      const service = new ModelSettingsService(path, "a".repeat(64), fetcher, {
+        windowsTrustRoot: dir,
+      });
       const selected = {
         ...input,
         provider: "siliconflow" as const,
@@ -58,7 +61,11 @@ describe("Desktop provider presets", () => {
         baseUrl: selected.baseUrl,
         verification: "metadata",
       });
-      expect(await new ModelSettingsService(path, "a".repeat(64)).agentSettings()).toMatchObject({
+      expect(
+        await new ModelSettingsService(path, "a".repeat(64), undefined, {
+          windowsTrustRoot: dir,
+        }).agentSettings(),
+      ).toMatchObject({
         provider: selected.provider,
         baseUrl: selected.baseUrl,
         apiKey: selected.apiKey,
@@ -74,10 +81,18 @@ describe("Desktop provider presets", () => {
     }
   });
   it("does not claim online verification or make a paid request for manual-only providers", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "openbot-presets-"));
+    // Nested dedicated leaf so Windows create+protect applies; never weaken checks for temp parents.
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "openbot-presets-")));
     try {
       const fetcher = vi.fn();
-      const service = new ModelSettingsService(join(dir, "model.json"), "a".repeat(64), fetcher);
+      const service = new ModelSettingsService(
+        join(dir, "private", "model.json"),
+        "a".repeat(64),
+        fetcher,
+        {
+          windowsTrustRoot: dir,
+        },
+      );
       expect(
         await service.save({ ...input, provider: "ark", model: "ep-account-model" }),
       ).toMatchObject({ verification: "not_checked" });
