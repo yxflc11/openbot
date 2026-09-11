@@ -120,10 +120,10 @@ export function RunInspector({
             <RunProgressPanel
               artifacts={artifacts}
               bot={bot}
-              botsById={botsById}
+              {...(botsById === undefined ? {} : { botsById })}
               childRuns={childRuns}
               liveFrame={liveFrame}
-              onInspectRun={onInspectRun}
+              {...(onInspectRun === undefined ? {} : { onInspectRun })}
               progress={progress}
               run={run}
             />

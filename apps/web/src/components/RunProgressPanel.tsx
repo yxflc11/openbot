@@ -30,6 +30,13 @@ export function latestProgressMessage(
   return undefined;
 }
 
+function currentStepLabel(run: Run, progress: readonly RunProgress[], terminal: boolean): string {
+  if (run.status === "waiting_approval") return "等待审批";
+  if (terminal) return runStatusLabel(run.status);
+  const latest = progress.at(-1);
+  return latest ? stageLabel(latest.stage) : runStatusLabel(run.status);
+}
+
 /** Computer preview +分工/步骤/审批/终态/成果 — data must be real Server projections only. */
 export function RunProgressPanel({
   artifacts,
@@ -114,15 +121,7 @@ export function RunProgressPanel({
 
       <section aria-label="当前步骤">
         <h3>当前步骤</h3>
-        <p>
-          {run.status === "waiting_approval"
-            ? "等待审批"
-            : terminal
-              ? runStatusLabel(run.status)
-              : progress.at(-1)
-                ? stageLabel(progress.at(-1)?.stage)
-                : runStatusLabel(run.status)}
-        </p>
+        <p>{currentStepLabel(run, progress, terminal)}</p>
         {currentMessage ? <p>{currentMessage}</p> : null}
       </section>
 
