@@ -32,6 +32,8 @@ OpenBot 工作主机主动连接 Server。每台 Node 先用一个短时、单�
 令牌默认十分钟过期、只显示一次且不能重放。为同一 Node 创建新令牌时，之前尚未使用的令牌会失效。
 凭证文件使用原子写入，在 POSIX 系统上权限为 `0600`。如果之后出现 group 或 other 权限位，
 OpenBot 也会拒绝加载；调查暴露原因并确认文件可信后，可执行 `chmod 600 identity.json` 再重启。
+在 Windows 上，文件适配器会把凭据目录与文件限制为仅 Owner+SYSTEM 的 DACL（不允许继承的 Allow ACE），
+校验失败则拒绝加载；这不等于 Windows Credential Manager 或 DPAPI。
 OpenBot 还会拒绝符号链接、非普通文件、过大文件、格式错误的包和签发给其他 Node id 的凭证。
 
 Owner 弹窗只列出安全的有效/已吊销身份元数据，不返回凭证摘要；在线状态与实时 Node 连接投影合并。
@@ -313,4 +315,5 @@ systemd x64/arm64 证据仍待完成。协议还不能证明 Node 持有不可�
 不受信任网络前必须补齐这些控制。详见
 [ADR-0023](decisions/0023-one-time-node-enrollment.md)、
 [权限审查](research/posix-node-credential-permissions.md)、
+[Windows ACL 审查](research/windows-node-credential-acl.md)、
 [Linux 服务决策](decisions/0032-linux-worker-host-service-profiles.md)与[安全模型](SECURITY.md)。
