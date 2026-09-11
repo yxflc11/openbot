@@ -10,7 +10,14 @@ import { FilePluginStore } from "./plugin-store.js";
 
 const execute = promisify(execFile);
 const directories: string[] = [];
-const NATIVE_TIMEOUT_MS = 60_000;
+/** Per-spawn PowerShell deadline, matching production `executeFile` in `@openbot/windows-secret-acl`. */
+const POWERSHELL_SPAWN_TIMEOUT_MS = 15_000;
+/**
+ * Bounded native-test harness deadline (not unbounded). Heaviest empirical case is model ACL-only:
+ * ≤9 PowerShell spawns × 15s production cap = 135s, plus 45s runner/contention margin → 180s.
+ * See docs/research/windows-native-acl-test-budget.md
+ */
+const NATIVE_TIMEOUT_MS = 180_000;
 
 afterEach(async () => {
   await Promise.all(
@@ -56,7 +63,11 @@ Set-Acl -LiteralPath $path -AclObject $acl
       "-EncodedCommand",
       Buffer.from(broaden, "utf16le").toString("base64"),
     ],
-    { env: { ...process.env, OPENBOT_TEST_PATH: targetPath }, windowsHide: true },
+    {
+      env: { ...process.env, OPENBOT_TEST_PATH: targetPath },
+      windowsHide: true,
+      timeout: POWERSHELL_SPAWN_TIMEOUT_MS,
+    },
   );
 }
 
