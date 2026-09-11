@@ -23,6 +23,7 @@
     "@openbot/logging": "0.0.0",
     "@openbot/policy": "0.0.0",
     "@openbot/protocol": "0.0.0",
+    "@openbot/windows-secret-acl": "0.0.0",
     "@openrouter/ai-sdk-provider": "3.0.0",
     "@sigstore/core": "4.0.1",
     "@tesseract.js-data/chi_sim": "1.0.0",

@@ -95,3 +95,5 @@ Electron IPC 和受限原子 JSON 持久化表达四种产品组合及有上限�
 Swift Worker Host 复用为一个独立签名的 Desktop 内嵌 companion。Desktop 只在已经鉴权的 main
 process 申请短期 token，通过一条有界私有 stdin 请求传递，并投影真实原生登记状态；renderer 不会
 获得 token、进程桥或可能漂移的成功标记。
+
+[Server Windows 机密 ACL](server-windows-secret-acl.zh-CN.md) 将 Node Owner+SYSTEM 辅助逻辑抽取为 `@openbot/windows-secret-acl`，供 model-settings 与 plugin-store 复用（DEV-005 / N2）。

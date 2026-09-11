@@ -38,7 +38,7 @@ Enrollment tokens expire after ten minutes by default, are shown once, and canno
 Issuing a replacement invalidates the previous unused token for that Node. The credential file is
 atomically written with mode `0600` on POSIX systems. OpenBot also refuses to load it if group or
 other permission bits later appear; restore an operator-approved file with
-`chmod 600 identity.json` before restarting. On Windows, the file adapter protects the credential
+`chmod 600 identity.json` before restarting. On Windows, the file adapter (shared `@openbot/windows-secret-acl` helper) protects the credential
 directory and file with an Owner+SYSTEM-only DACL (no inherited Allow ACEs) and refuses load when
 verification fails; this is not Windows Credential Manager or DPAPI. It refuses symlinks,
 non-regular files, oversized files, malformed packages, and credentials issued for another Node id.
@@ -381,6 +381,6 @@ macOS Keychain. Those controls remain required before exposing the Node channel 
 network. See
 [ADR-0023](decisions/0023-one-time-node-enrollment.md), the
 [permission review](research/posix-node-credential-permissions.md),
-[Windows ACL review](research/windows-node-credential-acl.md),
+[Windows ACL review](research/windows-node-credential-acl.md), [Server shared secret ACL](research/server-windows-secret-acl.md),
 [Linux service decision](decisions/0032-linux-worker-host-service-profiles.md), and
 [Security](SECURITY.md).

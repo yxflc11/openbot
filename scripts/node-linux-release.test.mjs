@@ -71,6 +71,7 @@ test("projects only the Node production dependency closure", () => {
     "packages/logging",
     "packages/protocol",
     "packages/provider-sdk",
+    "packages/windows-secret-acl",
     "providers/docker",
   ]);
   assert.ok(graph.packageKeys.includes("node_modules/pino"));
@@ -143,6 +144,7 @@ test("accepts only the reviewed ncc assets, builtins, stubs, and internal notice
     "@openbot/protocol",
     "@openbot/provider-sdk",
     "@openbot/provider-docker",
+    "@openbot/windows-secret-acl",
   ];
   const stats = {
     errorsCount: 0,

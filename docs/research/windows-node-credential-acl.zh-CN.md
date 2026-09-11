@@ -32,3 +32,7 @@
 
 - 祖先 reparse/junction 拒绝降低可写父路径替换风险，**不宣称**已覆盖全部路径攻击类。
 - 已有操作者目录仅校验、不自动改写 ACL。
+
+## 后续（DEV-005 / N2）
+
+ACL/路径边界已抽取至 `@openbot/windows-secret-acl`，供 Server model-settings 与 plugin-store 复用；见 [server-windows-secret-acl.zh-CN.md](server-windows-secret-acl.zh-CN.md)。
