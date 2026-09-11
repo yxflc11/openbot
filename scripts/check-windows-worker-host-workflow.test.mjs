@@ -29,8 +29,8 @@ test("rejects moving SDK action pins, runners, caches, and uploads", () => {
       "actions/checkout@v7",
     ),
     fixture.workflow.replace(
-      "actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2",
-      "actions/setup-dotnet@v5",
+      "actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68",
+      "actions/setup-dotnet@v6",
     ),
     fixture.workflow.replace("runs-on: windows-2025", "runs-on: windows-latest"),
     fixture.workflow.replace("working-directory: apps/worker-host-windows", "working-directory: ."),

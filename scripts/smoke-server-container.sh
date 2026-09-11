@@ -60,8 +60,8 @@ if [[ "$actual_arch" != "$expected_arch" ]]; then
 fi
 
 runtime_version="$(docker run --rm --entrypoint node "$image" --version)"
-if [[ "$runtime_version" != "v24.20.0" ]]; then
-  echo "Expected Node v24.20.0, found $runtime_version." >&2
+if [[ "$runtime_version" != "v24.21.0" ]]; then
+  echo "Expected Node v24.21.0, found $runtime_version." >&2
   exit 1
 fi
 

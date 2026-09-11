@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const SETUP_DOTNET_PIN = "actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2";
+const SETUP_DOTNET_PIN = "actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68";
 
 export function validateWindowsWorkerHostBuildLane({
   workflow,
@@ -40,7 +40,7 @@ export function validateWindowsWorkerHostBuildLane({
   }
 
   if (
-    /continue-on-error:|windows-latest|actions\/upload-artifact|cache:\s*(?:true|nuget)|uses: actions\/setup-dotnet@(?!9a946fdbd5fb07b82b2f5a4466058b876ab72bb2)/.test(
+    /continue-on-error:|windows-latest|actions\/upload-artifact|cache:\s*(?:true|nuget)|uses: actions\/setup-dotnet@(?!a98b56852c35b8e3190ac28c8c2271da59106c68)/.test(
       job,
     )
   ) {

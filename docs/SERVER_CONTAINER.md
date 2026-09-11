@@ -2,7 +2,7 @@
 
 [English](SERVER_CONTAINER.md) · [简体中文](SERVER_CONTAINER.zh-CN.md)
 
-The source-built Server image uses Node.js `24.20.0` LTS on Debian Bookworm slim, pinned to the
+The source-built Server image uses Node.js `24.21.0` LTS on Debian Bookworm slim, pinned to the
 reviewed multi-platform digest in [the Dockerfile](../deploy/server/Dockerfile). The build uses
 npm `10.9.9`, prunes the monorepo to the Server and its six internal runtime workspaces, and copies
 only their compiled output, production dependencies, package metadata, and database migrations

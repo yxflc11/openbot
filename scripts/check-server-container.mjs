@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const NODE_IMAGE =
-  "node:24.20.0-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e";
+  "node:24.21.0-bookworm-slim@sha256:2fe369e969550cde8e867afc3fe370b260140cab4a23d467074295b42163d553";
 const CHECKOUT_PIN = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
 
 export function validateServerContainer({
@@ -171,7 +171,7 @@ export function validateServerContainer({
   }
 
   const requiredSmokeFragments = [
-    'runtime_version" != "v24.20.0"',
+    'runtime_version" != "v24.21.0"',
     'runtime_uid" == "0"',
     '"electron", "tsx", "turbo", "typescript", "vite", "vitest"',
     "filename-reserved-regex",
