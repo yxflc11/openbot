@@ -26,11 +26,13 @@ export function ComposerAttachmentPicker(props: ComposerAttachmentPickerProps) {
   const [dragging, setDragging] = useState(false);
   const [uploadName, setUploadName] = useState<string>();
   const [error, setError] = useState<string>();
+  const [retryFiles, setRetryFiles] = useState<File[]>([]);
   const latest = useRef(props);
   latest.current = props;
   const pending = useRef<AbortController | undefined>(undefined);
   useEffect(() => {
     setError(undefined);
+    setRetryFiles([]);
     setUploading(false);
     setDragging(false);
     setUploadName(undefined);
@@ -44,6 +46,7 @@ export function ComposerAttachmentPicker(props: ComposerAttachmentPickerProps) {
   async function upload(files: File[]) {
     if (!files.length || pending.current || latest.current.disabled) return;
     setError(undefined);
+    setRetryFiles([]);
     const controller = new AbortController();
     pending.current = controller;
     const channelId = latest.current.channelId;
@@ -52,6 +55,7 @@ export function ComposerAttachmentPicker(props: ComposerAttachmentPickerProps) {
     try {
       validateComposerAttachmentBatch(latest.current.getAttachments(), files);
       const failures: string[] = [];
+      const failedFiles: File[] = [];
       for (const file of files) {
         if (controller.signal.aborted || latest.current.channelId !== channelId) return;
         setUploadName(file.name);
@@ -64,12 +68,16 @@ export function ComposerAttachmentPicker(props: ComposerAttachmentPickerProps) {
           latest.current.onChange([...current, uploaded]);
         } catch (cause) {
           if (controller.signal.aborted) return;
+          failedFiles.push(file);
           failures.push(
             `${file.name}：${cause instanceof Error ? cause.message : "附件上传失败。"}`,
           );
         }
       }
-      if (failures.length) setError(failures.join("；"));
+      if (failures.length) {
+        setRetryFiles(failedFiles);
+        setError(failures.join("；"));
+      }
     } catch (cause) {
       if (!controller.signal.aborted)
         setError(cause instanceof Error ? cause.message : "附件上传失败。");
@@ -233,12 +241,38 @@ export function ComposerAttachmentPicker(props: ComposerAttachmentPickerProps) {
           </span>
         ))}
         {uploading ? (
-          <small role="status">正在上传{uploadName ? ` ${uploadName}` : "附件"}…</small>
+          <span>
+            <small role="status">正在上传{uploadName ? ` ${uploadName}` : "附件"}…</small>
+            <button
+              type="button"
+              onClick={() => {
+                pending.current?.abort();
+                pending.current = undefined;
+                setUploading(false);
+                setUploadName(undefined);
+                latest.current.onUploadingChange?.(false);
+                setError(
+                  "已取消剩余上传。已加入草稿的附件会保留；服务器已收到的原件可在附件管理中查看。",
+                );
+              }}
+            >
+              取消上传
+            </button>
+          </span>
         ) : null}
       </div>
       {error ? (
         <p className="form-error" role="alert">
           {error}
+          {retryFiles.length > 0 ? (
+            <button
+              type="button"
+              disabled={uploading || props.disabled}
+              onClick={() => void upload(retryFiles)}
+            >
+              重试失败的附件
+            </button>
+          ) : null}
         </p>
       ) : null}
     </>

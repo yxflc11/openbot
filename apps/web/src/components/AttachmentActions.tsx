@@ -15,7 +15,16 @@ export function AttachmentActions({
   const [error, setError] = useState("");
   const [password, setPassword] = useState("");
   const pending = useRef<AbortController | undefined>(undefined);
-  useEffect(() => () => pending.current?.abort(), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Switching attachment identity must cancel pending work and clear its password.
+  useEffect(() => {
+    setBusy(false);
+    setError("");
+    setPassword("");
+    return () => {
+      pending.current?.abort();
+      pending.current = undefined;
+    };
+  }, [attachment.id]);
   const image = attachment.mediaType.startsWith("image/");
   const media =
     attachment.mediaType.startsWith("audio/") || attachment.mediaType.startsWith("video/");

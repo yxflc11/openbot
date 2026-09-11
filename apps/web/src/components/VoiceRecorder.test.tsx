@@ -158,3 +158,20 @@ it("keeps an acquired stream owned when lease cleanup IPC fails", async () => {
   await views.pop()?.unmount();
   expect(stop).toHaveBeenCalled();
 });
+
+it("cancels attachment upload without losing local review or appending a late response", async () => {
+  const upload = deferred<Awaited<ReturnType<typeof uploadComposerAttachment>>>();
+  vi.mocked(uploadComposerAttachment).mockReturnValue(upload.promise);
+  const view = await render();
+  await interact(() => button("录制语音附件").click());
+  await interact(() => button("结束录音").click());
+  await interact(() => button("添加到草稿").click());
+  const signal = vi.mocked(uploadComposerAttachment).mock.calls[0]?.[2];
+  await interact(() => button("取消添加").click());
+  expect(signal?.aborted).toBe(true);
+  expect(document.querySelector("audio")).not.toBeNull();
+  expect(button("添加到草稿").disabled).toBe(false);
+  await interact(() => upload.resolve({ id: "late" } as never));
+  expect(view.change).not.toHaveBeenCalled();
+  expect(document.querySelector("audio")).not.toBeNull();
+});

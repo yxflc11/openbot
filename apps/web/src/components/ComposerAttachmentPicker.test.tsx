@@ -29,6 +29,48 @@ async function pick(input: HTMLInputElement | null, files: File[]) {
 }
 
 describe("persistent composer attachment selection", () => {
+  it("starts another upload after cancellation and ignores the cancelled response", async () => {
+    const cancelled = deferred<ReturnType<typeof uploaded>>();
+    const replacement = deferred<ReturnType<typeof uploaded>>();
+    vi.mocked(uploadComposerAttachment)
+      .mockReturnValueOnce(cancelled.promise)
+      .mockReturnValueOnce(replacement.promise);
+    let current: ComposerAttachment[] = [];
+    const inputRef = createRef<HTMLInputElement>();
+    const onUploadingChange = vi.fn();
+    const view = await renderComponent(
+      <ComposerAttachmentPicker
+        channelId={channelId}
+        attachments={[]}
+        getAttachments={() => current}
+        onChange={(next) => {
+          current = next;
+        }}
+        inputRef={inputRef}
+        onUploadingChange={onUploadingChange}
+      />,
+    );
+    try {
+      await pick(inputRef.current, [new File(["data"], "cancelled.txt")]);
+      const signal = vi.mocked(uploadComposerAttachment).mock.calls[0]?.[2];
+      const cancel = Array.from(view.container.querySelectorAll("button")).find(
+        (button) => button.textContent === "取消上传",
+      );
+      if (!cancel) throw new Error("Missing upload cancellation.");
+      await interact(() => cancel.click());
+      expect(signal?.aborted).toBe(true);
+      expect(onUploadingChange).toHaveBeenLastCalledWith(false);
+      await pick(inputRef.current, [new File(["data"], "replacement.txt")]);
+      await interact(() => cancelled.resolve(uploaded("cancelled.txt")));
+      expect(current).toEqual([]);
+      expect(onUploadingChange).toHaveBeenLastCalledWith(true);
+      await interact(() => replacement.resolve(uploaded("replacement.txt")));
+      expect(current.map((item) => item.name)).toEqual(["replacement.txt"]);
+      expect(onUploadingChange).toHaveBeenLastCalledWith(false);
+    } finally {
+      await view.unmount();
+    }
+  });
   it("uploads multiple files while appending to the latest draft attachment list", async () => {
     const first = deferred<ReturnType<typeof uploaded>>();
     vi.mocked(uploadComposerAttachment)
@@ -69,10 +111,11 @@ describe("persistent composer attachment selection", () => {
       await view.unmount();
     }
   });
-  it("retains successful attachments and shows a later upload failure", async () => {
+  it("retains successful attachments and retries only the failed upload", async () => {
     vi.mocked(uploadComposerAttachment)
       .mockResolvedValueOnce(uploaded("first.ts"))
-      .mockRejectedValueOnce(new Error("连接中断"));
+      .mockRejectedValueOnce(new Error("连接中断"))
+      .mockResolvedValueOnce(uploaded("second.py", "00000000-0000-4000-8000-000000000012"));
     let current: ComposerAttachment[] = [];
     const inputRef = createRef<HTMLInputElement>();
     const view = await renderComponent(
@@ -93,6 +136,17 @@ describe("persistent composer attachment selection", () => {
       ]);
       expect(current.map((item) => item.name)).toEqual(["first.ts"]);
       expect(view.container.querySelector('[role="alert"]')?.textContent).toContain("连接中断");
+      const retry = Array.from(view.container.querySelectorAll("button")).find(
+        (button) => button.textContent === "重试失败的附件",
+      );
+      if (!retry) throw new Error("Missing failed attachment retry.");
+      await interact(() => retry.click());
+      expect(current.map((item) => item.name)).toEqual(["first.ts", "second.py"]);
+      expect(vi.mocked(uploadComposerAttachment).mock.calls.map((call) => call[1].name)).toEqual([
+        "first.ts",
+        "second.py",
+        "second.py",
+      ]);
     } finally {
       await view.unmount();
     }
