@@ -1,7 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open } from "node:fs/promises";
+import { lstat, open } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import {
+  createWindowsSecretAcl,
+  ensureProtectedSecretDirectory,
+  protectSecretFile,
+  verifySecretFileAccess,
+  type WindowsSecretAcl,
+} from "@openbot/windows-secret-acl";
 import { ModelSettingsService } from "./model-settings.js";
 
 export interface ModelSettingsLocation {
@@ -10,11 +17,27 @@ export interface ModelSettingsLocation {
   OPENBOT_MODEL_ENCRYPTION_KEY?: string | undefined;
 }
 
+export interface BootstrapModelSettingsOptions {
+  fetcher?: typeof fetch;
+  windowsAcl?: WindowsSecretAcl;
+  windowsTrustRoot?: string;
+}
+
 /** The directory belongs to the Server account, never to a renderer or Worker. */
 export async function bootstrapModelSettings(
   location: ModelSettingsLocation,
-  fetcher: typeof fetch = fetch,
+  fetcherOrOptions: typeof fetch | BootstrapModelSettingsOptions = fetch,
 ): Promise<ModelSettingsService | undefined> {
+  const options: BootstrapModelSettingsOptions =
+    typeof fetcherOrOptions === "function" ? { fetcher: fetcherOrOptions } : fetcherOrOptions;
+  const fetcher = options.fetcher ?? fetch;
+  // One long-lived ACL helper for bootstrap + returned service (Owner SID reuse; ACL re-verify each op).
+  const windowsAcl = options.windowsAcl ?? createWindowsSecretAcl();
+  const windowsTrustRoot = options.windowsTrustRoot;
+  const aclOptions = {
+    acl: windowsAcl,
+    ...(windowsTrustRoot === undefined ? {} : { trustRoot: windowsTrustRoot }),
+  };
   const directory = location.OPENBOT_MODEL_DIRECTORY;
   const legacyPath = location.OPENBOT_MODEL_SETTINGS_PATH;
   const legacyKey = location.OPENBOT_MODEL_ENCRYPTION_KEY;
@@ -28,7 +51,10 @@ export async function bootstrapModelSettings(
       throw new Error("Model settings path and encryption key must be configured together.");
     }
     return legacyPath && legacyKey
-      ? new ModelSettingsService(legacyPath, legacyKey, fetcher)
+      ? new ModelSettingsService(legacyPath, legacyKey, fetcher, {
+          windowsAcl,
+          ...(windowsTrustRoot === undefined ? {} : { windowsTrustRoot }),
+        })
       : undefined;
   }
 
@@ -36,7 +62,7 @@ export async function bootstrapModelSettings(
   const settingsPath = join(root, "settings.json");
   const keyPath = join(root, "encryption.key");
   try {
-    await mkdir(root, { recursive: true, mode: 0o700 });
+    await ensureProtectedSecretDirectory(root, aclOptions);
     const rootStat = await lstat(root);
     if (!rootStat.isDirectory() || !isPrivate(rootStat, 0o077))
       throw new Error("Invalid directory.");
@@ -59,6 +85,7 @@ export async function bootstrapModelSettings(
         } finally {
           await handle.close();
         }
+        await protectSecretFile(keyPath, { acl: windowsAcl });
       } catch (createError) {
         // Another startup may have created the key. Read and validate that exact file below.
         if (
@@ -77,6 +104,7 @@ export async function bootstrapModelSettings(
     ) {
       throw new Error("Invalid model encryption key file.");
     }
+    await verifySecretFileAccess(keyPath, aclOptions);
     const handle = await open(keyPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     let key: string;
     try {
@@ -89,7 +117,10 @@ export async function bootstrapModelSettings(
     } finally {
       await handle.close();
     }
-    const service = new ModelSettingsService(settingsPath, key, fetcher);
+    const service = new ModelSettingsService(settingsPath, key, fetcher, {
+      windowsAcl,
+      ...(windowsTrustRoot === undefined ? {} : { windowsTrustRoot }),
+    });
     await service.summary();
     return service;
   } catch {

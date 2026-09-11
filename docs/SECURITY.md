@@ -107,7 +107,7 @@ OpenBot 假设以下组件都会犯错或被不可信内容影响：
   证明不可导出私钥的持有，也不能阻止凭证被复制后重放。Linux 真实密钥库证据、其余平台密钥库、
   持有证明、轮换、mTLS 和消息序号完成前，只允许通过 WSS 与可信私网使用。
 - POSIX 文件适配器使用 `0600` 原子写入，并在同一个已打开句柄上检查普通文件、大小和权限后才
-  读取；一旦出现 group/other 权限位就拒绝认证。Windows ACL、Windows Credential Manager 与
+  读取；一旦出现 group/other 权限位就拒绝认证。Windows 文件适配器通过 `@openbot/windows-secret-acl` 对 Node 凭据与 Server model/plugin 机密强制 Owner+SYSTEM DACL；Windows Credential Manager 与
   macOS Keychain 仍未实现，不能由这条 POSIX 保证或 Linux Secret Service 契约外推。
 - enrollment token 默认十分钟过期、只能兑换一次、只在创建时返回；Node credential 也只在兑换
   时返回。任何一种明文都不能进入日志、Git、员工包或频道消息。

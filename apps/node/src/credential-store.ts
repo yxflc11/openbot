@@ -1,13 +1,30 @@
-import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath } from "node:fs/promises";
-import { dirname, join, resolve, win32 } from "node:path";
-import { promisify } from "node:util";
+import { lstat, mkdir, open } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import type { NodeEnv } from "@openbot/config";
 import { type NodeEnrollmentResult, nodeEnrollmentResultSchema } from "@openbot/protocol";
+import {
+  assertWindowsSecretPathBoundary,
+  createWindowsSecretAcl,
+  type WindowsSecretAcl,
+} from "@openbot/windows-secret-acl";
 import writeFileAtomic from "write-file-atomic";
 
-const executeFile = promisify(execFile);
+export {
+  assertWindowsCredentialPathBoundary,
+  assertWindowsSecretPathBoundary,
+  createDefaultWindowsCredentialAcl,
+  createWindowsSecretAcl,
+  WINDOWS_CREDENTIAL_DIRECTORY_SCRIPT,
+  WINDOWS_CREDENTIAL_FILE_SCRIPT,
+  WINDOWS_SECRET_DIRECTORY_SCRIPT,
+  WINDOWS_SECRET_FILE_SCRIPT,
+  type WindowsCredentialAcl,
+  type WindowsSecretAcl,
+  windowsCredentialNativeEnvironment,
+  windowsSecretNativeEnvironment,
+} from "@openbot/windows-secret-acl";
 
 const maximumCredentialFileBytes = 4 * 1024;
 const secretServiceTimeoutMs = 5_000;
@@ -41,21 +58,21 @@ export type CredentialHelper = (
 export class FileNodeCredentialStore implements NodeCredentialStore {
   readonly #path: string;
   readonly #platform: NodeJS.Platform;
-  readonly #windowsAcl: WindowsCredentialAcl;
+  readonly #windowsAcl: WindowsSecretAcl;
   readonly #windowsTrustRoot: string | undefined;
 
   constructor(
     path: string,
     options: {
       platform?: NodeJS.Platform;
-      windowsAcl?: WindowsCredentialAcl;
+      windowsAcl?: WindowsSecretAcl;
       /** realpath-normalized root that bounds reparse walks (required for POSIX-hosted win32 tests). */
       windowsTrustRoot?: string;
     } = {},
   ) {
     this.#path = resolve(path);
     this.#platform = options.platform ?? process.platform;
-    this.#windowsAcl = options.windowsAcl ?? createDefaultWindowsCredentialAcl();
+    this.#windowsAcl = options.windowsAcl ?? createWindowsSecretAcl();
     this.#windowsTrustRoot = options.windowsTrustRoot;
   }
 
@@ -72,7 +89,7 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
 
     if (this.#platform === "win32") {
       // Reparse/junction boundary is separate from parent-directory ACL checks.
-      await assertWindowsCredentialPathBoundary(this.#path, {
+      await assertWindowsSecretPathBoundary(this.#path, {
         ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
       });
       // Refuse load when the immediate parent is writable by unexpected principals
@@ -113,7 +130,7 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
     }
 
     if (this.#platform === "win32") {
-      await assertWindowsCredentialPathBoundary(directory, {
+      await assertWindowsSecretPathBoundary(directory, {
         allowMissingLeaf: true,
         ...(this.#windowsTrustRoot === undefined ? {} : { trustRoot: this.#windowsTrustRoot }),
       });
@@ -129,247 +146,6 @@ export class FileNodeCredentialStore implements NodeCredentialStore {
       await this.#windowsAcl.protectAndVerifyFile(this.#path);
     }
   }
-}
-
-/** Windows ACL operations for the file-backed Node credential adapter. */
-export interface WindowsCredentialAcl {
-  protectDirectory(path: string, created: boolean): Promise<void>;
-  /** Verify-only parent/dedicated directory DACL (Owner+SYSTEM). Never rewrites. */
-  verifyDirectory(path: string): Promise<void>;
-  protectAndVerifyFile(path: string): Promise<void>;
-  verifyFile(path: string): Promise<void>;
-}
-
-/**
- * Values travel only through environment variables into a fixed encoded PowerShell script.
- * Allow ACEs are limited to the current user and SYSTEM (S-1-5-18).
- */
-export const WINDOWS_CREDENTIAL_DIRECTORY_SCRIPT = `
-[Console]::Out.WriteLine('openbot-acl:started')
-$ErrorActionPreference = 'Stop'
-$path = $env:OPENBOT_CREDENTIAL_PATH
-$item = [IO.DirectoryInfo]::new($path)
-if (!$item.Exists -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe directory' }
-[Console]::Out.WriteLine('openbot-acl:identity')
-$owner = [Security.Principal.WindowsIdentity]::GetCurrent().User
-$system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
-if ($env:OPENBOT_CREDENTIAL_PROTECT -eq '1') {
-  [Console]::Out.WriteLine('openbot-acl:protecting')
-  $acl = [Security.AccessControl.DirectorySecurity]::new()
-  $acl.SetOwner($owner)
-  $acl.SetAccessRuleProtection($true, $false)
-  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($owner, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
-  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($system, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
-  $item.SetAccessControl($acl)
-}
-[Console]::Out.WriteLine('openbot-acl:reading')
-$acl = $item.GetAccessControl()
-if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $owner.Value) { throw 'Unexpected owner' }
-$allowed = @{}
-foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
-  if ($rule.AccessControlType -ne 'Allow') { continue }
-  $sid = $rule.IdentityReference.Value
-  if ($sid -ne $owner.Value -and $sid -ne $system.Value) { throw 'Unexpected directory access' }
-  if (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -eq [Security.AccessControl.FileSystemRights]::FullControl) { $allowed[$sid] = $true }
-}
-if (-not $allowed.ContainsKey($owner.Value)) { throw 'Missing owner access' }
-if (-not $allowed.ContainsKey($system.Value)) { throw 'Missing system access' }
-`;
-
-export const WINDOWS_CREDENTIAL_FILE_SCRIPT = `
-[Console]::Out.WriteLine('openbot-acl:started')
-$ErrorActionPreference = 'Stop'
-$path = $env:OPENBOT_CREDENTIAL_PATH
-$item = [IO.FileInfo]::new($path)
-if (!$item.Exists -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe file' }
-[Console]::Out.WriteLine('openbot-acl:identity')
-$owner = [Security.Principal.WindowsIdentity]::GetCurrent().User
-$system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
-if ($env:OPENBOT_CREDENTIAL_PROTECT -eq '1') {
-  [Console]::Out.WriteLine('openbot-acl:protecting')
-  $acl = [Security.AccessControl.FileSecurity]::new()
-  $acl.SetOwner($owner)
-  $acl.SetAccessRuleProtection($true, $false)
-  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($owner, 'FullControl', 'None', 'None', 'Allow'))
-  $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($system, 'FullControl', 'None', 'None', 'Allow'))
-  $item.SetAccessControl($acl)
-}
-[Console]::Out.WriteLine('openbot-acl:reading')
-$acl = $item.GetAccessControl()
-if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $owner.Value) { throw 'Unexpected owner' }
-$allowed = @{}
-foreach ($rule in @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))) {
-  if ($rule.AccessControlType -ne 'Allow') { continue }
-  $sid = $rule.IdentityReference.Value
-  if ($sid -ne $owner.Value -and $sid -ne $system.Value) { throw 'Unexpected file access' }
-  if (($rule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::FullControl) -eq [Security.AccessControl.FileSystemRights]::FullControl) { $allowed[$sid] = $true }
-}
-if (-not $allowed.ContainsKey($owner.Value)) { throw 'Missing owner access' }
-if (-not $allowed.ContainsKey($system.Value)) { throw 'Missing system access' }
-`;
-
-export function createDefaultWindowsCredentialAcl(): WindowsCredentialAcl {
-  return {
-    /**
-     * Only newly created dedicated directories receive an Owner+SYSTEM DACL rewrite.
-     * Existing directories are verified only; unsafe ACLs fail closed without mutation.
-     */
-    protectDirectory: (path, created) =>
-      runWindowsCredentialAclScript({
-        kind: "directory",
-        path,
-        forceProtect: created,
-      }),
-    verifyDirectory: (path) =>
-      runWindowsCredentialAclScript({
-        kind: "directory",
-        path,
-        forceProtect: false,
-      }),
-    protectAndVerifyFile: async (path) => {
-      await assertWindowsCredentialPathBoundary(path);
-      await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: true });
-    },
-    verifyFile: async (path) => {
-      await runWindowsCredentialAclScript({ kind: "file", path, forceProtect: false });
-    },
-  };
-}
-
-async function runWindowsCredentialAclScript(input: {
-  kind: "directory" | "file";
-  path: string;
-  forceProtect: boolean;
-}): Promise<void> {
-  if (process.platform !== "win32") {
-    throw new Error("Windows credential ACL checks require Windows.");
-  }
-  const environment = windowsCredentialNativeEnvironment();
-  const script =
-    input.kind === "directory"
-      ? WINDOWS_CREDENTIAL_DIRECTORY_SCRIPT
-      : WINDOWS_CREDENTIAL_FILE_SCRIPT;
-  const operation = executeFile(
-    win32.join(
-      environment.SystemRoot ?? "",
-      "System32",
-      "WindowsPowerShell",
-      "v1.0",
-      "powershell.exe",
-    ),
-    [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-EncodedCommand",
-      Buffer.from(script, "utf16le").toString("base64"),
-    ],
-    {
-      env: {
-        ...environment,
-        OPENBOT_CREDENTIAL_PATH: input.path,
-        // forceProtect is the only rewrite switch — never rewrite existing shared directories.
-        OPENBOT_CREDENTIAL_PROTECT: input.forceProtect ? "1" : "0",
-      },
-      windowsHide: true,
-      shell: false,
-      timeout: 15_000,
-      maxBuffer: 4096,
-    },
-  );
-  operation.child.stdin?.end();
-  try {
-    await operation;
-  } catch (error) {
-    const output =
-      error && typeof error === "object" && "stdout" in error ? String(error.stdout) : "";
-    const phase =
-      [...output.matchAll(/openbot-acl:(started|identity|protecting|reading)/gu)].at(-1)?.[1] ??
-      "launch";
-    throw new Error(`Windows credential ${input.kind} ACL verification failed during ${phase}.`);
-  }
-}
-
-/**
- * Reject credential paths whose leaf or ancestors are Windows reparse points (symlinks/junctions).
- * This reduces parent-path substitution risk; it does not claim all path-attack classes are closed.
- * Parent-directory Write/DeleteChild ACL checks are handled separately via verifyDirectory.
- *
- * Walks the logical path with lstat (so junctions/symlinks are visible). Optional `trustRoot` is
- * realpath-normalized; the walk stops when `realpath(current)` matches that root so macOS `/var`
- * system symlinks above a realpath'd fixture are out of scope.
- *
- * `allowMissingLeaf: true` permits any number of missing trailing segments (first-install nested
- * mkdir), then continues reparse checks on existing ancestors.
- */
-export async function assertWindowsCredentialPathBoundary(
-  targetPath: string,
-  options: { allowMissingLeaf?: boolean; trustRoot?: string } = {},
-): Promise<void> {
-  const resolved = resolve(targetPath);
-  const stopAt =
-    options.trustRoot !== undefined
-      ? (await realpath(options.trustRoot)).toLowerCase()
-      : process.platform === "win32"
-        ? win32.parse(resolved).root.toLowerCase()
-        : undefined;
-
-  let current = resolved;
-  for (;;) {
-    try {
-      const entry = await lstat(current);
-      if (entry.isSymbolicLink()) {
-        throw new Error("Node credential path must not use reparse points.");
-      }
-    } catch (error) {
-      if (options.allowMissingLeaf === true && isMissingFile(error)) {
-        // First-install may create nested directories; missing trailing segments are OK.
-      } else {
-        throw error;
-      }
-    }
-
-    if (await pathMatchesTrustStop(current, stopAt)) break;
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-}
-
-async function pathMatchesTrustStop(current: string, stopAt: string | undefined): Promise<boolean> {
-  if (stopAt === undefined) {
-    // POSIX without an explicit trust root: stop after checking the leaf only when the path
-    // exists; callers that need ancestor coverage must pass trustRoot (tests use realpath'd roots).
-    return true;
-  }
-  if (current.toLowerCase() === stopAt) return true;
-  try {
-    return (await realpath(current)).toLowerCase() === stopAt;
-  } catch {
-    return false;
-  }
-}
-
-export function windowsCredentialNativeEnvironment(
-  source: NodeJS.ProcessEnv = process.env,
-): Record<string, string> {
-  const systemRoot = source.SystemRoot ?? source.SYSTEMROOT;
-  if (!systemRoot || !/^[A-Za-z]:\\[^\0\r\n]*$/u.test(systemRoot)) {
-    throw new Error("Windows system directory is unavailable.");
-  }
-  const environment: Record<string, string> = {
-    SystemRoot: systemRoot,
-    WINDIR: systemRoot,
-    COMSPEC: win32.join(systemRoot, "System32", "cmd.exe"),
-    PATH: win32.join(systemRoot, "System32"),
-    LANG: "C",
-    LC_ALL: "C",
-  };
-  for (const name of ["TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]) {
-    const value = source[name];
-    if (value && !/[\0\r\n]/u.test(value)) environment[name] = value;
-  }
-  return environment;
 }
 
 interface LinuxSecretServiceOptions {
