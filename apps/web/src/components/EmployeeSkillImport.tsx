@@ -93,7 +93,8 @@ export function EmployeeSkillImport({
           />
         </label>
         <p>
-          当前支持单文件指令流程，使用任务已有工具；不加载附属文件或运行脚本。员工包导出不包含技能正文。
+          当前支持单文件指令流程，使用任务已有工具；不加载附属文件或运行脚本。分享 Bot
+          时可选择包含已审核且许可允许分发的正文，导入后需重新审核。
         </p>
         {error ? (
           <p className="form-error" role="alert">
