@@ -4,6 +4,7 @@ import { OpenBotMark } from "./OpenBotMark";
 
 const steps = [
   ["checking", "检查安装环境"],
+  ["credentials", "读取系统保存的凭据"],
   ["database", "准备本地数据库"],
   ["server", "启动 OpenBot 服务"],
   ["connecting", "完成连接与配置"],
@@ -82,7 +83,11 @@ export function DesktopInstallScreen({
               : "正在准备你的 OpenBot"}
         </h1>
         <p className="login-copy">
-          {resume || preparing ? "正在连接你的工作区…" : "首次使用：准备本地服务与数据库。"}
+          {state.status === "installing" && state.step === "credentials"
+            ? "正在读取系统保存的凭据。如有系统授权窗口，请在那里完成解锁。"
+            : resume || preparing
+              ? "正在连接你的工作区…"
+              : "首次使用：准备本地服务与数据库。"}
         </p>
         {!resume && !preparing && (
           <ol className="installation-steps" aria-label="安装进度" aria-live="polite">

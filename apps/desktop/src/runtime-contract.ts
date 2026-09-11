@@ -100,6 +100,7 @@ export type EmployeeTemplateSaveInput = Readonly<{
   packageId: string;
   generatedAt: string;
   downloadReviewToken: string;
+  includeSkillContent?: boolean;
 }>;
 export type EmployeeTemplateSaveResult = Readonly<{
   status: "saved" | "cancelled" | "busy" | "unavailable" | "exists" | "changed";
@@ -153,7 +154,7 @@ export type NativeServerState =
   | Readonly<{
       status: "installing";
       mode?: "initialize" | "resume";
-      step: "checking" | "database" | "server" | "connecting";
+      step: "checking" | "credentials" | "database" | "server" | "connecting";
     }>
   | Readonly<{ status: "ready"; serverUrl: string }>
   | Readonly<{

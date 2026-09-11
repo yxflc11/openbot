@@ -33,8 +33,8 @@ export interface NativeServerOptions {
   runtimeRoot: string;
   dataRoot: string;
   platform: string;
-  encrypt(value: string): string;
-  decrypt(value: string): string;
+  encrypt(value: string): string | Promise<string>;
+  decrypt(value: string): string | Promise<string>;
   launchServer(env: Record<string, string>): Promise<ManagedServerProcess>;
   connect(serverUrl: string, ownerPassword: string): Promise<void>;
   authenticate(serverUrl: string, ownerPassword: string): Promise<void>;
@@ -134,8 +134,9 @@ export class NativeServerController {
     const cluster = join(dataRoot, "postgres");
     const clusterExists = await exists(cluster);
     if (!retained && clusterExists) throw new Error("Existing cluster has no bootstrap identity.");
+    this.#state = { status: "installing", mode, step: "credentials" };
     const secrets = retained
-      ? decryptBootstrap(this.#options, retained)
+      ? await decryptBootstrap(this.#options, retained)
       : {
           databasePassword: randomBytes(32).toString("hex"),
           ownerPassword: randomBytes(32).toString("hex"),
@@ -144,7 +145,7 @@ export class NativeServerController {
     if (!retained) {
       let encrypted: string;
       try {
-        encrypted = this.#options.encrypt(JSON.stringify(secrets));
+        encrypted = await this.#options.encrypt(JSON.stringify(secrets));
       } catch {
         throw new NativeCredentialError("OS secret storage is unavailable.");
       }
@@ -421,10 +422,13 @@ async function stopPostgres(child: ChildProcess): Promise<void> {
   });
 }
 
-function decryptBootstrap(options: NativeServerOptions, retained: string): BootstrapSecrets {
+async function decryptBootstrap(
+  options: NativeServerOptions,
+  retained: string,
+): Promise<BootstrapSecrets> {
   let decrypted: string;
   try {
-    decrypted = options.decrypt(retained);
+    decrypted = await options.decrypt(retained);
   } catch {
     throw new NativeCredentialError("OS secret storage is unavailable.");
   }

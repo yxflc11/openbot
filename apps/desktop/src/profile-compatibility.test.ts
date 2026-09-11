@@ -23,3 +23,18 @@ describe("canonical Desktop name with retained Preview identity", () => {
     expect(desktopProfileCompatibility(root, "darwin", "OpenBot", () => false)).toBeUndefined();
   });
 });
+
+it.each(["server.json", "local-server/bootstrap.json", "local-server/postgres/PG_VERSION"])(
+  "never shadows canonical %s when its setup plan is absent",
+  (file) => {
+    const retained = join(root, "OpenBot", "openbot", file);
+    expect(
+      desktopProfileCompatibility(
+        root,
+        "darwin",
+        "OpenBot",
+        (path) => path === legacy || path === retained,
+      ),
+    ).toBeUndefined();
+  },
+);
