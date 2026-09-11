@@ -40,3 +40,7 @@ The previous [core upgrade](CORE_UPGRADE.md) documents Bot delegation, persisten
 - Browser interactions: selected two recipients and submitted one message yielding two tasks; replied to Nova and checked its exact recipient chip; clicked a quote and verified focus on the original message; opened a PNG preview, closed with Escape and verified focus restoration; cancelled a queued task and observed its cancelled state. Browser error/warning log was empty.
 - Picker/drop/paste upload failures and permissions are covered by component and Server tests. The rendered attachment preview used a seeded synthetic record; no claim of a manual file-upload acceptance through the native file chooser is made.
 - Native app acceptance uses the installed app and retained local data. The renderer, its real toolbar and channel navigation are checked separately from the synthetic browser fixture. Reference paid model execution and live asynchronous delegation remain untested.
+
+## Run progress and computer preview
+
+The run progress panel in task details shows only Server-owned Run, progress, and collaboration records. Computer preview renders only when a real execution frame exists; otherwise it shows a short empty state.

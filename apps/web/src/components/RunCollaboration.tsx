@@ -131,17 +131,35 @@ export function RunCollaboration({
       <ul aria-label="协作 Bot">
         {childRuns.map((run) => {
           const bot = botsById.get(run.botId);
+          const role = bot?.role?.trim() ? bot.role : "未指定职责";
+          const stateLabel =
+            run.status === "waiting_approval"
+              ? "等待审批"
+              : run.status === "failed"
+                ? "失败"
+                : run.status === "completed"
+                  ? "已完成"
+                  : runStatusLabel(run.status);
+          const detail =
+            run.status === "completed"
+              ? (run.resultSummary ?? run.title)
+              : run.status === "failed"
+                ? (run.errorMessage ?? run.title)
+                : run.title;
           return (
             <li key={run.id}>
               <button
                 type="button"
                 onClick={() => onInspectRun(run.id)}
-                aria-label={`查看 ${bot?.name ?? "Bot"} 的协作任务：${run.title}`}
-                title={run.resultSummary ?? run.errorMessage ?? run.title}
+                aria-label={`查看 ${bot?.name ?? "Bot"}（${role}）的协作任务：${run.title}`}
+                title={detail}
               >
                 {bot ? <RobotAvatar bot={bot} compact /> : null}
                 <span>{bot?.name ?? "频道 Bot"}</span>
-                <span className="collaboration-task-state">{runStatusLabel(run.status)}</span>
+                <span className="collaboration-role">{role}</span>
+                <span className="collaboration-task-state" data-state={run.status}>
+                  {stateLabel}
+                </span>
               </button>
             </li>
           );

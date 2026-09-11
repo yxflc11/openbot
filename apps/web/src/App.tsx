@@ -1,10 +1,9 @@
-import type { Channel } from "@openbot/domain";
-import { removeChannelMember } from "./api";
 import type {
   Approval,
   ApprovalDecision,
   Artifact,
   AuthSessionSnapshot,
+  Channel,
   CreateBotInput,
   CreateChannelInput,
   EmployeeProfile,
@@ -27,6 +26,7 @@ import {
   logout,
   openBotConversation,
   type RealtimeConnectionState,
+  removeChannelMember,
   subscribeToUnauthorized,
   subscribeToWorkspaceEvents,
 } from "./api";
@@ -60,6 +60,7 @@ import { MobileNavigation, type MobilePanel } from "./components/MobileNavigatio
 import { ModelSettingsScreen } from "./components/ModelSettingsScreen";
 import { NodeManagerDialog } from "./components/NodeManagerDialog";
 import { OpenBotMark } from "./components/OpenBotMark";
+import { indexRunCollaboration } from "./components/RunCollaboration";
 import { RunInspector } from "./components/RunInspector";
 import { ShareConversationDialog } from "./components/ShareConversationDialog";
 import { Sidebar } from "./components/Sidebar";
@@ -1218,11 +1219,20 @@ export function AuthenticatedWorkspace({
         <RunInspector
           artifacts={workspace.artifacts.filter((artifact) => artifact.runId === selectedRun.id)}
           bot={workspace.bots.find((bot) => bot.id === selectedRun.botId)}
+          botsById={new Map(workspace.bots.map((bot) => [bot.id, bot]))}
+          childRuns={
+            selectedChannel
+              ? (indexRunCollaboration(selectedChannel.id, workspace.runs, []).childrenByParent.get(
+                  selectedRun.id,
+                ) ?? [])
+              : []
+          }
           node={workspace.nodes.find((node) => node.id === selectedRun.nodeId)}
           progress={workspace.progress.filter((item) => item.runId === selectedRun.id)}
           liveFrame={framesByRun.get(selectedRun.id)}
           run={selectedRun}
           onClose={closeInspector}
+          onInspectRun={setSelectedRunId}
           onRun={(run) => {
             projectRun(run);
             setSelectedRunId(run.id);
