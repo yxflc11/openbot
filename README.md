@@ -6,7 +6,6 @@
   <a href="https://yxflc11.github.io/openbot-website/"><img src="https://img.shields.io/badge/WEB-OpenBot-57A639?style=for-the-badge&amp;labelColor=555555" alt="OpenBot website" height="28"></a>
   <a href="https://yxflc11.github.io/openbot-website/manual/installation/"><img src="https://img.shields.io/badge/DOCS-Manual-E7B416?style=for-the-badge&amp;labelColor=555555" alt="User manual" height="28"></a>
   <a href="https://yxflc11.github.io/openbot-website/demo/index.html"><img src="https://img.shields.io/badge/DEMO-Try%20it-5865F2?style=for-the-badge&amp;labelColor=555555" alt="Try the interactive demo" height="28"></a>
-  <br>
   <a href="#download"><img src="https://img.shields.io/badge/DESKTOP-macOS%20%C2%B7%20Windows-168AAD?style=for-the-badge&amp;labelColor=555555" alt="Download for macOS and Windows" height="28"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-69A807?style=for-the-badge&amp;labelColor=555555" alt="MIT license" height="28"></a>
   <a href="https://github.com/yxflc11/openbot/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yxflc11/openbot/ci.yml?branch=main&amp;style=for-the-badge&amp;label=CI&amp;labelColor=555555" alt="CI status" height="28"></a>
