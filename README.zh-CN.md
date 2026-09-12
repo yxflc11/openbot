@@ -1,13 +1,27 @@
+![OpenBot — 黑色机器人与像素字标](docs/design/openbot-readme-banner.png)
+
 # OpenBot
+
+<p align="center">
+  <a href="https://yxflc11.github.io/openbot-website/zh-cn/"><img src="https://img.shields.io/badge/WEB-OpenBot-57A639?style=for-the-badge&amp;labelColor=555555" alt="OpenBot 官网" height="28"></a>
+  <a href="https://yxflc11.github.io/openbot-website/zh-cn/manual/installation/"><img src="https://img.shields.io/badge/DOCS-%E4%BD%BF%E7%94%A8%E6%89%8B%E5%86%8C-E7B416?style=for-the-badge&amp;labelColor=555555" alt="使用手册" height="28"></a>
+  <a href="https://yxflc11.github.io/openbot-website/demo/index.html"><img src="https://img.shields.io/badge/DEMO-%E4%BD%93%E9%AA%8C%E6%BC%94%E7%A4%BA-5865F2?style=for-the-badge&amp;labelColor=555555" alt="体验交互演示" height="28"></a>
+</p>
+
+<p align="center">
+  <a href="#下载"><img src="https://img.shields.io/badge/DESKTOP-macOS%20%C2%B7%20Windows-168AAD?style=for-the-badge&amp;labelColor=555555" alt="下载 macOS 与 Windows 版" height="28"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-69A807?style=for-the-badge&amp;labelColor=555555" alt="MIT license" height="28"></a>
+  <a href="https://github.com/yxflc11/openbot/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yxflc11/openbot/ci.yml?branch=main&amp;style=for-the-badge&amp;label=CI&amp;labelColor=555555" alt="CI status" height="28"></a>
+</p>
+
+<p align="center">
+  <a href="README.md"><img src="https://img.shields.io/badge/LANG-English-3478C5?style=for-the-badge&amp;labelColor=555555" alt="Read in English" height="28"></a>
+  <a href="README.zh-CN.md"><img src="https://img.shields.io/badge/LANG-%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-D94848?style=for-the-badge&amp;labelColor=555555" alt="阅读简体中文版" height="28"></a>
+</p>
 
 ### 让 Bot 成为你的协作团队。
 
 一个可以自托管的 Bot 工作区。为 Bot 定义职责，让它们在频道中交流、分工，并交付可用的文件。
-
-[官网](https://yxflc11.github.io/openbot-website/zh-cn/) · [体验演示](https://yxflc11.github.io/openbot-website/demo/index.html) · [使用手册](https://yxflc11.github.io/openbot-website/zh-cn/manual/installation/) · [English](README.md)
-
-[![CI](https://github.com/yxflc11/openbot/actions/workflows/ci.yml/badge.svg)](https://github.com/yxflc11/openbot/actions/workflows/ci.yml)
-[![MIT](https://img.shields.io/badge/license-MIT-222222.svg)](LICENSE)
 
 [![OpenBot 频道工作区，使用示例数据](docs/design/openbot-channel-demo.png)](https://yxflc11.github.io/openbot-website/demo/index.html)
 
