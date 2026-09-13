@@ -36,7 +36,7 @@
 - Why this is the first viable option: open standards and released APIs already in tree close the gap; only orchestration and assertions are missing.
 - Exact OpenBot-specific gap: multi-lifetime smoke modes, shared self-made harness state, prior-child teardown checks, and receipt fields for ten cold starts.
 - Upgrade, replacement, or exit plan: if Electron changes safeStorage async init or utilityProcess PID semantics, re-pin and re-run the Windows install gate; the helper unit tests stay portable.
-- Failure behavior: bounded per-process timeouts; on failure kill this run's recorded PIDs, remove harness temps when safe, keep install/uninstall assertions, and emit a short non-secret summary.
+- Failure behavior: bounded per-process timeouts; on failure stop this run's harness processes only after verifying recorded start-time + executable path (or a held Start-Process handle)—never bare JSON PID kills—remove harness temps when safe, keep install/uninstall assertions, and emit a short non-secret summary.
 
 ## Source incorporation
 
@@ -47,7 +47,7 @@
 ## Verification plan
 
 - Automated tests: portable Vitest for harness state/PID/receipt helpers under `apps/desktop/scripts/`; Windows CI continues to run NSIS install → smoke → uninstall.
-- Negative and fail-closed tests: reject reuse of a still-alive prior Electron/postgres/server PID; reject bootstrap ciphertext drift; require fresh receipt paths; do not relax existing check inventory.
+- Negative and fail-closed tests: reject still-alive prior Electron/postgres/server identities (start time + path, not PID alone); refuse Stop-Process on identity mismatch; treat EPERM from `kill(pid,0)` as alive; reject bootstrap ciphertext drift; per-round receipts expose process identity, loginCount, and ciphertext digest only (no passwords/raw ciphertext); require fresh receipt paths; do not relax existing check inventory.
 - Platforms and devices: Windows x64 hosted runner required for full evidence; Linux may run helper unit tests only.
 - User-visible documentation and translations: bilingual Windows Desktop acceptance how-to.
 - Support level that the evidence permits: installed native runtime cold-start conformance when CI prints the extended receipt; not SmartScreen, code signing, accessibility, or computer-control support.

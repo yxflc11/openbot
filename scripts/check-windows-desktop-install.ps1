@@ -20,32 +20,125 @@ $receipt = "$harness.final.result.json"
 $stdout = "$harness.stdout.log"
 $stderr = "$harness.stderr.log"
 $statePath = Join-Path $harness 'cold-start-state.json'
+$liveProcessesPath = Join-Path $harness 'harness-live-processes.json'
 $failureSummary = $null
+# This-round Electron identity from the held Start-Process handle (not JSON alone).
+$script:currentRoundElectron = $null
 
 function Write-SafeSummary([string]$Message) {
   Write-Host $Message
   $script:failureSummary = $Message
 }
 
-function Stop-RecordedHarnessProcesses {
-  if (!(Test-Path -LiteralPath $statePath)) { return }
-  try {
-    $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
-  } catch {
+function Test-ProcessIdentityMatch {
+  param(
+    [Parameter(Mandatory = $true)]$Recorded,
+    [Parameter(Mandatory = $true)]$Live
+  )
+  if ($null -eq $Recorded -or $null -eq $Live) { return $false }
+  if ([string]::IsNullOrWhiteSpace([string]$Recorded.startTimeUtc)) { return $false }
+  if ([string]::IsNullOrWhiteSpace([string]$Recorded.executablePath)) { return $false }
+  if ([int]$Recorded.pid -ne [int]$Live.Id) { return $false }
+  $liveStart = $Live.StartTime.ToUniversalTime().ToString('o')
+  if ($liveStart -ne [string]$Recorded.startTimeUtc) { return $false }
+  $livePath = [string]$Live.Path
+  if ([string]::IsNullOrWhiteSpace($livePath)) { return $false }
+  if ($livePath.ToLowerInvariant() -ne ([string]$Recorded.executablePath).ToLowerInvariant()) { return $false }
+  return $true
+}
+
+function Stop-VerifiedHarnessIdentity {
+  param([Parameter(Mandatory = $true)]$Recorded, [string]$Label)
+  if ($null -eq $Recorded -or $null -eq $Recorded.pid) { return }
+  if ([string]::IsNullOrWhiteSpace([string]$Recorded.startTimeUtc) -or [string]::IsNullOrWhiteSpace([string]$Recorded.executablePath)) {
+    Write-Host "Skipping stop for $Label pid=$($Recorded.pid): incomplete recorded identity (refusing PID-only kill)."
     return
   }
-  foreach ($name in @('electronPid', 'postgresPid', 'serverPid')) {
-    $pidValue = $state.$name
-    if ($null -eq $pidValue) { continue }
+  try {
+    $proc = Get-Process -Id ([int]$Recorded.pid) -ErrorAction SilentlyContinue
+    if ($null -eq $proc) { return }
+    if (-not (Test-ProcessIdentityMatch -Recorded $Recorded -Live $proc)) {
+      Write-Host "Skipping stop for $Label pid=$($Recorded.pid): live identity does not match recorded harness process."
+      return
+    }
+    Stop-Process -InputObject $proc -Force -ErrorAction SilentlyContinue
+    Write-Host "Stopped leftover harness process $Label pid=$($Recorded.pid) after identity verification."
+  } catch {
+    # Best-effort cleanup only.
+  }
+}
+
+function Read-JsonObject([string]$Path) {
+  if (!(Test-Path -LiteralPath $Path)) { return $null }
+  try {
+    return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json)
+  } catch {
+    return $null
+  }
+}
+
+function Stop-RecordedHarnessProcesses {
+  # Prefer live-process file (this round, including failure-before-state) then durable state.
+  $sources = @()
+  $live = Read-JsonObject $liveProcessesPath
+  if ($null -ne $live) { $sources += $live }
+  $state = Read-JsonObject $statePath
+  if ($null -ne $state) { $sources += $state }
+
+  foreach ($source in $sources) {
+    foreach ($name in @('electron', 'postgres', 'server')) {
+      $identity = $source.$name
+      if ($null -eq $identity) { continue }
+      Stop-VerifiedHarnessIdentity -Recorded $identity -Label $name
+    }
+  }
+
+  # Held Start-Process handle for this round's Electron — never rely on JSON PID alone.
+  if ($null -ne $script:currentRoundElectron -and $null -ne $script:currentRoundElectron.Process) {
     try {
-      $proc = Get-Process -Id ([int]$pidValue) -ErrorAction SilentlyContinue
-      if ($null -ne $proc) {
-        Stop-Process -Id ([int]$pidValue) -Force -ErrorAction SilentlyContinue
-        Write-Host "Stopped leftover harness process $name=$pidValue"
+      $held = $script:currentRoundElectron.Process
+      if (-not $held.HasExited) {
+        $recorded = $script:currentRoundElectron.Identity
+        if ($null -ne $recorded -and (Test-ProcessIdentityMatch -Recorded $recorded -Live $held)) {
+          $held.Kill($true)
+          Write-Host "Stopped this-round Electron via held process handle (pid=$($held.Id))."
+        } elseif ($null -eq $recorded) {
+          # Handle still refers to the same OS process object we started.
+          $held.Kill($true)
+          Write-Host "Stopped this-round Electron via held process handle without JSON (pid=$($held.Id))."
+        } else {
+          Write-Host "Refusing held-handle kill: live Electron identity diverged from recorded spawn identity."
+        }
       }
     } catch {
-      # Best-effort cleanup only.
+      # Best-effort.
     }
+  }
+}
+
+function Assert-SafeRoundReceipt($Round, [string]$ExpectedMode) {
+  if ($Round.schemaVersion -ne 1 -or $Round.platform -ne 'win32' -or $Round.arch -ne 'x64') {
+    throw 'Smoke receipt platform fields are incomplete.'
+  }
+  if ($ExpectedMode -eq 'bootstrap' -and $Round.mode -ne 'bootstrap') {
+    throw 'Bootstrap receipt mode mismatch.'
+  }
+  if ($null -eq $Round.loginCount -or [int]$Round.loginCount -lt 1) {
+    throw 'Smoke receipt loginCount is missing.'
+  }
+  if ($Round.ciphertextDigest -notmatch '^[0-9a-f]{64}$') {
+    throw 'Smoke receipt ciphertextDigest must be a sha256 hex digest (no raw ciphertext).'
+  }
+  foreach ($name in @('electron', 'postgres', 'server')) {
+    $identity = $Round.$name
+    if ($null -eq $identity -or $null -eq $identity.pid -or [string]::IsNullOrWhiteSpace([string]$identity.startTimeUtc) -or [string]::IsNullOrWhiteSpace([string]$identity.executablePath)) {
+      throw "Smoke receipt missing verified process identity fields for $name."
+    }
+  }
+  # Refuse secrets in the receipt surface we persist/print.
+  $raw = $Round | ConvertTo-Json -Depth 6 -Compress
+  if ($raw -match 'databasePassword' -or $raw -match '"encryptedBootstrap"' -or $raw -match '"ciphertext"\s*:') {
+    throw 'Smoke receipt unexpectedly contains secret material.'
   }
 }
 
@@ -54,12 +147,29 @@ function Invoke-NativeSmoke([string]$Mode, [string]$RoundReceipt, [int]$TimeoutM
   foreach ($log in @($stdout, $stderr)) {
     if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
   }
+  if (Test-Path -LiteralPath $liveProcessesPath) { Remove-Item -LiteralPath $liveProcessesPath -Force }
+  $script:currentRoundElectron = $null
   $arguments = "`"$SmokeScript`" `"$runtime`" `"$RoundReceipt`" $Mode `"$harness`""
   $smoke = Start-Process -FilePath $Electron -ArgumentList $arguments -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+  # Capture spawn identity from the held process object immediately (PID reuse safe).
+  $spawnIdentity = [pscustomobject]@{
+    pid = [int]$smoke.Id
+    startTimeUtc = $smoke.StartTime.ToUniversalTime().ToString('o')
+    executablePath = [string]$smoke.Path
+  }
+  $script:currentRoundElectron = [pscustomobject]@{
+    Process = $smoke
+    Identity = $spawnIdentity
+  }
   if (!$smoke.WaitForExit($TimeoutMs)) {
-    try { $smoke.Kill($true) } catch { }
+    try {
+      if (Test-ProcessIdentityMatch -Recorded $spawnIdentity -Live $smoke) {
+        $smoke.Kill($true)
+      }
+    } catch { }
     $smoke.WaitForExit()
     Stop-RecordedHarnessProcesses
+    $script:currentRoundElectron = $null
     foreach ($log in @($stdout, $stderr)) {
       if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 40 | Write-Host }
     }
@@ -68,11 +178,13 @@ function Invoke-NativeSmoke([string]$Mode, [string]$RoundReceipt, [int]$TimeoutM
   $smoke.WaitForExit()
   if ($smoke.ExitCode -ne 0 -or !(Test-Path -LiteralPath $RoundReceipt)) {
     Stop-RecordedHarnessProcesses
+    $script:currentRoundElectron = $null
     foreach ($log in @($stdout, $stderr)) {
       if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Tail 40 | Write-Host }
     }
     throw "Native smoke mode=$Mode did not complete its assertions (exit=$($smoke.ExitCode))."
   }
+  $script:currentRoundElectron = $null
   return (Get-Content -LiteralPath $RoundReceipt -Raw | ConvertFrom-Json)
 }
 
@@ -91,9 +203,10 @@ try {
   $bootstrapReceiptPath = Join-Path $harness 'bootstrap.result.json'
   $bootstrap = Invoke-NativeSmoke -Mode 'bootstrap' -RoundReceipt $bootstrapReceiptPath -TimeoutMs 120000
   $expectedBootstrap = 'postgresql,migrations,dpapi,owner-login,retained-data,stop,restart,cleanup'
-  if ($bootstrap.schemaVersion -ne 1 -or $bootstrap.platform -ne 'win32' -or $bootstrap.arch -ne 'x64' -or ($bootstrap.checks -join ',') -ne $expectedBootstrap) {
+  if (($bootstrap.checks -join ',') -ne $expectedBootstrap) {
     throw 'Bootstrap native smoke result is incomplete.'
   }
+  Assert-SafeRoundReceipt -Round $bootstrap -ExpectedMode 'bootstrap'
   Write-Host "PASS: bootstrap smoke receipt verified ($expectedBootstrap)."
 
   $final = $null
@@ -101,18 +214,33 @@ try {
     $roundReceiptPath = Join-Path $harness ("cold-start-$round.result.json")
     # Each lifetime is an independent Electron process; 120s bound matches the historical gate.
     $final = Invoke-NativeSmoke -Mode 'cold-start' -RoundReceipt $roundReceiptPath -TimeoutMs 120000
+    Assert-SafeRoundReceipt -Round $final -ExpectedMode 'cold-start'
     if ($round -lt $ColdStartRounds) {
       if ($final.coldStartsCompleted -ne $round) {
         throw "Cold-start progress mismatch: expected $round, got $($final.coldStartsCompleted)."
       }
-      Write-Host "PASS: cold-start $round/$ColdStartRounds (pid=$($final.electronPid))."
+      Write-Host "PASS: cold-start $round/$ColdStartRounds (pid=$($final.electron.pid))."
     }
   }
 
   if ($final.schemaVersion -ne 1 -or $final.platform -ne 'win32' -or $final.arch -ne 'x64' -or $final.coldStarts -ne $ColdStartRounds -or ($final.checks -join ',') -ne $expectedFinalChecks) {
     throw 'Installed native runtime cold-start result is incomplete.'
   }
-  Set-Content -LiteralPath $receipt -Value (($final | ConvertTo-Json -Compress)) -Encoding utf8
+  Assert-SafeRoundReceipt -Round $final -ExpectedMode 'cold-start'
+  # Persist a safe summary only (digest + pids + checks); never raw ciphertext/passwords.
+  $safeFinal = [pscustomobject]@{
+    schemaVersion = $final.schemaVersion
+    platform = $final.platform
+    arch = $final.arch
+    coldStarts = $final.coldStarts
+    loginCount = $final.loginCount
+    ciphertextDigest = $final.ciphertextDigest
+    electronPid = $final.electron.pid
+    postgresPid = $final.postgres.pid
+    serverPid = $final.server.pid
+    checks = $final.checks
+  }
+  Set-Content -LiteralPath $receipt -Value (($safeFinal | ConvertTo-Json -Compress)) -Encoding utf8
   Write-Host "PASS: native smoke receipt verified ($expectedFinalChecks)."
 } catch {
   Stop-RecordedHarnessProcesses
@@ -120,6 +248,7 @@ try {
   throw
 } finally {
   Stop-RecordedHarnessProcesses
+  $script:currentRoundElectron = $null
   $uninstaller = Join-Path $target 'Uninstall OpenBot.exe'
   if (Test-Path -LiteralPath $uninstaller) {
     $process = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru

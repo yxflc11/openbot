@@ -3,6 +3,10 @@
  * No Electron or Windows runtime required for the pure helpers under test.
  */
 
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { readFileSync, readlinkSync } from "node:fs";
+
 export const COLD_START_ROUNDS = 10;
 
 /** Historical install-gate checks that must remain present on the final receipt. */
@@ -18,8 +22,17 @@ export const BASE_SMOKE_CHECKS = Object.freeze([
 ]);
 
 export const STATE_FILE_NAME = "cold-start-state.json";
-export const STATE_SCHEMA_VERSION = 1;
+export const LIVE_PROCESSES_FILE_NAME = "harness-live-processes.json";
+export const STATE_SCHEMA_VERSION = 2;
 export const SMOKE_ROW_VALUE = "retained across cold start";
+
+/**
+ * @typedef {{
+ *   pid: number,
+ *   startTimeUtc: string | null,
+ *   executablePath: string | null,
+ * }} ProcessIdentity
+ */
 
 /**
  * @param {unknown} pid
@@ -30,40 +43,276 @@ export function isProcessAlive(pid) {
   try {
     process.kill(pid, 0);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? /** @type {{ code?: string }} */ (error).code
+        : undefined;
+    // Only ESRCH means the PID is gone. EPERM (and similar) means the process
+    // exists but we lack permission — never treat that as "dead".
+    if (code === "ESRCH") return false;
+    if (code === "EPERM") return true;
+    throw error;
   }
 }
 
 /**
- * @param {number | null | undefined} previousPid
- * @param {number} currentPid
+ * @param {string | null | undefined} path
  */
-export function assertNewProcessIdentity(previousPid, currentPid) {
-  if (!Number.isInteger(currentPid) || currentPid <= 0) {
+function normalizeExecutablePath(path) {
+  if (path == null || path === "") return null;
+  return process.platform === "win32" ? path.toLowerCase() : path;
+}
+
+/**
+ * @param {ProcessIdentity | null | undefined} a
+ * @param {ProcessIdentity | null | undefined} b
+ */
+export function processIdentitiesEqual(a, b) {
+  if (a == null || b == null) return false;
+  if (!Number.isInteger(a.pid) || !Number.isInteger(b.pid) || a.pid !== b.pid) return false;
+  const aStart = a.startTimeUtc ?? null;
+  const bStart = b.startTimeUtc ?? null;
+  const aPath = normalizeExecutablePath(a.executablePath);
+  const bPath = normalizeExecutablePath(b.executablePath);
+  // Full identity requires matching start time and path when both sides recorded them.
+  if (aStart != null && bStart != null && aStart !== bStart) return false;
+  if (aPath != null && bPath != null && aPath !== bPath) return false;
+  // If either side lacks start/path, PIDs alone are insufficient to claim equality
+  // for kill decisions — callers must not stop on PID-only matches.
+  if (aStart == null || bStart == null || aPath == null || bPath == null) return false;
+  return aStart === bStart && aPath === bPath;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is ProcessIdentity}
+ */
+export function isProcessIdentity(value) {
+  if (!value || typeof value !== "object") return false;
+  const identity = /** @type {Record<string, unknown>} */ (value);
+  return (
+    Number.isInteger(identity.pid) &&
+    /** @type {number} */ (identity.pid) > 0 &&
+    /** @type {number} */ (identity.pid) <= 2_147_483_647 &&
+    (identity.startTimeUtc === null || typeof identity.startTimeUtc === "string") &&
+    (identity.executablePath === null || typeof identity.executablePath === "string")
+  );
+}
+
+/**
+ * @param {Partial<ProcessIdentity> & { pid: number }} fields
+ * @returns {ProcessIdentity}
+ */
+export function createProcessIdentity(fields) {
+  const identity = {
+    pid: fields.pid,
+    startTimeUtc: fields.startTimeUtc ?? null,
+    executablePath: fields.executablePath ?? null,
+  };
+  if (!isProcessIdentity(identity)) {
+    throw new Error("Process identity is incomplete.");
+  }
+  return identity;
+}
+
+/**
+ * Parse Linux /proc/<pid>/stat starttime (field 22; clock ticks after boot).
+ * @param {string} statContents
+ * @returns {string | null}
+ */
+export function readLinuxProcStartTimeToken(statContents) {
+  const rparen = statContents.lastIndexOf(")");
+  if (rparen < 0) return null;
+  const rest = statContents.slice(rparen + 2).trim().split(/\s+/u);
+  const starttime = rest[19];
+  if (!starttime || !/^\d+$/u.test(starttime)) return null;
+  return `linux-ticks:${starttime}`;
+}
+
+/**
+ * Observe OS process identity for pid. Portable on Linux; Windows uses PowerShell.
+ * @param {number} pid
+ * @returns {ProcessIdentity | null}
+ */
+export function observeProcessIdentity(pid) {
+  if (!Number.isInteger(pid) || pid <= 0 || pid > 2_147_483_647) return null;
+  if (process.platform === "linux") {
+    try {
+      const startTimeUtc = readLinuxProcStartTimeToken(
+        readFileSync(`/proc/${pid}/stat`, "utf8"),
+      );
+      let executablePath = null;
+      try {
+        executablePath = readlinkSync(`/proc/${pid}/exe`);
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? /** @type {{ code?: string }} */ (error).code
+            : undefined;
+        if (code === "ESRCH") return null;
+        // EACCES/EPERM on exe symlink: keep path null; start time still usable with path hint.
+      }
+      if (startTimeUtc == null) return null;
+      return createProcessIdentity({ pid, startTimeUtc, executablePath });
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? /** @type {{ code?: string }} */ (error).code
+          : undefined;
+      if (code === "ESRCH" || code === "ENOENT") return null;
+      throw error;
+    }
+  }
+  if (process.platform === "win32") {
+    const script = [
+      `$p = Get-Process -Id ${pid} -ErrorAction Stop`,
+      `@{ pid = $p.Id; startTimeUtc = $p.StartTime.ToUniversalTime().ToString('o'); executablePath = $p.Path } | ConvertTo-Json -Compress`,
+    ].join("; ");
+    try {
+      const raw = execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", script],
+        { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+      ).trim();
+      const parsed = JSON.parse(raw);
+      return createProcessIdentity({
+        pid: Number(parsed.pid),
+        startTimeUtc: typeof parsed.startTimeUtc === "string" ? parsed.startTimeUtc : null,
+        executablePath:
+          typeof parsed.executablePath === "string" ? parsed.executablePath : null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/Cannot find a process|NoProcessFoundForGivenId|not found/iu.test(message)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+  return createProcessIdentity({ pid, startTimeUtc: null, executablePath: null });
+}
+
+/**
+ * Stop only when the live OS identity matches the recorded harness process.
+ * Wrong identity (PID reuse) must not kill.
+ *
+ * @param {ProcessIdentity} recorded
+ * @param {{
+ *   observe?: (pid: number) => ProcessIdentity | null,
+ *   stop?: (pid: number) => void,
+ * }} [hooks]
+ * @returns {{ stopped: boolean, reason: string }}
+ */
+export function stopProcessIfIdentityMatches(recorded, hooks = {}) {
+  if (!isProcessIdentity(recorded)) {
+    return { stopped: false, reason: "invalid-recorded-identity" };
+  }
+  if (recorded.startTimeUtc == null || recorded.executablePath == null) {
+    return { stopped: false, reason: "incomplete-recorded-identity" };
+  }
+  const observe = hooks.observe ?? observeProcessIdentity;
+  const stop =
+    hooks.stop ??
+    ((pid) => {
+      process.kill(pid, "SIGTERM");
+    });
+  if (!isProcessAlive(recorded.pid)) {
+    return { stopped: false, reason: "not-running" };
+  }
+  let current;
+  try {
+    current = observe(recorded.pid);
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? /** @type {{ code?: string }} */ (error).code
+        : undefined;
+    if (code === "EPERM") {
+      return { stopped: false, reason: "observe-eperm" };
+    }
+    throw error;
+  }
+  if (current == null) {
+    return { stopped: false, reason: "not-running" };
+  }
+  if (!processIdentitiesEqual(recorded, current)) {
+    return { stopped: false, reason: "identity-mismatch" };
+  }
+  stop(recorded.pid);
+  return { stopped: true, reason: "stopped" };
+}
+
+/**
+ * @param {ProcessIdentity | null | undefined} previous
+ * @param {ProcessIdentity} current
+ */
+export function assertNewProcessIdentity(previous, current) {
+  if (!isProcessIdentity(current)) {
     throw new Error("Current process identity is missing.");
   }
-  if (previousPid == null) return;
-  if (!Number.isInteger(previousPid) || previousPid <= 0) {
+  if (previous == null) return;
+  if (!isProcessIdentity(previous)) {
     throw new Error("Previous process identity is invalid.");
   }
-  if (previousPid === currentPid) {
-    throw new Error(`Expected a new process identity, reused PID ${currentPid}.`);
+  if (processIdentitiesEqual(previous, current)) {
+    throw new Error(`Expected a new process identity, reused PID ${current.pid}.`);
+  }
+  // PID-only equality with differing start/path is allowed (PID reuse = new process).
+  // PID-only equality with missing start/path is rejected as inconclusive reuse hazard.
+  if (
+    previous.pid === current.pid &&
+    (previous.startTimeUtc == null ||
+      current.startTimeUtc == null ||
+      previous.executablePath == null ||
+      current.executablePath == null)
+  ) {
+    throw new Error(
+      `Expected a new process identity, inconclusive PID ${current.pid} without full start identity.`,
+    );
   }
 }
 
 /**
- * @param {{ electronPid?: number | null, postgresPid?: number | null, serverPid?: number | null }} previous
+ * @param {{
+ *   electron?: ProcessIdentity | null,
+ *   postgres?: ProcessIdentity | null,
+ *   server?: ProcessIdentity | null,
+ * }} previous
+ * @param {{ observe?: (pid: number) => ProcessIdentity | null }} [hooks]
  */
-export function assertPreviousChildrenEnded(previous) {
+export function assertPreviousChildrenEnded(previous, hooks = {}) {
+  const observe = hooks.observe ?? observeProcessIdentity;
   const lingering = [];
-  for (const [label, pid] of [
-    ["electron", previous.electronPid],
-    ["postgres", previous.postgresPid],
-    ["server", previous.serverPid],
+  for (const [label, identity] of [
+    ["electron", previous.electron],
+    ["postgres", previous.postgres],
+    ["server", previous.server],
   ]) {
-    if (pid == null) continue;
-    if (isProcessAlive(pid)) lingering.push(`${label}:${pid}`);
+    if (identity == null) continue;
+    if (!isProcessIdentity(identity)) {
+      lingering.push(`${label}:invalid`);
+      continue;
+    }
+    if (!isProcessAlive(identity.pid)) continue;
+    let current = null;
+    try {
+      current = observe(identity.pid);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? /** @type {{ code?: string }} */ (error).code
+          : undefined;
+      if (code === "EPERM") {
+        // Exists but unobservable — treat as lingering to fail closed.
+        lingering.push(`${label}:${identity.pid}`);
+        continue;
+      }
+      throw error;
+    }
+    if (current != null && processIdentitiesEqual(identity, current)) {
+      lingering.push(`${label}:${identity.pid}`);
+    }
   }
   if (lingering.length > 0) {
     throw new Error(`Previous harness children still alive: ${lingering.join(", ")}`);
@@ -79,6 +328,18 @@ export function readPostmasterPid(contents) {
   const pid = Number(first);
   if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 2_147_483_647) return null;
   return pid;
+}
+
+/**
+ * PostgreSQL postmaster.pid line 2 is start time in seconds since the Epoch.
+ * @param {string} contents
+ * @returns {number | null}
+ */
+export function readPostmasterStartTimeSeconds(contents) {
+  const line = contents.trim().split(/\r?\n/u)[2];
+  const started = Number(line);
+  if (!Number.isSafeInteger(started) || started <= 0) return null;
+  return started;
 }
 
 /**
@@ -108,6 +369,61 @@ export function buildFinalSmokeChecks(input) {
 }
 
 /**
+ * SHA-256 hex digest of bootstrap ciphertext bytes (never log raw ciphertext).
+ * @param {string} ciphertext
+ */
+export function digestCiphertext(ciphertext) {
+  if (typeof ciphertext !== "string" || ciphertext.length === 0) {
+    throw new Error("ciphertext digest requires non-empty ciphertext.");
+  }
+  return createHash("sha256").update(ciphertext, "utf8").digest("hex");
+}
+
+/**
+ * Safe receipt fields for one smoke round (no passwords, no raw ciphertext).
+ * @param {{
+ *   mode: "bootstrap" | "cold-start",
+ *   platform: string,
+ *   arch: string,
+ *   loginCount: number,
+ *   ciphertextDigest: string,
+ *   electron: ProcessIdentity,
+ *   postgres: ProcessIdentity | null,
+ *   server: ProcessIdentity | null,
+ *   coldStartsCompleted?: number,
+ *   checks: string[],
+ * }} input
+ */
+export function buildRoundSmokeReceipt(input) {
+  if (!/^[0-9a-f]{64}$/u.test(input.ciphertextDigest)) {
+    throw new Error("ciphertextDigest must be a sha256 hex digest.");
+  }
+  if (!Number.isInteger(input.loginCount) || input.loginCount < 0) {
+    throw new Error("loginCount is invalid.");
+  }
+  if (!isProcessIdentity(input.electron)) {
+    throw new Error("electron identity is required on the receipt.");
+  }
+  /** @type {Record<string, unknown>} */
+  const receipt = {
+    schemaVersion: 1,
+    platform: input.platform,
+    arch: input.arch,
+    mode: input.mode,
+    loginCount: input.loginCount,
+    ciphertextDigest: input.ciphertextDigest,
+    electron: input.electron,
+    postgres: input.postgres,
+    server: input.server,
+    checks: input.checks,
+  };
+  if (input.mode === "cold-start") {
+    receipt.coldStartsCompleted = input.coldStartsCompleted;
+  }
+  return receipt;
+}
+
+/**
  * @param {{ coldStarts: number, platform?: string, arch?: string }} input
  */
 export function buildFinalSmokeReceipt(input) {
@@ -130,9 +446,9 @@ export function buildFinalSmokeReceipt(input) {
  *   schemaVersion: number,
  *   smokeMarker: string,
  *   encryptedBootstrap: string,
- *   electronPid: number | null,
- *   postgresPid: number | null,
- *   serverPid: number | null,
+ *   electron: ProcessIdentity | null,
+ *   postgres: ProcessIdentity | null,
+ *   server: ProcessIdentity | null,
  *   coldStartsCompleted: number,
  *   bootstrapComplete: boolean,
  * }}
@@ -140,14 +456,15 @@ export function buildFinalSmokeReceipt(input) {
 export function isColdStartState(value) {
   if (!value || typeof value !== "object") return false;
   const state = /** @type {Record<string, unknown>} */ (value);
+  const identityOrNull = (entry) => entry === null || isProcessIdentity(entry);
   return (
     state.schemaVersion === STATE_SCHEMA_VERSION &&
     typeof state.smokeMarker === "string" &&
     typeof state.encryptedBootstrap === "string" &&
     state.encryptedBootstrap.length > 0 &&
-    (state.electronPid === null || Number.isInteger(state.electronPid)) &&
-    (state.postgresPid === null || Number.isInteger(state.postgresPid)) &&
-    (state.serverPid === null || Number.isInteger(state.serverPid)) &&
+    identityOrNull(state.electron) &&
+    identityOrNull(state.postgres) &&
+    identityOrNull(state.server) &&
     Number.isInteger(state.coldStartsCompleted) &&
     typeof state.bootstrapComplete === "boolean"
   );
@@ -157,9 +474,9 @@ export function isColdStartState(value) {
  * @param {Partial<{
  *   smokeMarker: string,
  *   encryptedBootstrap: string,
- *   electronPid: number | null,
- *   postgresPid: number | null,
- *   serverPid: number | null,
+ *   electron: ProcessIdentity | null,
+ *   postgres: ProcessIdentity | null,
+ *   server: ProcessIdentity | null,
  *   coldStartsCompleted: number,
  *   bootstrapComplete: boolean,
  * }>} fields
@@ -169,9 +486,9 @@ export function createColdStartState(fields) {
     schemaVersion: STATE_SCHEMA_VERSION,
     smokeMarker: fields.smokeMarker ?? SMOKE_ROW_VALUE,
     encryptedBootstrap: fields.encryptedBootstrap ?? "",
-    electronPid: fields.electronPid ?? null,
-    postgresPid: fields.postgresPid ?? null,
-    serverPid: fields.serverPid ?? null,
+    electron: fields.electron ?? null,
+    postgres: fields.postgres ?? null,
+    server: fields.server ?? null,
     coldStartsCompleted: fields.coldStartsCompleted ?? 0,
     bootstrapComplete: fields.bootstrapComplete ?? false,
   };
@@ -181,6 +498,40 @@ export function createColdStartState(fields) {
   return state;
 }
 
-export const EXPECTED_FINAL_CHECKS_JOINED = buildFinalSmokeChecks({
-  coldStarts: COLD_START_ROUNDS,
-}).join(",");
+/**
+ * @param {unknown} value
+ * @returns {value is {
+ *   electron: ProcessIdentity | null,
+ *   postgres: ProcessIdentity | null,
+ *   server: ProcessIdentity | null,
+ * }}
+ */
+export function isLiveHarnessProcesses(value) {
+  if (!value || typeof value !== "object") return false;
+  const live = /** @type {Record<string, unknown>} */ (value);
+  const identityOrNull = (entry) => entry === null || isProcessIdentity(entry);
+  return (
+    identityOrNull(live.electron) &&
+    identityOrNull(live.postgres) &&
+    identityOrNull(live.server)
+  );
+}
+
+/**
+ * @param {Partial<{
+ *   electron: ProcessIdentity | null,
+ *   postgres: ProcessIdentity | null,
+ *   server: ProcessIdentity | null,
+ * }>} fields
+ */
+export function createLiveHarnessProcesses(fields) {
+  const live = {
+    electron: fields.electron ?? null,
+    postgres: fields.postgres ?? null,
+    server: fields.server ?? null,
+  };
+  if (!isLiveHarnessProcesses(live)) {
+    throw new Error("Refusing to create incomplete live harness process records.");
+  }
+  return live;
+}

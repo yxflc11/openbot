@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { channel } from "node:diagnostics_channel";
+import { mkdirSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { app, safeStorage, utilityProcess } from "electron";
@@ -7,13 +8,19 @@ import postgres from "postgres";
 import { NativeServerController } from "../dist/native-server.js";
 import {
   COLD_START_ROUNDS,
+  LIVE_PROCESSES_FILE_NAME,
   SMOKE_ROW_VALUE,
   STATE_FILE_NAME,
   assertNewProcessIdentity,
   assertPreviousChildrenEnded,
   buildFinalSmokeReceipt,
+  buildRoundSmokeReceipt,
   createColdStartState,
+  createLiveHarnessProcesses,
+  createProcessIdentity,
+  digestCiphertext,
   isColdStartState,
+  observeProcessIdentity,
   readPostmasterPid,
 } from "./windows-native-smoke-harness.mjs";
 
@@ -31,8 +38,14 @@ if (!process.argv[5]) throw new Error("A self-made harness root is required.");
 const harnessRoot = resolve(process.argv[5]);
 const clusterRoot = join(harnessRoot, "local-server");
 const statePath = join(harnessRoot, STATE_FILE_NAME);
+const liveProcessesPath = join(harnessRoot, LIVE_PROCESSES_FILE_NAME);
 const electronUserData = join(harnessRoot, "electron-user-data");
 const electronSessionData = join(harnessRoot, "electron-session-data");
+
+// Create profile dirs BEFORE setPath — Electron may touch them immediately.
+mkdirSync(harnessRoot, { recursive: true });
+mkdirSync(electronUserData, { recursive: true });
+mkdirSync(electronSessionData, { recursive: true });
 
 // Keep Electron profile paths inside the disposable harness; never touch the user's real data dirs.
 app.setPath("userData", electronUserData);
@@ -49,6 +62,18 @@ async function writeState(state) {
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
+/**
+ * Persist this-round process identities as soon as they are known so the
+ * orchestrator can clean up verified identities even if the round fails
+ * before final cold-start state is written.
+ * @param {Parameters<typeof createLiveHarnessProcesses>[0]} fields
+ */
+async function writeLiveProcesses(fields) {
+  const live = createLiveHarnessProcesses(fields);
+  await writeFile(liveProcessesPath, `${JSON.stringify(live, null, 2)}\n`);
+  return live;
+}
+
 async function readPostgresPid() {
   try {
     return readPostmasterPid(await readFile(join(clusterRoot, "postgres", "postmaster.pid"), "utf8"));
@@ -58,12 +83,26 @@ async function readPostgresPid() {
 }
 
 /**
+ * @param {number} pid
+ * @param {string | null} [pathHint]
+ */
+function requireObservedIdentity(pid, pathHint = null) {
+  const observed = observeProcessIdentity(pid);
+  assert.ok(observed, `process identity missing for pid ${pid}`);
+  return createProcessIdentity({
+    pid: observed.pid,
+    startTimeUtc: observed.startTimeUtc,
+    executablePath: observed.executablePath ?? pathHint,
+  });
+}
+
+/**
  * @param {{
  *   requirePreviousEnded: boolean,
  *   previous: {
- *     electronPid: number | null,
- *     postgresPid: number | null,
- *     serverPid: number | null,
+ *     electron: import("./windows-native-smoke-harness.mjs").ProcessIdentity | null,
+ *     postgres: import("./windows-native-smoke-harness.mjs").ProcessIdentity | null,
+ *     server: import("./windows-native-smoke-harness.mjs").ProcessIdentity | null,
  *     encryptedBootstrap: string | null,
  *   },
  *   createRow: boolean,
@@ -76,7 +115,12 @@ async function runControllerCycle(options) {
   let loginCount = 0;
   let cooperativeShutdownFailed = false;
   let database;
-  let serverPid = null;
+  /** @type {import("./windows-native-smoke-harness.mjs").ProcessIdentity | null} */
+  let serverIdentity = null;
+  /** @type {import("./windows-native-smoke-harness.mjs").ProcessIdentity | null} */
+  let liveElectron = null;
+  /** @type {import("./windows-native-smoke-harness.mjs").ProcessIdentity | null} */
+  let livePostgres = null;
   const diagnostics = channel("openbot.desktop.native-startup");
   const reportDiagnostic = (message) => {
     const text = JSON.stringify(message, (_key, value) =>
@@ -109,6 +153,13 @@ async function runControllerCycle(options) {
     assertPreviousChildrenEnded(options.previous);
   }
 
+  liveElectron = requireObservedIdentity(process.pid, process.execPath);
+  await writeLiveProcesses({
+    electron: liveElectron,
+    postgres: null,
+    server: null,
+  });
+
   const controller = new NativeServerController({
     runtimeRoot,
     dataRoot: clusterRoot,
@@ -131,7 +182,6 @@ async function runControllerCycle(options) {
         stdio: ["ignore", "ignore", "pipe"],
         serviceName: "OpenBot Windows CI Server",
       });
-      serverPid = child.pid ?? null;
       let alive = true;
       let serverReady = false;
       let errorTail = "";
@@ -162,6 +212,18 @@ async function runControllerCycle(options) {
             resolveReady();
           }
         });
+      });
+      // Read pid only after spawn/ready; fail closed if missing.
+      const spawnedPid = child.pid;
+      assert.ok(
+        Number.isInteger(spawnedPid) && spawnedPid > 0,
+        "utilityProcess child.pid missing after spawn/ready",
+      );
+      serverIdentity = requireObservedIdentity(spawnedPid, process.execPath);
+      await writeLiveProcesses({
+        electron: liveElectron,
+        postgres: livePostgres,
+        server: serverIdentity,
       });
       return {
         isAlive: () => alive,
@@ -202,18 +264,31 @@ async function runControllerCycle(options) {
   });
 
   let encryptedBootstrap = options.previous.encryptedBootstrap;
-  let postgresPid = null;
-  let stoppedPostgresPid = null;
-  let stoppedServerPid = null;
+  /** @type {import("./windows-native-smoke-harness.mjs").ProcessIdentity | null} */
+  let postgresIdentity = null;
+  /** @type {import("./windows-native-smoke-harness.mjs").ProcessIdentity | null} */
+  let stoppedPostgres = null;
+  /** @type {import("./windows-native-smoke-harness.mjs").ProcessIdentity | null} */
+  let stoppedServer = null;
   try {
     console.info(`Windows native smoke (${mode}): starting local Server.`);
     const first = await controller.start();
     assert.equal(first.status, "ready", JSON.stringify(first));
-    assertNewProcessIdentity(options.previous.electronPid, process.pid);
-    postgresPid = await readPostgresPid();
+    liveElectron = requireObservedIdentity(process.pid, process.execPath);
+    assertNewProcessIdentity(options.previous.electron, liveElectron);
+    const postgresPid = await readPostgresPid();
     assert.ok(postgresPid, "postmaster pid must be recorded");
-    assertNewProcessIdentity(options.previous.postgresPid, postgresPid);
-    if (serverPid != null) assertNewProcessIdentity(options.previous.serverPid, serverPid);
+    const postgresExe = join(runtimeRoot, "postgres", "bin", "postgres.exe");
+    postgresIdentity = requireObservedIdentity(postgresPid, postgresExe);
+    livePostgres = postgresIdentity;
+    assertNewProcessIdentity(options.previous.postgres, postgresIdentity);
+    assert.ok(serverIdentity, "server identity must be recorded");
+    assertNewProcessIdentity(options.previous.server, serverIdentity);
+    await writeLiveProcesses({
+      electron: liveElectron,
+      postgres: postgresIdentity,
+      server: serverIdentity,
+    });
 
     database = postgres(databaseUrl, { max: 1 });
     if (options.createRow) {
@@ -234,16 +309,16 @@ async function runControllerCycle(options) {
     }
     encryptedBootstrap = encryptedBefore;
 
-    stoppedPostgresPid = postgresPid;
-    stoppedServerPid = serverPid;
+    stoppedPostgres = postgresIdentity;
+    stoppedServer = serverIdentity;
     await controller.stop();
     assert.equal(cooperativeShutdownFailed, false);
     await assert.rejects(fetch(`${first.serverUrl}/health`));
     assert.equal(controller.getState().status, "idle");
     assertPreviousChildrenEnded({
-      electronPid: null,
-      postgresPid: stoppedPostgresPid,
-      serverPid: stoppedServerPid,
+      electron: null,
+      postgres: stoppedPostgres,
+      server: stoppedServer,
     });
     assert.equal(await readPostgresPid(), null, "postmaster.pid must clear after stop");
 
@@ -252,22 +327,29 @@ async function runControllerCycle(options) {
       const second = await controller.start();
       assert.equal(second.status, "ready", JSON.stringify(second));
       assert.equal(await readFile(join(clusterRoot, "bootstrap.json"), "utf8"), encryptedBefore);
-      postgresPid = await readPostgresPid();
-      assert.ok(postgresPid, "restarted postmaster pid must be recorded");
+      const restartedPid = await readPostgresPid();
+      assert.ok(restartedPid, "restarted postmaster pid must be recorded");
+      postgresIdentity = requireObservedIdentity(restartedPid, postgresExe);
+      livePostgres = postgresIdentity;
+      await writeLiveProcesses({
+        electron: liveElectron,
+        postgres: postgresIdentity,
+        server: serverIdentity,
+      });
       database = postgres(databaseUrl, { max: 1 });
       const rows = await database`select value from openbot_windows_smoke`;
       assert.equal(rows[0].value, SMOKE_ROW_VALUE);
       await database.end();
       database = undefined;
       assert.equal(loginCount, 2);
-      stoppedPostgresPid = postgresPid;
-      stoppedServerPid = serverPid;
+      stoppedPostgres = postgresIdentity;
+      stoppedServer = serverIdentity;
       await controller.stop();
       assert.equal(cooperativeShutdownFailed, false);
       assertPreviousChildrenEnded({
-        electronPid: null,
-        postgresPid: stoppedPostgresPid,
-        serverPid: stoppedServerPid,
+        electron: null,
+        postgres: stoppedPostgres,
+        server: stoppedServer,
       });
       assert.equal(await readPostgresPid(), null, "postmaster.pid must clear after restart stop");
     } else {
@@ -276,9 +358,9 @@ async function runControllerCycle(options) {
 
     return {
       encryptedBootstrap,
-      electronPid: process.pid,
-      postgresPid: stoppedPostgresPid,
-      serverPid: stoppedServerPid,
+      electron: liveElectron,
+      postgres: stoppedPostgres,
+      server: stoppedServer,
       loginCount,
     };
   } finally {
@@ -291,6 +373,7 @@ async function runControllerCycle(options) {
 async function runSmoke() {
   let succeeded = false;
   console.info(`Windows native smoke: Electron ready (mode=${mode}, pid=${process.pid}).`);
+  // Dirs were created before setPath; keep mkdir as a no-op safety for races.
   await mkdir(electronUserData, { recursive: true });
   await mkdir(electronSessionData, { recursive: true });
 
@@ -299,9 +382,9 @@ async function runSmoke() {
       const cycle = await runControllerCycle({
         requirePreviousEnded: false,
         previous: {
-          electronPid: null,
-          postgresPid: null,
-          serverPid: null,
+          electron: null,
+          postgres: null,
+          server: null,
           encryptedBootstrap: null,
         },
         createRow: true,
@@ -311,38 +394,34 @@ async function runSmoke() {
       await writeState(
         createColdStartState({
           encryptedBootstrap: cycle.encryptedBootstrap,
-          electronPid: cycle.electronPid,
-          postgresPid: cycle.postgresPid,
-          serverPid: cycle.serverPid,
+          electron: cycle.electron,
+          postgres: cycle.postgres,
+          server: cycle.server,
           coldStartsCompleted: 0,
           bootstrapComplete: true,
         }),
       );
-      await writeFile(
-        resultPath,
-        JSON.stringify(
-          {
-            schemaVersion: 1,
-            platform: process.platform,
-            arch: process.arch,
-            mode: "bootstrap",
-            electronPid: process.pid,
-            checks: [
-              "postgresql",
-              "migrations",
-              "dpapi",
-              "owner-login",
-              "retained-data",
-              "stop",
-              "restart",
-              "cleanup",
-            ],
-          },
-          null,
-          2,
-        ),
-        { flag: "wx" },
-      );
+      const receipt = buildRoundSmokeReceipt({
+        mode: "bootstrap",
+        platform: process.platform,
+        arch: process.arch,
+        loginCount: cycle.loginCount,
+        ciphertextDigest: digestCiphertext(cycle.encryptedBootstrap),
+        electron: cycle.electron,
+        postgres: cycle.postgres,
+        server: cycle.server,
+        checks: [
+          "postgresql",
+          "migrations",
+          "dpapi",
+          "owner-login",
+          "retained-data",
+          "stop",
+          "restart",
+          "cleanup",
+        ],
+      });
+      await writeFile(resultPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx" });
       console.info(
         "Windows native smoke bootstrap passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.",
       );
@@ -356,9 +435,9 @@ async function runSmoke() {
       const cycle = await runControllerCycle({
         requirePreviousEnded: true,
         previous: {
-          electronPid: previous.electronPid,
-          postgresPid: previous.postgresPid,
-          serverPid: previous.serverPid,
+          electron: previous.electron,
+          postgres: previous.postgres,
+          server: previous.server,
           encryptedBootstrap: previous.encryptedBootstrap,
         },
         createRow: false,
@@ -369,37 +448,48 @@ async function runSmoke() {
       await writeState(
         createColdStartState({
           encryptedBootstrap: cycle.encryptedBootstrap,
-          electronPid: cycle.electronPid,
-          postgresPid: cycle.postgresPid,
-          serverPid: cycle.serverPid,
+          electron: cycle.electron,
+          postgres: cycle.postgres,
+          server: cycle.server,
           coldStartsCompleted,
           bootstrapComplete: true,
         }),
       );
+      const roundReceipt = buildRoundSmokeReceipt({
+        mode: "cold-start",
+        platform: process.platform,
+        arch: process.arch,
+        loginCount: cycle.loginCount,
+        ciphertextDigest: digestCiphertext(cycle.encryptedBootstrap),
+        electron: cycle.electron,
+        postgres: cycle.postgres,
+        server: cycle.server,
+        coldStartsCompleted,
+        checks: [
+          "postgresql",
+          "dpapi",
+          "owner-login",
+          "retained-data",
+          "stop",
+          "cleanup",
+          `cold-start-${coldStartsCompleted}`,
+        ],
+      });
       const receipt =
         coldStartsCompleted === COLD_START_ROUNDS
-          ? buildFinalSmokeReceipt({
-              coldStarts: coldStartsCompleted,
-              platform: process.platform,
-              arch: process.arch,
-            })
-          : {
-              schemaVersion: 1,
-              platform: process.platform,
-              arch: process.arch,
-              mode: "cold-start",
-              coldStartsCompleted,
-              electronPid: process.pid,
-              checks: [
-                "postgresql",
-                "dpapi",
-                "owner-login",
-                "retained-data",
-                "stop",
-                "cleanup",
-                `cold-start-${coldStartsCompleted}`,
-              ],
-            };
+          ? {
+              ...buildFinalSmokeReceipt({
+                coldStarts: coldStartsCompleted,
+                platform: process.platform,
+                arch: process.arch,
+              }),
+              loginCount: cycle.loginCount,
+              ciphertextDigest: roundReceipt.ciphertextDigest,
+              electron: cycle.electron,
+              postgres: cycle.postgres,
+              server: cycle.server,
+            }
+          : roundReceipt;
       await writeFile(resultPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx" });
       console.info(
         `Windows native smoke cold-start ${coldStartsCompleted}/${COLD_START_ROUNDS} passed (pid=${process.pid}).`,

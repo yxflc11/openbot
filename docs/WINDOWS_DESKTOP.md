@@ -20,7 +20,7 @@ Normal quit first asks the Server to stop through its private parent process cha
 
 ## Verification and current limits
 
-The Windows CI job builds and makes NSIS, installs it into a unique temporary directory, verifies the installed ASAR hash, exercises the **installed** native runtime with Electron DPAPI, real PostgreSQL, schema migration, Owner authentication, one same-process retained restart, **ten independent Electron process cold starts** (new PID, prior children ended, PG row + bootstrap ciphertext persistence, Owner login), and uninstall. The separate native ACL test checks actual NTFS ACLs. Read the actual CI run result for the source commit; adding a workflow is not evidence it passed.
+The Windows CI job builds and makes NSIS, installs it into a unique temporary directory, verifies the installed ASAR hash, exercises the **installed** native runtime with Electron DPAPI, real PostgreSQL, schema migration, Owner authentication, one same-process retained restart, **ten independent Electron process cold starts** (new process identity via start time + path, prior children ended, PG row + bootstrap ciphertext digest persistence, Owner login counts), and uninstall. The separate native ACL test checks actual NTFS ACLs. Read the actual CI run result for the source commit; adding a workflow is not evidence it passed.
 
 ### How to run the cold-start acceptance gate locally (Windows x64)
 
