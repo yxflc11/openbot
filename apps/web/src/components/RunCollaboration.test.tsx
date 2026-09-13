@@ -152,4 +152,27 @@ describe("structured channel collaboration", () => {
       await view.unmount();
     }
   });
+
+  it("exposes failed colleague state for the main task collaboration panel", async () => {
+    const failed = {
+      ...child,
+      status: "failed" as const,
+      errorMessage:
+        "The Agent could not complete. Check model settings, channel access and task scope before submitting a new task.",
+    };
+    const view = await renderComponent(
+      <RunCollaboration childRuns={[failed]} botsById={bots} onInspectRun={vi.fn()} />,
+    );
+    try {
+      expect(view.container.textContent).toContain("失败");
+      expect(view.container.querySelector(".collaboration-task-state")?.getAttribute("data-state")).toBe(
+        "failed",
+      );
+      expect(view.container.querySelector(".run-collaboration button")?.getAttribute("title")).toContain(
+        "could not complete",
+      );
+    } finally {
+      await view.unmount();
+    }
+  });
 });

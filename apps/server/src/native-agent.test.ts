@@ -1347,3 +1347,117 @@ describe("reviewed skill tool integration", () => {
     ).rejects.toMatchObject({ code: "scope_revoked" });
   });
 });
+
+describe("delegated subtask failure converges on parent", () => {
+  it("returns a clear failed colleague report and lets the main task synthesize instead of failing closed on the child", async () => {
+    const f = fixture();
+    const colleagueBotId = "11111111-1111-4111-8111-111111111111";
+    const childRun: Run = {
+      ...run,
+      id: "child-run",
+      botId: colleagueBotId,
+      parentRunId: run.id,
+      rootRunId: run.id,
+      delegatedByBotId: run.botId,
+      title: "Research asynchronously",
+      instruction: "Research asynchronously",
+    };
+    const childMessage = {
+      id: "delegation-message",
+      channelId: run.channelId,
+      authorType: "bot" as const,
+      authorId: run.botId,
+      content: "Research asynchronously",
+      createdAt: run.createdAt,
+    };
+    f.store.colleagues = vi.fn(async () => ({
+      bots: [{ id: colleagueBotId, name: "Researcher", role: "Research", description: "" }],
+      truncated: false,
+    }));
+    f.store.delegate = vi.fn(async () => ({ run: childRun, message: childMessage }));
+    f.store.current = vi.fn(async (candidate) => candidate);
+    vi.mocked(f.store.fail).mockImplementation(async (candidate, code = "execution_failed") => ({
+      ...candidate,
+      status: "failed" as const,
+      errorCode: code,
+      errorMessage:
+        "The Agent could not complete. Check model settings, channel access and task scope before submitting a new task.",
+    }));
+    vi.mocked(f.store.complete).mockImplementation(async (candidate, text) => ({
+      run: { ...candidate, status: "completed" as const, resultSummary: text },
+      message: {
+        id: "parent-reply",
+        channelId: candidate.channelId,
+        authorType: "bot" as const,
+        authorId: candidate.botId,
+        content: text,
+        createdAt: candidate.createdAt,
+      },
+    }));
+    vi.mocked(f.store.queued).mockResolvedValueOnce([run]).mockResolvedValue([]);
+    vi.mocked(f.store.claim).mockResolvedValue(run);
+    const config = {
+      provider: "openai" as const,
+      model: "fixture",
+      apiKey: "fixture",
+      revision: "1",
+      agentEnabled: true,
+      agentEnabledAt: "2026-09-07T00:00:00Z",
+    };
+    const settings = {
+      agentSettings: async () => config,
+      onChange: () => () => {},
+    } as unknown as ModelSettingsService;
+    let step = 0;
+    const parentModel = new MockLanguageModelV4({
+      doGenerate: async () => {
+        step++;
+        if (step === 1)
+          return calls(
+            "start_task",
+            JSON.stringify({ botId: colleagueBotId, task: "Research asynchronously" }),
+          );
+        if (step === 2) return answer("Draft before join");
+        return answer("Colleague failed; here is the bounded summary.");
+      },
+    });
+    const childModel = new MockLanguageModelV4({
+      doGenerate: async () => {
+        throw new Error("fixture colleague execution failure");
+      },
+    });
+    let modelCount = 0;
+    const runner = new NativeAgentRunner(
+      f.store,
+      settings,
+      new ChannelRealtimeHub(),
+      vi.fn(),
+      () => (modelCount++ === 0 || modelCount > 2 ? parentModel : childModel),
+      { webSearch: () => undefined },
+    );
+    try {
+      runner.start();
+      await vi.waitFor(() => expect(f.store.complete).toHaveBeenCalledTimes(1));
+      expect(f.store.fail).toHaveBeenCalledWith(
+        expect.objectContaining({ id: childRun.id }),
+        "execution_failed",
+      );
+      expect(f.store.fail).not.toHaveBeenCalledWith(
+        expect.objectContaining({ id: run.id }),
+        expect.anything(),
+      );
+      const synthesisPrompt = JSON.stringify(parentModel.doGenerateCalls.at(-1)?.prompt);
+      expect(synthesisPrompt).toContain("colleagueResults");
+      expect(synthesisPrompt).toMatch(/status\\*":\\*"failed/);
+      expect(synthesisPrompt).toContain(childRun.id);
+      expect(synthesisPrompt).toContain("The Agent could not complete");
+      expect(synthesisPrompt).toMatch(/priorDraft\\*":\\*"Draft before join/);
+      expect(vi.mocked(f.store.complete).mock.calls[0]?.[1]).toBe(
+        "Colleague failed; here is the bounded summary.",
+      );
+      expect(vi.mocked(f.store.complete).mock.calls[0]?.[0]).toMatchObject({ id: run.id });
+    } finally {
+      await runner.stop();
+    }
+  });
+});

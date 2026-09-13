@@ -59,4 +59,47 @@ describe("ChannelMembersMenu", () => {
     expect(document.activeElement).toBe(summary);
     await rendered.unmount();
   });
+
+  it("reflects membership after runtime remove and keeps remove errors visible in the disclosure", async () => {
+    const response = deferred<void>();
+    const onRemove = vi.fn(() => response.promise);
+    const rendered = await renderComponent(
+      <ChannelMembersMenu
+        channel={channel}
+        bots={bots}
+        onJoin={vi.fn()}
+        onOpenBot={vi.fn()}
+        onRemove={onRemove}
+      />,
+    );
+    const details = rendered.container.querySelector("details") as HTMLDetailsElement;
+    await interact(() => {
+      details.open = true;
+    });
+    expect(rendered.container.textContent).toContain("first");
+    const remove = rendered.container.querySelector(
+      ".channel-member-remove",
+    ) as HTMLButtonElement;
+    await interact(() => remove.click());
+    expect(onRemove).toHaveBeenCalledExactlyOnceWith("first");
+    expect(remove.textContent).toContain("移除中");
+    await interact(() => response.reject(new Error("Bot still has protected work")));
+    expect(rendered.container.querySelector('[role="alert"]')?.textContent).toBe(
+      "Bot still has protected work",
+    );
+    expect(details.open).toBe(true);
+    await rendered.unmount();
+    const cleared = await renderComponent(
+      <ChannelMembersMenu
+        channel={{ ...channel, botIds: [] }}
+        bots={bots}
+        onJoin={vi.fn()}
+        onOpenBot={vi.fn()}
+        onRemove={onRemove}
+      />,
+    );
+    expect(cleared.container.querySelector(".channel-member-remove")).toBeNull();
+    expect(cleared.container.textContent).toContain("频道还没有 Bot");
+    await cleared.unmount();
+  });
 });
