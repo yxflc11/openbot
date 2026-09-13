@@ -79,7 +79,7 @@ function Stop-VerifiedHarnessIdentity {
       Write-Host "Skipping stop for $Label pid=$($Recorded.pid): live identity does not match recorded harness process."
       return
     }
-    $proc.Kill()
+    $proc.Kill($true)
     if (!$proc.WaitForExit(10000)) { throw "Verified harness process did not exit." }
     Write-Host "Stopped leftover harness process $Label pid=$($Recorded.pid) after identity verification."
   } catch {
@@ -120,17 +120,9 @@ function Stop-RecordedHarnessProcesses {
     try {
       $held = $script:currentRoundElectron.Process
       if (-not $held.HasExited) {
-        $recorded = $script:currentRoundElectron.Identity
-        if ($null -ne $recorded -and (Test-ProcessIdentityMatch -Recorded $recorded -Live $held)) {
-          $held.Kill($true)
-          Write-Host "Stopped this-round Electron via held process handle (pid=$($held.Id))."
-        } elseif ($null -eq $recorded) {
-          # Handle still refers to the same OS process object we started.
-          $held.Kill($true)
-          Write-Host "Stopped this-round Electron via held process handle without JSON (pid=$($held.Id))."
-        } else {
-          Write-Host "Refusing held-handle kill: live Electron identity diverged from recorded spawn identity."
-        }
+        # This object owns the Start-Process handle; optional metadata is not authority.
+        $held.Kill($true)
+        Write-Host "Stopped this-round Electron through its held process handle (pid=$($held.Id))."
       }
       if (!$held.WaitForExit(10000)) { $script:cleanupVerified = $false }
     } catch {
@@ -189,9 +181,7 @@ function Invoke-NativeSmoke([string]$Mode, [string]$RoundReceipt, [int]$TimeoutM
   $script:currentRoundElectron.Identity = $spawnIdentity
   if (!$smoke.WaitForExit($TimeoutMs)) {
     try {
-      if (Test-ProcessIdentityMatch -Recorded $spawnIdentity -Live $smoke) {
-        $smoke.Kill($true)
-      }
+      $smoke.Kill($true)
     } catch { }
     if (!$smoke.WaitForExit(15000)) { $script:cleanupVerified = $false }
     Stop-RecordedHarnessProcesses
@@ -263,6 +253,21 @@ function Test-HarnessProcessOwnership {
   } finally {
     if (!$probe.HasExited) { $probe.Kill(); $null = $probe.WaitForExit(10000) }
     $probe.Dispose()
+  }
+  $heldProbe = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile -NonInteractive -Command "Start-Sleep -Seconds 60"' -PassThru
+  try {
+    $null = $heldProbe.Handle
+    $script:currentRoundElectron = [pscustomobject]@{
+      Process = $heldProbe
+      Identity = [pscustomobject]@{ pid = $heldProbe.Id; startTimeUtc = $null; executablePath = '' }
+    }
+    Stop-RecordedHarnessProcesses
+    if (!$heldProbe.HasExited) { throw 'Held process cleanup incorrectly depended on optional path metadata.' }
+    if (!$script:cleanupVerified) { throw 'Held process cleanup failed.' }
+  } finally {
+    if (!$heldProbe.HasExited) { $heldProbe.Kill(); $null = $heldProbe.WaitForExit(10000) }
+    $heldProbe.Dispose()
+    $script:currentRoundElectron = $null
   }
 }
 

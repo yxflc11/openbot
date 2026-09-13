@@ -81,3 +81,21 @@ Reviewed 2026-09-13 before the alpha.8 integration changes:
 - Verification: full repository check, native PowerShell parser and installed
   Windows runtime CI. CI results remain required; local helper tests do not prove
   DPAPI, Windows process cleanup, or successful installation.
+
+### Native Windows CI follow-up
+
+PR60 run `34746719361`, Windows job `103695874856`, failed two process
+observation tests with `spawnSync powershell.exe ETIMEDOUT` at the unchanged
+15-second bound, before installation. Review found that the new helper bypassed
+the repository's established Windows launch contract. Reuse the fixed inbox
+PowerShell path, encoded command, closed stdin, bounded output and direct .NET
+calls already used by `windows-native-security.ts` and the native Node credential
+ACL tests. Avoid cmdlet module autoload for process lookup and JSON output. The
+failure alone does not prove whether stdin or cmdlet initialization caused the
+hang; the corrected native CI must establish that the revised path works.
+
+Primary contracts: Node 22.22.2 `child_process` stdio/execFileSync and Microsoft
+PowerShell's `-EncodedCommand` UTF-16LE contract, plus .NET Process.GetProcessById.
+No upstream source or new dependency is incorporated. The held Start-Process
+object remains cleanup authority even if optional path metadata was unavailable;
+JSON-only cleanup still requires full identity checks under a retained handle.

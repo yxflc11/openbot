@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, readlinkSync } from "node:fs";
+import { win32 } from "node:path";
 
 export const COLD_START_ROUNDS = 10;
 
@@ -204,27 +205,52 @@ export function observeProcessIdentity(pid) {
     }
   }
   if (process.platform === "win32") {
-    const script = [
-      `$p = Get-Process -Id ${pid} -ErrorAction Stop`,
-      `@{ pid = $p.Id; startTimeUtc = $p.StartTime.ToUniversalTime().ToString('o'); executablePath = $p.Path } | ConvertTo-Json -Compress`,
-    ].join("; ");
+    const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT;
+    if (!systemRoot || !/^[A-Za-z]:\\[^\0\r\n]*$/u.test(systemRoot)) {
+      throw new Error("Windows system directory is unavailable.");
+    }
+    // Match the existing Windows ACL launcher: no cmdlet autoload or stdin protocol.
+    const script = `
+$ErrorActionPreference = 'Stop'
+$p = [Diagnostics.Process]::GetProcessById(${pid})
+try {
+  $null = $p.Handle
+  [Console]::Out.WriteLine($p.Id)
+  [Console]::Out.WriteLine($p.StartTime.ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture))
+  [Console]::Out.WriteLine([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($p.MainModule.FileName)))
+} finally { $p.Dispose() }
+`;
     try {
       const raw = execFileSync(
-        "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", script],
-        { encoding: "utf8", windowsHide: true, timeout: 15_000 },
+        win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        [
+          "-NoLogo",
+          "-NoProfile",
+          "-NonInteractive",
+          "-EncodedCommand",
+          Buffer.from(script, "utf16le").toString("base64"),
+        ],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          shell: false,
+          timeout: 15_000,
+          maxBuffer: 4096,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: { SystemRoot: systemRoot, WINDIR: systemRoot },
+        },
       ).trim();
-      const parsed = JSON.parse(raw);
+      const fields = raw.split(/\r?\n/u);
+      if (fields.length !== 3 || Number(fields[0]) !== pid || !fields[1] || !fields[2]) {
+        throw new Error("Windows process observer returned incomplete identity fields.");
+      }
       return createProcessIdentity({
-        pid: Number(parsed.pid),
-        startTimeUtc: typeof parsed.startTimeUtc === "string" ? parsed.startTimeUtc : null,
-        executablePath: typeof parsed.executablePath === "string" ? parsed.executablePath : null,
+        pid,
+        startTimeUtc: fields[1],
+        executablePath: Buffer.from(fields[2], "base64").toString("utf8"),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (/Cannot find a process|NoProcessFoundForGivenId|not found/iu.test(message)) {
-        return null;
-      }
+      if (!isProcessAlive(pid)) return null;
       throw error;
     }
   }
