@@ -301,6 +301,8 @@ Native startup diagnostics reuse Node v22.22.2 `diagnostics_channel` (MIT) insid
 
 Windows database startup reuses PostgreSQL REL_17_11 `pg_ctl` restricted-token launch and its documented PID-file/status contracts. The thin adapter verifies cluster, port, PID and start identity before cleanup or stop; no token API implementation or upstream source copied. See [research](research/windows-desktop-completion.md).
 
+Windows Desktop cold-start conformance reuses Electron 44.2.0 `safeStorage` (DPAPI), `utilityProcess`, existing `NativeServerController`, Node `process.kill(pid, 0)` liveness, PostgreSQL `postmaster.pid`, and the inbox PowerShell/`Start-Process` install gate. After one bootstrap lifetime (including one same-process retained restart so historical assertions are not relaxed), the gate runs **ten independent Electron process** start→exit cycles against self-made temp harness directories only. No new dependency and no product runtime change; see [research](research/windows-cold-start-conformance.md).
+
 ## Product repair adapters (2026-09-11)
 
 - Async Desktop credential access and explicit release targets reuse Electron 44.2.0 and existing packaging adapters: [research](research/product-repair-startup.md).

@@ -246,6 +246,8 @@ alpha.5 原生参考频道改造继续复用上述已锁定依赖与标准，没
 
 Windows 数据库启动复用 PostgreSQL REL_17_11 的 `pg_ctl` 受限令牌机制及 PID 文件/状态契约。薄适配层在清理或停止前核对集群、端口、PID 与启动身份，没有自行实现令牌 API 或复制上游代码，见 [研究](research/windows-desktop-completion.md)。
 
+Windows 桌面版冷启动符合性复用 Electron 44.2.0 `safeStorage`（DPAPI）、`utilityProcess`、既有 `NativeServerController`、Node `process.kill(pid, 0)` 存活探测、PostgreSQL `postmaster.pid`，以及收件箱 PowerShell/`Start-Process` 安装门禁。在一次 bootstrap 生命周期（含一次同进程保留重启，以免削弱历史断言）之后，门禁对自建临时 harness 目录再执行 **十次彼此独立的 Electron 进程** 启动→退出循环。无新依赖、无产品运行时改动；见[研究](research/windows-cold-start-conformance.zh-CN.md)。
+
 ## 产品修复适配（2026-09-11）
 
 - Desktop 异步凭据访问和显式发行平台选择复用 Electron 44.2.0 与现有打包适配器：[研究](research/product-repair-startup.md)。
