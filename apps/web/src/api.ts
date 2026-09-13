@@ -597,16 +597,20 @@ export function subscribeToChannelEvents(
   };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
-    source?.close();
-    source = undefined;
-    handlers.onState("retrying");
+    // Arm the timer and drop the live reference before close() so an onerror
+    // fired by close cannot re-enter and schedule a second EventSource.
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = undefined;
       connect();
     }, reconnectDelayMs);
+    const previous = source;
+    source = undefined;
+    previous?.close();
+    handlers.onState("retrying");
   };
   const connect = () => {
     if (closed) return;
+    source?.close();
     const nextSource = new EventSource(`/api/v1/channels/${channelId}/events`);
     source = nextSource;
     lastActivityAt = Date.now();
@@ -715,16 +719,20 @@ export function subscribeToWorkspaceEvents(handlers: {
   };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
-    source?.close();
-    source = undefined;
-    handlers.onState("retrying");
+    // Arm the timer and drop the live reference before close() so an onerror
+    // fired by close cannot re-enter and schedule a second EventSource.
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = undefined;
       connect();
     }, reconnectDelayMs);
+    const previous = source;
+    source = undefined;
+    previous?.close();
+    handlers.onState("retrying");
   };
   const connect = () => {
     if (closed) return;
+    source?.close();
     const nextSource = new EventSource("/api/v1/workspace/events");
     source = nextSource;
     lastActivityAt = Date.now();
