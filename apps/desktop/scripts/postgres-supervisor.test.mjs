@@ -115,6 +115,32 @@ int main(void) {
     expect(await f.done).toEqual({ code: 0, signal: null });
     expect(alive(pid)).toBe(false);
   });
+  it("reaps the database child after its launching Node parent is killed", async () => {
+    const launcher = join(root, "parent.mjs");
+    await writeFile(
+      launcher,
+      `import {spawn} from 'node:child_process';
+const child = spawn(process.argv[2], [process.argv[3], process.argv[4], '5432'], {
+  stdio: ['pipe', 'pipe', 'ignore'], env: {PATH: '/usr/bin:/bin'}
+});
+child.stdout.pipe(process.stdout);
+setInterval(() => {}, 1000);
+`,
+    );
+    const parent = spawn(process.execPath, [launcher, supervisor, postgres, root], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    children.add(parent);
+    let output = "";
+    parent.stdout.on("data", (data) => {
+      output += data;
+    });
+    await vi.waitFor(() => expect(output).toMatch(/^\d+\n$/u), { timeout: 5000 });
+    const pid = Number(output.trim());
+    expect(alive(pid)).toBe(true);
+    parent.kill("SIGKILL");
+    await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 5000 });
+  }, 12_000);
   it("reports early child failure without waiting for the parent pipe", async () => {
     const f = launch({ OPENBOT_TEST_EARLY_EXIT: "1" });
     expect(await f.done).toEqual({ code: 17, signal: null });

@@ -52,6 +52,6 @@ Windows crash recovery and simultaneous supervisor termination remain outside th
 
 - Three actual Electron main-process SIGKILL/immediate-reopen cycles returned ready, retained a committed database row and the exact bootstrap ciphertext digest, and left no old PostgreSQL process. Isolated data and synthetic encryption; not a Keychain test.
 - A competing NativeServerController for the same cluster failed without stopping the active owner or changing its PostgreSQL PID.
-- Native supervisor and existing controller tests: 23 passed, including ordinary pipe shutdown, termination request, early exit, invalid arguments, unrelated process survival and bounded escalation.
+- Native supervisor and existing controller tests: 24 passed, including ordinary pipe shutdown, termination request, early exit, invalid arguments, unrelated process survival and bounded escalation.
 - Full npm run check passed. Native runtime staging and unsigned macOS arm64 packaging passed; helper bytes matched staged bytes, native code signature verification passed, and the compiled adapter was present in ASAR. The package was not installed over the user application.
 
