@@ -274,3 +274,10 @@ H2 v1 补充选定 RFC 8785 JCS 与 `canonicalize@5.0.0` / `7d97c70c79c9f52070e6
 未复制上游源码。证据见[补丁调研](research/deps-patch-hono-biome-types-filename.md)。
 | PDF/Office 解析器依赖一致性 | PDF.js 6.3.289 / `1c8020a7d4e43668ac287a3ecf9a8dbea17e4c56`；现有 officeparser 7.8.0、npm 10.9.9 | Apache-2.0；MIT；Artistic-2.0 | 同步直接依赖和全局精确 override，保留工作区解析锚点及有界 Worker。干净安装和真实 PDF/Office 测试为门禁；保留上游印度文字形提取限制。不复制源码。见[研究](research/pdfjs-6.3-lock-coherence.zh-CN.md)。 |
 | 9 月 12 日依赖维护 | setup-dotnet 6.0.0 / a98b5685；@types/node 26.5.0；Node 24.21.0 官方镜像；electron-builder 26.16.1 / 7d3b30f3 | MIT；Node 及 Debian 组件许可 | 复用既有上游，同步固定版本、锁文件和严格 smoke 断言；不取消安全门禁，不复制源码，不宣称已正式签名。见[研究](research/dependency-ci-september12.zh-CN.md)。 |
+
+### 附件空文本提取
+
+复用审查完成：PDF.js 6.3.289（`1c8020a7d4e43668ac287a3ecf9a8dbea17e4c56`，Apache-2.0）与
+Tesseract.js 7.0.0（`42eae669e4b3a66429d8516f078912cc747a89df`，Apache-2.0）。
+Server 在保存成功状态前拒绝仅含空白的提取结果，并在模型调用前拒绝历史空文本记录。
+未新增 PDF OCR，也不会自动改为发送原文件。没有复制上游源码，见[研究记录](research/attachment-empty-extraction.md)。

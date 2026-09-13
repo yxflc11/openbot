@@ -331,3 +331,11 @@ No upstream source copied. Evidence: [deps-patch research](research/deps-patch-h
 | September 12 dependency maintenance | setup-dotnet 6.0.0 / a98b5685; @types/node 26.5.0; official Node 24.21.0 image; electron-builder 26.16.1 / 7d3b30f3 | MIT; Node and bundled Debian component licenses | Reuse existing upstreams and synchronize exact pins, lockfile and strict smoke assertions; no removed security gates, copied source or signing claim. See [research](research/dependency-ci-september12.md). |
 
 Desktop PostgreSQL parent lifecycle reuses macOS POSIX child wait/pipe primitives with the existing PostgreSQL binary package. The app-bundled thin supervisor retains direct-child signal authority and does not adopt PID-file processes. No upstream source copied; see [research](research/desktop-postgres-parent-lifecycle.md). macOS native acceptance remains required; Windows lifecycle is unchanged.
+
+### Empty attachment extraction
+
+Reuse review complete: PDF.js 6.3.289 (`1c8020a7d4e43668ac287a3ecf9a8dbea17e4c56`, Apache-2.0)
+and Tesseract.js 7.0.0 (`42eae669e4b3a66429d8516f078912cc747a89df`, Apache-2.0).
+A narrow Server adapter rejects whitespace-only extraction before persisting success and rejects
+legacy empty derived records before inference. No new PDF OCR or automatic binary fallback.
+No copied source; see [research](research/attachment-empty-extraction.md).

@@ -39,6 +39,16 @@ export async function prepareAttachmentContext(input: PrepareAttachmentContextIn
     await input.assertScope();
     if (!input.storage) throw new AttachmentError("Attachment storage is unavailable.", 503);
     const attachment = await input.storage.metadata(input.run.channelId, id);
+    // Older versions persisted page separators as successful extraction. Never silently replace
+    // those records with a binary provider upload, which would change the disclosed content.
+    if (attachment.processing) {
+      const derived = await input.storage.derived?.(input.run.channelId, id);
+      if (!derived?.text.trim())
+        throw new AttachmentError(
+          "Extracted attachment text is empty or unavailable. Re-upload the original and extract readable text or explicitly attach supported image/PDF content.",
+          415,
+        );
+    }
     size += attachment.sizeBytes;
     if (size > MAX_TASK_ATTACHMENT_BYTES)
       throw new AttachmentError("Task attachments exceed 20 MiB.", 413);
