@@ -2,7 +2,9 @@
 
 [English](DESKTOP_INSTALLATION.md) · [简体中文](DESKTOP_INSTALLATION.zh-CN.md)
 
-**Current preview: [Desktop 0.1.0-alpha.6](https://github.com/yxflc11/openbot/releases/tag/desktop-v0.1.0-alpha.6)** provides a macOS Apple Silicon DMG and Windows x64 EXE, with a combined manifest and SHA256SUMS. Both come from the same source commit that passed full CI. The table also lists Linux build targets; alpha.6 does not publish Linux installers.
+**Current preview: [Desktop 0.1.0-alpha.7](https://github.com/yxflc11/openbot/releases/tag/desktop-v0.1.0-alpha.7)** provides a macOS Apple Silicon DMG and Windows x64 EXE, with a combined manifest and SHA256SUMS. Both come from the same source commit that passed full CI. The table also lists Linux build targets; alpha.7 does not publish Linux installers.
+
+alpha.7 fixes native message reactions, attachment filename and larger-upload forwarding, and Bot export with reviewed skill content. Both downloads come from source commit `62440c1a09fdac624fe2078c130ff55d6ea4e24c`; see the [complete CI run](https://github.com/yxflc11/openbot/actions/runs/34664940360). Windows installation and retained-data evidence comes from a hosted runner. Production signing, notarization and manual Windows desktop acceptance remain outstanding.
 
 | Platform | File in the release | Installation | Available composition |
 | --- | --- | --- | --- |
@@ -33,7 +35,7 @@ macOS arm64 (for Linux, choose a published version that includes an AppImage):
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.sh \
   -o /tmp/openbot-install-desktop.sh
-bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.6
+bash /tmp/openbot-install-desktop.sh 0.1.0-alpha.7
 ```
 
 The macOS bootstrap installs to `~/Applications/OpenBot.app`; it refuses to replace an existing
@@ -45,7 +47,7 @@ Windows x64, after the matching alpha.6 EXE and checksums appear on the release 
 
 ```powershell
 Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/yxflc11/openbot/main/scripts/install-desktop.ps1 -OutFile "$env:TEMP\openbot-install-desktop.ps1"
-& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.6
+& "$env:TEMP\openbot-install-desktop.ps1" -Version 0.1.0-alpha.7
 ```
 
 The PowerShell script opens the per-user installer and waits for its result. If your execution
@@ -78,7 +80,7 @@ npm run package:installers --workspace @openbot/desktop
 ```
 
 Build on the target OS. Existing Packager/ASAR/fuse checks run before the installer stage, which
-uses pinned `electron-builder` 26.16.0 with `prepackaged` and `publish: never`. Native CI adds the
+uses pinned `electron-builder` 26.16.1 with `prepackaged` and `publish: never`. Native CI adds the
 macOS Worker companion and builds every target. The output directory includes `manifest.json` and
 `SHA256SUMS`; locally built manifests have `sourceCommit: null` and cannot enter the CI release gate.
 
