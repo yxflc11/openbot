@@ -131,7 +131,10 @@ export function readLinuxProcStartTimeToken(statContents) {
 }
 
 /**
- * Observe OS process identity for pid. Portable on Linux; Windows uses PowerShell.
+ * Observe OS process identity for pid.
+ * Linux uses /proc; Darwin uses ps lstart/args; Windows uses PowerShell.
+ * Unsupported platforms return null (fail closed for callers) — never an incomplete
+ * identity that looks like a successful observation.
  * @param {number} pid
  * @returns {ProcessIdentity | null}
  */
@@ -164,6 +167,41 @@ export function observeProcessIdentity(pid) {
       throw error;
     }
   }
+  if (process.platform === "darwin") {
+    try {
+      const lstart = execFileSync("ps", ["-p", String(pid), "-o", "lstart="], {
+        encoding: "utf8",
+        timeout: 5_000,
+      }).trim();
+      if (!lstart) return null;
+      const argsLine = execFileSync("ps", ["-ww", "-p", String(pid), "-o", "args="], {
+        encoding: "utf8",
+        timeout: 5_000,
+      }).trim();
+      if (!argsLine) return null;
+      // First whitespace-delimited arg is the executable/command path.
+      const executablePath = argsLine.split(/\s+/u)[0] ?? null;
+      if (executablePath == null || executablePath === "") return null;
+      return createProcessIdentity({
+        pid,
+        // Opaque locale-safe token — compare equality only, do not parse as Date.
+        startTimeUtc: `darwin-lstart:${lstart}`,
+        executablePath,
+      });
+    } catch (error) {
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? /** @type {{ status?: number }} */ (error).status
+          : undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      // ps exits non-zero when the PID is gone; treat as unobservable.
+      if (status === 1 || /no such process|not found/iu.test(message)) {
+        return null;
+      }
+      // Other observation failures: return null so callers fail closed.
+      return null;
+    }
+  }
   if (process.platform === "win32") {
     const script = [
       `$p = Get-Process -Id ${pid} -ErrorAction Stop`,
@@ -190,57 +228,8 @@ export function observeProcessIdentity(pid) {
       throw error;
     }
   }
-  return createProcessIdentity({ pid, startTimeUtc: null, executablePath: null });
-}
-
-/**
- * Stop only when the live OS identity matches the recorded harness process.
- * Wrong identity (PID reuse) must not kill.
- *
- * @param {ProcessIdentity} recorded
- * @param {{
- *   observe?: (pid: number) => ProcessIdentity | null,
- *   stop?: (pid: number) => void,
- * }} [hooks]
- * @returns {{ stopped: boolean, reason: string }}
- */
-export function stopProcessIfIdentityMatches(recorded, hooks = {}) {
-  if (!isProcessIdentity(recorded)) {
-    return { stopped: false, reason: "invalid-recorded-identity" };
-  }
-  if (recorded.startTimeUtc == null || recorded.executablePath == null) {
-    return { stopped: false, reason: "incomplete-recorded-identity" };
-  }
-  const observe = hooks.observe ?? observeProcessIdentity;
-  const stop =
-    hooks.stop ??
-    ((pid) => {
-      process.kill(pid, "SIGTERM");
-    });
-  if (!isProcessAlive(recorded.pid)) {
-    return { stopped: false, reason: "not-running" };
-  }
-  let current;
-  try {
-    current = observe(recorded.pid);
-  } catch (error) {
-    const code =
-      error && typeof error === "object" && "code" in error
-        ? /** @type {{ code?: string }} */ (error).code
-        : undefined;
-    if (code === "EPERM") {
-      return { stopped: false, reason: "observe-eperm" };
-    }
-    throw error;
-  }
-  if (current == null) {
-    return { stopped: false, reason: "not-running" };
-  }
-  if (!processIdentitiesEqual(recorded, current)) {
-    return { stopped: false, reason: "identity-mismatch" };
-  }
-  stop(recorded.pid);
-  return { stopped: true, reason: "stopped" };
+  // Unknown platform: cannot observe — fail closed (null), do not pretend success.
+  return null;
 }
 
 /**
@@ -294,7 +283,15 @@ export function assertPreviousChildrenEnded(previous, hooks = {}) {
       lingering.push(`${label}:invalid`);
       continue;
     }
+    // Not alive (ESRCH) → ended / OK.
     if (!isProcessAlive(identity.pid)) continue;
+
+    // Alive + incomplete recorded identity → lingering (fail closed).
+    if (identity.startTimeUtc == null || identity.executablePath == null) {
+      lingering.push(`${label}:${identity.pid}`);
+      continue;
+    }
+
     let current = null;
     try {
       current = observe(identity.pid);
@@ -310,7 +307,16 @@ export function assertPreviousChildrenEnded(previous, hooks = {}) {
       }
       throw error;
     }
-    if (current != null && processIdentitiesEqual(identity, current)) {
+
+    // Alive + observe null / incomplete observed identity → lingering.
+    // Alive + full identities equal → lingering.
+    // Alive + full identities clearly unequal (PID reuse) → OK.
+    if (
+      current == null ||
+      current.startTimeUtc == null ||
+      current.executablePath == null ||
+      processIdentitiesEqual(identity, current)
+    ) {
       lingering.push(`${label}:${identity.pid}`);
     }
   }

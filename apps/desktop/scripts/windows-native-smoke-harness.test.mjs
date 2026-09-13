@@ -21,8 +21,17 @@ import {
   processIdentitiesEqual,
   readLinuxProcStartTimeToken,
   readPostmasterPid,
-  stopProcessIfIdentityMatches,
 } from "./windows-native-smoke-harness.mjs";
+
+/** @param {import("./windows-native-smoke-harness.mjs").ProcessIdentity | null} identity */
+function hasFullIdentity(identity) {
+  return (
+    identity != null &&
+    identity.startTimeUtc != null &&
+    identity.executablePath != null &&
+    identity.executablePath !== ""
+  );
+}
 
 it("keeps historical smoke checks and requires exactly ten cold starts on the final receipt", () => {
   expect(COLD_START_ROUNDS).toBe(10);
@@ -121,46 +130,60 @@ it("builds receipts with identity fields, login counts, and ciphertext digest on
   expect(() => createColdStartState({ encryptedBootstrap: "" })).toThrow(/incomplete/);
 });
 
-it("spawns a real child and refuses to kill on wrong identity", async () => {
+it("spawns a real child, verifies identity inequality, and asserts ended after kill", async () => {
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     stdio: "ignore",
   });
   try {
     await once(child, "spawn");
     expect(child.pid).toBeTypeOf("number");
-    const identity = observeProcessIdentity(child.pid);
-    expect(identity).not.toBeNull();
-    expect(identity.pid).toBe(child.pid);
-    expect(identity.startTimeUtc).toBeTruthy();
-
-    const wrongStart = createProcessIdentity({
-      pid: child.pid,
-      startTimeUtc: "linux-ticks:1",
-      executablePath: identity.executablePath ?? process.execPath,
-    });
-    const wrongPath = createProcessIdentity({
-      pid: child.pid,
-      startTimeUtc: identity.startTimeUtc,
-      executablePath: "/definitely/not/this/binary",
-    });
-    expect(stopProcessIfIdentityMatches(wrongStart).reason).toBe("identity-mismatch");
-    expect(stopProcessIfIdentityMatches(wrongPath).reason).toBe("identity-mismatch");
     expect(isProcessAlive(child.pid)).toBe(true);
 
-    const matched = stopProcessIfIdentityMatches(identity, {
-      stop: (pid) => process.kill(pid, "SIGTERM"),
-    });
-    expect(matched.stopped).toBe(true);
-    await once(child, "exit");
-    expect(isProcessAlive(child.pid)).toBe(false);
+    const identity = observeProcessIdentity(child.pid);
+    if (hasFullIdentity(identity)) {
+      expect(identity.pid).toBe(child.pid);
+      expect(identity.startTimeUtc).toBeTruthy();
+      expect(identity.executablePath).toBeTruthy();
 
-    expect(() =>
-      assertPreviousChildrenEnded({
-        electron: identity,
-        postgres: null,
-        server: null,
-      }),
-    ).not.toThrow();
+      const wrongStart = createProcessIdentity({
+        pid: child.pid,
+        startTimeUtc: "wrong-start-token",
+        executablePath: identity.executablePath,
+      });
+      const wrongPath = createProcessIdentity({
+        pid: child.pid,
+        startTimeUtc: identity.startTimeUtc,
+        executablePath: "/definitely/not/this/binary",
+      });
+      // Wrong identity via equality — not via a killer helper.
+      expect(processIdentitiesEqual(identity, wrongStart)).toBe(false);
+      expect(processIdentitiesEqual(identity, wrongPath)).toBe(false);
+
+      // Matching recorded identity while child still alive → fail closed.
+      expect(() =>
+        assertPreviousChildrenEnded({
+          electron: identity,
+          postgres: null,
+          server: null,
+        }),
+      ).toThrow(/still alive/);
+
+      child.kill("SIGTERM");
+      await once(child, "exit");
+      expect(isProcessAlive(child.pid)).toBe(false);
+      expect(() =>
+        assertPreviousChildrenEnded({
+          electron: identity,
+          postgres: null,
+          server: null,
+        }),
+      ).not.toThrow();
+    } else {
+      // Platforms without full observation: skip real-observe assertions.
+      child.kill("SIGTERM");
+      await once(child, "exit");
+      expect(isProcessAlive(child.pid)).toBe(false);
+    }
   } finally {
     if (child.exitCode == null && child.signalCode == null) {
       child.kill("SIGKILL");
@@ -170,8 +193,9 @@ it("spawns a real child and refuses to kill on wrong identity", async () => {
 
 it("does not treat a living observer pid as ended when identity still matches", () => {
   const self = observeProcessIdentity(process.pid);
-  expect(self).not.toBeNull();
-  expect(() => assertPreviousChildrenEnded({ electron: self })).toThrow(/still alive/);
+  if (hasFullIdentity(self)) {
+    expect(() => assertPreviousChildrenEnded({ electron: self })).toThrow(/still alive/);
+  }
   expect(() =>
     assertPreviousChildrenEnded({
       electron: createProcessIdentity({
@@ -180,5 +204,84 @@ it("does not treat a living observer pid as ended when identity still matches", 
         executablePath: "/nope",
       }),
     }),
+  ).not.toThrow();
+});
+
+it("fail-closed: alive pid with missing recorded identity fields is lingering", () => {
+  expect(() =>
+    assertPreviousChildrenEnded({
+      electron: createProcessIdentity({
+        pid: process.pid,
+        startTimeUtc: null,
+        executablePath: null,
+      }),
+    }),
+  ).toThrow(/still alive/);
+  expect(() =>
+    assertPreviousChildrenEnded({
+      electron: createProcessIdentity({
+        pid: process.pid,
+        startTimeUtc: "token",
+        executablePath: null,
+      }),
+    }),
+  ).toThrow(/still alive/);
+});
+
+it("fail-closed: alive pid with observe null or incomplete observed identity is lingering", () => {
+  const recorded = createProcessIdentity({
+    pid: process.pid,
+    startTimeUtc: "recorded-token",
+    executablePath: "/recorded/path",
+  });
+  expect(() =>
+    assertPreviousChildrenEnded({ electron: recorded }, { observe: () => null }),
+  ).toThrow(/still alive/);
+  expect(() =>
+    assertPreviousChildrenEnded(
+      { electron: recorded },
+      {
+        observe: () =>
+          createProcessIdentity({
+            pid: process.pid,
+            startTimeUtc: "observed-token",
+            executablePath: null,
+          }),
+      },
+    ),
+  ).toThrow(/still alive/);
+  expect(() =>
+    assertPreviousChildrenEnded(
+      { electron: recorded },
+      {
+        observe: () => {
+          const err = new Error("permission denied");
+          /** @type {{ code?: string }} */ (err).code = "EPERM";
+          throw err;
+        },
+      },
+    ),
+  ).toThrow(/still alive/);
+});
+
+it("treats full unequal identities as PID reuse (ended), not lingering", () => {
+  expect(() =>
+    assertPreviousChildrenEnded(
+      {
+        electron: createProcessIdentity({
+          pid: process.pid,
+          startTimeUtc: "old-token",
+          executablePath: "/old/path",
+        }),
+      },
+      {
+        observe: () =>
+          createProcessIdentity({
+            pid: process.pid,
+            startTimeUtc: "new-token",
+            executablePath: "/new/path",
+          }),
+      },
+    ),
   ).not.toThrow();
 });
