@@ -55,3 +55,29 @@
 ## Unresolved questions
 
 - Hosted Windows CI must still execute the ten cold-start lifetimes on this branch; Linux box evidence remains pending CI.
+
+## Integration review: retained evidence and process handles
+
+Reviewed 2026-09-13 before the alpha.8 integration changes:
+
+- Existing reuse ledger entries for Windows Desktop and CI artifact retention apply.
+- Reuse inbox .NET `System.Diagnostics.Process.Handle` and `Kill`, documented at
+  https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.handle .
+  Acquire and retain the process handle before checking start time and executable,
+  then stop through that same object. A PID lookup followed by a fresh PID kill
+  cannot establish ownership when Windows reuses process IDs.
+- Reuse the already-pinned MIT `actions/upload-artifact` v7.0.1 at
+  `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` (source, tests, and action inputs:
+  https://github.com/actions/upload-artifact/tree/043fb46d1a93c77aae656e7c1c64a875d1fc6a0a).
+  No new dependency or copied source. Store only explicitly projected round
+  evidence, never the fixture profile, bootstrap ciphertext, password, or raw log.
+- The integration gap is retaining all eleven validated process lifetimes and
+  NSIS cleanup status after the private fixture is removed. The current successful
+  log alone and a deleted final receipt do not provide that evidence.
+- UtilityProcess identities must be observed after spawn and published before
+  waiting for readiness, so a failed startup still has a bounded cleanup path.
+  Electron 44.2.0 `utilityProcess` is already pinned; upstream contract:
+  https://www.electronjs.org/docs/latest/api/utility-process .
+- Verification: full repository check, native PowerShell parser and installed
+  Windows runtime CI. CI results remain required; local helper tests do not prove
+  DPAPI, Windows process cleanup, or successful installation.

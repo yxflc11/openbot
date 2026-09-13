@@ -41,6 +41,13 @@ $env:RUNNER_TEMP = $env:TEMP
 
 通过标准：脚本打印 `PASS: native smoke receipt verified (postgresql,migrations,dpapi,owner-login,retained-data,stop,restart,cleanup,cold-start-10)` 并完成卸载。仅在同一 Electron 进程内循环 stop/start **不算**冷启动证据。
 
+脚本会在打印的证据目录（或指定的 `-EvidenceDirectory`）保留 `summary.json`。
+CI 将其上传为 `windows-desktop-cold-start-<源码 SHA>`，验证启动后的失败也保留回执。
+内容包括初始化及十轮冷启动、实际 Electron/Server/PostgreSQL 进程身份、登录次数、
+保持不变的引导密文摘要、错误进程身份负例与卸载结果。只保留这些明确选定的字段，
+不上传测试配置目录、原始密文、密码或诊断日志。
+
+
 可移植 harness 单测（Linux/macOS/Windows）：
 
 ```bash

@@ -41,6 +41,15 @@ $env:RUNNER_TEMP = $env:TEMP
 
 Pass criteria: the script prints `PASS: native smoke receipt verified (postgresql,migrations,dpapi,owner-login,retained-data,stop,restart,cleanup,cold-start-10)` and completes uninstall. Same-process controller stop/start loops alone are **not** cold-start evidence.
 
+The gate retains `summary.json` in the printed evidence directory (or the explicit
+`-EvidenceDirectory`). CI uploads it as `windows-desktop-cold-start-<source SHA>`,
+including on failure after the gate starts. It records bootstrap plus ten cold
+rounds, observed Electron/Server/PostgreSQL identities, successful login counts,
+the unchanged bootstrap ciphertext digest, process-ownership negative checks,
+and uninstall outcome. Only these projected fields are retained; fixture
+profiles, raw ciphertext, passwords, and diagnostic logs are not uploaded.
+
+
 Portable harness unit tests (Linux/macOS/Windows):
 
 ```bash

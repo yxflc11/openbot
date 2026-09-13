@@ -140,6 +140,7 @@ it("spawns a real child, verifies identity inequality, and asserts ended after k
     expect(isProcessAlive(child.pid)).toBe(true);
 
     const identity = observeProcessIdentity(child.pid);
+    expect(hasFullIdentity(identity)).toBe(true);
     if (hasFullIdentity(identity)) {
       expect(identity.pid).toBe(child.pid);
       expect(identity.startTimeUtc).toBeTruthy();
@@ -193,6 +194,7 @@ it("spawns a real child, verifies identity inequality, and asserts ended after k
 
 it("does not treat a living observer pid as ended when identity still matches", () => {
   const self = observeProcessIdentity(process.pid);
+  expect(hasFullIdentity(self)).toBe(true);
   if (hasFullIdentity(self)) {
     expect(() => assertPreviousChildrenEnded({ electron: self })).toThrow(/still alive/);
   }

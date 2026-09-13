@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { channel } from "node:diagnostics_channel";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { app, safeStorage, utilityProcess } from "electron";
@@ -76,23 +76,28 @@ async function writeLiveProcesses(fields) {
 
 async function readPostgresPid() {
   try {
-    return readPostmasterPid(await readFile(join(clusterRoot, "postgres", "postmaster.pid"), "utf8"));
-  } catch {
-    return null;
+    return readPostmasterPid(
+      await readFile(join(clusterRoot, "postgres", "postmaster.pid"), "utf8"),
+    );
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
   }
 }
 
 /**
  * @param {number} pid
- * @param {string | null} [pathHint]
  */
-function requireObservedIdentity(pid, pathHint = null) {
+function requireObservedIdentity(pid) {
   const observed = observeProcessIdentity(pid);
-  assert.ok(observed, `process identity missing for pid ${pid}`);
+  assert.ok(
+    observed?.startTimeUtc && observed?.executablePath,
+    `complete process identity missing for pid ${pid}`,
+  );
   return createProcessIdentity({
     pid: observed.pid,
     startTimeUtc: observed.startTimeUtc,
-    executablePath: observed.executablePath ?? pathHint,
+    executablePath: observed.executablePath,
   });
 }
 
@@ -153,7 +158,7 @@ async function runControllerCycle(options) {
     assertPreviousChildrenEnded(options.previous);
   }
 
-  liveElectron = requireObservedIdentity(process.pid, process.execPath);
+  liveElectron = requireObservedIdentity(process.pid);
   await writeLiveProcesses({
     electron: liveElectron,
     postgres: null,
@@ -172,6 +177,11 @@ async function runControllerCycle(options) {
       return (await safeStorage.decryptStringAsync(Buffer.from(value, "base64"))).result;
     },
     async launchServer(env) {
+      // PG is already running at this entry; record it before Server startup can fail.
+      const activePostgresPid = await readPostgresPid();
+      assert.ok(activePostgresPid, "postmaster pid missing before Server launch");
+      livePostgres = requireObservedIdentity(activePostgresPid);
+      await writeLiveProcesses({ electron: liveElectron, postgres: livePostgres, server: null });
       databaseUrl = env.OPENBOT_DATABASE_URL;
       const fixtureEnvironment = { ...env };
       delete fixtureEnvironment.TAVILY_API_KEY;
@@ -182,6 +192,7 @@ async function runControllerCycle(options) {
         stdio: ["ignore", "ignore", "pipe"],
         serviceName: "OpenBot Windows CI Server",
       });
+      serverIdentity = null;
       let alive = true;
       let serverReady = false;
       let errorTail = "";
@@ -198,6 +209,30 @@ async function runControllerCycle(options) {
           child.kill();
           reject(new Error("Server readiness timed out"));
         }, 30_000);
+        child.once("spawn", () => {
+          try {
+            assert.ok(
+              Number.isInteger(child.pid) && child.pid > 0,
+              "Server PID missing after spawn",
+            );
+            serverIdentity = requireObservedIdentity(child.pid);
+            // Persist before readiness; a failed startup still has verified cleanup identities.
+            writeFileSync(
+              liveProcessesPath,
+              JSON.stringify(
+                createLiveHarnessProcesses({
+                  electron: liveElectron,
+                  postgres: livePostgres,
+                  server: serverIdentity,
+                }),
+              ),
+            );
+          } catch (error) {
+            clearTimeout(timer);
+            child.kill();
+            reject(error);
+          }
+        });
         child.once("exit", () => {
           clearTimeout(timer);
           reject(new Error("Server exited before readiness"));
@@ -208,22 +243,15 @@ async function runControllerCycle(options) {
             message.port === Number(env.OPENBOT_PORT)
           ) {
             clearTimeout(timer);
+            if (!serverIdentity) {
+              child.kill();
+              reject(new Error("Server readiness arrived without a verified spawn identity"));
+              return;
+            }
             serverReady = true;
             resolveReady();
           }
         });
-      });
-      // Read pid only after spawn/ready; fail closed if missing.
-      const spawnedPid = child.pid;
-      assert.ok(
-        Number.isInteger(spawnedPid) && spawnedPid > 0,
-        "utilityProcess child.pid missing after spawn/ready",
-      );
-      serverIdentity = requireObservedIdentity(spawnedPid, process.execPath);
-      await writeLiveProcesses({
-        electron: liveElectron,
-        postgres: livePostgres,
-        server: serverIdentity,
       });
       return {
         isAlive: () => alive,
@@ -274,12 +302,11 @@ async function runControllerCycle(options) {
     console.info(`Windows native smoke (${mode}): starting local Server.`);
     const first = await controller.start();
     assert.equal(first.status, "ready", JSON.stringify(first));
-    liveElectron = requireObservedIdentity(process.pid, process.execPath);
+    liveElectron = requireObservedIdentity(process.pid);
     assertNewProcessIdentity(options.previous.electron, liveElectron);
     const postgresPid = await readPostgresPid();
     assert.ok(postgresPid, "postmaster pid must be recorded");
-    const postgresExe = join(runtimeRoot, "postgres", "bin", "postgres.exe");
-    postgresIdentity = requireObservedIdentity(postgresPid, postgresExe);
+    postgresIdentity = requireObservedIdentity(postgresPid);
     livePostgres = postgresIdentity;
     assertNewProcessIdentity(options.previous.postgres, postgresIdentity);
     assert.ok(serverIdentity, "server identity must be recorded");
@@ -329,7 +356,7 @@ async function runControllerCycle(options) {
       assert.equal(await readFile(join(clusterRoot, "bootstrap.json"), "utf8"), encryptedBefore);
       const restartedPid = await readPostgresPid();
       assert.ok(restartedPid, "restarted postmaster pid must be recorded");
-      postgresIdentity = requireObservedIdentity(restartedPid, postgresExe);
+      postgresIdentity = requireObservedIdentity(restartedPid);
       livePostgres = postgresIdentity;
       await writeLiveProcesses({
         electron: liveElectron,
@@ -483,6 +510,8 @@ async function runSmoke() {
                 platform: process.platform,
                 arch: process.arch,
               }),
+              mode: "cold-start",
+              coldStartsCompleted,
               loginCount: cycle.loginCount,
               ciphertextDigest: roundReceipt.ciphertextDigest,
               electron: cycle.electron,
@@ -500,7 +529,8 @@ async function runSmoke() {
     if (!succeeded) {
       console.error(
         JSON.stringify({
-          summary: "Windows native smoke failed; harness processes should be cleaned by the orchestrator.",
+          summary:
+            "Windows native smoke failed; harness processes should be cleaned by the orchestrator.",
           mode,
           electronPid: process.pid,
           harnessRoot,

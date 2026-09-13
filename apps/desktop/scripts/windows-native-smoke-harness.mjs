@@ -124,7 +124,10 @@ export function createProcessIdentity(fields) {
 export function readLinuxProcStartTimeToken(statContents) {
   const rparen = statContents.lastIndexOf(")");
   if (rparen < 0) return null;
-  const rest = statContents.slice(rparen + 2).trim().split(/\s+/u);
+  const rest = statContents
+    .slice(rparen + 2)
+    .trim()
+    .split(/\s+/u);
   const starttime = rest[19];
   if (!starttime || !/^\d+$/u.test(starttime)) return null;
   return `linux-ticks:${starttime}`;
@@ -132,7 +135,7 @@ export function readLinuxProcStartTimeToken(statContents) {
 
 /**
  * Observe OS process identity for pid.
- * Linux uses /proc; Darwin uses ps lstart/args; Windows uses PowerShell.
+ * Linux uses /proc; Darwin uses ps lstart/comm; Windows uses PowerShell.
  * Unsupported platforms return null (fail closed for callers) — never an incomplete
  * identity that looks like a successful observation.
  * @param {number} pid
@@ -142,9 +145,7 @@ export function observeProcessIdentity(pid) {
   if (!Number.isInteger(pid) || pid <= 0 || pid > 2_147_483_647) return null;
   if (process.platform === "linux") {
     try {
-      const startTimeUtc = readLinuxProcStartTimeToken(
-        readFileSync(`/proc/${pid}/stat`, "utf8"),
-      );
+      const startTimeUtc = readLinuxProcStartTimeToken(readFileSync(`/proc/${pid}/stat`, "utf8"));
       let executablePath = null;
       try {
         executablePath = readlinkSync(`/proc/${pid}/exe`);
@@ -174,13 +175,13 @@ export function observeProcessIdentity(pid) {
         timeout: 5_000,
       }).trim();
       if (!lstart) return null;
-      const argsLine = execFileSync("ps", ["-ww", "-p", String(pid), "-o", "args="], {
+      const argsLine = execFileSync("ps", ["-ww", "-p", String(pid), "-o", "comm="], {
         encoding: "utf8",
         timeout: 5_000,
       }).trim();
       if (!argsLine) return null;
-      // First whitespace-delimited arg is the executable/command path.
-      const executablePath = argsLine.split(/\s+/u)[0] ?? null;
+      // Preserve spaces in the executable path; argv splitting is not an identity.
+      const executablePath = argsLine;
       if (executablePath == null || executablePath === "") return null;
       return createProcessIdentity({
         pid,
@@ -217,8 +218,7 @@ export function observeProcessIdentity(pid) {
       return createProcessIdentity({
         pid: Number(parsed.pid),
         startTimeUtc: typeof parsed.startTimeUtc === "string" ? parsed.startTimeUtc : null,
-        executablePath:
-          typeof parsed.executablePath === "string" ? parsed.executablePath : null,
+        executablePath: typeof parsed.executablePath === "string" ? parsed.executablePath : null,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -517,9 +517,7 @@ export function isLiveHarnessProcesses(value) {
   const live = /** @type {Record<string, unknown>} */ (value);
   const identityOrNull = (entry) => entry === null || isProcessIdentity(entry);
   return (
-    identityOrNull(live.electron) &&
-    identityOrNull(live.postgres) &&
-    identityOrNull(live.server)
+    identityOrNull(live.electron) && identityOrNull(live.postgres) && identityOrNull(live.server)
   );
 }
 

@@ -34,3 +34,13 @@
 ## 未决问题
 
 - 本分支仍需托管 Windows CI 实际跑完十次冷启动。
+
+## 集成复核：进程句柄与证据留存
+
+2026-09-13 的 alpha.8 集成复核沿用复用清单中的 Windows Desktop 与 CI 条目：
+
+- 使用系统 .NET `Process.Handle`：先持有句柄，再核对启动时间和路径，随后通过同一个进程对象结束进程。禁止核对后重新按 PID 发出结束请求。官方依据：https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.process.handle 。
+- 使用仓库已固定的 MIT `actions/upload-artifact` v7.0.1，提交 `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`，不增加依赖、不复制源码。仅保存逐轮明确选定的证据字段，不上传测试配置、密码、密文或原始日志。
+- 在 Electron 44.2.0 的 `utilityProcess` spawn 事件后、就绪之前记录身份，覆盖启动中途失败的清理路径。
+- 原生 PowerShell 负例会实际创建一个测试进程，验证错误启动时间或路径不会结束它，再通过正确身份清理。
+- 全仓检查、Windows 原生进程检查与安装后的十轮启动均需实际运行；本地 helper 单测不能证明 DPAPI 或原生安装成功。
