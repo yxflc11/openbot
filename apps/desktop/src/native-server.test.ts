@@ -34,6 +34,7 @@ async function fakeResources(opts: NativeServerOptions) {
   await mkdir(join(opts.runtimeRoot, "postgres/bin"), { recursive: true });
   for (const name of ["postgres", "initdb"])
     await writeFile(join(opts.runtimeRoot, "postgres/bin", name), "not executable");
+  await writeFile(join(opts.runtimeRoot, "postgres-supervisor"), "not executable");
 }
 describe("Native Server boundary", () => {
   it("ignores another application's generic search credential", () => {

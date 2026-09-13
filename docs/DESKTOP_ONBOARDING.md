@@ -190,6 +190,13 @@ using the advanced instructions below. Closing the macOS window keeps Desktop ru
 Desktop stops its own Server and database. Reopening restarts the same data. This is not a login
 service, backup, database-upgrade or unattended-recovery implementation.
 
+In builds with the macOS database supervisor, an abrupt Desktop main-process exit closes a private
+control pipe. The supervisor shuts down only its own PostgreSQL child; reopening allows up to
+15 seconds for that shutdown and reuses the retained data. It does not adopt old unsupervised
+databases or stop processes identified by a PID file. Force-killing the supervisor itself is not
+covered. This lifecycle change does not establish Windows crash recovery.
+
+
 Data lives under Desktop's user-data directory in `openbot/local-server`. Secrets are sealed with
 Electron safeStorage on macOS; database access uses private random credentials and SCRAM. Model
 keys are encrypted by the Server with AES-256-GCM. No secret is returned by the model summary API.

@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { channel } from "node:diagnostics_channel";
 import { existsSync } from "node:fs";
@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 import { basename, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import postgresClient from "postgres";
+import { startDarwinPostgres, type DarwinPostgresProcess } from "./darwin-postgres.js";
 import { LocalSessionRecovery } from "./local-session-recovery.js";
 import { RestrictedJsonFile } from "./restricted-json-file.js";
 import type { NativeServerState } from "./runtime-contract.js";
@@ -45,7 +46,7 @@ export class NativeServerController {
   readonly #options: NativeServerOptions;
   #state: NativeServerState = { status: "idle" };
   #pending: Promise<NativeServerState> | undefined;
-  #postgres: ChildProcess | undefined;
+  #darwinPostgres: DarwinPostgresProcess | undefined;
   #windowsPostgres: WindowsPostgresProcess | undefined;
   #server: ManagedServerProcess | undefined;
   #stopping = false;
@@ -118,6 +119,11 @@ export class NativeServerController {
     for (const name of ["initdb", "postgres", ...(windows ? ["pg_ctl"] : [])]) {
       const file = await lstat(executable(name));
       if (!file.isFile() || file.isSymbolicLink()) throw new Error("Native executable missing.");
+    }
+    if (!windows) {
+      const helper = await lstat(join(runtimeRoot, "postgres-supervisor"));
+      if (!helper.isFile() || helper.isSymbolicLink())
+        throw new Error("Native database supervisor missing.");
     }
     await privateDirectory(dataRoot, this.#options.platform);
     const secretFile = new RestrictedJsonFile<string>(join(dataRoot, "bootstrap.json"), {
@@ -195,7 +201,6 @@ export class NativeServerController {
         void this.#stopChildren();
       }
     };
-    let pgFailed = false;
     if (windows) {
       this.#windowsPostgres = await startWindowsPostgres(
         runtimeRoot,
@@ -204,28 +209,19 @@ export class NativeServerController {
         databaseExited,
       );
     } else {
-      this.#postgres = spawn(
-        executable("postgres"),
-        ["-D", cluster, "-h", "127.0.0.1", "-p", String(dbPort), "-k", ""],
-        {
-          env: nativeEnvironment(),
-          stdio: "ignore",
-          shell: false,
-          windowsHide: true,
-        },
+      this.#darwinPostgres = await startDarwinPostgres(
+        runtimeRoot,
+        dataRoot,
+        dbPort,
+        databaseExited,
       );
-      this.#postgres.on("error", () => {
-        pgFailed = true;
-      });
-      this.#postgres.on("exit", databaseExited);
     }
-    const postgres = this.#postgres;
+    const darwinPostgres = this.#darwinPostgres;
     const windowsPostgres = this.#windowsPostgres;
     const databaseUrl = `postgres://openbot:${secrets.databasePassword}@127.0.0.1:${dbPort}/postgres`;
     await waitUntil(async () => {
       if (
-        pgFailed ||
-        (postgres && (postgres.exitCode !== null || postgres.signalCode !== null)) ||
+        (darwinPostgres && !darwinPostgres.isAlive()) ||
         (windowsPostgres && !windowsPostgres.isAlive()) ||
         this.#stopping
       )
@@ -297,12 +293,12 @@ export class NativeServerController {
     const server = this.#server;
     this.#server = undefined;
     await server?.stop().catch(() => undefined);
-    const postgres = this.#postgres;
-    this.#postgres = undefined;
+    const darwinPostgres = this.#darwinPostgres;
+    this.#darwinPostgres = undefined;
     const windowsPostgres = this.#windowsPostgres;
     this.#windowsPostgres = undefined;
     if (windowsPostgres) await windowsPostgres.stop();
-    if (postgres) await stopPostgres(postgres);
+    if (darwinPostgres) await darwinPostgres.stop();
   }
 }
 
@@ -413,23 +409,6 @@ async function waitUntil(check: () => Promise<boolean>): Promise<void> {
   }
   throw new Error("Native startup timed out.");
 }
-async function stopPostgres(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
-  await new Promise<void>((resolve) => {
-    const fast = setTimeout(() => child.kill("SIGQUIT"), 8000);
-    const forced = setTimeout(() => {
-      child.kill("SIGKILL");
-      resolve();
-    }, 12000);
-    child.once("exit", () => {
-      clearTimeout(fast);
-      clearTimeout(forced);
-      resolve();
-    });
-    child.kill("SIGINT");
-  });
-}
-
 async function decryptBootstrap(
   options: NativeServerOptions,
   retained: string,

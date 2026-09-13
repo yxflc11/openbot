@@ -64,6 +64,9 @@ await Promise.all([
   ...(nativeRuntime
     ? [
         access(join(nativeRuntime, "apps/server/dist/index.js")),
+        ...(process.platform === "darwin"
+          ? [access(join(nativeRuntime, "postgres-supervisor"))]
+          : []),
         access(
           join(
             nativeRuntime,
