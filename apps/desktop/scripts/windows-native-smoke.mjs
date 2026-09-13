@@ -1,11 +1,21 @@
 import assert from "node:assert/strict";
 import { channel } from "node:diagnostics_channel";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { app, safeStorage, utilityProcess } from "electron";
 import postgres from "postgres";
 import { NativeServerController } from "../dist/native-server.js";
+import {
+  COLD_START_ROUNDS,
+  SMOKE_ROW_VALUE,
+  STATE_FILE_NAME,
+  assertNewProcessIdentity,
+  assertPreviousChildrenEnded,
+  buildFinalSmokeReceipt,
+  createColdStartState,
+  isColdStartState,
+  readPostmasterPid,
+} from "./windows-native-smoke-harness.mjs";
 
 if (process.platform !== "win32" || process.arch !== "x64") {
   throw new Error("This smoke gate requires native Windows x64.");
@@ -13,16 +23,60 @@ if (process.platform !== "win32" || process.arch !== "x64") {
 const runtimeRoot = resolve(process.argv[2] ?? "native-runtime");
 if (!process.argv[3]) throw new Error("A fresh native smoke result path is required.");
 const resultPath = resolve(process.argv[3]);
-async function runSmoke() {
-  let succeeded = false;
-  console.info("Windows native smoke: Electron ready.");
-  const dataRoot = await mkdtemp(join(tmpdir(), "openbot-windows-native-"));
-  // mkdtemp starts with the user's inherited ACL, so let the controller create and protect its child.
-  const clusterRoot = join(dataRoot, "local-server");
+const mode = process.argv[4] ?? "bootstrap";
+if (mode !== "bootstrap" && mode !== "cold-start") {
+  throw new Error('Smoke mode must be "bootstrap" or "cold-start".');
+}
+if (!process.argv[5]) throw new Error("A self-made harness root is required.");
+const harnessRoot = resolve(process.argv[5]);
+const clusterRoot = join(harnessRoot, "local-server");
+const statePath = join(harnessRoot, STATE_FILE_NAME);
+const electronUserData = join(harnessRoot, "electron-user-data");
+const electronSessionData = join(harnessRoot, "electron-session-data");
+
+// Keep Electron profile paths inside the disposable harness; never touch the user's real data dirs.
+app.setPath("userData", electronUserData);
+app.setPath("sessionData", electronSessionData);
+
+async function readState() {
+  const raw = JSON.parse(await readFile(statePath, "utf8"));
+  assert.equal(isColdStartState(raw), true, "cold-start state is incomplete");
+  return raw;
+}
+
+async function writeState(state) {
+  assert.equal(isColdStartState(state), true, "refusing to persist incomplete state");
+  await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+async function readPostgresPid() {
+  try {
+    return readPostmasterPid(await readFile(join(clusterRoot, "postgres", "postmaster.pid"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {{
+ *   requirePreviousEnded: boolean,
+ *   previous: {
+ *     electronPid: number | null,
+ *     postgresPid: number | null,
+ *     serverPid: number | null,
+ *     encryptedBootstrap: string | null,
+ *   },
+ *   createRow: boolean,
+ *   expectRow: boolean,
+ *   sameProcessRestart: boolean,
+ * }} options
+ */
+async function runControllerCycle(options) {
   let databaseUrl;
   let loginCount = 0;
   let cooperativeShutdownFailed = false;
   let database;
+  let serverPid = null;
   const diagnostics = channel("openbot.desktop.native-startup");
   const reportDiagnostic = (message) => {
     const text = JSON.stringify(message, (_key, value) =>
@@ -30,7 +84,6 @@ async function runSmoke() {
         ? { name: value.name, message: value.message, code: value.code }
         : value,
     );
-    // This process owns disposable fixtures only; never publish generated bootstrap secrets.
     console.error(
       "Windows native diagnostic:",
       text
@@ -51,6 +104,11 @@ async function runSmoke() {
     "openbot-legacy-storage-fixture",
     "The async startup path must read credentials saved by the previous synchronous version",
   );
+
+  if (options.requirePreviousEnded) {
+    assertPreviousChildrenEnded(options.previous);
+  }
+
   const controller = new NativeServerController({
     runtimeRoot,
     dataRoot: clusterRoot,
@@ -73,6 +131,7 @@ async function runSmoke() {
         stdio: ["ignore", "ignore", "pipe"],
         serviceName: "OpenBot Windows CI Server",
       });
+      serverPid = child.pid ?? null;
       let alive = true;
       let serverReady = false;
       let errorTail = "";
@@ -141,57 +200,221 @@ async function runSmoke() {
     },
     async authenticate() {},
   });
+
+  let encryptedBootstrap = options.previous.encryptedBootstrap;
+  let postgresPid = null;
+  let stoppedPostgresPid = null;
+  let stoppedServerPid = null;
   try {
-    console.info("Windows native smoke: starting local Server.");
+    console.info(`Windows native smoke (${mode}): starting local Server.`);
     const first = await controller.start();
     assert.equal(first.status, "ready", JSON.stringify(first));
+    assertNewProcessIdentity(options.previous.electronPid, process.pid);
+    postgresPid = await readPostgresPid();
+    assert.ok(postgresPid, "postmaster pid must be recorded");
+    assertNewProcessIdentity(options.previous.postgresPid, postgresPid);
+    if (serverPid != null) assertNewProcessIdentity(options.previous.serverPid, serverPid);
+
     database = postgres(databaseUrl, { max: 1 });
-    await database`create table openbot_windows_smoke (value text not null)`;
-    await database`insert into openbot_windows_smoke values ('retained across restart')`;
+    if (options.createRow) {
+      await database`create table openbot_windows_smoke (value text not null)`;
+      await database`insert into openbot_windows_smoke values (${SMOKE_ROW_VALUE})`;
+    }
+    if (options.expectRow) {
+      const rows = await database`select value from openbot_windows_smoke`;
+      assert.equal(rows[0].value, SMOKE_ROW_VALUE);
+    }
     await database.end();
     database = undefined;
+
     const encryptedBefore = await readFile(join(clusterRoot, "bootstrap.json"), "utf8");
     assert.equal(encryptedBefore.includes("databasePassword"), false);
+    if (encryptedBootstrap != null) {
+      assert.equal(encryptedBefore, encryptedBootstrap, "DPAPI bootstrap ciphertext must persist");
+    }
+    encryptedBootstrap = encryptedBefore;
+
+    stoppedPostgresPid = postgresPid;
+    stoppedServerPid = serverPid;
     await controller.stop();
     assert.equal(cooperativeShutdownFailed, false);
     await assert.rejects(fetch(`${first.serverUrl}/health`));
     assert.equal(controller.getState().status, "idle");
-    console.info("Windows native smoke: restarting retained cluster.");
-    const second = await controller.start();
-    assert.equal(second.status, "ready", JSON.stringify(second));
-    assert.equal(await readFile(join(clusterRoot, "bootstrap.json"), "utf8"), encryptedBefore);
-    database = postgres(databaseUrl, { max: 1 });
-    const rows = await database`select value from openbot_windows_smoke`;
-    assert.equal(rows[0].value, "retained across restart");
-    assert.equal(loginCount, 2);
-    succeeded = true;
+    assertPreviousChildrenEnded({
+      electronPid: null,
+      postgresPid: stoppedPostgresPid,
+      serverPid: stoppedServerPid,
+    });
+    assert.equal(await readPostgresPid(), null, "postmaster.pid must clear after stop");
+
+    if (options.sameProcessRestart) {
+      console.info("Windows native smoke: same-process retained restart.");
+      const second = await controller.start();
+      assert.equal(second.status, "ready", JSON.stringify(second));
+      assert.equal(await readFile(join(clusterRoot, "bootstrap.json"), "utf8"), encryptedBefore);
+      postgresPid = await readPostgresPid();
+      assert.ok(postgresPid, "restarted postmaster pid must be recorded");
+      database = postgres(databaseUrl, { max: 1 });
+      const rows = await database`select value from openbot_windows_smoke`;
+      assert.equal(rows[0].value, SMOKE_ROW_VALUE);
+      await database.end();
+      database = undefined;
+      assert.equal(loginCount, 2);
+      stoppedPostgresPid = postgresPid;
+      stoppedServerPid = serverPid;
+      await controller.stop();
+      assert.equal(cooperativeShutdownFailed, false);
+      assertPreviousChildrenEnded({
+        electronPid: null,
+        postgresPid: stoppedPostgresPid,
+        serverPid: stoppedServerPid,
+      });
+      assert.equal(await readPostgresPid(), null, "postmaster.pid must clear after restart stop");
+    } else {
+      assert.equal(loginCount, 1);
+    }
+
+    return {
+      encryptedBootstrap,
+      electronPid: process.pid,
+      postgresPid: stoppedPostgresPid,
+      serverPid: stoppedServerPid,
+      loginCount,
+    };
   } finally {
-    await database?.end();
-    await controller.stop();
-    await rm(dataRoot, { recursive: true, force: true });
+    await database?.end().catch(() => undefined);
+    await controller.stop().catch(() => undefined);
     diagnostics.unsubscribe(reportDiagnostic);
-    if (succeeded) {
+  }
+}
+
+async function runSmoke() {
+  let succeeded = false;
+  console.info(`Windows native smoke: Electron ready (mode=${mode}, pid=${process.pid}).`);
+  await mkdir(electronUserData, { recursive: true });
+  await mkdir(electronSessionData, { recursive: true });
+
+  try {
+    if (mode === "bootstrap") {
+      const cycle = await runControllerCycle({
+        requirePreviousEnded: false,
+        previous: {
+          electronPid: null,
+          postgresPid: null,
+          serverPid: null,
+          encryptedBootstrap: null,
+        },
+        createRow: true,
+        expectRow: false,
+        sameProcessRestart: true,
+      });
+      await writeState(
+        createColdStartState({
+          encryptedBootstrap: cycle.encryptedBootstrap,
+          electronPid: cycle.electronPid,
+          postgresPid: cycle.postgresPid,
+          serverPid: cycle.serverPid,
+          coldStartsCompleted: 0,
+          bootstrapComplete: true,
+        }),
+      );
       await writeFile(
         resultPath,
-        JSON.stringify({
-          schemaVersion: 1,
-          platform: process.platform,
-          arch: process.arch,
-          checks: [
-            "postgresql",
-            "migrations",
-            "dpapi",
-            "owner-login",
-            "retained-data",
-            "stop",
-            "restart",
-            "cleanup",
-          ],
-        }),
+        JSON.stringify(
+          {
+            schemaVersion: 1,
+            platform: process.platform,
+            arch: process.arch,
+            mode: "bootstrap",
+            electronPid: process.pid,
+            checks: [
+              "postgresql",
+              "migrations",
+              "dpapi",
+              "owner-login",
+              "retained-data",
+              "stop",
+              "restart",
+              "cleanup",
+            ],
+          },
+          null,
+          2,
+        ),
         { flag: "wx" },
       );
       console.info(
-        "Windows native smoke passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.",
+        "Windows native smoke bootstrap passed: PostgreSQL, migrations, DPAPI, Owner login, retained data, stop, restart and cleanup.",
+      );
+    } else {
+      const previous = await readState();
+      assert.equal(previous.bootstrapComplete, true, "cold-start requires bootstrap state");
+      assert.ok(
+        previous.coldStartsCompleted < COLD_START_ROUNDS,
+        `cold-start round overflow (${previous.coldStartsCompleted})`,
+      );
+      const cycle = await runControllerCycle({
+        requirePreviousEnded: true,
+        previous: {
+          electronPid: previous.electronPid,
+          postgresPid: previous.postgresPid,
+          serverPid: previous.serverPid,
+          encryptedBootstrap: previous.encryptedBootstrap,
+        },
+        createRow: false,
+        expectRow: true,
+        sameProcessRestart: false,
+      });
+      const coldStartsCompleted = previous.coldStartsCompleted + 1;
+      await writeState(
+        createColdStartState({
+          encryptedBootstrap: cycle.encryptedBootstrap,
+          electronPid: cycle.electronPid,
+          postgresPid: cycle.postgresPid,
+          serverPid: cycle.serverPid,
+          coldStartsCompleted,
+          bootstrapComplete: true,
+        }),
+      );
+      const receipt =
+        coldStartsCompleted === COLD_START_ROUNDS
+          ? buildFinalSmokeReceipt({
+              coldStarts: coldStartsCompleted,
+              platform: process.platform,
+              arch: process.arch,
+            })
+          : {
+              schemaVersion: 1,
+              platform: process.platform,
+              arch: process.arch,
+              mode: "cold-start",
+              coldStartsCompleted,
+              electronPid: process.pid,
+              checks: [
+                "postgresql",
+                "dpapi",
+                "owner-login",
+                "retained-data",
+                "stop",
+                "cleanup",
+                `cold-start-${coldStartsCompleted}`,
+              ],
+            };
+      await writeFile(resultPath, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx" });
+      console.info(
+        `Windows native smoke cold-start ${coldStartsCompleted}/${COLD_START_ROUNDS} passed (pid=${process.pid}).`,
+      );
+    }
+    succeeded = true;
+  } finally {
+    if (!succeeded) {
+      console.error(
+        JSON.stringify({
+          summary: "Windows native smoke failed; harness processes should be cleaned by the orchestrator.",
+          mode,
+          electronPid: process.pid,
+          harnessRoot,
+        }),
       );
     }
     app.quit();
