@@ -283,3 +283,54 @@ it("serializes task persistence with deletion and prevents new references after 
   expect(nextPersistence).not.toHaveBeenCalled();
   expect((await storage.read(channel, attachment.id)).bytes.toString()).toBe("content");
 });
+
+it("rejects image-only PDF extraction without marking success or changing the original", async () => {
+  const { storage, service } = await fixture();
+  const bytes = await readFile(
+    new URL("./__fixtures__/attachments/image-only.pdf", import.meta.url),
+  );
+  const attachment = await storage.persist(channel, "scan.pdf", bytes);
+  await expect(
+    service.process(channel, attachment.id, { operation: "extract" }),
+  ).rejects.toMatchObject({
+    message: expect.stringContaining("No readable PDF text"),
+    status: 415,
+  });
+  expect((await storage.metadata(channel, attachment.id)).processing).toBeUndefined();
+  expect(await storage.derived(channel, attachment.id)).toBeUndefined();
+  expect((await storage.read(channel, attachment.id)).bytes).toEqual(bytes);
+  // A failed extraction does not suppress the original on an explicit, compatible attachment.
+  const context = await prepareAttachmentContext({
+    run: { channelId: channel, instruction: `[OpenBot attachment: ${attachment.id}]` },
+    storage,
+    provider: "openai",
+    assertScope: async () => {},
+  });
+  expect(context.messages[0]?.content).toEqual(
+    expect.arrayContaining([expect.objectContaining({ type: "file", data: bytes })]),
+  );
+}, 30000);
+
+it("rejects legacy whitespace extraction before inference without sending the binary instead", async () => {
+  const { storage } = await fixture();
+  const bytes = await readFile(
+    new URL("./__fixtures__/attachments/image-only.pdf", import.meta.url),
+  );
+  const attachment = await storage.persist(channel, "legacy-scan.pdf", bytes);
+  await storage.saveDerived(channel, attachment.id, {
+    sha256: attachment.sha256,
+    text: " \n\t",
+    operation: "extract",
+    processedAt: new Date().toISOString(),
+    truncated: false,
+  });
+  await expect(
+    prepareAttachmentContext({
+      run: { channelId: channel, instruction: `[OpenBot attachment: ${attachment.id}]` },
+      storage,
+      provider: "openai",
+      assertScope: async () => {},
+    }),
+  ).rejects.toThrow("Re-upload the original");
+  expect((await storage.read(channel, attachment.id)).bytes).toEqual(bytes);
+});

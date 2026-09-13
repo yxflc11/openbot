@@ -94,6 +94,13 @@ export class AttachmentProcessingService {
         result = await parseInWorker(bytes, extension, input, signal);
       }
       if (signal?.aborted) throw new AttachmentError("Attachment processing cancelled.");
+      if (!result.text.trim())
+        throw new AttachmentError(
+          extension === "pdf"
+            ? "No readable PDF text was found. The PDF may be scanned or blank. Upload PNG/JPEG pages and choose image OCR, or use a PDF with a text layer."
+            : "No readable text was found. Check the original attachment and retry with readable content.",
+          415,
+        );
       const derived: DerivedAttachmentText = {
         ...result,
         sha256: attachment.sha256,

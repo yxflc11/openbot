@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -76,3 +76,40 @@ it("rejects unknown processing keys before any parser or external request", asyn
   expect(response.status).toBe(400);
   expect(process).not.toHaveBeenCalled();
 });
+
+it("returns an actionable error for an image-only PDF through upload and process routes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "openbot-empty-pdf-route-"));
+  try {
+    const storage = new FileChannelAttachmentStorage(root);
+    const app = new Hono();
+    registerChannelAttachmentRoutes(app, {
+      storage,
+      channelExists: async (id) => id === channel,
+      processing: new AttachmentProcessingService({ storage }),
+    });
+    const bytes = await readFile(
+      new URL("./__fixtures__/attachments/image-only.pdf", import.meta.url),
+    );
+    const url = `/api/v1/channels/${channel}/attachments`;
+    const uploaded = await app.request(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream", "x-openbot-filename": "scan.pdf" },
+      body: Uint8Array.from(bytes),
+    });
+    expect(uploaded.status).toBe(201);
+    const { attachment } = await uploaded.json();
+    const response = await app.request(`${url}/${attachment.id}/process`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "extract" }),
+    });
+    expect(response.status).toBe(415);
+    expect((await response.json()).error).toContain("Upload PNG/JPEG pages");
+    const current = await (await app.request(`${url}/${attachment.id}`)).json();
+    expect(current.attachment.processing).toBeUndefined();
+    const download = await app.request(`${url}/${attachment.id}/content`);
+    expect(Buffer.from(await download.arrayBuffer())).toEqual(bytes);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 30000);

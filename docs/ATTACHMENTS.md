@@ -31,3 +31,15 @@ Desktop original downloads pass only exact channel/attachment IDs through truste
 ## Validation
 
 Real parser tests use locally authored DOCX/XLSX/PPTX/ODT containers, an AES-256 encrypted PDF, and a generated OCR image with offline language data. Tests cover malformed containers, cancellation, password failures, digest mismatch, provider gating, scoped lifecycle routes, reference-safe retention and native original saving. The media transport test substitutes the HTTP response and is not a real model transcription. Windows execution depends on the native CI result; portable tests on macOS do not prove Windows conformance.
+
+## Documents without readable text
+
+Text extraction fails with an explanation when the parser returns only whitespace. The original
+file remains available and is not marked as successfully extracted. A PDF may be scanned or blank;
+PDF text extraction does not perform OCR. Upload PNG/JPEG pages and explicitly choose image OCR,
+or provide a PDF with a readable text layer. A partially searchable PDF may still yield only part
+of its content; successful extraction is not a guarantee of complete page coverage.
+
+If an older version saved an empty extraction, task preparation asks you to re-upload the original
+and extract readable text or explicitly attach supported image/PDF content. It does not silently
+send the original binary to a model in place of that empty text.
