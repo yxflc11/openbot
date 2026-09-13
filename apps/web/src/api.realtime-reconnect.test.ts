@@ -1,9 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { subscribeToChannelEvents } from "./api";
+import { subscribeToChannelEvents, subscribeToWorkspaceEvents } from "./api";
 
 type Handler = (event: Event) => void;
 
+/**
+ * Test double only. Native EventSource.close() (WHATWG / Chromium / Desktop
+ * renderer) does not fire onerror. fireErrorOnClose models a hypothetical
+ * sync close→onerror re-entry used to prove single-flight ordering — not a
+ * proven production bug. Fail-before (api.ts @ b78c74f + fireErrorOnClose):
+ * instances.length === 3. With fireErrorOnClose=false, old code passes.
+ */
 class MockEventSource {
   static instances: MockEventSource[] = [];
   static fireErrorOnClose = false;
@@ -19,7 +26,11 @@ class MockEventSource {
       if (this.readyState === 2) return;
       this.readyState = 1;
       this.onopen?.(new Event("open"));
-      this.emit("channel.ready", { type: "channel.ready", channelId: "channel", occurredAt: "t" });
+      if (url.includes("/workspace/events")) {
+        this.emit("workspace.ready", { type: "workspace.ready", nodes: [], occurredAt: "t" });
+      } else {
+        this.emit("channel.ready", { type: "channel.ready", channelId: "channel", occurredAt: "t" });
+      }
     });
   }
   addEventListener(type: string, handler: Handler) {
@@ -71,7 +82,8 @@ describe("subscribeToChannelEvents reconnect", () => {
     first.error();
     await vi.advanceTimersByTimeAsync(2000);
     await vi.runAllTicks();
-    // One initial + exactly one reconnect. Two reconnects would double-deliver live events.
+    // Defensive single-flight: one initial + exactly one reconnect.
+    // Fail-before (old scheduleReconnect + fireErrorOnClose): length === 3.
     expect(MockEventSource.instances).toHaveLength(2);
     expect(MockEventSource.instances.filter((item) => item.readyState !== 2)).toHaveLength(1);
     const message = {
@@ -88,8 +100,59 @@ describe("subscribeToChannelEvents reconnect", () => {
     for (const source of MockEventSource.instances) {
       if (source.readyState !== 2) source.emit("message.created", message);
     }
-    // If a leaked EventSource stayed open it would also emit; assert single delivery.
     expect(onMessage).toHaveBeenCalledTimes(1);
+    stop();
+  });
+});
+
+describe("subscribeToWorkspaceEvents reconnect", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    MockEventSource.instances = [];
+    MockEventSource.fireErrorOnClose = false;
+    vi.unstubAllGlobals();
+  });
+
+  it("opens only one replacement EventSource after an error even when close re-enters onerror", async () => {
+    vi.useFakeTimers();
+    MockEventSource.fireErrorOnClose = true;
+    vi.stubGlobal("EventSource", MockEventSource);
+    const onRun = vi.fn();
+    const onReady = vi.fn();
+    const onState = vi.fn();
+    const stop = subscribeToWorkspaceEvents({
+      onApproval: vi.fn(),
+      onEmployeeProfileChanged: vi.fn(),
+      onNode: vi.fn(),
+      onNodeRemoved: vi.fn(),
+      onReady,
+      onRun,
+      onState,
+    });
+    await vi.runAllTicks();
+    expect(MockEventSource.instances).toHaveLength(1);
+    expect(MockEventSource.instances[0]!.url).toContain("/workspace/events");
+    MockEventSource.instances[0]!.error();
+    await vi.advanceTimersByTimeAsync(2000);
+    await vi.runAllTicks();
+    expect(MockEventSource.instances).toHaveLength(2);
+    expect(MockEventSource.instances.filter((item) => item.readyState !== 2)).toHaveLength(1);
+    const payload = {
+      type: "run.updated",
+      run: {
+        id: "r1",
+        channelId: "channel",
+        botId: "bot",
+        status: "running",
+        createdAt: "2026-09-13T00:00:00Z",
+        updatedAt: "2026-09-13T00:00:00Z",
+      },
+      artifacts: [],
+    };
+    for (const source of MockEventSource.instances) {
+      if (source.readyState !== 2) source.emit("run.updated", payload);
+    }
+    expect(onRun).toHaveBeenCalledTimes(1);
     stop();
   });
 });

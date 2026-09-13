@@ -597,8 +597,10 @@ export function subscribeToChannelEvents(
   };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
-    // Arm the timer and drop the live reference before close() so an onerror
-    // fired by close cannot re-enter and schedule a second EventSource.
+    // Defensive single-flight: arm timer and drop the live reference before
+    // close(). Native WHATWG/Chromium close() does not fire onerror; this
+    // ordering still prevents a hypothetical sync close→onerror from arming
+    // a second timer (see docs/research/channel-sse-reconnect-single-flight.md).
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = undefined;
       connect();
@@ -719,8 +721,10 @@ export function subscribeToWorkspaceEvents(handlers: {
   };
   const scheduleReconnect = () => {
     if (closed || reconnectTimer !== undefined) return;
-    // Arm the timer and drop the live reference before close() so an onerror
-    // fired by close cannot re-enter and schedule a second EventSource.
+    // Defensive single-flight: arm timer and drop the live reference before
+    // close(). Native WHATWG/Chromium close() does not fire onerror; this
+    // ordering still prevents a hypothetical sync close→onerror from arming
+    // a second timer (see docs/research/channel-sse-reconnect-single-flight.md).
     reconnectTimer = window.setTimeout(() => {
       reconnectTimer = undefined;
       connect();
