@@ -5,6 +5,7 @@ import { collectProductionPackageGraph } from "../../../scripts/node-linux-relea
 
 import { nativeOptionalPackageApplies } from "./native-runtime-policy.mjs";
 import { stageWindowsPostgres } from "./windows-postgres-runtime.mjs";
+import { buildPostgresSupervisor } from "./postgres-supervisor-build.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const output = join(root, "apps/desktop/native-runtime");
@@ -55,6 +56,10 @@ if (process.platform === "win32") {
     join(output, "postgres"),
   );
 } else {
+  await buildPostgresSupervisor(
+    join(root, "apps/desktop/native/postgres-supervisor.c"),
+    join(output, "postgres-supervisor"),
+  );
   const binaryRoot = join(root, "node_modules/@embedded-postgres", `darwin-${process.arch}`);
   const manifest = JSON.parse(await readFile(join(binaryRoot, "package.json"), "utf8"));
   if (manifest.version !== "17.10.0-beta.17")
