@@ -4,8 +4,8 @@
 - 日期：2026-09-13
 - 负责人：@yxflc11
 - 相关议题：alpha.8 Windows 冷启动验收
-- 验收旅程：在 Windows x64 完成首次本机初始化后，再进行十次彼此独立的 Electron 进程生命周期：每次启动已安装的本机 Server，证明新的进程身份，核对保留的 PostgreSQL 行与 DPAPI bootstrap 密文，完成 Owner 登录，然后正常退出，并确认上一轮子进程已结束。
-- 安全边界：验证仅使用自建临时目录，从不读取交互用户真实的 Desktop 数据目录；不改产品运行时路径。失败时仍清理本轮 Electron/Server/PostgreSQL 子进程，并留下不含密钥的简短摘要。
+- 验收旅程：在 Windows x64 完成首次本机初始化后，再进行十次彼此独立的 Electron 进程生命周期：每次启动已安装的本机 Server，以启动时间与可执行路径证明新的进程身份，核对保留的 PostgreSQL 行与 DPAPI bootstrap 密文摘要，完成 Owner 登录，然后正常退出，并确认上一轮子进程已结束。
+- 安全边界：验证仅使用自建临时目录，从不读取交互用户真实的 Desktop 数据目录；不改产品运行时路径。失败时仅在核对记录的启动时间与可执行路径（或持有的 Start-Process 句柄）后清理本轮 Electron/Server/PostgreSQL 子进程——禁止仅凭 JSON PID 杀进程——并留下不含密钥的简短摘要。
 
 ## 检索证据
 
@@ -28,8 +28,8 @@
 
 ## 验证计划
 
-- 可移植 Vitest 覆盖 harness 状态/PID/回执助手；完整十次冷启动仍以 Windows CI 为准。
-- 不放宽既有 install/uninstall/encryption 断言；Linux 仅可跑助手单测，完整证据标记为 pending CI。
+- 可移植 Vitest 覆盖 harness 状态/进程身份/回执助手（含真实子进程负例：错误身份不得杀、EPERM/ESRCH）；完整十次冷启动仍以 Windows CI 为准。
+- 每轮回执仅含进程身份字段、loginCount 与密文 digest，不含密码或原始密文；不放宽既有 install/uninstall/encryption 断言；Linux 仅可跑助手单测，完整证据标记为 pending CI。
 
 ## 未决问题
 

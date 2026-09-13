@@ -20,7 +20,7 @@ Windows 通过 PostgreSQL 官方启动机制收紧数据库进程权限，即使
 
 ## 验证与限制
 
-Windows CI 会构建 NSIS 安装器，在唯一临时目录中完成安装，核对安装后的 ASAR 哈希，通过 Electron 对**安装后的运行时**验证 DPAPI、真实数据库、结构迁移、Owner 登录、同进程保留重启，以及 **十次彼此独立的 Electron 进程冷启动**（新 PID、上一轮子进程已结束、PG 行与 bootstrap 密文保留、Owner 登录），最后卸载。单独的 Windows 测试检查真实 NTFS 权限。应查看对应源码提交的实际 CI 结果；写好工作流不等于工作流已经通过。
+Windows CI 会构建 NSIS 安装器，在唯一临时目录中完成安装，核对安装后的 ASAR 哈希，通过 Electron 对**安装后的运行时**验证 DPAPI、真实数据库、结构迁移、Owner 登录、同进程保留重启，以及 **十次彼此独立的 Electron 进程冷启动**（以启动时间与可执行路径证明的新进程身份、上一轮子进程已结束、PG 行与 bootstrap 密文摘要保留、Owner 登录次数），最后卸载。单独的 Windows 测试检查真实 NTFS 权限。应查看对应源码提交的实际 CI 结果；写好工作流不等于工作流已经通过。
 
 ### 在本地 Windows x64 运行冷启动验收门禁
 
